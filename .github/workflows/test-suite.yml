@@ -1,0 +1,58 @@
+# ============================================================================
+# File: .github/workflows/test-suite.yml
+# (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+#
+# Description:
+# GitHub Actions configuration for MetaMancer project. This CI script will
+# automatically run Python-based unit tests and metadata dry-runs on every push
+# and pull request to main, dev, or milestone branches.
+#
+# Key Features:
+# - Python 3.11 on all platforms (Linux, macOS, Windows)
+# - Installs all dependencies
+# - Runs pytest on /tests folder
+# - Verifies that core modules compile
+# ============================================================================
+
+name: CI - MetaMancer Tests
+
+on:
+  push:
+    branches: [main, dev, milestone-*]
+  pull_request:
+    branches: [main, dev, milestone-*]
+
+jobs:
+  build-test:
+    name: "Python Tests on ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+        python-version: [3.11]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pymediainfo pytest
+
+      - name: Run unit tests
+        run: |
+          pytest tests --maxfail=3 --disable-warnings --tb=short
+
+      - name: Validate import integrity
+        run: |
+          python -m compileall .
+
+      - name: Summary
+        run: echo "✅ All tests and import checks completed."
