@@ -8,6 +8,9 @@
 # or scripting integration.
 # ============================================================================
 
+from utils.env_loader import load_env_variables
+load_env_variables()
+
 import os
 import argparse
 from core.metadata_extractor import extract_metadata
@@ -44,6 +47,7 @@ def main():
     parser.add_argument("--json", action="store_true", help="Export extracted metadata as JSON")
     parser.add_argument("--out", type=str, help="Optional output folder for JSON export")
     parser.add_argument("--mkdir", action="store_true", help="Create output folder if it does not exist")
+    parser.add_argument("--simulate-off", action="store_true", help="Disable rename simulation for this run")
     args = parser.parse_args()
 
     config = get_config()
@@ -74,7 +78,8 @@ def main():
                     metadata = extract_metadata(full_path)
                     classified = classify_media(metadata)
                     metadata.update(classified)
-                    simulate_rename(full_path, metadata, dry_run=True, export_json=args.json, output_dir=args.out)
+                    if not args.simulate_off:
+                        simulate_rename(full_path, metadata, dry_run=True, export_json=args.json, output_dir=args.out)
 
 
 if __name__ == "__main__":

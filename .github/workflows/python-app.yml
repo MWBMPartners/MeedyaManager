@@ -3,17 +3,17 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# GitHub Actions CI configuration for MediaMancer project
-# Runs full unit + integration test suite across OS targets and architectures
+# GitHub Actions CI test matrix for the MetaMancer project.
+# Validates metadata extraction, CLI tools, checksum verifier, and env loader.
 # ============================================================================
 
-name: 🧪 MediaMancer Test Matrix
+name: 🧪 MetaMancer CI Test Matrix
 
 on:
   push:
-    branches: [ "main", "dev" ]
+    branches: [ main, dev ]
   pull_request:
-    branches: [ "main", "dev" ]
+    branches: [ main, dev ]
 
 jobs:
   build:
@@ -24,27 +24,32 @@ jobs:
         python-version: ["3.10", "3.11"]
 
     steps:
-    - name: 🔄 Checkout Code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🐍 Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: 🐍 Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: 🧰 Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
 
-    - name: ✅ Run Pytest Suite
-      run: |
-        pytest --maxfail=1 --disable-warnings --tb=short
+      - name: 🔐 Verify .env loader functionality
+        run: |
+          echo "TEST_ENV_KEY=ci_env_check" > .env
+          python -c "from utils.env_loader import load_env_variables; load_env_variables(); import os; assert os.getenv('TEST_ENV_KEY') == 'ci_env_check'"
 
-    - name: 📄 Upload Logs (if failed)
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: logs
-        path: logs/*.log
+      - name: 🧪 Run full test suite including checksum verifier
+        run: |
+          pytest tests/ --maxfail=1 --disable-warnings --tb=short
+
+      - name: 📤 Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-failure-logs-${{ matrix.os }}-${{ matrix.python-version }}
+          path: .pytest_cache/

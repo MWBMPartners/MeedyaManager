@@ -3,12 +3,12 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# GitHub Actions build pipeline that creates platform-specific distribution
-# packages for MediaMancer upon push to tagged release (e.g. v1.0-M1).
-# This workflow also publishes artifacts as GitHub Release assets.
+# GitHub Actions workflow to package MediaMancer for release on version tag.
+# Builds ZIP (Windows) and TAR.GZ (macOS/Linux) archives and uploads them
+# to the GitHub Releases tab automatically, including SHA256 checksums.
 # ============================================================================
 
-name: 📦 MediaMancer Build & Package
+name: 📦 MetaMancer Release Packager
 
 on:
   push:
@@ -16,54 +16,64 @@ on:
       - "v*"
 
 jobs:
-  build:
+  build-artifacts:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - name: 🔄 Checkout code
+      - name: 📥 Checkout project
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: 📁 Install dependencies
+      - name: 📦 Install build requirements
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest
 
-      - name: 🏗️ Build distribution folder
+      - name: 🔐 Validate .env loading works
+        run: |
+          echo "BUILD_ENV_SANITY=1" > .env
+          python -c "from utils.env_loader import load_env_variables; load_env_variables(); import os; assert os.getenv('BUILD_ENV_SANITY') == '1'"
+
+      - name: 📁 Prepare dist folder
         run: |
           mkdir -p dist/MediaMancer
-          cp -r core cli settings.json5 LICENSE.md README.md dist/MediaMancer/
+          cp -r cli core settings.json5 README.md LICENSE.md dist/MediaMancer/
+          if [ -d branding ]; then cp -r branding dist/MediaMancer/; fi
 
-      - name: 📦 Compress build into archive
+      - name: 📦 Compress for ${{ matrix.os }}
         run: |
-          cd dist
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            powershell Compress-Archive -Path MediaMancer -DestinationPath MediaMancer-${{ runner.os }}.zip
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            powershell -Command "Compress-Archive -Path dist/MediaMancer -DestinationPath dist/MediaMancer-${{ matrix.os }}.zip"
           else
-            tar -czf MediaMancer-${{ runner.os }}.tar.gz MediaMancer
+            tar -czf dist/MediaMancer-${{ matrix.os }}.tar.gz dist/MediaMancer/
           fi
 
-      - name: 📤 Upload build artifacts to Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: MediaMancer-${{ runner.os }}
-          path: |
-            dist/*.zip
-            dist/*.tar.gz
+      - name: 🔐 Generate SHA256 checksums
+        shell: bash
+        run: |
+          cd dist
+          if [[ -f MediaMancer-${{ matrix.os }}.zip ]]; then
+            shasum -a 256 MediaMancer-${{ matrix.os }}.zip > MediaMancer-${{ matrix.os }}.zip.sha256
+          fi
+          if [[ -f MediaMancer-${{ matrix.os }}.tar.gz ]]; then
+            shasum -a 256 MediaMancer-${{ matrix.os }}.tar.gz > MediaMancer-${{ matrix.os }}.tar.gz.sha256
+          fi
 
-      - name: 🚀 Attach build to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: 🚀 Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/*.zip
-            dist/*.tar.gz
+            dist/MediaMancer-${{ matrix.os }}.zip
+            dist/MediaMancer-${{ matrix.os }}.zip.sha256
+            dist/MediaMancer-${{ matrix.os }}.tar.gz
+            dist/MediaMancer-${{ matrix.os }}.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

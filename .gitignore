@@ -5,6 +5,7 @@
 # Description:
 # Ignore rules for MediaMancer project across macOS, Windows,
 # VS Code, Xcode, and Visual Studio environments.
+# Also handles secrets, env files, and dev/testing tools.
 # ============================================================================
 
 # OS-specific
@@ -37,6 +38,15 @@ env/
 .cache/
 .pytest_cache/
 htmlcov/
+.coverage
+coverage.xml
+
+# Tox
+.tox/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
 
 # VS Code
 .vscode/
@@ -82,8 +92,14 @@ yarn.lock
 *.tmp
 *.orig
 
+# Secrets & environment overrides
+.env
+.env.*
+.secrets
+.secrets.*
+settings.local.json5
+
 # Project-specific
-secrets.json5
 *.sqlite3
 *.db
 *.metadata.json

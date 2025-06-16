@@ -38,19 +38,25 @@ Additional design notes:
 - 📝 Logging system with daily + size-based rotation
 - 📤 Dry-run metadata export to `.json` (with `--out` and `--mkdir`)
 - ⚙️ CLI toggle `--simulate-off` to suppress rename simulations
+- 🔁 `.env` loading for fallback API keys and region settings
+- 🔐 Checksum file generation during CI builds
+- 📦 Post-install integrity verification via `verify_checksum.py`
 
 ### 🧪 Testing Coverage
-- `test_metadata_extractor.py`: Format and classification
+- `test_metadata_extractor.py`: Format and classification logic
 - `test_simulate_flag_behavior.py`: Toggle simulation on/off
-- `test_watcher_simulation_trigger.py`: Simulate from watcher
+- `test_watcher_simulation_trigger.py`: Simulate from watcher events
 - `test_simulation_log_output.py`: Check log content and redaction
-- `test_batch_rename_simulation.py`: Multi-file integration
+- `test_batch_rename_simulation.py`: Multi-file integration tests
+- `test_env_loader.py`: `.env` fallback loader validation
+- `test_verify_checksum.py`: SHA256 verifier and file parser edge cases
 
 ### 🏗️ Build & CI
 - ✅ Full GitHub Actions CI matrix (Windows/macOS/Linux)
 - ✅ Python 3.10 & 3.11 testing with log upload on failure
 - ✅ Build pipeline auto-packages ZIP/TAR on tagged release
-- ✅ Assets auto-attached to GitHub Releases via `softprops/action-gh-release`
+- ✅ SHA256 checksum generation for all artifacts
+- ✅ GitHub Release publishing with attached artifacts + checksums
 
 ---
 

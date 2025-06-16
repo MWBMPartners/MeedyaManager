@@ -39,8 +39,12 @@ Additional relationships:
 - ✅ JSON export of parsed metadata
 - ✅ Rotating logs with redaction (PII safe)
 - ✅ Simulation logging and validation tests
-- ✅ GitHub Actions CI (Pytest + Artifacts)
+- ✅ GitHub Actions CI matrix (3 OSes, 2 Python versions)
 - ✅ GitHub Releases auto-packaging ZIP/TAR
+- ✅ `.env` loader for fallback API keys
+- ✅ Post-install SHA256 checker (`verify_checksum.py`)
+- ✅ Auto-generated checksum upload to GitHub Releases
+- ✅ Unit tests for env loader, rename engine, checksum logic
 
 ### 🧙 M2 – CLI & UI Frontend
 - Interactive CLI rename preview wizard
@@ -63,14 +67,14 @@ Additional relationships:
 - Preview metadata before applying
 
 ### 🔍 M5 – Metadata Lookup (Music)
-- Integrations:
-  - ✅ MusicBrainz
-  - ✅ Apple Music
-  - ✅ Spotify
-  - ✅ Tidal
-  - ✅ Amazon Music
-  - ✅ Shazam (w/ fingerprint storage)
-  - ✅ AcousticBrainz
+- Integrations (planned):
+  - MusicBrainz
+  - Apple Music
+  - Spotify
+  - Tidal
+  - Amazon Music
+  - Shazam (w/ fingerprint storage)
+  - AcousticBrainz
 - Store direct URLs & IDs in custom tags
 
 ### 🎬 M6 – Metadata Lookup (TV/Film)
@@ -81,9 +85,9 @@ Additional relationships:
 - Link albums/songs to TV/Movie metadata context
 
 ### ☁️ M7 – Cloud Monitor (Optional)
-- Monitor + sync folders:
-  - ✅ OneDrive, Google Drive, SharePoint
-  - ✅ Dropbox, MEGA, iCloud
+- Monitor + sync folders (planned):
+  - OneDrive, Google Drive, SharePoint
+  - Dropbox, MEGA, iCloud
 - Auth via secure tokens / OAuth
 - Background sync worker
 
@@ -94,12 +98,12 @@ Additional relationships:
 - Feedback capture + auto-updater design
 
 ### 🗄 M9 – Media Library Export
-- Export to external DBs:
-  - ✅ MySQL
-  - ✅ MariaDB
-  - ✅ SQLite
-  - ✅ PostgreSQL
-  - ✅ SQL Server
+- Export to external DBs (planned):
+  - MySQL
+  - MariaDB
+  - SQLite
+  - PostgreSQL
+  - SQL Server
 
 ### 🔐 M10 – Secure Media Server (Optional)
 - Copy/export media to secure server with reference
@@ -115,6 +119,7 @@ Additional relationships:
 - Format recognizer tool
 - Auto-log redactor for troubleshooting
 - Smart CLI auto-detection/scan mode
+- `verify_checksum.py` post-install validator
 
 ---
 
