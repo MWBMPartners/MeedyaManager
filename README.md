@@ -8,6 +8,10 @@
 
 (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 
+# MetaMancer
+
+![CI Tests](https://github.com/MWBMPartners/MediaMancer/actions/workflows/python-app.yml/badge.svg)
+
 ---
 
 ## 🚀 Features (Milestone Overview)

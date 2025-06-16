@@ -35,13 +35,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install python-dotenv pytest
-          pip install pytest
+          pip install pytest python-dotenv
 
       - name: 🔐 Validate .env loading works
         run: |
           echo "BUILD_ENV_SANITY=1" > .env
           python -c "from utils.env_loader import load_env_variables; load_env_variables(); import os; assert os.getenv('BUILD_ENV_SANITY') == '1'"
+
+      - name: 🧪 Run sanity test (optional)
+        run: |
+          export PYTHONPATH="${GITHUB_WORKSPACE}"
+          echo "PYTHONPATH is set to: $PYTHONPATH"
+          python -c "from core.metadata_extractor import extract_metadata; print('Sanity test passed')"
 
       - name: 📁 Prepare dist folder
         run: |
