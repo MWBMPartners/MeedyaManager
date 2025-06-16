@@ -1,89 +1,92 @@
+# ============================================================================
+# File: /.gitignore
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+#
+# Description:
+# Ignore rules for MediaMancer project across macOS, Windows,
+# VS Code, Xcode, and Visual Studio environments.
+# ============================================================================
 
-# Byte-compiled / optimized / DLL files
+# OS-specific
+.DS_Store
+Thumbs.db
+Icon?
+__MACOSX/
+
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# C extensions
-*.so
+*.pyo
 *.pyd
-*.dll
-
-# Distribution / packaging
-build/
-dist/
+*.so
 *.egg-info/
-*.spec
-*.app
-*.AppImage
-*.deb
-*.rpm
-*.msi
-*.dmg
-*.pkg
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Virtual environments
-.env/
-.venv/
-env/
 venv/
+.venv/
+ENV/
+env/
 
-# PyInstaller
-*.manifest
-*.spec
-
-# macOS system files
-.DS_Store
-
-# Windows system files
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# Linux temp files
-*~
-
-# Log files
-logs/
+# Logs, cache
 *.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.orig
 
-# Test output
-.coverage
-htmlcov/
-.tox/
-.nox/
+# Pytest
 .cache/
-pytest_cache/
-tests/__pycache__/
+.pytest_cache/
+htmlcov/
 
-# VS Code Settings
+# VS Code
 .vscode/
-.code-workspace
 
-# VS Code Extensions (optional - shared settings)
-.vscode/*.code-snippets
-.vscode/extensions.json
+# Visual Studio (Community/Pro)
+.vs/
+*.vcxproj.user
+*.suo
+*.ncb
+*.aps
+*.sdf
+*.opendb
+*.VC.db
+ipch/
 
-# Debugging settings
-.vscode/launch.json
-.vscode/tasks.json
+# Xcode / macOS
+*.xcworkspace
+*.xcodeproj
+*.xcuserdata/
+*.xcuserstate
+*.xcsettings
+DerivedData/
+build/
 
-# User-specific workspace settings
-.vscode/settings.json
+# Packaging & Artifacts
+*.tar.gz
+*.zip
+*.dmg
+dist/
+logs/
+*.egg
+*.egg-info/
+build/
 
-# Configuration / secrets (not tracked for security)
-config/user_settings.json
-config/*.override.json
-config/*.secrets.json
+# Node/npm (in case frontend included later)
+node_modules/
+package-lock.json
+yarn.lock
 
-# GitHub Actions secrets
-.github/secrets.yml
+# Editor backups
+*~
+*.bak
+*.tmp
+*.orig
 
-# Branding/Assets (optional during development)
-logo_dark.svg
-logo_light.svg
+# Project-specific
+secrets.json5
+*.sqlite3
+*.db
+*.metadata.json
+
+# JetBrains IDEs (PyCharm, WebStorm, etc)
+.idea/
