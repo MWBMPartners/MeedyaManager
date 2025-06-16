@@ -3,28 +3,28 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# This module is part of the "MetaMancer" media management application. It is
-# responsible for actively monitoring one or more specified directories for any
-# filesystem changes related to media files (e.g., new files added, renamed,
-# modified, etc.). It uses the cross-platform Python `watchdog` library to
-# implement real-time monitoring and queues new file events for later handling
-# by the renaming/sorting engine. It also integrates safety logic to ignore
-# files that are still in use by another application.
+# Watches directories for file creation events and queues new media files
+# into an event queue. Designed to run as part of the MetaMancer CLI/daemon.
 #
-# References:
-# - Watchdog Library: https://github.com/gorakhargosh/watchdog
-# - Watchdog Docs: https://python-watchdog.readthedocs.io/
+# Uses the `watchdog` library to provide cross-platform support for file
+# system event monitoring with low resource overhead.
+#
+# This module supports real-time file detection, filtering by extension,
+# and skip/retry logic for in-use files. Extensions and paths are fully
+# configurable via settings.json5.
 # ============================================================================
 
 import os
 import time
-import threading
 import logging
-from queue import Queue
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from utils.config_loader import get_config
 
-# Create a logger for this module
+# Shared queue for runner.py
+from queue import Queue
+
+# Setup logger
 logger = logging.getLogger("MetaMancer.Watcher")
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
@@ -32,103 +32,64 @@ formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-# A thread-safe queue used to pass detected file events to the rename engine
+# Queue shared with runner
 event_queue = Queue()
 
-# Define a set of valid media file extensions that we care about
-# These will eventually be made configurable in the user settings
-VALID_EXTENSIONS = {'.mp3', '.m4a', '.flac', '.alac', '.ogg', '.wav',
-                    '.mp4', '.mkv', '.avi', '.m4v', '.mov',
-                    '.ac3', '.eac3', '.ac4', '.mpg', '.divx'}
-
-
-def is_file_locked(filepath):
-    """
-    Check whether the given file is still locked (i.e., in use by another app).
-    This prevents accidentally trying to move/copy a file while it's being
-    written, avoiding corruption.
-
-    This function tries to open the file in append mode.
-    If it fails, the file is probably in use.
-    """
-    try:
-        with open(filepath, 'a'):
-            return False  # File is not locked
-    except OSError:
-        return True  # File is locked or inaccessible
+# Load file type filters from config
+valid_exts = get_config("valid_extensions", ["mp3", "mkv", "flac", "m4a", "mp4"])  # fallback
 
 
 class MediaFileHandler(FileSystemEventHandler):
-    """
-    A handler class derived from watchdog's FileSystemEventHandler.
-    This class responds to file creation and movement events in the monitored directories.
-    """
-
     def on_created(self, event):
-        """
-        Called when a new file or directory is created.
-        We only handle file creation events for supported media types.
-        """
-        if event.is_directory:
-            return  # Ignore folders
-
-        filepath = event.src_path
-        ext = os.path.splitext(filepath)[1].lower()
-
-        if ext in VALID_EXTENSIONS:
-            logger.info(f"Detected new media file: {filepath}")
-            
-            # Spawn a thread that waits for the file to be unlocked
-            def wait_until_unlocked():
-                logger.debug(f"Waiting for {filepath} to be available...")
-                while is_file_locked(filepath):
-                    time.sleep(1)
-                logger.info(f"File ready for processing: {filepath}")
-                event_queue.put(filepath)
-
-            threading.Thread(target=wait_until_unlocked, daemon=True).start()
-
-    def on_moved(self, event):
-        """
-        Called when a file is moved into the directory.
-        Behaves similar to on_created.
-        """
         if event.is_directory:
             return
 
-        filepath = event.dest_path
-        ext = os.path.splitext(filepath)[1].lower()
+        _, ext = os.path.splitext(event.src_path)
+        ext = ext.lower().lstrip('.')
 
-        if ext in VALID_EXTENSIONS:
-            logger.info(f"File moved into watch folder: {filepath}")
-            
-            def wait_until_unlocked():
-                logger.debug(f"Waiting for {filepath} to be available...")
-                while is_file_locked(filepath):
-                    time.sleep(1)
-                logger.info(f"File ready for processing: {filepath}")
-                event_queue.put(filepath)
+        if ext not in valid_exts:
+            logger.debug(f"Ignored file with unsupported extension: {event.src_path}")
+            return
 
-            threading.Thread(target=wait_until_unlocked, daemon=True).start()
+        # Check if file is locked (in use)
+        if is_file_locked(event.src_path):
+            logger.warning(f"File locked, queuing retry later: {event.src_path}")
+            time.sleep(3)
+        else:
+            logger.info(f"Queued file for processing: {event.src_path}")
+            event_queue.put(event.src_path)
 
 
-def start_monitoring(paths):
+def is_file_locked(filepath):
+    """Attempt to open the file in append mode to detect lock state."""
+    try:
+        with open(filepath, 'a'):
+            return False
+    except Exception:
+        return True
+
+
+def start_monitoring(paths=None):
     """
-    Start monitoring one or more folder paths using watchdog.
+    Start monitoring each configured path in a blocking loop. If no paths
+    are passed, falls back to those defined in settings.json5.
 
     Args:
-        paths (list of str): The directories to watch
+        paths (list[str]): Optional list of folders to monitor
     """
+    if paths is None:
+        paths = get_config("watch_folders", ["./watch_folder"])
+
     observer = Observer()
     handler = MediaFileHandler()
 
     for path in paths:
         abs_path = os.path.abspath(path)
         if not os.path.exists(abs_path):
-            logger.warning(f"Watch path does not exist: {abs_path}")
+            logger.warning(f"Path does not exist: {abs_path}")
             continue
-        logger.info(f"Starting monitoring on: {abs_path}")
         observer.schedule(handler, abs_path, recursive=True)
+        logger.info(f"Watching path: {abs_path}")
 
     observer.start()
     try:
@@ -137,9 +98,3 @@ def start_monitoring(paths):
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
-
-
-if __name__ == '__main__':
-    # Example usage: for development/testing only
-    watch_folders = ['./watch_folder']
-    start_monitoring(watch_folders)

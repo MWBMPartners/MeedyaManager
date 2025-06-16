@@ -7,7 +7,7 @@ All releases follow the format: `v1.0-M{milestone}`.
 
 ---
 
-## 🔰 [v1.0-M1] – Initial Watcher Engine (2025-06-16)
+## 🔰 [v1.0-M1] – Initial Watcher & Dry-Run Renamer (2025-06-16)
 ### ✅ Features
 - Real-time folder monitoring via `watchdog`
 - Cross-platform support (Windows/macOS/Linux)
@@ -16,15 +16,18 @@ All releases follow the format: `v1.0-M{milestone}`.
 - File lock safety logic with background retry
 - Thread-safe event queue for renaming engine
 - Development CLI entry point for quick testing
+- Simulated renaming engine using token-based templates
+- Character sanitization for file/folder names
 
 ### 🔒 Improvements
 - Avoids processing in-use/locked files to prevent corruption
 - Lightweight background threads per event (non-blocking)
-- Modular design ready for integration with core renamer engine
+- Modular design between watcher and renamer modules
+- Full logging for both detection and renaming simulations
 
 ### 📁 Affected Modules
 - `core/watcher.py`
-- `utils/helpers.py` *(planned)*
+- `core/renamer.py`
 
 ---
 

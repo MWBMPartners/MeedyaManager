@@ -15,6 +15,7 @@
 # - Rule token parsing (e.g., {artist}, {title}, {format})
 # - Character sanitization
 # - File extension preservation
+# - Logging to `logs/rename_preview.log` for dry-run review
 #
 # References:
 # - https://docs.python.org/3/library/os.path.html
@@ -25,8 +26,14 @@ import os
 import re
 import logging
 from datetime import datetime
+from utils.config_loader import get_config
 
-# Create a logger specifically for the renamer
+# Setup log file directory
+LOG_DIR = os.path.join("logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "rename_preview.log")
+
+# Logger for console output
 logger = logging.getLogger("MetaMancer.Renamer")
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
@@ -34,11 +41,14 @@ formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-# Placeholder: In future this will be passed from the rule engine or loaded config
-DEFAULT_RENAME_TEMPLATE = "{media_type}/{artist}/{album}/{track_number} - {title}.{ext}"
+# Logger for file logging
+file_logger = logging.getLogger("MetaMancer.RenamerFile")
+file_handler = logging.FileHandler(LOG_FILE, mode='a', encoding='utf-8')
+file_handler.setFormatter(logging.Formatter("[%(asctime)s] FROM: %(message)s"))
+file_logger.addHandler(file_handler)
+file_logger.setLevel(logging.INFO)
 
 # Set of characters that are unsafe in file/folder names across platforms
-# Based on Windows, macOS, Linux restrictions
 UNSAFE_CHARS_PATTERN = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
 
 
@@ -47,9 +57,8 @@ def sanitize_filename_component(name):
     Remove or replace characters in a string that are not safe for filenames.
     This helps prevent filesystem errors across platforms.
     """
-    # Replace unsafe characters with underscores
-    safe = UNSAFE_CHARS_PATTERN.sub('_', name)
-    # Strip leading/trailing whitespace or dots
+    replacement = get_config("replacement_char", "_")
+    safe = UNSAFE_CHARS_PATTERN.sub(replacement, name)
     return safe.strip().strip('.')
 
 
@@ -65,38 +74,43 @@ def simulate_rename(filepath, metadata):
     Returns:
         str: Proposed new file path (simulated)
     """
-    ext = os.path.splitext(filepath)[1].lstrip('.')  # Preserve original extension
+    # Load template and fallback defaults from config
+    template = get_config("rename_template")
+    fallback = get_config("default_metadata", {})
 
-    # Build the output path by replacing tokens in the template
+    # Merge metadata with defaults
+    combined = fallback.copy()
+    combined.update(metadata)
+
+    ext = os.path.splitext(filepath)[1].lstrip('.')
+    combined['ext'] = sanitize_filename_component(ext)
+
     try:
-        relative_path = DEFAULT_RENAME_TEMPLATE.format(
-            media_type=sanitize_filename_component(metadata.get('media_type', 'Unknown')),
-            artist=sanitize_filename_component(metadata.get('artist', 'Unknown Artist')),
-            album=sanitize_filename_component(metadata.get('album', 'Unknown Album')),
-            track_number=str(metadata.get('track_number', '00')).zfill(2),
-            title=sanitize_filename_component(metadata.get('title', 'Untitled')),
-            ext=sanitize_filename_component(ext)
+        relative_path = template.format(
+            media_type=sanitize_filename_component(combined.get('media_type')),
+            artist=sanitize_filename_component(combined.get('artist')),
+            album=sanitize_filename_component(combined.get('album')),
+            track_number=str(combined.get('track_number')).zfill(2),
+            title=sanitize_filename_component(combined.get('title')),
+            ext=combined.get('ext')
         )
     except KeyError as e:
         logger.error(f"Missing required metadata tag: {e}")
         return None
 
-    # Join with root base (later configurable)
     base_dir = os.path.dirname(filepath)
     new_path = os.path.normpath(os.path.join(base_dir, relative_path))
     logger.info(f"Simulated rename: \n  FROM: {filepath}\n    TO: {new_path}")
+
+    # Write to dry-run rename log
+    file_logger.info(f"{filepath}\n    TO: {new_path}")
+
     return new_path
 
 
 if __name__ == '__main__':
-    # Example standalone test for dry-run renamer logic
-    dummy_file = "/media/inbox/01_Track.mp3"
-    dummy_metadata = {
-        'media_type': 'Music',
-        'artist': 'Hans Zimmer',
-        'album': 'Dune OST',
-        'track_number': 1,
-        'title': 'Dream of Arrakis'
-    }
+    from core.metadata_extractor import extract_metadata
 
+    dummy_file = "./watch_folder/test.mp3"
+    dummy_metadata = extract_metadata(dummy_file)
     simulate_rename(dummy_file, dummy_metadata)

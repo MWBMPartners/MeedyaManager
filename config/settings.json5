@@ -1,0 +1,51 @@
+// ============================================================================
+// File: /config/settings.json5
+// (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+//
+// Description:
+// This is the main configuration file for MetaMancer. It defines application-
+// wide settings used during startup, folder monitoring, rename rules, and CLI
+// execution. This JSON5 file supports comments and trailing commas, making it
+// more user-friendly than standard JSON.
+//
+// This scaffold is designed for Milestone 1 dry-run testing and will expand
+// over time to support GUI configuration, cloud sync, metadata sources, and
+// database integration.
+//
+// Reference:
+// - JSON5 Format: https://json5.org/
+// - Python parser: https://pypi.org/project/json5/
+// ============================================================================
+
+{
+  // 👁️ General Settings
+  "debug": true, // Enables verbose logging across all modules
+  "theme": "system", // Options: "light", "dark", "system"
+
+  // 📁 Folder Monitoring
+  "watch_folders": [
+    "./watch_folder" // List of directories to monitor
+  ],
+
+  // 📜 Rename Settings (Dry-Run)
+  "dry_run": true, // Prevent actual file renaming/moving
+  "rename_template": "{media_type}/{artist}/{album}/{track_number} - {title}.{ext}",
+
+  // ⚙️ Metadata Defaults (used if missing in file tags)
+  "default_metadata": {
+    "media_type": "Music",
+    "artist": "Unknown Artist",
+    "album": "Unknown Album",
+    "track_number": "00",
+    "title": "Untitled"
+  },
+
+  // 🚫 Illegal Character Replacement
+  "replacement_char": "_", // Replace filesystem-unsafe characters
+
+  // 🛑 Extension Filters
+  "valid_extensions": [
+    ".mp3", ".flac", ".m4a", ".mp4", ".mkv",
+    ".avi", ".ogg", ".ac3", ".eac3", ".alac"
+  ]
+}
