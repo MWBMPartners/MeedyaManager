@@ -10,5 +10,6 @@
 pymediainfo>=5.0
 json5>=0.9
 pytest>=7.0
+python-dotenv>=1.0.0
 colorama>=0.4.6  # For future CLI output formatting (optional)
 tqdm>=4.64.1      # For optional progress bars during scanning
