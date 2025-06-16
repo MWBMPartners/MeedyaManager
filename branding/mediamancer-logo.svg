@@ -1,0 +1,26 @@
+<!-- ============================================================================
+File: /branding/mediamancer-logo.svg
+(C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+
+Description:
+Clean static SVG logo for the MetaMancer project, designed for use in
+README headers, GitHub branding, splash screens, and UI banners.
+This version is flat, vector-based, and color-customizable.
+============================================================================ -->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" fill="none">
+  <!-- Circle backdrop -->
+  <circle cx="100" cy="100" r="98" stroke="#444" stroke-width="4" fill="#1a1a1a" />
+
+  <!-- M waveform glyph -->
+  <path d="M40 140 L60 80 L80 120 L100 60 L120 120 L140 80 L160 140" stroke="#00e0ff" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Center dot pulse node -->
+  <circle cx="100" cy="100" r="6" fill="#00e0ff" stroke="#fff" stroke-width="2" />
+
+  <!-- Swirl orbit path -->
+  <path d="M20,100 a80,80 0 1,1 160,0 a80,80 0 1,1 -160,0" stroke="#444" stroke-width="1" fill="none" stroke-dasharray="6 4" />
+
+  <!-- Label below (optional for README) -->
+  <text x="50%" y="185" text-anchor="middle" fill="#ccc" font-family="Arial, sans-serif" font-size="16">MetaMancer</text>
+</svg>

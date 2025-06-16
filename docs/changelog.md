@@ -1,52 +1,72 @@
-# 📝 CHANGELOG
-> (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+# 📦 CHANGELOG.md
 
-This document tracks versioned releases for the MetaMancer media management platform, aligned with its milestone-based development cycle.
+(C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 
-All releases follow the format: `v1.0-M{milestone}`.
-
----
-
-## 🔰 [v1.0-M1] – Initial Watcher & Dry-Run Renamer (2025-06-16)
-### ✅ Features
-- Real-time folder monitoring via `watchdog`
-- Cross-platform support (Windows/macOS/Linux)
-- Auto-detection of new and moved media files
-- File extension filtering (audio/video containers)
-- File lock safety logic with background retry
-- Thread-safe event queue for renaming engine
-- Development CLI entry point for quick testing
-- Simulated renaming engine using token-based templates
-- Character sanitization for file/folder names
-
-### 🔒 Improvements
-- Avoids processing in-use/locked files to prevent corruption
-- Lightweight background threads per event (non-blocking)
-- Modular design between watcher and renamer modules
-- Full logging for both detection and renaming simulations
-
-### 📁 Affected Modules
-- `core/watcher.py`
-- `core/renamer.py`
+This changelog tracks major milestone-based releases and architectural changes for the MetaMancer project.
 
 ---
 
-## 🚧 [v1.0-M2] – Rule Engine (In Progress)
-Will include:
-- IF / AND / OR logic evaluation
-- Renaming token parser
-- Configurable rules via JSON5/TOML
-- Test ruleset builder for dry-run previews
+## 🧱 Metadata Hierarchy Reference
+As of `v1.0-M1`, all media are classified using a standardized internal structure:
+
+| Level         | Field           | Description                        | Example Values                         |
+|---------------|------------------|------------------------------------|----------------------------------------|
+| 1️⃣           | `media_group`   | High-level category                | Audio, Video, Image, Book              |
+| 2️⃣           | `format_class`  | Container/codec format             | MP3, FLAC, MP4, PDF, Matroska          |
+| 3️⃣           | `media_class`   | Functional purpose/content type    | Music, Movie, TV Show, Podcast, Booklet|
+| 4️⃣           | `quality_type`  | Fidelity or compression class      | Lossy, Lossless                        |
+
+This hierarchy powers all classification, rename rules, metadata editing, and UI grouping.
+
+Additional design notes:
+- Booklets (PDF) and Animated Album Art (MP4 square/portrait) can be attached to albums
+- Albums or tracks can be linked to movies, TV shows, or episodes for contextual reference
 
 ---
 
-## 🔮 Upcoming
-- [v1.0-M3] – GUI + Theme Support
-- [v1.0-M4] – CI Packaging, GitHub Actions, and Auto Releases
-- [v1.0-M5] – Metadata Editing Engine
-- [v1.0-M6] – Lookup APIs + Animated Cover Art
-- [v1.0-M7+] – Cloud Sync, DB Export, Web Secure Access
+## ✅ v1.0-M1 — Core Engine & Simulation Framework
+**Release Date:** 2025-06-XX
+
+### 🚀 Core Features
+- 📂 Folder watcher with `watchdog` (fallback to polling mode)
+- 🧠 Metadata parsing via `MediaInfo`
+- 📊 Auto classification (media group, format class, etc)
+- 🔄 Dry-run rename simulation
+- 🔧 Configurable rename logic via `settings.json5`
+- 🗃️ File existence checks and retry queuing for locked media
+- 🔒 Redacted logging (paths like `/Users/YourName` → `REDACTED`)
+- 📝 Logging system with daily + size-based rotation
+- 📤 Dry-run metadata export to `.json` (with `--out` and `--mkdir`)
+- ⚙️ CLI toggle `--simulate-off` to suppress rename simulations
+
+### 🧪 Testing Coverage
+- `test_metadata_extractor.py`: Format and classification
+- `test_simulate_flag_behavior.py`: Toggle simulation on/off
+- `test_watcher_simulation_trigger.py`: Simulate from watcher
+- `test_simulation_log_output.py`: Check log content and redaction
+- `test_batch_rename_simulation.py`: Multi-file integration
+
+### 🏗️ Build & CI
+- ✅ Full GitHub Actions CI matrix (Windows/macOS/Linux)
+- ✅ Python 3.10 & 3.11 testing with log upload on failure
+- ✅ Build pipeline auto-packages ZIP/TAR on tagged release
+- ✅ Assets auto-attached to GitHub Releases via `softprops/action-gh-release`
 
 ---
 
-_Last updated: 2025-06-16_
+## 🔜 Next Release: `v1.1-M2` — UI + CLI Wizard
+Planned for July 2025
+
+- 🎛️ Interactive CLI rename rule wizard
+- 🧙 Light GUI for batch file review and rename preview
+- 🎨 Light/dark UI theme support
+- 🧪 Live simulation/rename toggle via GUI
+- 📥 Drag-and-drop file import testing
+
+---
+
+## 🗂 Historical Notes
+Initial scaffolding and modular classification work began in early June 2025.
+All logic is platform-agnostic and modularized for future metadata editing, API lookups, and media export capabilities.
+
+Future milestones (M2–M8+) will include advanced lookup, sync, export, and cloud-safe archiving options.
