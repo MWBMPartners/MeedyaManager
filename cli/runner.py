@@ -14,7 +14,7 @@ load_env_variables()
 import os
 import argparse
 from core.metadata_extractor import extract_metadata
-from core.classifier import classify_media
+from core.classify_media import classify_media
 from utils.config_loader import get_config
 from pprint import pprint
 import json
