@@ -1,0 +1,14 @@
+# ============================================================================
+# File: /requirements.txt
+# (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+#
+# Description:
+# Core runtime dependencies for the MetaMancer project.
+# Includes metadata parsing, JSON5 support, and CLI tooling.
+# ============================================================================
+
+pymediainfo>=5.0
+python-json5>=0.9
+pytest>=7.0
+colorama>=0.4.6  # For future CLI output formatting (optional)
+tqdm>=4.64.1      # For optional progress bars during scanning
