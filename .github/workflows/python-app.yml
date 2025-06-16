@@ -4,7 +4,8 @@
 #
 # Description:
 # GitHub Actions CI test matrix for the MetaMancer project.
-# Now includes coverage generation and Codecov upload.
+# Ensures metadata tools, env loader, coverage, and packaging are validated.
+# Now includes --rootdir and cd fix for import resolution.
 # ============================================================================
 
 name: 🧪 MetaMancer CI Test Matrix
@@ -45,9 +46,10 @@ jobs:
 
       - name: 🧪 Run full test suite with coverage
         run: |
-          export PYTHONPATH="${GITHUB_WORKSPACE}"
+          cd $GITHUB_WORKSPACE
+          export PYTHONPATH="$GITHUB_WORKSPACE"
           echo "PYTHONPATH is set to: $PYTHONPATH"
-          pytest tests/ --cov=core --cov=cli --cov=utils --cov-report=xml --maxfail=1 --disable-warnings --tb=short
+          pytest --rootdir=. tests/ --cov=core --cov=cli --cov=utils --cov-report=xml --maxfail=1 --disable-warnings --tb=short
 
       - name: 📊 Upload coverage to Codecov
         uses: codecov/codecov-action@v4
