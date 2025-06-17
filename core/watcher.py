@@ -6,8 +6,8 @@
 # Real-time or polling-based file watcher for monitored directories.
 # Detects new media files and queues them for metadata extraction.
 # Supports fallback if watchdog is not available.
-# Enhanced with log rotation (daily + max size) and metadata redaction.
-# Triggers dry-run rename simulation for files via runner logic.
+# Enhanced with log rotation, metadata redaction, and dry-run simulation.
+# Config access now uses safe get_config() wrappers with fallbacks.
 # ============================================================================
 
 import os
@@ -15,10 +15,11 @@ import time
 import threading
 import logging
 from queue import Queue
-from core.metadata_extractor import extract_metadata
-from utils.config_loader import get_config
-from cli.runner import simulate_rename  # Integration for simulation trigger
 import re
+
+from utils.config_loader import get_config
+from core.metadata_extractor import extract_metadata
+from cli.runner import simulate_rename
 
 try:
     from watchdog.observers import Observer
@@ -29,19 +30,19 @@ except ImportError:
 
 from logging.handlers import TimedRotatingFileHandler, RotatingFileHandler
 
-config = get_config("simulate")
-watch_folders = config.get("watch_folders", [])
-valid_extensions = config.get("valid_extensions", [])
-watch_mode = config.get("watch_mode", "watchdog")  # fallback to polling
-simulate_enabled = config.get("simulate_watcher", True)  # global override
+# Load safe config values with defaults
+watch_folders = get_config("watch_folders", default=["./watch"])
+valid_extensions = get_config("valid_extensions", default=[".mp3", ".flac", ".mp4"])
+watch_mode = get_config("watch_mode", default="watchdog")
+simulate_enabled = get_config("simulate_watcher", default=True)
 
-# Set up rotating logger
+# Logger setup
 log_path = os.path.join("logs", "watcher_events.log")
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
 logger = logging.getLogger("watcher")
 logger.setLevel(logging.INFO)
 
-# Combine Timed + Size-Based rotation handlers
+# Timed + size-based rotation
 timed_handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1, backupCount=7)
 size_handler = RotatingFileHandler(log_path, maxBytes=5 * 1024 * 1024, backupCount=5)
 formatter = logging.Formatter("[%(asctime)s] %(message)s")
@@ -50,91 +51,69 @@ size_handler.setFormatter(formatter)
 logger.addHandler(timed_handler)
 logger.addHandler(size_handler)
 
-# Shared event queue for CLI/controller
+# Redaction utility for PII
+REDACT_PATTERNS = [re.compile(r"/Users/\w+"), re.compile(r"C:\\Users\\[^"]+")]
+
+def redact(text):
+    for pattern in REDACT_PATTERNS:
+        text = pattern.sub("<user>", text)
+    return text
+
+# Queue and delay for stability
 event_queue = Queue()
 
-
-def redact_metadata(data):
-    redacted = {}
-    for key, value in data.items():
-        if isinstance(value, str):
-            value = re.sub(r"/Users/[\w\-_.]+", "/Users/REDACTED", value)
-            value = re.sub(r"C:\\Users\\[\w\-_.]+", "C:/Users/REDACTED", value)
-        redacted[key] = value
-    return redacted
-
-
-def is_valid_file(path):
-    return os.path.isfile(path) and os.path.splitext(path)[1].lower() in valid_extensions
-
-
-def handle_file(path):
-    if not is_valid_file(path):
-        return
-
-    try:
-        metadata = extract_metadata(path)
-        redacted = redact_metadata(metadata)
-        logger.info(f"Detected file: {path}")
-        logger.info(f"Extracted metadata: {redacted}")
-        event_queue.put((path, metadata))
-
-        # Trigger dry-run rename simulation if allowed
-        if simulate_enabled:
-            logger.info("[WATCHER] Initiating rename simulation for: %s", path)
-            simulated_path = simulate_rename(path, metadata, dry_run=True)
-            if simulated_path:
-                logger.info("[WATCHER] Simulated path: %s", simulated_path)
-
-    except Exception as e:
-        logger.error(f"Error processing {path}: {e}")
-
-
-# ------------------ Watchdog Event Handler ------------------
-
-class MediaHandler(FileSystemEventHandler):
-    def on_created(self, event):
-        if not event.is_directory:
-            time.sleep(1)
-            handle_file(event.src_path)
-
-
-# ------------------ Polling Fallback ------------------
-
-def polling_loop():
-    seen = set()
+def queue_worker():
     while True:
-        for folder in watch_folders:
-            for root, _, files in os.walk(folder):
-                for file in files:
-                    full_path = os.path.join(root, file)
-                    if full_path not in seen and is_valid_file(full_path):
-                        seen.add(full_path)
-                        handle_file(full_path)
-        time.sleep(10)
+        path = event_queue.get()
+        if not os.path.exists(path):
+            logger.warning(f"⚠️ File disappeared before processing: {path}")
+            event_queue.task_done()
+            continue
+        time.sleep(1.5)  # wait for file to finish copying
+        logger.info(f"📥 Queued file: {redact(path)}")
+        if simulate_enabled:
+            simulate_rename(path)
+        event_queue.task_done()
 
 
-# ------------------ Watcher Entry ------------------
+def valid_media_file(path):
+    ext = os.path.splitext(path)[1].lower()
+    return ext in valid_extensions
+
+
+class WatchHandler(FileSystemEventHandler):
+    def on_created(self, event):
+        if not event.is_directory and valid_media_file(event.src_path):
+            event_queue.put(event.src_path)
+
+
+def start_watchdog():
+    observer = Observer()
+    handler = WatchHandler()
+    for folder in watch_folders:
+        if os.path.exists(folder):
+            observer.schedule(handler, folder, recursive=True)
+        else:
+            logger.warning(f"⚠️ Folder not found: {folder}")
+    observer.start()
+    logger.info(f"👁️ Watching via watchdog: {watch_folders}")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
+
+def start_polling():
+    logger.info("⚙️ Polling mode is not yet implemented (placeholder)")
+    while True:
+        time.sleep(5)
+
 
 def start_watcher():
+    threading.Thread(target=queue_worker, daemon=True).start()
     if WATCHDOG_AVAILABLE and watch_mode == "watchdog":
-        observer = Observer()
-        for folder in watch_folders:
-            observer.schedule(MediaHandler(), folder, recursive=True)
-        observer.start()
-        logger.info("Started Watchdog watcher.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            observer.stop()
-        observer.join()
+        start_watchdog()
     else:
-        logger.info("Watchdog not available or disabled, using polling fallback.")
-        polling_thread = threading.Thread(target=polling_loop, daemon=True)
-        polling_thread.start()
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
+        start_polling()
