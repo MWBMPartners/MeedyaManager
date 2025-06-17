@@ -4,8 +4,7 @@
 #
 # Description:
 # GitHub Actions CI test matrix for the MetaMancer project.
-# Ensures metadata tools, env loader, coverage, and packaging are validated.
-# Now includes --rootdir and cd fix for import resolution.
+# Includes PYTHONPATH config, coverage reports, and fallback config file generation.
 # ============================================================================
 
 name: 🧪 MetaMancer CI Test Matrix
@@ -39,6 +38,14 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov python-dotenv
 
+      - name: 📄 Generate fallback settings.json5 for CI
+        run: |
+          echo '{
+            simulate: true,
+            log_path: "./logs/",
+            default_watch_path: "./watch/"
+          }' > settings.json5
+
       - name: 🔐 Verify .env loader functionality
         run: |
           echo "TEST_ENV_KEY=ci_env_check" > .env
@@ -54,7 +61,7 @@ jobs:
       - name: 📊 Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}  # optional for public repos
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
           fail_ci_if_error: true
 
