@@ -52,7 +52,7 @@ logger.addHandler(timed_handler)
 logger.addHandler(size_handler)
 
 # Redaction utility for PII
-REDACT_PATTERNS = [re.compile(r"/Users/\w+"), re.compile(r"C:\\Users\\[^"]+")]
+REDACT_PATTERNS = [re.compile(r"/Users/\w+"), re.compile(r'C:\\Users\\[^"]+')]
 
 def redact(text):
     for pattern in REDACT_PATTERNS:
