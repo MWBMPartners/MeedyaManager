@@ -29,7 +29,7 @@ except ImportError:
 
 from logging.handlers import TimedRotatingFileHandler, RotatingFileHandler
 
-config = get_config()
+config = get_config("simulate")
 watch_folders = config.get("watch_folders", [])
 valid_extensions = config.get("valid_extensions", [])
 watch_mode = config.get("watch_mode", "watchdog")  # fallback to polling

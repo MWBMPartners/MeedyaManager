@@ -50,7 +50,7 @@ def main():
     parser.add_argument("--simulate-off", action="store_true", help="Disable rename simulation for this run")
     args = parser.parse_args()
 
-    config = get_config()
+    config = get_config("simulate")
     watch_folders = config.get("watch_folders", [])
     extensions = set(config.get("valid_extensions", []))
 
