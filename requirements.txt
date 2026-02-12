@@ -1,17 +1,35 @@
 # ============================================================================
 # File: /requirements.txt
-# (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# Core runtime dependencies for the MediaMancer project.
-# Includes metadata parsing, JSON5 support, and CLI tooling.
-# Now includes test coverage tools.
+# Core runtime and development dependencies for the MediaMancer project.
+# Requires Python 3.14+ (bundled via Nuitka for distribution).
 # ============================================================================
 
-pymediainfo>=5.0
-json5>=0.9
-pytest>=7.0
-pytest-cov>=4.1.0
-python-dotenv>=1.0.0
-colorama>=0.4.6  # For future CLI output formatting (optional)
-tqdm>=4.64.1      # For optional progress bars during scanning
+# --- Core Runtime Dependencies ---
+pymediainfo>=6.0          # Metadata extraction via MediaInfo library
+watchdog>=4.0             # Real-time filesystem event monitoring
+json5>=0.9                # JSON5 config file parsing (supports comments)
+python-dotenv>=1.0.0      # .env file loading for API keys and overrides
+colorama>=0.4.6           # Cross-platform terminal colour output
+tqdm>=4.66                # Progress bars for batch scanning operations
+rich>=13.0                # Enhanced CLI formatting, tables, and panels
+click>=8.1                # CLI framework for commands and arguments
+pydantic>=2.5             # Settings/config validation and type safety
+
+# --- Testing Dependencies ---
+pytest>=8.0               # Unit testing framework
+pytest-cov>=5.0           # Code coverage reporting
+
+# --- UI Dependencies (install separately for GUI development) ---
+# PySide6>=6.10           # Qt6 GUI framework (native platform styling)
+# darkdetect>=0.8         # System dark/light mode detection
+#
+# macOS-only (Liquid Glass support):
+# pyobjc-framework-Cocoa>=10.0  # Native AppKit access for NSGlassEffectView
+# pyobjc-framework-Quartz>=10.0 # Core Animation layer access
+
+# --- Build Dependencies (install separately for packaging) ---
+# nuitka>=2.5             # Python-to-C compiler for native standalone builds
+# ordered-set>=4.1        # Nuitka optimisation dependency

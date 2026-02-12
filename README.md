@@ -12,7 +12,7 @@
 
 <p align="center">
   <img src="https://github.com/MWBMPartners/MediaMancer/actions/workflows/python-app.yml/badge.svg" alt="CI Tests" />
-  <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+" />
+  <img src="https://img.shields.io/badge/python-3.14+-blue.svg" alt="Python 3.14+" />
   <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-green.svg" alt="Platforms" />
   <img src="https://img.shields.io/badge/license-GPL--2.0+-orange.svg" alt="License" />
 </p>
@@ -48,20 +48,34 @@ Think of it as **MusicBee's auto-organize feature** — but available everywhere
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### For End Users (Release Packages)
 
-- **Python 3.11+** (3.10 also supported)
+> ⚡ **No Python installation required!** MediaMancer ships as a standalone native executable with its own bundled, sandboxed Python 3.14 runtime (compiled via Nuitka). It will **never** interfere with any other Python on your system.
+
+1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MediaMancer/releases)
+2. Install/extract and run — that's it!
+
+### For Developers (From Source)
+
+**Prerequisites:**
+
+- **Python 3.14+** — [python.org/downloads](https://www.python.org/downloads/)
 - **MediaInfo** library installed on your system
   - macOS: `brew install mediainfo`
   - Linux: `sudo apt install mediainfo` or `sudo dnf install mediainfo`
   - Windows: Download from [MediaInfo website](https://mediaarea.net/en/MediaInfo)
 
-### Installation
+**Setup:**
 
 ```bash
 # Clone the repository
 git clone https://github.com/MWBMPartners/MediaMancer.git
 cd MediaMancer
+
+# Create a virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # macOS/Linux
+# venv\Scripts\activate   # Windows
 
 # Install dependencies
 pip install -r requirements.txt

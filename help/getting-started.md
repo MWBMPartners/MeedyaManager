@@ -18,19 +18,32 @@ Welcome to MediaMancer! This guide will help you install, configure, and run the
 
 ## Prerequisites
 
-### System Requirements
+### For End Users (Release Packages)
+
+> ⚡ **No prerequisites required!** Release packages include everything you need — a bundled, sandboxed Python 3.14 runtime and all dependencies are compiled into the native executable via Nuitka. MediaMancer will **never** interfere with any other software on your system.
 
 | Component | Requirement |
 | --------- | ----------- |
-| **Python** | 3.11+ (3.10 also supported) |
-| **MediaInfo** | Latest version |
 | **OS** | Windows (x64/ARM), macOS (Apple Silicon), or Linux (x64/ARM) |
-| **Disk Space** | ~100 MB for application + dependencies |
+| **Disk Space** | ~150 MB |
 | **RAM** | Minimal — runs as a lightweight background process |
+| **Python** | ❌ NOT required — bundled inside the app |
+| **MediaInfo** | ❌ NOT required — bundled inside the app |
 
-### Installing MediaInfo
+### For Developers (Building from Source)
 
-MediaMancer uses the [MediaInfo](https://mediaarea.net/en/MediaInfo) library for metadata extraction. Install it for your platform:
+If you want to contribute or build from source, you'll need:
+
+| Component | Requirement |
+| --------- | ----------- |
+| **Python** | 3.14+ — [python.org/downloads](https://www.python.org/downloads/) |
+| **MediaInfo** | Latest version (see below) |
+| **OS** | Windows (x64/ARM), macOS (Apple Silicon), or Linux (x64/ARM) |
+| **Disk Space** | ~300 MB (source + venv + build tools) |
+
+#### Installing MediaInfo (Developers Only)
+
+MediaMancer uses the [MediaInfo](https://mediaarea.net/en/MediaInfo) library for metadata extraction.
 
 **macOS (Homebrew):**
 
@@ -41,13 +54,13 @@ brew install mediainfo
 **Linux (Debian/Ubuntu):**
 
 ```bash
-sudo apt install mediainfo
+sudo apt install mediainfo libmediainfo-dev
 ```
 
 **Linux (Fedora/RHEL):**
 
 ```bash
-sudo dnf install mediainfo
+sudo dnf install mediainfo libmediainfo-devel
 ```
 
 **Windows:**
@@ -58,6 +71,15 @@ Download the installer from [mediaarea.net](https://mediaarea.net/en/MediaInfo/D
 
 ## Installation
 
+### From Release Package (Recommended)
+
+1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MediaMancer/releases)
+2. Install or extract:
+   - **Windows:** Run the `.msi` installer, or extract the `.zip`
+   - **macOS:** Open the `.dmg` and drag to Applications
+   - **Linux:** Run the `.AppImage`, or install the `.deb` package
+3. Launch MediaMancer — no additional setup needed!
+
 ### From Source (Development)
 
 ```bash
@@ -65,8 +87,8 @@ Download the installer from [mediaarea.net](https://mediaarea.net/en/MediaInfo/D
 git clone https://github.com/MWBMPartners/MediaMancer.git
 cd MediaMancer
 
-# 2. Create a virtual environment (recommended)
-python -m venv venv
+# 2. Create a virtual environment (keeps your system Python clean)
+python3.14 -m venv venv
 
 # Activate it:
 # macOS/Linux:
@@ -81,15 +103,20 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### From Release Package
+### Building a Native Executable (via Nuitka)
 
-1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MediaMancer/releases)
-2. Extract the archive
-3. Verify integrity:
+To produce a standalone native binary (like the release packages):
 
 ```bash
-python utils/verify_checksum.py MediaMancer-<platform>.tar.gz MediaMancer-<platform>.tar.gz.sha256
+# Install build dependencies
+pip install nuitka ordered-set
+
+# Build standalone executable
+python -m nuitka --standalone --onefile --enable-plugin=pyside6 \
+    --output-dir=dist cli/runner.py
 ```
+
+The resulting executable includes the Python 3.14 runtime and all dependencies — fully self-contained and sandboxed.
 
 ---
 

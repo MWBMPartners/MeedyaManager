@@ -61,8 +61,10 @@ Additional relationships:
 - 🔲 Migration to `click`-based CLI framework
 - 🔲 Rule builder with conditional logic (AND/OR/nested)
 - 🔲 MusicBee-inspired template syntax parser
-- 🔲 PySide6 (Qt6) cross-platform GUI
-- 🔲 Dark/light theme support (system-aware via `darkdetect`)
+- 🔲 PySide6 6.10+ (Qt6) cross-platform GUI
+- 🔲 🍎 macOS Liquid Glass support via PyObjC → `NSGlassEffectView` bridge
+- 🔲 🪟 Windows 11 Mica/Acrylic native styling
+- 🔲 Dark/light theme support (system-aware via `darkdetect` + native APIs)
 - 🔲 Rename preview queue and simulation panel
 - 🔲 Drag-and-drop file import
 - 🔲 Per-rule dry-run and file override support
@@ -167,12 +169,13 @@ Features:
 
 **Release:** `v2.0-M8`
 
-- 🔲 PyInstaller / Nuitka packaging per platform
+- 🔲 Nuitka compilation to native standalone binaries (Python 3.14 runtime bundled & sandboxed)
 - 🔲 GitHub Actions auto-create packages:
-  - Windows x64 + ARM64
-  - macOS Apple Silicon
-  - Linux x86_64 + ARM64
-- 🔲 Installer creation (MSI/NSIS, DMG, DEB/RPM)
+  - Windows x64 + ARM64 (MSI/ZIP)
+  - macOS Apple Silicon (DMG/TAR.GZ)
+  - Linux x86_64 + ARM64 (AppImage/DEB/TAR.GZ)
+- 🔲 PySide6 6.10+ GUI with native platform styling (Cocoa, Win11, Fusion)
+- 🔲 Zero-dependency install — users need NO pre-installed software
 - 🔲 Auto-updater design
 - 🔲 First public alpha release
 - 🔲 Feedback capture mechanism

@@ -6,7 +6,7 @@
 
 - **Name:** MediaMancer
 - **Type:** Cross-platform media file manager and auto-organizer
-- **Language:** Python 3.11+
+- **Language:** Python 3.14+ (bundled & sandboxed via Nuitka — never impacts host Python)
 - **Licence:** GPL-2.0-or-later
 - **Copyright:** MWBM Partners Ltd (d/b/a MW Services)
 - **Platforms:** Windows (x64/ARM), macOS (Apple Silicon only), Linux (x64/ARM)
@@ -17,7 +17,8 @@
 - **Config format:** JSON5 (`settings.json5`) with `.env` fallback for secrets
 - **Metadata extraction:** `pymediainfo` (MediaInfo library)
 - **Metadata writing:** `mutagen` (M4+)
-- **GUI framework:** PySide6/Qt6 (M2+)
+- **GUI framework:** PySide6 6.10+ / Qt6 with native platform styling (M2+)
+- **macOS Liquid Glass:** PyObjC bridge → `NSGlassEffectView` (falls back to `NSVisualEffectView` on older macOS)
 - **CLI framework:** `click` (M2+)
 - **File watching:** `watchdog` with polling fallback
 - **Rule engine:** MusicBee-inspired template syntax with `<Tag>`, `$If()`, `$And()`, `$Or()` (M3)
@@ -74,9 +75,17 @@
 - `PROJECT_STATUS.md` — Current progress
 - `docs/ROADMAP.md` — Milestone details
 
+## Packaging & Distribution
+
+- **Nuitka** compiles Python to native C/machine code with embedded runtime
+- App is fully self-contained — users need ZERO pre-installed software
+- Bundled Python 3.14 runtime is sandboxed (isolated from any host Python)
+- GUI uses PySide6 6.10+ with native platform styling (Cocoa on macOS, Win11 on Windows)
+
 ## Git & CI/CD
 
-- GitHub Actions: CI test matrix (3 OS × 2 Python versions)
-- Release packaging on git tags (`v*`)
-- Platform packages: Windows (ZIP), macOS/Linux (TAR.GZ) with SHA256 checksums
-- `.gitignore` covers OS files, Python, IDEs, secrets, build artifacts
+- GitHub Actions: CI test matrix (3 OS × Python 3.14)
+- Release builds via Nuitka on git tags (`v*`)
+- Platform packages: Windows (MSI/ZIP), macOS (DMG/TAR.GZ), Linux (AppImage/DEB/TAR.GZ)
+- All packages include SHA256 checksums
+- `.gitignore` covers OS files, Python, IDEs, secrets, build artifacts, Nuitka outputs

@@ -57,15 +57,32 @@
 
 ## 🛠️ Technology Stack
 
-### Primary Language: **Python 3.11+**
+### Primary Language: **Python 3.14+**
 
-Python was chosen for:
+> ⚡ **Bundled & Sandboxed Runtime:** MediaMancer ships with its own embedded Python runtime, compiled via **Nuitka**. This means:
+> - The app is completely self-contained — no Python installation required on the host
+> - It will **never** interfere with any other Python version or virtual environment on the user's machine
+> - Users don't need to know or care that Python is involved at all
+> - The runtime is locked to the exact version we test against, eliminating version mismatch issues
+
+Python 3.14 (latest stable as of Feb 2026) was chosen for:
 - ✅ True cross-platform support (Windows, macOS, Linux)
 - ✅ Excellent media metadata libraries (`pymediainfo`, `mutagen`)
 - ✅ Lightweight background service capability
 - ✅ Strong ecosystem for file system watching (`watchdog`)
-- ✅ Easy packaging with PyInstaller/Nuitka
-- ✅ Rich UI framework options (PySide6/Qt for GUI)
+- ✅ Compiles to native code via Nuitka (faster startup, smaller footprint)
+- ✅ Rich UI framework options (PySide6/Qt6 for native-looking GUI)
+
+### Packaging & Distribution: **Nuitka**
+
+| Aspect | Detail |
+|--------|--------|
+| **Compiler** | [Nuitka](https://nuitka.net) — compiles Python to C/C++, then to native machine code |
+| **Runtime** | Embedded Python 3.14 runtime, fully isolated from host |
+| **Sandboxing** | App uses its own bundled Python — zero interaction with host Python installations |
+| **Output** | Single-folder or single-file native executable per platform |
+| **Performance** | Faster startup and lower memory usage vs interpreted Python |
+| **Platforms** | Produces native binaries for Windows (.exe), macOS (.app), Linux (ELF) |
 
 ### Core Dependencies
 
@@ -73,7 +90,7 @@ Python was chosen for:
 |---------|---------|---------|
 | `pymediainfo` | >=6.0 | Metadata extraction via MediaInfo library |
 | `mutagen` | >=1.47 | Direct tag reading/writing (ID3, MP4, FLAC, OGG, MKV) |
-| `watchdog` | >=3.0 | Real-time filesystem event monitoring |
+| `watchdog` | >=4.0 | Real-time filesystem event monitoring |
 | `json5` | >=0.9 | Config file parsing with comments support |
 | `python-dotenv` | >=1.0 | Environment variable loading for API keys |
 | `colorama` | >=0.4.6 | Cross-platform terminal colour output |
@@ -82,12 +99,42 @@ Python was chosen for:
 | `click` | >=8.1 | CLI framework for commands and arguments |
 | `pydantic` | >=2.5 | Settings/config validation and type safety |
 
-### UI Framework (M2+)
+### UI Framework (M2+): **PySide6 6.10+**
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `PySide6` | >=6.6 | Qt6-based cross-platform GUI (LGPL-compatible) |
+| `PySide6` | >=6.10 | Qt6-based cross-platform GUI (LGPL-compatible) |
 | `darkdetect` | >=0.8 | System dark/light mode detection |
+| `pyobjc-framework-Cocoa` | >=10.0 | macOS-only: Native AppKit access for Liquid Glass |
+
+#### Native Platform Appearance
+
+PySide6 6.10 (latest as of Feb 2026) provides native platform styling:
+- 🪟 **Windows:** Native Windows 11 widget styling (Mica/Acrylic effects, Segoe UI)
+- 🐧 **Linux:** Fusion style (clean, consistent across desktops) with GTK/KDE theme integration
+
+#### 🍎 macOS: Liquid Glass Support
+
+On macOS 26 (Tahoe), Apple introduced **Liquid Glass** — a translucent, depth-aware design language that is the biggest visual redesign since iOS 7. MediaMancer will support Liquid Glass on macOS through a **PyObjC bridge** approach:
+
+| Layer | Technology | What It Does |
+|-------|-----------|--------------|
+| **Core UI** | PySide6 / Qt6 | Cross-platform widgets, layouts, and interaction |
+| **Glass Layer** | PyObjC → `NSGlassEffectView` | Injects native Liquid Glass materials into PySide6 windows |
+| **Fallback** | PyObjC → `NSVisualEffectView` | Vibrancy/blur on macOS 10.14+ (pre-Tahoe) |
+| **Detection** | Runtime check | Automatically uses the best available effect for the macOS version |
+
+**How it works:**
+1. PySide6 creates the window and all widgets as normal (cross-platform code)
+2. On macOS, a platform helper module uses `pyobjc` to access the window's native `NSWindow`
+3. It injects Apple's native `NSGlassEffectView` (or `NSVisualEffectView` on older macOS) behind Qt's rendering surface
+4. The result: genuine Liquid Glass appearance matching native macOS apps, with zero impact on Windows/Linux
+
+**Material options available:** Sidebar, HUD, Popover, Frosted, Clear Glass, and more — matching Apple's native material presets.
+
+> **Note:** Qt is also working on native Liquid Glass support in a future PySide6 release. When that ships, MediaMancer will adopt it and the PyObjC bridge will become a graceful fallback.
+
+Dark/light mode follows the system setting automatically via `darkdetect` + Qt6's built-in theme awareness + native macOS `NSAppearance`.
 
 ### Future Dependencies (as needed per milestone)
 
@@ -100,7 +147,15 @@ Python was chosen for:
 | `tvdbsimple` | M6 | TheTVDB API client |
 | `imdbpy`/`cinemagoer` | M6 | IMDb data access |
 | `SQLAlchemy` | M9 | Multi-database ORM |
-| `PyInstaller` | M8 | Application packaging |
+
+### Development / Build Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `nuitka` | Python-to-C compiler for native standalone builds |
+| `ordered-set` | Nuitka dependency for optimised compilation |
+| `pytest` | Testing framework |
+| `pytest-cov` | Coverage reporting |
 
 ---
 
@@ -132,6 +187,7 @@ MediaMancer/
 │   ├── rule_builder.py         # Visual rule editor
 │   ├── preview_panel.py        # Rename preview & simulation
 │   ├── settings_dialog.py      # Configuration UI
+│   ├── platform_style.py       # Per-platform native styling (Liquid Glass, Mica, etc.)
 │   └── themes/                 # Dark/light theme assets
 │       ├── dark.qss
 │       └── light.qss
@@ -294,7 +350,9 @@ MediaMancer/
 | `click`-based CLI framework migration | 🔲 Planned |
 | Rule builder with conditional logic (AND/OR/nested) | 🔲 Planned |
 | MusicBee-inspired template syntax parser | 🔲 Planned |
-| PySide6 (Qt6) cross-platform GUI | 🔲 Planned |
+| PySide6 6.10+ (Qt6) cross-platform GUI | 🔲 Planned |
+| 🍎 macOS Liquid Glass via PyObjC → `NSGlassEffectView` bridge | 🔲 Planned |
+| 🪟 Windows 11 Mica/Acrylic native styling | 🔲 Planned |
 | Dark/light theme support (system-aware) | 🔲 Planned |
 | Rename preview queue and simulation panel | 🔲 Planned |
 | Drag-and-drop file import | 🔲 Planned |
@@ -399,12 +457,14 @@ Features: OAuth authentication, background sync worker, conflict resolution.
 
 | Feature | Status |
 |---------|--------|
-| PyInstaller / Nuitka packaging per platform | 🔲 Planned |
+| Nuitka compilation to native standalone binaries | 🔲 Planned |
+| Bundled Python 3.14 runtime (sandboxed, isolated from host) | 🔲 Planned |
 | GitHub Actions auto-create packages (Windows x64/ARM, macOS ARM, Linux x64/ARM) | 🔲 Planned |
-| Installer/DMG/DEB/RPM creation | 🔲 Planned |
+| Windows: MSI/NSIS installer with embedded runtime | 🔲 Planned |
+| macOS: `.app` bundle inside `.dmg` (Apple Silicon native) | 🔲 Planned |
+| Linux: DEB/RPM packages + AppImage | 🔲 Planned |
 | Auto-updater design | 🔲 Planned |
 | First public alpha release | 🔲 Planned |
-| Per-milestone release packages | 🔲 Planned |
 
 ---
 
@@ -575,15 +635,21 @@ All media processed by MediaMancer is classified into a 4-level hierarchy:
 | [python-dotenv](https://pypi.org/project/python-dotenv/) | BSD-3-Clause | ✅ Yes | Environment variable loading |
 | [darkdetect](https://pypi.org/project/darkdetect/) | BSD-3-Clause | ✅ Yes | OS dark/light mode detection |
 
+### Build & Packaging
+
+| Library | Licence | Purpose |
+|---------|---------|---------|
+| [Nuitka](https://nuitka.net) | Apache-2.0 | Python-to-C compiler, produces native standalone executables |
+| [ordered-set](https://pypi.org/project/ordered-set/) | MIT | Nuitka optimisation dependency |
+
 ### Development / Testing Dependencies
 
 | Library | Purpose |
 |---------|---------|
 | [pytest](https://pypi.org/project/pytest/) | Testing framework |
 | [pytest-cov](https://pypi.org/project/pytest-cov/) | Coverage reporting |
-| [PyInstaller](https://pypi.org/project/pyinstaller/) | Application packaging |
 
-All dependencies can be bundled with the application for single-install distribution.
+All dependencies (including the Python 3.14 runtime itself) are compiled and bundled into the native executable via Nuitka. End users need **zero** pre-installed software — the app is fully self-contained and sandboxed.
 
 ---
 
@@ -624,24 +690,27 @@ Each API provider has a toggle in the build configuration:
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `python-app.yml` | Push/PR to main | CI test matrix (3 OS × Python 3.10/3.11) |
+| `python-app.yml` | Push/PR to main | CI test matrix (3 OS × Python 3.14) |
 | `test-suite.yml` | Push/PR to main | Unit tests + import validation |
-| `build-artifacts.yml` | Git tag (`v*`) | Build & release packages |
+| `build-artifacts.yml` | Git tag (`v*`) | Nuitka native build & release packages |
 
-### Release Packaging Matrix
+### Release Packaging Matrix (Nuitka Native Builds)
+
+All release builds are **compiled via Nuitka** with an embedded Python 3.14 runtime. The end user does **not** need Python installed.
 
 | Platform | Architecture | Format | Filename Pattern |
 |----------|-------------|--------|-----------------|
-| 🪟 Windows | x64 | `.zip` | `MediaMancer-windows-x64-vX.X.zip` |
-| 🪟 Windows | ARM64 | `.zip` | `MediaMancer-windows-arm64-vX.X.zip` |
-| 🍎 macOS | Apple Silicon | `.tar.gz` | `MediaMancer-macos-arm64-vX.X.tar.gz` |
-| 🐧 Linux | x86_64 | `.tar.gz` | `MediaMancer-linux-x64-vX.X.tar.gz` |
-| 🐧 Linux | ARM64 | `.tar.gz` | `MediaMancer-linux-arm64-vX.X.tar.gz` |
+| 🪟 Windows | x64 | `.msi` / `.zip` | `MediaMancer-windows-x64-vX.X.msi` |
+| 🪟 Windows | ARM64 | `.msi` / `.zip` | `MediaMancer-windows-arm64-vX.X.msi` |
+| 🍎 macOS | Apple Silicon | `.dmg` / `.tar.gz` | `MediaMancer-macos-arm64-vX.X.dmg` |
+| 🐧 Linux | x86_64 | `.AppImage` / `.deb` / `.tar.gz` | `MediaMancer-linux-x64-vX.X.AppImage` |
+| 🐧 Linux | ARM64 | `.AppImage` / `.deb` / `.tar.gz` | `MediaMancer-linux-arm64-vX.X.AppImage` |
 
 Each release includes:
 - ✅ SHA256 checksum file (`.sha256`)
 - ✅ Auto-generated release notes from CHANGELOG
 - ✅ Platform-specific installation instructions
+- ✅ Standalone native executable (no Python or dependencies required on host)
 
 ---
 
