@@ -106,3 +106,20 @@ settings.local.json5
 
 # JetBrains IDEs (PyCharm, WebStorm, etc)
 .idea/
+
+# PyInstaller / Nuitka
+*.spec
+*.onefile-build/
+*.onedir-build/
+
+# PySide6 / Qt
+*.qmlc
+*.jsc
+ui_*.py
+*_rc.py
+
+# Ruff / linting
+.ruff_cache/
+
+# Claude Code session logs
+.claude/*.jsonl

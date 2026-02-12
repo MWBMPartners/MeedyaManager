@@ -3,7 +3,7 @@ File: /branding/mediamancer-logo.svg
 (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 
 Description:
-Clean static SVG logo for the MetaMancer project, designed for use in
+Clean static SVG logo for the MediaMancer project, designed for use in
 README headers, GitHub branding, splash screens, and UI banners.
 This version is flat, vector-based, and color-customizable.
 ============================================================================ -->
@@ -22,5 +22,5 @@ This version is flat, vector-based, and color-customizable.
   <path d="M20,100 a80,80 0 1,1 160,0 a80,80 0 1,1 -160,0" stroke="#444" stroke-width="1" fill="none" stroke-dasharray="6 4" />
 
   <!-- Label below (optional for README) -->
-  <text x="50%" y="185" text-anchor="middle" fill="#ccc" font-family="Arial, sans-serif" font-size="16">MetaMancer</text>
+  <text x="50%" y="185" text-anchor="middle" fill="#ccc" font-family="Arial, sans-serif" font-size="16">MediaMancer</text>
 </svg>

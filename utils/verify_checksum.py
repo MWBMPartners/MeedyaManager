@@ -35,7 +35,7 @@ def load_checksum_file(checksum_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MetaMancer Checksum Verifier")
+    parser = argparse.ArgumentParser(description="MediaMancer Checksum Verifier")
     parser.add_argument("file", help="Path to downloaded ZIP or TAR.GZ file")
     parser.add_argument("checksum", help="Path to accompanying .sha256 file")
     args = parser.parse_args()

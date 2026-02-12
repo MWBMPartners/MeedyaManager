@@ -3,7 +3,7 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# This module is part of MetaMancer's Milestone 1 deliverables. It processes
+# This module is part of MediaMancer's Milestone 1 deliverables. It processes
 # file paths received from the `watcher.py` module, performs dry-run evaluations
 # of their new names/locations based on rule templates, and logs the results.
 # This module does not actually move/rename files in this milestone — it
@@ -34,7 +34,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "rename_preview.log")
 
 # Logger for console output
-logger = logging.getLogger("MetaMancer.Renamer")
+logger = logging.getLogger("MediaMancer.Renamer")
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
@@ -42,7 +42,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 # Logger for file logging
-file_logger = logging.getLogger("MetaMancer.RenamerFile")
+file_logger = logging.getLogger("MediaMancer.RenamerFile")
 file_handler = logging.FileHandler(LOG_FILE, mode='a', encoding='utf-8')
 file_handler.setFormatter(logging.Formatter("[%(asctime)s] FROM: %(message)s"))
 file_logger.addHandler(file_handler)

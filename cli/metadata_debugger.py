@@ -33,7 +33,7 @@ def save_metadata_to_json(filepath, metadata, output_dir=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MetaMancer Metadata Debugger")
+    parser = argparse.ArgumentParser(description="MediaMancer Metadata Debugger")
     parser.add_argument("filepath", help="Path to media file to analyze")
     parser.add_argument("--json", action="store_true", help="Export metadata to JSON file")
     parser.add_argument("--out", type=str, help="Output folder for JSON export")

@@ -3,11 +3,11 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# GitHub Actions CI test matrix for the MetaMancer project.
+# GitHub Actions CI test matrix for the MediaMancer project.
 # Includes PYTHONPATH config, coverage reports, and fallback config file generation.
 # ============================================================================
 
-name: 🧪 MetaMancer CI Test Matrix
+name: 🧪 MediaMancer CI Test Matrix
 
 on:
   push:

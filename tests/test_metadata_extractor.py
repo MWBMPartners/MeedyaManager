@@ -3,7 +3,7 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# Test cases for the metadata extraction and classification logic in MetaMancer.
+# Test cases for the metadata extraction and classification logic in MediaMancer.
 # These tests validate that files are correctly parsed and assigned the proper
 # media_group, format_class, media_class, and quality_type values based on
 # their metadata.

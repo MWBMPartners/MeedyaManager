@@ -3,7 +3,7 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# Core runtime dependencies for the MetaMancer project.
+# Core runtime dependencies for the MediaMancer project.
 # Includes metadata parsing, JSON5 support, and CLI tooling.
 # Now includes test coverage tools.
 # ============================================================================

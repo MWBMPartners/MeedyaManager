@@ -43,7 +43,7 @@ def simulate_rename(filepath, metadata, dry_run=True, export_json=False, output_
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MetaMancer Rename Simulator")
+    parser = argparse.ArgumentParser(description="MediaMancer Rename Simulator")
     parser.add_argument("--json", action="store_true", help="Export extracted metadata as JSON")
     parser.add_argument("--out", type=str, help="Optional output folder for JSON export")
     parser.add_argument("--mkdir", action="store_true", help="Create output folder if it does not exist")
