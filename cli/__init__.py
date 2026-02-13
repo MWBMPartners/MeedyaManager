@@ -10,10 +10,13 @@
 
 import click                                        # CLI framework for commands and arguments
 
+from utils.log_config import setup_logging           # Centralized logging configuration
+from utils.exception_handler import install_exception_hooks  # Global crash protection
+
 
 @click.group()
 @click.version_option(
-    version="1.3-M4",                              # Current milestone version
+    version="1.5-M6",                              # Current milestone version
     prog_name="MeedyaManager",                       # Application name shown in --version
     message="%(prog)s v%(version)s"                # Output format: "MeedyaManager v1.1-M2"
 )
@@ -22,7 +25,10 @@ def cli():
 
     Scan, classify, and organize media files using metadata-driven rules.
     """
-    pass
+    # Initialize centralized logging and crash protection on every CLI invocation.
+    # This must run before any subcommand so that all loggers are properly configured.
+    setup_logging()
+    install_exception_hooks()
 
 
 # Import and register subcommands after cli group is defined
@@ -33,6 +39,9 @@ from cli.commands.watch import watch     # noqa: E402  # Real-time folder monito
 from cli.commands.rule import rule       # noqa: E402  # Rule template testing
 from cli.commands.gui import gui         # noqa: E402  # Graphical interface launcher
 from cli.commands.edit import edit       # noqa: E402  # Metadata tag editor (M4)
+from cli.commands.lookup import lookup  # noqa: E402  # Metadata lookup (M5)
+from cli.commands.report_bug import report_bug  # noqa: E402  # Bug report submission
+from cli.commands.config_cmd import config      # noqa: E402  # Config export/import
 
 cli.add_command(scan)
 cli.add_command(debug)
@@ -40,3 +49,6 @@ cli.add_command(watch)
 cli.add_command(rule)
 cli.add_command(gui)
 cli.add_command(edit)
+cli.add_command(lookup)
+cli.add_command(report_bug)
+cli.add_command(config)

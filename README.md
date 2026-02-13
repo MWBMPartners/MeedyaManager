@@ -60,10 +60,10 @@ Think of it as **MusicBee's auto-organize feature** — but available everywhere
 **Prerequisites:**
 
 - **Python 3.14+** — [python.org/downloads](https://www.python.org/downloads/)
-- **MediaInfo** library installed on your system
+- **MediaInfo** — bundled automatically via `pymediainfo` pip wheel (no separate install needed on most platforms). If pymediainfo cannot find the library at runtime, install it manually:
   - macOS: `brew install mediainfo`
   - Linux: `sudo apt install mediainfo` or `sudo dnf install mediainfo`
-  - Windows: Download from [MediaInfo website](https://mediaarea.net/en/MediaInfo)
+  - Windows: typically bundled in the pymediainfo wheel; if not, download from [MediaInfo website](https://mediaarea.net/en/MediaInfo)
 
 **Setup:**
 
@@ -104,6 +104,30 @@ meedyamanager edit path/to/song.mp3
 
 # Edit metadata tags
 meedyamanager edit path/to/song.mp3 --set "Artist=New Artist" --set "Genre=Rock"
+
+# Look up metadata for a file (auto-selects best providers)
+meedyamanager lookup path/to/song.mp3 --auto
+
+# Look up using a specific provider
+meedyamanager lookup path/to/song.mp3 --provider spotify
+
+# Look up and apply matched metadata to file
+meedyamanager lookup path/to/song.mp3 --auto --apply
+
+# Preview lookup results without writing (dry-run)
+meedyamanager lookup path/to/song.mp3 --auto --dry-run
+
+# Batch lookup all files in a directory
+meedyamanager lookup path/to/music/ --batch --auto
+
+# Export lookup results as JSON
+meedyamanager lookup path/to/song.mp3 --auto --json
+
+# List all available providers and their status
+meedyamanager lookup --providers-list
+
+# Look up only from a specific category
+meedyamanager lookup path/to/movie.mkv --category video --auto
 
 # Start the folder watcher (simulation mode — safe, no files moved)
 meedyamanager watch
@@ -172,6 +196,32 @@ TV Shows/<Show>/Season <$Pad(<Season>,2)>/<Show> - S<$Pad(<Season>,2)>E<$Pad(<Ep
 
 ---
 
+## 🔍 Metadata Lookup
+
+MeedyaManager can automatically look up and match your media files against **19 online providers** across music, video, podcasts, and identifier registries. The provider framework features auto-discovery, credential management, rate limiting, cover art retrieval, and fuzzy match scoring.
+
+### Providers
+
+| Category | Providers |
+|----------|-----------|
+| 🎵 **Music** (10) | Apple Music (JWT), Spotify (OAuth2), MusicBrainz (public), Deezer (public), YouTube Music (cookies), Amazon Music (closed beta), Pandora (stub), Tidal (OAuth2.1), Shazam (fingerprinting), iHeart (undocumented) |
+| 🎬 **Video** (5) | TMDB (API key), TheTVDB (API key), IMDb (cinemagoer), Apple TV (public), iTunes Store (public) |
+| 🎙️ **Podcasts** (1) | Apple Podcasts (public) |
+| 🆔 **Identifiers** (3) | ISRC (federated), EIDR (paid), ISWC (MusicBrainz) |
+
+### Key Capabilities
+
+- **Auto-discovery** — Providers register via `@register_provider` decorator and are loaded automatically
+- **4-tier credential management** — `.env` → `settings.json5` → OS keyring → encrypted bundle
+- **Rate limiting** — Token bucket algorithm per provider to respect API quotas
+- **Cover art** — Static (JPEG/PNG) and animated (MP4 square, portrait, artist spotlight)
+- **Fuzzy matching** — Weighted scoring: title (35%), artist (30%), album (20%), ISRC bonus
+- **CLI & GUI** — Full `meedyamanager lookup` command and GUI "Lookup" tab with batch support
+
+📖 Provider setup guide: [help/provider-setup.md](help/provider-setup.md)
+
+---
+
 ## 🗺️ Milestone Roadmap
 
 | # | Milestone | Status | Description |
@@ -180,8 +230,8 @@ TV Shows/<Show>/Season <$Pad(<Season>,2)>/<Show> - S<$Pad(<Season>,2)>E<$Pad(<Ep
 | M2 | 🧙 CLI & UI Frontend | ✅ **Complete** | Interactive CLI, PySide6 GUI, rule builder |
 | M3 | 🧩 Rule Engine & Companions | ✅ **Complete** | 20 template functions, companion tracking, 212 tests |
 | M4 | ✏️ Metadata Editor | ✅ **Complete** | Tag read/write via mutagen, GUI editor, CLI edit, 342 tests |
-| M5 | 🎵 Music Metadata Lookup | 🔨 **Next** | MusicBrainz, Spotify, Apple Music, Shazam + more |
-| M6 | 🎬 TV/Film Metadata Lookup | 🔲 Planned | TMDb, TheTVDB, IMDb, EIDR + more |
+| M5 | 🔍 Metadata Lookup | ✅ **Complete** | 19 providers across music, video, podcasts & identifiers |
+| M6 | 🎬 TV/Film Metadata Lookup | 🔲 Planned | Video providers (TMDB, TheTVDB, IMDb) partially done in M5 |
 | M7 | ☁️ Cloud Monitoring | 🔲 Planned | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
 | M8 | 📦 Public Release | 🔲 Planned | Packaged installers, auto-updater |
 | M9 | 🗄️ Database Export | 🔲 Planned | MySQL, MariaDB, SQLite, PostgreSQL, SQL Server |
@@ -253,6 +303,7 @@ python utils/verify_checksum.py dist/MeedyaManager-macos-arm64.tar.gz dist/Meedy
 | ⚙️ [help/configuration.md](help/configuration.md) | Configuration reference |
 | 📐 [help/rule-syntax.md](help/rule-syntax.md) | Rule template syntax guide |
 | 🎵 [help/supported-formats.md](help/supported-formats.md) | Supported file formats |
+| 🔍 [help/provider-setup.md](help/provider-setup.md) | Metadata lookup provider setup guides |
 | 🔧 [help/troubleshooting.md](help/troubleshooting.md) | Troubleshooting guide |
 | ❓ [help/faq.md](help/faq.md) | Frequently asked questions |
 

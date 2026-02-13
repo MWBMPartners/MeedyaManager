@@ -29,25 +29,9 @@ from core.rule_engine import (
     TemplateEvalError,                             # Template evaluation errors
 )
 
-# Setup log file directory
-LOG_DIR = os.path.join("logs")                     # Log output directory
-os.makedirs(LOG_DIR, exist_ok=True)                # Create if it doesn't exist
-LOG_FILE = os.path.join(LOG_DIR, "rename_preview.log")
-
-# Logger for console output
+# Logger — inherits handlers and PII redaction from centralized MeedyaManager logger.
+# setup_logging() in utils/log_config.py must be called before this module runs.
 logger = logging.getLogger("MeedyaManager.Renamer")
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-
-# Logger for file logging (dry-run rename preview log)
-file_logger = logging.getLogger("MeedyaManager.RenamerFile")
-file_handler = logging.FileHandler(LOG_FILE, mode='a', encoding='utf-8')
-file_handler.setFormatter(logging.Formatter("[%(asctime)s] FROM: %(message)s"))
-file_logger.addHandler(file_handler)
-file_logger.setLevel(logging.INFO)
 
 # Set of characters that are unsafe in file/folder names across platforms
 # Kept for backward compatibility with legacy {placeholder} syntax
@@ -148,9 +132,8 @@ def simulate_rename(filepath, metadata):
     base_dir = os.path.dirname(filepath)
     new_path = os.path.normpath(os.path.join(base_dir, relative_path))
 
-    # Log the simulated rename
+    # Log the simulated rename — PII redaction handled by centralized filter
     logger.info(f"Simulated rename: \n  FROM: {filepath}\n    TO: {new_path}")
-    file_logger.info(f"{filepath}\n    TO: {new_path}")
 
     return new_path
 

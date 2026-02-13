@@ -19,6 +19,30 @@ rich>=13.0                # Enhanced CLI formatting, tables, and panels
 click>=8.1                # CLI framework for commands and arguments
 pydantic>=2.5             # Settings/config validation and type safety
 
+# --- M5: HTTP & Retry ---
+httpx>=0.28               # Modern async/sync HTTP client for provider APIs
+tenacity>=9.0             # Retry logic with exponential backoff for API calls
+
+# --- M5: Music Provider Libraries ---
+spotipy>=2.24             # Spotify Web API (OAuth2 Client Credentials)
+musicbrainzngs>=0.7       # MusicBrainz API (User-Agent based access)
+deezer-python>=7.0        # Deezer API (public search, no auth for search)
+tidalapi>=0.8             # Tidal API (OAuth2.1 session management)
+ytmusicapi>=1.8           # YouTube Music (unofficial, browser-cookie auth)
+shazamio>=0.7             # Shazam audio fingerprinting (async)
+
+# --- M5: Video Provider Libraries ---
+tmdbsimple>=2.9           # TheMovieDB API (API key auth)
+
+# --- M5: Auth & Security ---
+pyjwt[crypto]>=2.9        # JWT token generation (Apple Music ES256)
+cryptography>=43.0        # Fernet encryption + ES256 key handling
+keyring>=25.0             # OS-native credential storage (Keychain/Credential Manager)
+
+# --- M5: Matching ---
+fuzzywuzzy>=0.18          # Fuzzy string matching for result scoring
+python-Levenshtein>=0.25  # C-accelerated Levenshtein distance calculation
+
 # --- Testing Dependencies ---
 pytest>=8.0               # Unit testing framework
 pytest-cov>=5.0           # Code coverage reporting
@@ -30,6 +54,9 @@ darkdetect>=0.8           # System dark/light mode detection
 # macOS-only (Liquid Glass support — install manually):
 # pyobjc-framework-Cocoa>=10.0  # Native AppKit access for NSGlassEffectView
 # pyobjc-framework-Quartz>=10.0 # Core Animation layer access
+
+# --- M5: Optional Provider Libraries (GPL-2.0, not bundled by default) ---
+# cinemagoer>=2023.5      # IMDb data access (GPL-2.0 — install separately)
 
 # --- Build Dependencies (install separately for packaging) ---
 # nuitka>=2.5             # Python-to-C compiler for native standalone builds

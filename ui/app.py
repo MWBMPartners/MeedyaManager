@@ -22,6 +22,8 @@ from ui.platform_style import (
     apply_platform_style,                                   # Native OS styling
     get_system_theme,                                       # Dark/light mode detection
 )
+from utils.log_config import setup_logging                  # Centralized logging configuration
+from utils.exception_handler import install_exception_hooks # Global crash protection
 
 logger = logging.getLogger("MeedyaManager.App")
 
@@ -55,13 +57,29 @@ def launch_gui():
     """
     Launch the MeedyaManager GUI application.
 
-    Creates the QApplication, detects system theme, loads the appropriate
-    stylesheet, applies platform-specific native styling, and shows
-    the main window.
+    Initializes centralized logging and crash protection, creates the
+    QApplication, detects system theme, loads the appropriate stylesheet,
+    applies platform-specific native styling, and shows the main window.
 
     Returns:
         int: Application exit code (0 = success)
     """
+    # Initialize centralized logging and crash protection before anything else.
+    # This ensures all log output goes to the platform-appropriate log directory
+    # and unhandled exceptions are caught with user-friendly error dialogs.
+    setup_logging()
+    install_exception_hooks()
+
+    # Run startup health checks before creating the GUI.
+    # Critical failures (e.g., log dir unwritable) are logged but do not
+    # block startup — the user can still use the app and fix the issue.
+    from utils.health_check import run_startup_checks, Severity
+    health_results = run_startup_checks()
+    critical_issues = [r for r in health_results if r.severity == Severity.CRITICAL]
+    if critical_issues:
+        for issue in critical_issues:
+            logger.critical(f"Startup check failed: {issue.message}")
+
     # Create the Qt application instance
     app = QApplication(sys.argv)
     app.setApplicationName("MeedyaManager")

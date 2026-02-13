@@ -33,8 +33,10 @@ from PySide6.QtWidgets import (
 from ui.preview_panel import PreviewPanel                   # Scan/Preview tab
 from ui.rule_builder import RuleBuilder                     # Rule builder tab
 from ui.metadata_editor import MetadataEditorPanel          # Metadata editor tab (M4)
+from ui.lookup_panel import LookupPanel                     # Metadata lookup tab (M5)
 from ui.settings_dialog import SettingsDialog               # Settings dialog
 from ui.system_tray import SystemTrayIcon                   # System tray icon
+from ui.error_dialog import show_error                      # User-friendly error dialog
 
 logger = logging.getLogger("MeedyaManager.MainWindow")
 
@@ -101,6 +103,20 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        # Export Settings action — exports config to .mmprofile
+        export_action = QAction("&Export Settings...", self)
+        export_action.setStatusTip("Export settings as a portable .mmprofile file")
+        export_action.triggered.connect(self._export_settings)
+        file_menu.addAction(export_action)
+
+        # Import Settings action — imports config from .mmprofile
+        import_action = QAction("&Import Settings...", self)
+        import_action.setStatusTip("Import settings from a .mmprofile file")
+        import_action.triggered.connect(self._import_settings)
+        file_menu.addAction(import_action)
+
+        file_menu.addSeparator()
+
         # Quit action — exits the application
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut("Ctrl+Q")
@@ -127,6 +143,13 @@ class MainWindow(QMainWindow):
         edit_metadata_action.triggered.connect(self._on_edit_metadata)
         edit_menu.addAction(edit_metadata_action)
 
+        # Lookup Metadata action — switches to the Lookup tab (M5)
+        lookup_metadata_action = QAction("&Lookup Metadata", self)
+        lookup_metadata_action.setShortcut("Ctrl+L")
+        lookup_metadata_action.setStatusTip("Look up metadata from online providers")
+        lookup_metadata_action.triggered.connect(self._on_lookup_metadata)
+        edit_menu.addAction(lookup_metadata_action)
+
         # --- View Menu ---
         view_menu = menu_bar.addMenu("&View")
 
@@ -139,6 +162,14 @@ class MainWindow(QMainWindow):
 
         # --- Help Menu ---
         help_menu = menu_bar.addMenu("&Help")
+
+        # Report Bug action — opens email client with error report (Phase 3)
+        report_bug_action = QAction("&Report Bug...", self)
+        report_bug_action.setStatusTip("Submit a bug report via email")
+        report_bug_action.triggered.connect(self._report_bug)
+        help_menu.addAction(report_bug_action)
+
+        help_menu.addSeparator()
 
         about_action = QAction("&About MeedyaManager", self)
         about_action.setStatusTip("About this application")
@@ -165,6 +196,14 @@ class MainWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        # Lookup button (M5)
+        lookup_action = QAction("Lookup", self)
+        lookup_action.setStatusTip("Look up metadata from online providers")
+        lookup_action.triggered.connect(self._on_lookup_metadata)
+        toolbar.addAction(lookup_action)
+
+        toolbar.addSeparator()
+
         # Settings button
         settings_action = QAction("Settings", self)
         settings_action.setStatusTip("Open settings")
@@ -188,7 +227,11 @@ class MainWindow(QMainWindow):
         self._metadata_editor = MetadataEditorPanel()
         self._tab_widget.addTab(self._metadata_editor, "Metadata")
 
-        # Connect preview panel selection to metadata editor
+        # Lookup tab — metadata lookup across providers (M5)
+        self._lookup_panel = LookupPanel()
+        self._tab_widget.addTab(self._lookup_panel, "Lookup")
+
+        # Connect preview panel selection to metadata editor and lookup panel
         self._preview_panel.files_selected.connect(self._on_preview_files_selected)
 
     def _setup_status_bar(self):
@@ -230,6 +273,16 @@ class MainWindow(QMainWindow):
         """Open the settings dialog as a modal window."""
         dialog = SettingsDialog(self)
         dialog.exec()
+
+    def _export_settings(self):
+        """Open the settings dialog with the export flow pre-triggered."""
+        dialog = SettingsDialog(self)
+        dialog._export_profile()
+
+    def _import_settings(self):
+        """Open the settings dialog with the import flow pre-triggered."""
+        dialog = SettingsDialog(self)
+        dialog._import_profile()
 
     def _toggle_watcher(self):
         """Toggle the file watcher on/off."""
@@ -273,6 +326,10 @@ class MainWindow(QMainWindow):
         """Switch to the Metadata tab and load the selected file."""
         self._tab_widget.setCurrentWidget(self._metadata_editor)
 
+    def _on_lookup_metadata(self):
+        """Switch to the Lookup tab for online metadata lookup (M5)."""
+        self._tab_widget.setCurrentWidget(self._lookup_panel)
+
     def _on_preview_files_selected(self, filepaths):
         """
         Handle file selection from the preview panel.
@@ -302,11 +359,33 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About MeedyaManager",
-            "MeedyaManager v1.3-M4\n\n"
+            "MeedyaManager v1.5-M6\n\n"
             "Cross-platform media file manager and auto-organizer.\n\n"
             "(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)\n\n"
-            "Built with Python, PySide6, pymediainfo, and mutagen."
+            "Built with Python, PySide6, pymediainfo, mutagen, and httpx."
         )
+
+    def _report_bug(self):
+        """Open the bug report dialog — composes email via the user's email client.
+
+        Collects system information and recent logs, then opens the default
+        email client with a pre-composed report. The user reviews and sends.
+        """
+        from utils.error_reporter import prepare_report, open_email_client
+        from utils.log_config import get_log_directory
+
+        report = prepare_report(error_summary="User-submitted bug report")
+        success = open_email_client(report)
+
+        if not success:
+            log_dir = get_log_directory()
+            QMessageBox.information(
+                self,
+                "Report Bug",
+                f"Could not open your email client.\n\n"
+                f"Please send the log files from:\n{log_dir}\n\n"
+                f"to support@mwbmpartners.ltd"
+            )
 
     def _on_quit(self):
         """Quit the application cleanly."""

@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QAbstractTableModel, QModelIndex  # Table model base class
 
 from ui.workers import ScanWorker                           # Background scanning thread
+from ui.error_dialog import show_error                       # User-friendly error dialog
 
 logger = logging.getLogger("MeedyaManager.PreviewPanel")
 
@@ -292,6 +293,7 @@ class PreviewPanel(QWidget):
         self._scan_worker.file_scanned.connect(self._on_file_scanned)
         self._scan_worker.result_ready.connect(self._on_scan_complete)
         self._scan_worker.error.connect(self._on_scan_error)
+        self._scan_worker.worker_error.connect(self._on_worker_crash)
         self._scan_worker.finished.connect(self._on_worker_finished)
 
         # Start the background thread
@@ -324,6 +326,11 @@ class PreviewPanel(QWidget):
         """Handle scan error — display error message in status bar."""
         self._status_label.setText(f"Scan error: {error_msg}")
         logger.error(f"Scan error: {error_msg}")
+
+    def _on_worker_crash(self, title, detail):
+        """Handle unexpected worker crash — show ErrorDialog to the user."""
+        self._status_label.setText(f"Error: {title}")
+        show_error(self, RuntimeError(detail), context="worker")
 
     def _on_worker_finished(self):
         """Reset UI state when the scan worker thread finishes."""

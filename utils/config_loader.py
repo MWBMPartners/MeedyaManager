@@ -51,6 +51,39 @@ def load_config():
     return _config_cache
 
 
+def reload_config():
+    """
+    Force a reload of the configuration file from disk.
+
+    Clears the cached config and reloads it on the next get_config() call.
+    This is used after importing a new settings profile or saving changes
+    to the config file.
+
+    Returns:
+        dict: The freshly loaded configuration dictionary.
+    """
+    global _config_cache
+    _config_cache = None
+    return load_config()
+
+
+def get_config_path():
+    """
+    Return the path to the active configuration file.
+
+    Searches the standard config locations and returns the path to the
+    first config file found. Useful for export/import operations that
+    need to read or write the actual file.
+
+    Returns:
+        str: Absolute path to the configuration file.
+
+    Raises:
+        FileNotFoundError: If no config file is found.
+    """
+    return os.path.abspath(_find_config_file())
+
+
 def get_config(key, default=None):
     """
     Retrieves a config value by key. Returns `default` if provided and key is missing.

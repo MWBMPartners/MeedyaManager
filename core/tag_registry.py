@@ -86,6 +86,109 @@ TAG_MAP = {
     "Path": "filepath",                 # Full original file path
     "File Size": "file_size",          # File size in bytes
     "Date Added": "date_added",        # Date file was first detected
+
+    # -------------------------------------------------------------------------
+    # Provider Tags (M5) — Metadata lookup provider IDs, URLs, and data.
+    # These are stored as custom tags in the file (TXXX/freeform/Vorbis)
+    # but are given explicit TAG_MAP entries for template access via
+    # <Apple Music ID>, <Spotify URL>, etc.
+    # -------------------------------------------------------------------------
+
+    # Apple Music
+    "Apple Music ID": "custom_apple_music_id",          # Apple Music catalogue ID
+    "Apple Music URL": "custom_apple_music_url",        # Apple Music direct link
+    "Apple Music ISRC": "custom_apple_music_isrc",      # ISRC from Apple Music
+
+    # Spotify
+    "Spotify ID": "custom_spotify_id",                  # Spotify track/album ID
+    "Spotify URL": "custom_spotify_url",                # Spotify direct link
+    "Spotify ISRC": "custom_spotify_isrc",              # ISRC from Spotify
+    "Spotify Energy": "custom_spotify_energy",          # Audio feature: energy (0.0-1.0)
+    "Spotify Danceability": "custom_spotify_danceability",  # Audio feature: danceability
+    "Spotify Tempo": "custom_spotify_tempo",            # Audio feature: tempo (BPM)
+    "Spotify Valence": "custom_spotify_valence",        # Audio feature: valence (mood)
+    "Spotify Popularity": "custom_spotify_popularity",  # Popularity index (0-100)
+
+    # MusicBrainz
+    "MusicBrainz Recording ID": "custom_musicbrainz_recording_id",  # Recording MBID
+    "MusicBrainz Release ID": "custom_musicbrainz_release_id",      # Release MBID
+    "MusicBrainz Artist ID": "custom_musicbrainz_artist_id",        # Artist MBID
+    "MusicBrainz URL": "custom_musicbrainz_url",       # MusicBrainz direct link
+
+    # Deezer
+    "Deezer ID": "custom_deezer_id",                    # Deezer track/album ID
+    "Deezer URL": "custom_deezer_url",                  # Deezer direct link
+    "Deezer ISRC": "custom_deezer_isrc",                # ISRC from Deezer
+
+    # Tidal
+    "Tidal ID": "custom_tidal_id",                      # Tidal track/album ID
+    "Tidal URL": "custom_tidal_url",                    # Tidal direct link
+    "Tidal ISRC": "custom_tidal_isrc",                  # ISRC from Tidal
+    "Tidal Quality": "custom_tidal_quality",            # Quality tier (HiFi/MQA/Atmos)
+    "Tidal Explicit": "custom_tidal_explicit",          # Explicit content flag
+
+    # YouTube Music
+    "YouTube Music ID": "custom_youtube_music_id",      # YouTube Music video ID
+    "YouTube Music URL": "custom_youtube_music_url",    # YouTube Music direct link
+
+    # Amazon Music
+    "Amazon Music ASIN": "custom_amazon_music_asin",    # Amazon ASIN identifier
+    "Amazon Music URL": "custom_amazon_music_url",      # Amazon Music direct link
+
+    # Pandora
+    "Pandora URL": "custom_pandora_url",                # Pandora direct link
+
+    # Shazam
+    "Shazam ID": "custom_shazam_id",                    # Shazam recognition ID
+    "Shazam URL": "custom_shazam_url",                  # Shazam direct link
+    "Shazam Key": "custom_shazam_key",                  # Shazam fingerprint key
+
+    # iHeart
+    "iHeart ID": "custom_iheart_id",                    # iHeart track/station ID
+    "iHeart URL": "custom_iheart_url",                  # iHeart direct link
+
+    # Apple Podcasts
+    "Apple Podcast ID": "custom_apple_podcast_id",      # Apple Podcasts episode ID
+    "Apple Podcast URL": "custom_apple_podcast_url",    # Apple Podcasts direct link
+
+    # iTunes Store
+    "iTunes ID": "custom_itunes_id",                    # iTunes Store item ID
+    "iTunes URL": "custom_itunes_url",                  # iTunes Store direct link
+
+    # Apple TV
+    "Apple TV ID": "custom_apple_tv_id",                # Apple TV content ID
+    "Apple TV URL": "custom_apple_tv_url",              # Apple TV direct link
+
+    # TMDB (TheMovieDB)
+    "TMDB ID": "custom_tmdb_id",                        # TMDB movie/TV ID
+    "TMDB URL": "custom_tmdb_url",                      # TMDB direct link
+    "TMDB IMDb ID": "custom_tmdb_imdb_id",              # IMDb ID from TMDB
+    "TMDB Rating": "custom_tmdb_rating",                # TMDB user rating
+    "TMDB Overview": "custom_tmdb_overview",            # TMDB plot summary
+
+    # TheTVDB
+    "TVDB ID": "custom_tvdb_id",                        # TheTVDB series/episode ID
+    "TVDB URL": "custom_tvdb_url",                      # TheTVDB direct link
+    "TVDB Slug": "custom_tvdb_slug",                    # TheTVDB URL slug
+    "TVDB Status": "custom_tvdb_status",                # Show status (Continuing/Ended)
+
+    # IMDb
+    "IMDb ID": "custom_imdb_id",                        # IMDb title ID (tt1234567)
+    "IMDb URL": "custom_imdb_url",                      # IMDb direct link
+    "IMDb Rating": "custom_imdb_rating",                # IMDb user rating
+    "IMDb Votes": "custom_imdb_votes",                  # Number of IMDb votes
+    "IMDb Genres": "custom_imdb_genres",                # Genres from IMDb
+
+    # EIDR (Entertainment Identifier Registry)
+    "EIDR ID": "custom_eidr_id",                        # EIDR content ID
+
+    # ISRC / GTIN
+    "GTIN": "custom_gtin",                              # Global Trade Item Number (barcode)
+    "ISRC Source": "custom_isrc_source",                # Which provider supplied the ISRC
+
+    # ISWC (International Standard Musical Work Code)
+    "ISWC": "custom_iswc",                              # ISWC identifier
+    "ISWC Work Title": "custom_iswc_work_title",        # Musical work title from ISWC
 }
 
 # ============================================================================

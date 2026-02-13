@@ -115,37 +115,79 @@ Additional relationships:
 
 ---
 
-### 🎵 M5 — Metadata Lookup: Music
+### ✅ M5 — Metadata Lookup *(Completed February 2026)*
 
 **Release:** `v1.4-M5`
 
-Integrations (each stores direct URL + ID in custom tags):
+> **Note:** M5 was expanded to include video, podcast, and identifier providers ahead of schedule (originally planned for M6). All 19 providers were implemented in this milestone.
 
-- 🔲 **MusicBrainz** — Tags, release info, MBIDs
-- 🔲 **Apple Music** — Track matching, artwork
-- 🔲 **Spotify** — Track matching, audio features
-- 🔲 **Tidal** — HiFi metadata
-- 🔲 **Amazon Music** — Track matching
-- 🔲 **Shazam** — Audio fingerprinting, ID/fingerprint string storage
-- 🔲 **AcousticBrainz** — Audio analysis data
+**Provider Framework:**
+
+- ✅ Auto-discovery with `@register_provider` decorator
+- ✅ 4-tier credential management: .env → settings.json5 → OS keyring → encrypted bundle
+- ✅ Token bucket rate limiting per provider
+- ✅ Cover art management: static (JPEG/PNG) + animated (MP4 square, portrait, artist spotlight)
+- ✅ Fuzzy match scoring: title (35%), artist (30%), album (20%), ISRC bonus
+
+**Music Providers (10):**
+
+- ✅ **Apple Music** — JWT authentication, track matching, artwork
+- ✅ **Spotify** — OAuth2 via spotipy, track matching, audio features
+- ✅ **MusicBrainz** — Public API via musicbrainzngs, tags, release info, MBIDs
+- ✅ **Deezer** — Public API via deezer-python, track matching
+- ✅ **YouTube Music** — Cookie-based auth via ytmusicapi
+- ✅ **Amazon Music** — Closed beta API
+- ✅ **Pandora** — Stub implementation
+- ✅ **Tidal** — OAuth2.1 via tidalapi, HiFi metadata
+- ✅ **Shazam** — Audio fingerprinting via shazamio
+- ✅ **iHeart** — Undocumented API
+
+**Video Providers (5):**
+
+- ✅ **TMDB** — API key auth via tmdbsimple, movie/TV matching
+- ✅ **TheTVDB** — API key auth, TV show/episode matching
+- ✅ **IMDb** — cinemagoer library, movie/TV identification
+- ✅ **Apple TV** — Public API, TV/movie matching, artwork
+- ✅ **iTunes Store** — Public API, purchase metadata, artwork
+
+**Podcast Providers (1):**
+
+- ✅ **Apple Podcasts** — Public API
+
+**Identifier Providers (3):**
+
+- ✅ **ISRC** — Federated lookup
+- ✅ **EIDR** — Paid Entertainment Identifier Registry
+- ✅ **ISWC** — MusicBrainz-backed
+
+**CLI & GUI:**
+
+- ✅ CLI: `meedyamanager lookup` with --provider, --category, --auto, --apply, --dry-run, --json, --batch, --providers-list
+- ✅ GUI: Lookup tab with provider checkboxes, results table, detail panel, apply/batch buttons
+- ✅ LookupWorker QThread for background async lookups
+- ✅ 751 tests (409 new), all passing
 
 ---
 
-### 🎬 M6 — Metadata Lookup: TV & Film
+### 🎬 M6 — Metadata Lookup: TV & Film (Enhancements)
 
 **Release:** `v1.5-M6`
 
-Integrations (each stores direct URL + ID in custom tags):
+> **Note:** The core video providers (TMDB, TheTVDB, IMDb, Apple TV, iTunes Store, EIDR) were implemented ahead of schedule in M5. This milestone will focus on enhancements and deeper integration.
 
-- 🔲 **Apple TV** — TV/movie matching, artwork
-- 🔲 **iTunes Store** — Purchase metadata, artwork
-- 🔲 **TheTVDB** — TV show/episode matching
-- 🔲 **TheMovieDB (TMDb)** — Movie matching, cast, crew
-- 🔲 **IMDb** — Movie/TV identification, ratings
-- 🔲 **EIDR** — Entertainment Identifier Registry lookup & embed
+Providers already completed in M5:
 
-Additional:
+- ✅ **Apple TV** — TV/movie matching, artwork
+- ✅ **iTunes Store** — Purchase metadata, artwork
+- ✅ **TheTVDB** — TV show/episode matching
+- ✅ **TheMovieDB (TMDb)** — Movie matching, cast, crew
+- ✅ **IMDb** — Movie/TV identification, ratings
+- ✅ **EIDR** — Entertainment Identifier Registry lookup & embed
 
+Remaining enhancements:
+
+- 🔲 Enhanced season/episode matching with filename parsing
+- 🔲 Batch TV series lookup with automatic episode assignment
 - 🔲 Download animated cover art (square and portrait) as MP4
 
 ---
@@ -251,4 +293,4 @@ Purpose: Create searchable intranet/web-hosted media library index.
 
 > 📝 *This roadmap is maintained alongside the codebase. For current status, see [PROJECT_STATUS.md](../PROJECT_STATUS.md).*
 >
-> *Last updated: 2026-02-14*
+> *Last updated: 2026-02-15*

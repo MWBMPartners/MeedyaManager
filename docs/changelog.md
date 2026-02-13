@@ -8,6 +8,188 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.5-M6] — 2026-02-12 — Packaging, Error Handling & Config Profiles
+
+> 🏷️ **Milestone 6** — Centralized logging, crash protection, user-friendly error dialogs, configuration export/import, native platform installers via Nuitka, and CI/CD build pipeline.
+
+### 🚀 Added
+
+- **Centralized Logging** (`utils/log_config.py`)
+  - `setup_logging()` — single setup function replacing all ad-hoc handlers
+  - Platform-aware log directories (macOS `~/Library/Logs/`, Windows `%LOCALAPPDATA%/`, Linux `~/.local/state/`)
+  - `PIIRedactionFilter` — automatic path redaction from all log records
+  - `TimedRotatingFileHandler` (daily) + `RotatingFileHandler` (10 MB safety net)
+  - Auto-cleanup of logs older than 30 days
+
+- **Global Exception Handling** (`utils/exception_handler.py`)
+  - `install_exception_hooks()` — hooks for `sys.excepthook` and `threading.excepthook`
+  - Crash report files written to log directory (`crash_YYYY-MM-DD_HHMMSS.txt`)
+  - `SafeWorker` base class in `ui/workers.py` — QThread with safety-net try/except
+
+- **User-Facing Error Dialogs** (`ui/error_dialog.py`, `utils/error_messages.py`)
+  - `ErrorDialog(QDialog)` — headline, explanation, suggestion, collapsible technical details
+  - Error message catalog mapping exception types to user-friendly messages
+  - MRO-based exception resolution with context-aware message selection
+  - "Copy to Clipboard" and "Show Details" functionality
+
+- **Error Reporting** (`utils/error_reporter.py`, `cli/commands/report_bug.py`)
+  - `prepare_report()` — collects system info, app version, error details
+  - `open_email_client()` — opens default email client via `mailto:` URL
+  - PII redaction before composing report body
+  - CLI: `meedyamanager report-bug [--include-logs] [--no-system-info]`
+  - GUI: Help → "Report Bug..." menu action
+
+- **Startup Health Checks** (`utils/health_check.py`)
+  - `run_startup_checks()` — validates Python version, config, watch dirs, log dir, disk space
+  - `Severity` enum (OK, WARNING, CRITICAL) and `HealthCheckResult` dataclass
+  - `format_results_for_cli()` — Rich-formatted terminal output
+  - Integrated into GUI startup (`ui/app.py`) and CLI startup
+
+- **Crash Recovery & State Management** (`core/state_manager.py`)
+  - `WatcherState` — persists in-progress/deferred/completed files to JSON
+  - `AppLockFile` — PID-based single-instance detection and crash recovery
+  - Atomic save (write `.tmp`, rename) for crash-safe persistence
+
+- **Configuration Export/Import** (`utils/config_profile.py`)
+  - `.mmprofile` ZIP bundle format with manifest, settings, env template
+  - Cross-platform path tokenization ({HOME}, {MUSIC}, {VIDEOS}, etc.)
+  - Replace and merge import modes with dry-run preview
+  - CLI: `meedyamanager config export/import` commands
+  - GUI: Settings dialog Export/Import buttons + File menu actions
+
+- **Native Packaging & Installers**
+  - `pyproject.toml` — PEP 621 metadata with hatchling build backend
+  - Entry scripts: `meedyamanager_gui.py`, `meedyamanager_cli.py` (Nuitka targets)
+  - Icon assets generated from SVG: `assets/icon.png`, `icon.ico`, `icon.icns`
+  - `build/innosetup.iss` — Windows installer script (Inno Setup)
+  - `build/meedyamanager.desktop` — Linux desktop entry file
+  - `scripts/generate_icons.sh` — Icon generation from SVG
+  - `.github/workflows/build-installers.yml` — 3-platform CI:
+    - macOS (ARM64): `.dmg` with drag-to-Applications
+    - Windows (x64): `.exe` installer via Inno Setup
+    - Linux (x64): `.AppImage` + `.deb` package
+  - SHA256 checksums for all release artifacts
+
+### 🔧 Changed
+
+- **CLI version** — Updated to `v1.5-M6`
+- **Workers** (`ui/workers.py`) — `ScanWorker`, `TagWriteWorker`, `LookupWorker` now inherit `SafeWorker` base class (run() → safe_run())
+- **Watcher** (`core/watcher.py`) — Removed ad-hoc handlers, renamed logger to `MeedyaManager.Watcher`
+- **Renamer** (`core/renamer.py`) — Removed ad-hoc handlers, uses centralized logging
+- **Config loader** (`utils/config_loader.py`) — Added `reload_config()` and `get_config_path()`
+- **Settings dialog** (`ui/settings_dialog.py`) — Added Export/Import section with profile buttons
+- **Main window** (`ui/main_window.py`) — Added File → Export/Import Settings, Help → Report Bug
+- **App launcher** (`ui/app.py`) — Startup health checks + centralized logging initialization
+- `.gitignore` — Added Nuitka cache, AppImage, .deb, .build, .dist entries
+
+### 🧪 Testing
+
+- **1007 tests** all passing (up from 751 in M5)
+- 256 new tests across 12 new test files:
+  - `test_log_config.py`, `test_exception_handler.py`, `test_error_messages.py`
+  - `test_error_dialog.py`, `test_safe_worker.py`, `test_error_reporter.py`
+  - `test_state_manager.py`, `test_health_check.py`
+  - `test_config_profile.py`, `test_cli_config.py`
+
+---
+
+## [v1.4-M5] — 2026-02-15 — Metadata Lookup
+
+> 🏷️ **Milestone 5** — 19 metadata lookup providers across music, video, podcasts, and identifier registries. Provider framework with auto-discovery, credential management, rate limiting, cover art management, fuzzy match scoring, CLI lookup command, and GUI lookup panel.
+
+### 🚀 Added
+
+- **Provider Framework** (`metadata/providers/`)
+  - Plugin architecture with `@register_provider` decorator and auto-discovery
+  - Base provider class with standardized search/match/apply interface
+  - Provider registry with category-based filtering (music, video, podcast, identifier)
+
+- **4-Tier Credential Management** (`metadata/providers/credentials.py`)
+  - Tier 1: `.env` file (environment variables)
+  - Tier 2: `settings.json5` (config-based keys)
+  - Tier 3: OS keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+  - Tier 4: Encrypted bundle (AES-256-GCM via `cryptography`)
+  - Secure storage via `keyring` and `pyjwt[crypto]`
+
+- **Token Bucket Rate Limiter** (`metadata/providers/rate_limiter.py`)
+  - Per-provider rate limits respecting API quotas
+  - Automatic request throttling with burst allowance
+  - Configurable tokens per second and bucket capacity
+
+- **Cover Art Management** (`metadata/providers/cover_art.py`)
+  - Static cover art: JPEG and PNG download, resize, and embed
+  - Animated cover art: MP4 square, portrait, and artist spotlight formats
+  - Thumbnail generation for GUI preview
+
+- **Fuzzy Match Scoring** (`metadata/providers/match_scoring.py`)
+  - Weighted scoring algorithm: title (35%), artist (30%), album (20%), duration (15%)
+  - ISRC exact-match bonus for high-confidence identification
+  - Configurable thresholds via `fuzzywuzzy` and `python-Levenshtein`
+
+- **Music Providers (10)**
+  - `apple_music.py` — JWT authentication, track/album search, artwork retrieval
+  - `spotify.py` — OAuth2 via `spotipy`, track matching, audio features
+  - `musicbrainz.py` — Public API via `musicbrainzngs`, release/recording lookup, MBIDs
+  - `deezer.py` — Public API via `deezer-python`, track/album search
+  - `youtube_music.py` — Cookie-based auth via `ytmusicapi`, video/song matching
+  - `amazon_music.py` — Closed beta API, track matching
+  - `pandora.py` — Stub implementation for future expansion
+  - `tidal.py` — OAuth2.1 via `tidalapi`, HiFi/MQA metadata
+  - `shazam.py` — Audio fingerprinting via `shazamio`, recognition and ID storage
+  - `iheart.py` — Undocumented API, station/track matching
+
+- **Video Providers (5)**
+  - `tmdb.py` — API key auth via `tmdbsimple`, movie/TV show matching, cast, crew
+  - `thetvdb.py` — API key auth, TV show/episode matching, season info
+  - `imdb.py` — `cinemagoer` library, movie/TV identification, ratings
+  - `apple_tv.py` — Public API, TV/movie matching, artwork retrieval
+  - `itunes_store.py` — Public API, purchase metadata, artwork
+
+- **Podcast Providers (1)**
+  - `apple_podcasts.py` — Public API, podcast/episode search
+
+- **Identifier Providers (3)**
+  - `isrc.py` — Federated ISRC lookup across multiple registries
+  - `eidr.py` — Paid Entertainment Identifier Registry lookup
+  - `iswc.py` — ISWC lookup via MusicBrainz works database
+
+- **CLI: `meedyamanager lookup` command** (`cli/commands/lookup.py`)
+  - `meedyamanager lookup <file>` — Look up metadata for a media file
+  - `--provider <name>` — Use a specific provider
+  - `--category <music|video|podcast|identifier>` — Filter by provider category
+  - `--auto` — Auto-select best providers based on media type
+  - `--apply` — Write matched metadata back to file
+  - `--dry-run` — Preview matched metadata without writing
+  - `--json` — Export results as JSON
+  - `--batch` — Batch lookup for directories
+  - `--providers-list` — List all available providers and their status
+
+- **GUI: Lookup Tab** (`ui/lookup_panel.py`)
+  - Provider checkboxes for selecting which services to query
+  - Results table with provider, confidence score, and matched fields
+  - Detail panel showing full matched metadata
+  - Apply button to write selected match to file
+  - Batch lookup button for multi-file processing
+
+- **GUI: LookupWorker** (`ui/workers.py`)
+  - QThread-based background worker for async provider lookups
+  - Progress signals for UI feedback during batch operations
+  - Error handling with per-provider failure isolation
+
+### 🔧 Changed
+
+- **CLI version** — Updated to `v1.4-M5`
+- **requirements.txt** — Added `httpx`, `tenacity`, `spotipy`, `musicbrainzngs`, `deezer-python`, `tidalapi`, `ytmusicapi`, `shazamio`, `tmdbsimple`, `cinemagoer`, `pyjwt[crypto]`, `cryptography`, `keyring`, `fuzzywuzzy`, `python-Levenshtein`
+
+### 🧪 Testing
+
+- **751 tests** all passing (up from 342 in M4)
+- New test files: provider framework tests, individual provider tests (19 providers), credential management tests, rate limiter tests, cover art tests, match scoring tests, CLI lookup tests, GUI lookup panel tests, LookupWorker tests
+- 409 new tests across 22 new test files
+- Updated: `test_gui_smoke.py` (4 tabs), `test_cli_version.py` (v1.4-M5)
+
+---
+
 ## [v1.3-M4] — 2026-02-14 — Metadata Editor
 
 > 🏷️ **Milestone 4** — Full tag reading/writing via mutagen, metadata editor GUI, CLI edit command, cover art management, and batch editing support.
@@ -334,10 +516,10 @@ Format: `## [Version] — YYYY-MM-DD`
 | `v1.1-M2` | ✅ CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
 | `v1.2-M3` | ✅ Rule Engine | Full template syntax, companion file tracking |
 | `v1.3-M4` | ✅ Metadata Editor | Tag editing, mutagen integration, GUI panel, CLI edit |
-| `v1.4-M5` | 🔲 Music Lookup | MusicBrainz, Spotify, Apple Music, Shazam |
-| `v1.5-M6` | 🔲 TV/Film Lookup | TMDb, TheTVDB, IMDb, EIDR |
+| `v1.4-M5` | ✅ Metadata Lookup | 19 providers (music, video, podcasts, identifiers), framework, CLI, GUI |
+| `v1.5-M6` | ✅ Packaging & Error Handling | Centralized logging, crash protection, config profiles, native installers |
 | `v1.6-M7` | 🔲 Cloud Monitoring | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
-| `v2.0-M8` | 🔲 Public Release | Packaged installers, auto-updater |
+| `v2.0-M8` | 🔲 Public Release | Auto-updater, code signing |
 | `v2.1-M9` | 🔲 DB Export | MySQL, MariaDB, SQLite, PostgreSQL, SQL Server |
 | `v2.2-M10` | 🔲 Media Server | Secure web interface, access control |
 

@@ -27,7 +27,7 @@ def test_simulated_path_logged(caplog, tmp_path):
 
     # Patch simulate_rename where it's imported in the watcher module
     with patch("core.watcher.simulate_rename", return_value="/simulated/path/output.mp3"):
-        with caplog.at_level(logging.INFO, logger="watcher"):
+        with caplog.at_level(logging.INFO, logger="MeedyaManager.Watcher"):
             watcher.handle_file(str(test_file))
 
     # Verify the simulated path was logged

@@ -12,7 +12,8 @@ MeedyaManager is configured through two primary mechanisms: a **JSON5 settings f
 2. [Settings Reference (settings.json5)](#settings-reference)
 3. [Environment Variables (.env)](#environment-variables)
 4. [API Key Management](#api-key-management)
-5. [Platform-Specific Settings](#platform-specific-settings)
+5. [Metadata Lookup Providers](#metadata-lookup-providers)
+6. [Platform-Specific Settings](#platform-specific-settings)
 
 ---
 
@@ -139,26 +140,36 @@ cp .env.example .env
 ### Music Metadata API Keys (M5)
 
 ```env
-MUSICBRAINZ_API_KEY=
 SPOTIFY_CLIENT_ID=
 SPOTIFY_CLIENT_SECRET=
-APPLE_MUSIC_TOKEN=
-TIDAL_SESSION_ID=
-AMAZON_MUSIC_AUTH=
-SHAZAM_API_KEY=
-ACOUSTICBRAINZ_API_KEY=
+APPLE_MUSIC_TEAM_ID=
+APPLE_MUSIC_KEY_ID=
+APPLE_MUSIC_PRIVATE_KEY=
+TIDAL_CLIENT_ID=
+TIDAL_CLIENT_SECRET=
+YOUTUBE_MUSIC_HEADERS_AUTH=
 ```
 
-### TV/Film Metadata API Keys (M6)
+### Video Metadata API Keys (M5)
 
 ```env
 TMDB_API_KEY=
 TVDB_API_KEY=
-IMDB_ACCESS_TOKEN=
 EIDR_CLIENT_ID=
 EIDR_CLIENT_SECRET=
-APPLE_TV_LOOKUP_TOKEN=
 ```
+
+### Providers That Need No API Key
+
+The following providers work without any API key or credentials:
+
+- **MusicBrainz** — Open music metadata database
+- **Deezer** — Public search API
+- **Apple Podcasts** — Public catalogue lookup
+- **Apple TV** — Public catalogue lookup
+- **iTunes Store** — Public search API
+- **Shazam** — Public recognition API
+- **iHeart** — Public search API
 
 ### Application Overrides
 
@@ -202,23 +213,171 @@ User-provided keys always take priority over bundled keys.
 
 ---
 
+## 🔍 Metadata Lookup Providers
+
+MeedyaManager can look up and enrich media file metadata from a variety of online providers. This section covers how to configure providers, cover art behaviour, and credential resolution.
+
+### Provider Configuration
+
+Enable or disable individual providers in `settings.json5`:
+
+```json5
+providers: {
+  spotify: {
+    enabled: true,
+    // Credentials loaded from .env or OS keyring
+  },
+  apple_music: {
+    enabled: true,
+    storefront: "gb",    // Country code for search results
+  },
+  musicbrainz: {
+    enabled: true,
+    // No credentials required
+  },
+  tmdb: {
+    enabled: true,
+  },
+  // ... more providers
+}
+```
+
+Each provider entry supports an `enabled` flag to toggle it on or off. Provider-specific options (such as `storefront` for Apple Music) are documented in the individual provider guides.
+
+### Cover Art Configuration
+
+Control how MeedyaManager handles cover art downloaded during metadata lookup:
+
+```json5
+cover_art: {
+  download_static: true,      // Download static cover art (FrontCover.jpg)
+  download_animated: true,    // Download animated covers (FrontCover.mp4, PortraitCover.mp4)
+  embed_in_file: true,        // Embed cover art in media file tags
+  save_alongside: true,       // Save cover art files next to media files
+  max_resolution: 3000,       // Maximum resolution for static art
+}
+```
+
+### Credential Priority Chain
+
+When resolving API credentials for a provider, MeedyaManager checks the following sources in order (highest priority first):
+
+1. **Environment variables** (`.env`) — Keys defined in your `.env` file or exported in your shell environment
+2. **Config file** (`settings.json5` → `providers` section) — Credentials specified inline in the provider configuration
+3. **OS keyring** — Platform-native secure storage (macOS Keychain, Windows Credential Manager, Linux SecretService via D-Bus)
+4. **Encrypted bundle** — The application's bundled fallback keys (for providers whose Terms of Service permit shared keys)
+
+The first source that provides a valid credential wins. This means you can always override bundled or keyring-stored keys by setting an environment variable.
+
+### Per-Provider Setup Guides
+
+See individual provider guides in [help/providers/](providers/) for detailed setup instructions, including how to obtain API keys, configure OAuth flows, and troubleshoot authentication issues.
+
+---
+
+## Logging Configuration
+
+MeedyaManager uses centralized logging with platform-appropriate log directories and automatic PII redaction.
+
+### Log Settings
+
+```json5
+logging: {
+  level: "INFO",           // DEBUG, INFO, WARNING, ERROR, CRITICAL
+  max_log_days: 30,        // Retain log files for this many days
+  max_log_size_mb: 10,     // Safety-net file size cap per log file
+  console_level: "WARNING", // Minimum level for console output
+  redact_pii: true,        // Redact user paths from all log records
+}
+```
+
+### Log File Location
+
+| Platform | Directory |
+|----------|-----------|
+| macOS | `~/Library/Logs/MeedyaManager/` |
+| Windows | `%LOCALAPPDATA%\MeedyaManager\logs\` |
+| Linux | `~/.local/state/MeedyaManager/logs/` |
+
+Override with the `METAMANCER_LOG_LEVEL` environment variable:
+
+```env
+METAMANCER_LOG_LEVEL=DEBUG
+```
+
+### Log Rotation
+
+- **Daily rotation** — New log file each day at midnight
+- **Size safety net** — 10 MB max per file (5 backups)
+- **Auto-cleanup** — Logs older than 30 days are removed on startup
+
+---
+
+## Configuration Profiles (Export / Import)
+
+MeedyaManager supports exporting and importing settings as portable `.mmprofile` bundles for migration between platforms.
+
+### Export
+
+```bash
+meedyamanager config export --out ~/backup.mmprofile --name "Home Mac"
+meedyamanager config export --out ~/backup.mmprofile --include-secrets
+```
+
+Or via **Settings dialog** → **Export Settings...** button.
+
+### Import
+
+```bash
+meedyamanager config import ~/backup.mmprofile --dry-run        # Preview changes
+meedyamanager config import ~/backup.mmprofile --mode merge      # Additive merge
+meedyamanager config import ~/backup.mmprofile --mode replace -y # Replace without prompt
+```
+
+Or via **Settings dialog** → **Import Settings...** button.
+
+### Profile Format
+
+A `.mmprofile` file is a ZIP archive containing:
+
+| File | Purpose |
+|------|---------|
+| `manifest.json` | Version, platform, timestamp, profile name |
+| `settings.json5` | Full config with paths tokenized for portability |
+| `env.template` | API key names with blank values |
+| `env.secrets` | Actual API key values (only if `--include-secrets`) |
+
+### Cross-Platform Path Tokens
+
+Paths are automatically converted between platforms:
+
+| Token | macOS | Windows | Linux |
+|-------|-------|---------|-------|
+| `{HOME}` | `/Users/name` | `C:\Users\name` | `/home/name` |
+| `{DESKTOP}` | `~/Desktop` | `~\Desktop` | `~/Desktop` |
+| `{DOWNLOADS}` | `~/Downloads` | `~\Downloads` | `~/Downloads` |
+| `{MUSIC}` | `~/Music` | `~\Music` | `~/Music` |
+| `{VIDEOS}` | `~/Movies` | `~\Videos` | `~/Videos` |
+
+---
+
 ## Platform-Specific Settings
 
 ### macOS (Apple Silicon)
 
-- MediaInfo: Install via `brew install mediainfo`
+- MediaInfo: Bundled via `pymediainfo` pip wheel (fallback: `brew install mediainfo`)
 - Service: LaunchAgent (per-user) or LaunchDaemon (system-wide)
 - Paths use `/` separators
 
 ### Windows (x64/ARM)
 
-- MediaInfo: Install from [mediaarea.net](https://mediaarea.net)
+- MediaInfo: Bundled via `pymediainfo` pip wheel (fallback: install from [mediaarea.net](https://mediaarea.net))
 - Service: Windows Service via `pywin32`
 - Paths use `\` separators (JSON5 requires `\\` escaping)
 
 ### Linux (x64/ARM)
 
-- MediaInfo: Install via package manager (`apt`, `dnf`, `pacman`)
+- MediaInfo: Install via package manager (`apt install mediainfo`, `dnf install mediainfo`, `pacman -S mediainfo`)
 - Service: systemd unit file
 - Paths use `/` separators
 

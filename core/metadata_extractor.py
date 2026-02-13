@@ -25,8 +25,14 @@ import os                                              # File path operations
 from pymediainfo import MediaInfo                      # Technical stream analysis
 from core.classify_media import classify_media         # 4-level classification
 from utils.config_loader import get_config             # Settings/fallback loader
+from utils.mediainfo_loader import get_mediainfo_parse_kwargs  # Bundled library resolution
 
 logger = logging.getLogger("MeedyaManager.MetadataExtractor")
+
+# Resolve the libmediainfo library path once at module load time.
+# Returns {"library_file": "/path/to/lib"} if a bundled library is found,
+# or {} to let pymediainfo use its default system detection.
+_MEDIAINFO_KWARGS = get_mediainfo_parse_kwargs()
 
 
 def extract_metadata(filepath):
@@ -87,7 +93,7 @@ def extract_metadata(filepath):
     # Stage 1: pymediainfo — Technical stream analysis
     # =========================================================================
     try:
-        media_info = MediaInfo.parse(filepath)
+        media_info = MediaInfo.parse(filepath, **_MEDIAINFO_KWARGS)
         for track in media_info.tracks:
             if track.track_type == "General":
                 metadata["format"] = (track.format or metadata["extension"]).lower()

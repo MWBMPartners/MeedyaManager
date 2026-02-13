@@ -217,7 +217,7 @@ class TestEditHelp:
         assert "--json" in result.output
 
     def test_version_updated(self, runner):
-        """CLI version should be updated to M4."""
+        """CLI version should be updated to M5."""
         result = runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "1.3-M4" in result.output
+        assert "1.5-M6" in result.output

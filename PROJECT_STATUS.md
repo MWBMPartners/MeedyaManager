@@ -10,10 +10,10 @@
 
 | Item | Status |
 |------|--------|
-| **Current Milestone** | M5 — Music Metadata Lookup |
-| **Last Completed** | ✅ M4 — Metadata Editor (Feb 2026) |
-| **Overall Progress** | ████░░░░░░ **40%** (4 of 10 milestones) |
-| **Latest Version** | `v1.3-M4` |
+| **Current Milestone** | M7 — Cloud Storage Monitoring |
+| **Last Completed** | ✅ M6 — Packaging & Error Handling (Feb 2026) |
+| **Overall Progress** | ██████░░░░ **60%** (6 of 10 milestones) |
+| **Latest Version** | `v1.5-M6` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/python-app.yml/badge.svg) |
 
 ---
@@ -122,14 +122,81 @@
 
 ---
 
+### ✅ M5 — Metadata Lookup *(Complete)*
+
+> 🗓️ Completed: February 2026 | 📦 Release: `v1.4-M5`
+
+**Progress: ██████████ 100%**
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| Provider framework with auto-discovery | ✅ Done | `@register_provider` decorator, plugin architecture |
+| 🎵 Apple Music provider | ✅ Done | JWT authentication |
+| 🎵 Spotify provider | ✅ Done | OAuth2 authentication via spotipy |
+| 🎵 MusicBrainz provider | ✅ Done | Public API via musicbrainzngs |
+| 🎵 Deezer provider | ✅ Done | Public API via deezer-python |
+| 🎵 YouTube Music provider | ✅ Done | Cookie-based auth via ytmusicapi |
+| 🎵 Amazon Music provider | ✅ Done | Closed beta API |
+| 🎵 Pandora provider | ✅ Done | Stub implementation |
+| 🎵 Tidal provider | ✅ Done | OAuth2.1 via tidalapi |
+| 🎵 Shazam provider | ✅ Done | Audio fingerprinting via shazamio |
+| 🎵 iHeart provider | ✅ Done | Undocumented API |
+| 🎬 TMDB provider | ✅ Done | API key auth via tmdbsimple |
+| 🎬 TheTVDB provider | ✅ Done | API key authentication |
+| 🎬 IMDb provider | ✅ Done | cinemagoer library |
+| 🎬 Apple TV provider | ✅ Done | Public API |
+| 🎬 iTunes Store provider | ✅ Done | Public API |
+| 🎙️ Apple Podcasts provider | ✅ Done | Public API |
+| 🆔 ISRC identifier provider | ✅ Done | Federated lookup |
+| 🆔 EIDR identifier provider | ✅ Done | Paid registry |
+| 🆔 ISWC identifier provider | ✅ Done | MusicBrainz-backed |
+| 4-tier credential management | ✅ Done | .env → settings.json5 → OS keyring → encrypted bundle |
+| Token bucket rate limiting | ✅ Done | Per-provider rate limits |
+| Cover art management | ✅ Done | Static (JPEG/PNG) + animated (MP4 square, portrait, artist spotlight) |
+| Fuzzy match scoring | ✅ Done | Title 35%, artist 30%, album 20%, ISRC bonus |
+| CLI: `meedyamanager lookup` command | ✅ Done | --provider, --category, --auto, --apply, --dry-run, --json, --batch, --providers-list |
+| GUI: Lookup tab | ✅ Done | Provider checkboxes, results table, detail panel, apply/batch buttons |
+| LookupWorker QThread | ✅ Done | Background async lookups |
+| Comprehensive test suite | ✅ Done | 409 new tests (751 total) |
+
+---
+
+### ✅ M6 — Packaging, Error Handling & Config Profiles *(Complete)*
+
+> 🗓️ Completed: February 2026 | 📦 Release: `v1.5-M6`
+
+**Progress: ██████████ 100%**
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| Centralized logging (log_config.py) | ✅ Done | Platform-aware log dirs, PII redaction, daily rotation |
+| Global exception handling (exception_handler.py) | ✅ Done | sys.excepthook + threading.excepthook + crash reports |
+| SafeWorker base class (workers.py) | ✅ Done | QThread safety-net for ScanWorker, TagWriteWorker, LookupWorker |
+| User-friendly error dialogs (error_dialog.py) | ✅ Done | ErrorDialog with catalog-based messages, collapsible details |
+| Error message catalog (error_messages.py) | ✅ Done | MRO-based exception-to-message resolution |
+| Error reporting (error_reporter.py) | ✅ Done | Email-based bug reports via mailto: URL |
+| CLI: report-bug command | ✅ Done | --include-logs, --no-system-info |
+| Startup health checks (health_check.py) | ✅ Done | Python version, config, watch dirs, log dir, disk space |
+| Crash recovery (state_manager.py) | ✅ Done | WatcherState + AppLockFile with atomic persistence |
+| Config export/import (config_profile.py) | ✅ Done | .mmprofile ZIP bundles with cross-platform path tokens |
+| CLI: config export/import commands | ✅ Done | --mode replace/merge, --dry-run, --include-secrets |
+| GUI: Settings Export/Import buttons | ✅ Done | Profile group box in SettingsDialog |
+| pyproject.toml (PEP 621) | ✅ Done | hatchling build backend, entry points, optional deps |
+| Icon assets from SVG | ✅ Done | icon.png (512x512), icon.ico (multi-res), icon.icns |
+| Nuitka build entry scripts | ✅ Done | meedyamanager_gui.py, meedyamanager_cli.py |
+| Windows installer (Inno Setup) | ✅ Done | build/innosetup.iss — Next > Install wizard |
+| Linux desktop entry | ✅ Done | build/meedyamanager.desktop |
+| CI: build-installers.yml | ✅ Done | macOS .dmg, Windows .exe, Linux .AppImage + .deb |
+| Comprehensive test suite | ✅ Done | 256 new tests (1007 total) |
+
+---
+
 ### 🔮 Future Milestones
 
 | # | Milestone | Status | Target |
 |---|-----------|--------|--------|
-| M5 | 🎵 Music Metadata Lookup | 🔲 Planned | — |
-| M6 | 🎬 TV/Film Metadata Lookup | 🔲 Planned | — |
-| M7 | ☁️ Cloud Storage Monitoring | 🔲 Planned | — |
-| M8 | 📦 Public Release & Packaging | 🔲 Planned | — |
+| M7 | ☁️ Cloud Storage Monitoring | 🔲 Planned | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
+| M8 | 📦 Public Release | 🔲 Planned | Auto-updater, code signing |
 | M9 | 🗄️ Database Export | 🔲 Planned | — |
 | M10 | 🌐 Secure Media Server | 🔲 Planned | — |
 
@@ -139,6 +206,18 @@
 
 | Category | Tests | Status |
 |----------|-------|--------|
+| Provider framework & auto-discovery | 28 | ✅ Passing |
+| Music providers (10 providers) | 95 | ✅ Passing |
+| Video providers (5 providers) | 62 | ✅ Passing |
+| Podcast providers | 12 | ✅ Passing |
+| Identifier providers (ISRC, EIDR, ISWC) | 24 | ✅ Passing |
+| Credential management (4-tier) | 32 | ✅ Passing |
+| Rate limiter (token bucket) | 18 | ✅ Passing |
+| Cover art management | 22 | ✅ Passing |
+| Fuzzy match scoring | 26 | ✅ Passing |
+| CLI: lookup command | 38 | ✅ Passing |
+| GUI: lookup panel | 32 | ✅ Passing |
+| LookupWorker QThread | 20 | ✅ Passing |
 | Rule engine (lexer, parser, evaluator) | 77 | ✅ Passing |
 | Tag editor (ID3, Vorbis, cover art) | 33 | ✅ Passing |
 | Multi-value handling | 25 | ✅ Passing |
@@ -164,7 +243,18 @@
 | Watcher logging & redaction | 2 | ✅ Passing |
 | Simulation log output | 1 | ✅ Passing |
 | Batch rename simulation | 1 | ✅ Passing |
-| **Total** | **342** | ✅ **All Passing** |
+| Centralized logging (log_config) | 20 | ✅ Passing |
+| Exception handler (crash protection) | 14 | ✅ Passing |
+| Error messages (catalog) | 19 | ✅ Passing |
+| Error dialog (GUI) | 27 | ✅ Passing |
+| SafeWorker (QThread safety) | 11 | ✅ Passing |
+| Error reporter (email) | 22 | ✅ Passing |
+| State manager (crash recovery) | 21 | ✅ Passing |
+| Health checks (startup) | 20 | ✅ Passing |
+| Config profile (export/import) | 46 | ✅ Passing |
+| CLI: config commands | 15 | ✅ Passing |
+| CLI: report-bug command | 5 | ✅ Passing |
+| **Total** | **1007** | ✅ **All Passing** |
 
 ---
 
@@ -172,16 +262,20 @@
 
 | Component | Files | Health |
 |-----------|-------|--------|
-| `core/` | 8 | ✅ Stable (+metadata_extractor with mutagen integration) |
-| `metadata/` | 3 | ✅ New (editor.py, multi_value.py, __init__.py) |
+| `core/` | 9 | ✅ Stable (+state_manager.py for crash recovery) |
+| `metadata/` | 3 | ✅ Stable (editor.py, multi_value.py, __init__.py) |
+| `metadata/providers/` | 50+ | ✅ Stable (19 providers, framework, credentials, rate limiter, cover art, match scoring) |
 | `cli/` | 7 | ✅ Stable (Click framework) |
-| `cli/commands/` | 6 | ✅ Stable (+edit command) |
-| `ui/` | 9 | ✅ Stable (+metadata_editor.py) |
+| `cli/commands/` | 9 | ✅ Stable (+config_cmd, report_bug) |
+| `ui/` | 11 | ✅ Stable (+error_dialog.py) |
 | `ui/themes/` | 2 | ✅ Stable (dark.qss, light.qss) |
-| `utils/` | 4 | ✅ Stable (+char_replacer) |
-| `tests/` | 29 | ✅ 342 tests, all passing |
+| `utils/` | 10 | ✅ Stable (+log_config, exception_handler, error_messages, error_reporter, health_check, config_profile) |
+| `tests/` | 63 | ✅ 1007 tests, all passing |
 | `config/` | 1 | ✅ Stable |
-| **Total** | **~69** | ✅ **Healthy** |
+| `build/` | 2 | ✅ New (innosetup.iss, meedyamanager.desktop) |
+| `scripts/` | 1 | ✅ New (generate_icons.sh) |
+| `assets/` | 3 | ✅ New (icon.png, icon.ico, icon.icns) |
+| **Total** | **~171** | ✅ **Healthy** |
 
 ---
 
@@ -213,6 +307,8 @@
 
 | Date | Activity |
 |------|----------|
+| 2026-02-12 | **M6 Complete** — Packaging & error handling: centralized logging, crash protection, error dialogs, config export/import, native installers (macOS .dmg, Windows .exe, Linux .AppImage/.deb), 1007 tests |
+| 2026-02-15 | **M5 Complete** — Metadata lookup: 19 providers (music, video, podcasts, identifiers), provider framework, credential management, rate limiting, cover art, fuzzy matching, CLI lookup, GUI lookup panel, 751 tests |
 | 2026-02-14 | **M4 Complete** — Metadata editor (mutagen), tag read/write, GUI panel, CLI edit, 342 tests |
 | 2026-02-13 | **M3 Complete** — Rule engine (20 functions), companion tracker, 212 tests |
 | 2026-02-13 | **M2 Complete** — Click CLI, PySide6 GUI, 73 tests passing |
@@ -226,4 +322,4 @@
 
 > 📝 *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-02-14*
+> *Last updated: 2026-02-12*

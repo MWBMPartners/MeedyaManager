@@ -16,4 +16,4 @@ def test_version_flag():
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
     assert "MeedyaManager" in result.output
-    assert "1.3-M4" in result.output
+    assert "1.5-M6" in result.output

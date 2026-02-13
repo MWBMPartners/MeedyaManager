@@ -21,6 +21,7 @@ from core.rule_engine import RuleEngine, TemplateSyntaxError  # Template evaluat
 from core.tag_registry import get_display_tags               # Available tag names
 
 from PySide6.QtCore import Qt, Signal                       # Core constants and signals
+from pathlib import Path                                   # Cross-platform path handling
 from PySide6.QtWidgets import (
     QDialog,                                                # Modal dialog base class
     QVBoxLayout,                                            # Vertical layout
@@ -39,6 +40,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,                                       # OK/Cancel button row
     QFileDialog,                                            # Native file/folder chooser
     QMessageBox,                                            # Alert/confirm dialog
+    QCheckBox,                                              # Checkbox for include-secrets toggle
 )
 
 logger = logging.getLogger("MeedyaManager.Settings")
@@ -122,6 +124,29 @@ class SettingsDialog(QDialog):
         self._tabs.addTab(self._create_template_tab(), "Rename Template")
         self._tabs.addTab(self._create_fallback_tab(), "Fallback Metadata")
         self._tabs.addTab(self._create_replacements_tab(), "Replacements")
+
+        # --- Profile Export / Import section ---
+        profile_group = QGroupBox("Configuration Profiles")
+        profile_layout = QHBoxLayout(profile_group)
+
+        export_btn = QPushButton("Export Settings...")
+        export_btn.setToolTip(
+            "Save current settings as a portable .mmprofile file\n"
+            "for migration to another machine or platform."
+        )
+        export_btn.clicked.connect(self._export_profile)
+        profile_layout.addWidget(export_btn)
+
+        import_btn = QPushButton("Import Settings...")
+        import_btn.setToolTip(
+            "Load settings from a .mmprofile file.\n"
+            "You can preview changes before applying."
+        )
+        import_btn.clicked.connect(self._import_profile)
+        profile_layout.addWidget(import_btn)
+
+        profile_layout.addStretch()
+        layout.addWidget(profile_group)
 
         # OK / Cancel buttons
         button_box = QDialogButtonBox(
@@ -479,6 +504,173 @@ class SettingsDialog(QDialog):
             if char_item and char_item.text():
                 replacements[char_item.text()] = repl_item.text() if repl_item else ""
         self._config["filename_replacements"] = replacements
+
+    # =========================================================================
+    # Profile Export / Import
+    # =========================================================================
+
+    def _export_profile(self):
+        """Export current settings to a portable .mmprofile file.
+
+        Opens a save dialog, optionally includes API key secrets, then
+        calls the config_profile export function.
+        """
+        from utils.config_profile import export_profile
+
+        # Ask the user where to save the profile
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Settings Profile",
+            str(Path.home() / "MeedyaManager.mmprofile"),
+            "MeedyaManager Profiles (*.mmprofile);;All Files (*)",
+        )
+
+        if not file_path:
+            return                                          # User cancelled
+
+        # Ask whether to include actual API key values
+        include_secrets = False
+        reply = QMessageBox.question(
+            self,
+            "Include API Keys?",
+            "Do you want to include your actual API key values in the export?\n\n"
+            "If YES, the file will contain sensitive credentials —\n"
+            "treat it as confidential.\n\n"
+            "If NO, only the key names will be included (recommended).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            include_secrets = True
+
+        try:
+            result_path = export_profile(
+                output_path=Path(file_path),
+                profile_name="",
+                include_secrets=include_secrets,
+            )
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Settings exported to:\n{result_path}",
+            )
+            logger.info(f"Profile exported to {result_path}")
+        except Exception as e:
+            logger.error(f"Profile export failed: {e}")
+            QMessageBox.critical(
+                self, "Export Failed", f"Could not export settings:\n{e}"
+            )
+
+    def _import_profile(self):
+        """Import settings from a .mmprofile file.
+
+        Opens a file dialog, validates the profile, shows a preview of
+        changes, and applies them if the user confirms.
+        """
+        from utils.config_profile import (
+            import_profile,
+            validate_profile,
+        )
+
+        # Ask the user to select a profile file
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Settings Profile",
+            str(Path.home()),
+            "MeedyaManager Profiles (*.mmprofile);;ZIP Files (*.zip);;All Files (*)",
+        )
+
+        if not file_path:
+            return                                          # User cancelled
+
+        profile_path = Path(file_path)
+
+        # Validate the profile before doing anything
+        errors = validate_profile(profile_path)
+        if errors:
+            QMessageBox.critical(
+                self,
+                "Invalid Profile",
+                "The selected profile is invalid:\n\n"
+                + "\n".join(f"  - {e}" for e in errors),
+            )
+            return
+
+        # Preview the changes (dry run)
+        try:
+            preview = import_profile(profile_path, mode="replace", dry_run=True)
+        except Exception as e:
+            logger.error(f"Profile import preview failed: {e}")
+            QMessageBox.critical(
+                self, "Import Failed", f"Could not read profile:\n{e}"
+            )
+            return
+
+        changes = preview.get("changes", {})
+        profile_name = preview.get("profile_name", "Unknown")
+
+        if not changes:
+            QMessageBox.information(
+                self,
+                "No Changes",
+                f"Profile '{profile_name}' matches your current settings.\n"
+                "Nothing to change.",
+            )
+            return
+
+        # Build a human-readable change summary
+        change_lines = []
+        for key, diff in sorted(changes.items()):
+            old_val = str(diff["old"])[:40] if diff["old"] is not None else "(not set)"
+            new_val = str(diff["new"])[:40] if diff["new"] is not None else "(removed)"
+            change_lines.append(f"  {key}: {old_val}  →  {new_val}")
+
+        summary = "\n".join(change_lines[:20])              # Cap display at 20 lines
+        if len(change_lines) > 20:
+            summary += f"\n  ... and {len(change_lines) - 20} more changes"
+
+        # Confirm with the user
+        reply = QMessageBox.question(
+            self,
+            f"Import '{profile_name}'?",
+            f"This will change {len(changes)} setting(s):\n\n"
+            f"{summary}\n\n"
+            "Apply these changes?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Apply the import
+        try:
+            import_profile(profile_path, mode="replace", dry_run=False)
+
+            # Reload the config into the dialog so the UI reflects new values
+            self._config = self._load_config()
+            self._watch_list.clear()
+            self._ext_list.clear()
+            self._populate_fields()
+
+            QMessageBox.information(
+                self,
+                "Import Successful",
+                f"Profile '{profile_name}' imported successfully.\n"
+                "Settings have been updated.",
+            )
+            logger.info(f"Profile '{profile_name}' imported from {profile_path}")
+            self.settings_changed.emit()
+
+        except Exception as e:
+            logger.error(f"Profile import failed: {e}")
+            QMessageBox.critical(
+                self, "Import Failed", f"Could not apply settings:\n{e}"
+            )
+
+    # =========================================================================
+    # Accept / Reject
+    # =========================================================================
 
     def _on_accept(self):
         """Collect field values, save config, and close the dialog."""

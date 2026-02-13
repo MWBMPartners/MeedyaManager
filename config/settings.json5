@@ -1,12 +1,12 @@
 // ============================================================================
 // File: config/settings.json5
-// (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 //
 // Description:
 // This file defines the user-editable configuration settings for MeedyaManager.
 // It includes folder paths to monitor, allowed extensions, filename rules,
-// and fallback metadata classification defaults if MediaInfo fails or tags
-// are missing.
+// fallback metadata classification defaults, provider configuration, and
+// cover art preferences.
 // ============================================================================
 
 {
@@ -42,5 +42,137 @@
     "<": "",
     ">": "",
     "|": ""
-  }
+  },
+
+  // =========================================================================
+  // Logging Configuration
+  //
+  // Controls how MeedyaManager writes and manages log files.
+  // Log files are stored in the platform-appropriate directory:
+  //   macOS:   ~/Library/Logs/MeedyaManager/
+  //   Windows: %LOCALAPPDATA%/MeedyaManager/logs/
+  //   Linux:   ~/.local/state/MeedyaManager/logs/
+  // =========================================================================
+  logging: {
+    level: "INFO",                   // Minimum log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    max_log_days: 30,                // Days to keep rotated log files before cleanup
+    max_log_size_mb: 10,             // Maximum size per log file before size-based rotation
+    console_level: "WARNING",        // Minimum level for console/terminal output
+    redact_pii: true,                // Redact user paths (/Users/name) in log output
+  },
+
+  // =========================================================================
+  // Metadata Lookup Providers (M5)
+  //
+  // Each provider can be enabled/disabled and configured individually.
+  // API keys stored here are priority 2 (after .env, before OS keyring).
+  // =========================================================================
+  providers: {
+
+    // ── Music Providers ──
+    apple_music: {
+      enabled: true,
+      storefront: "gb",                // Default storefront (ISO 3166-1 alpha-2)
+      // team_id, key_id, private_key — set via .env or OS keyring
+    },
+    spotify: {
+      enabled: true,
+      fetch_audio_features: true,      // Fetch energy, danceability, tempo, etc.
+      // client_id, client_secret — set via .env or OS keyring
+    },
+    musicbrainz: {
+      enabled: true,
+      // No auth required — uses User-Agent header
+    },
+    deezer: {
+      enabled: true,
+      // No auth required for search API
+    },
+    tidal: {
+      enabled: true,
+      quality_indicators: true,        // Fetch HiFi/Atmos/360 RA flags
+      // client_id, client_secret — set via .env or OS keyring
+    },
+    youtube_music: {
+      enabled: true,
+      // headers_auth — path to headers_auth.json, set via .env
+    },
+    amazon_music: {
+      enabled: false,                  // Disabled by default (closed beta API, ToS risk)
+      // auth — set via .env if community library available
+    },
+    pandora: {
+      enabled: false,                  // No public API — stub provider
+    },
+    shazam: {
+      enabled: true,
+      fingerprint_seconds: 15,         // Seconds of audio to fingerprint (5-30)
+      // No auth required
+    },
+    iheart: {
+      enabled: true,
+      // No auth required (undocumented endpoints)
+    },
+
+    // ── Podcast Providers ──
+    apple_podcasts: {
+      enabled: true,
+      // No auth required (iTunes Search API)
+    },
+
+    // ── Video Providers ──
+    apple_tv: {
+      enabled: true,
+      storefront: "gb",
+      // No auth required (iTunes Search API)
+    },
+    itunes_store: {
+      enabled: true,
+      storefront: "gb",
+      // No auth required (iTunes Search API)
+    },
+    tmdb: {
+      enabled: true,
+      language: "en-GB",               // Preferred language for results
+      // api_key — set via .env or OS keyring
+    },
+    tvdb: {
+      enabled: true,
+      // api_key — set via .env or OS keyring
+    },
+    imdb: {
+      enabled: true,
+      // No auth required (uses cinemagoer library — GPL-2.0)
+    },
+
+    // ── Identifier Providers ──
+    isrc: {
+      enabled: true,
+      // Federated — uses MusicBrainz + Spotify/Deezer
+    },
+    eidr: {
+      enabled: false,                  // Disabled by default (paid membership required)
+      // client_id, client_secret — set via .env or OS keyring
+    },
+    iswc: {
+      enabled: true,
+      // Federated — uses MusicBrainz work relations
+    },
+  },
+
+  // =========================================================================
+  // Cover Art Preferences (M5)
+  //
+  // Controls what types of cover art are downloaded and how they are stored.
+  // =========================================================================
+  cover_art: {
+    download_static: true,             // Download static cover art (JPEG/PNG)
+    download_animated_square: true,    // Download animated square art (MP4)
+    download_animated_portrait: true,  // Download animated portrait art (MP4)
+    download_artist_spotlight: true,   // Download artist spotlight video (MP4)
+    embed_in_tags: true,               // Embed static cover art in file tags
+    max_static_resolution: 3000,       // Maximum static cover art resolution (pixels)
+    preferred_format: "jpeg",          // Preferred static format: "jpeg" or "png"
+    overwrite_existing: false,         // Overwrite existing cover art files
+  },
 }

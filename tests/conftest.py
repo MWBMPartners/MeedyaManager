@@ -12,6 +12,22 @@ import tempfile                                    # Temporary directories
 import shutil                                      # File operations
 import pytest                                      # Test framework
 from click.testing import CliRunner                # CLI testing runner
+from utils.log_config import setup_logging, reset_logging  # Centralized logging
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _initialize_logging():
+    """
+    Initialize centralized logging once for the entire test session.
+
+    Uses DEBUG level so all log messages are captured by pytest's caplog.
+    The autouse=True ensures this runs automatically before any test,
+    and scope="session" ensures it only runs once per test session.
+    """
+    reset_logging()                                    # Clear any previous config
+    setup_logging(log_level="DEBUG")
+    yield
+    reset_logging()                                    # Clean up after all tests
 
 
 @pytest.fixture

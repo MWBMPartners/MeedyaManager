@@ -3,8 +3,9 @@
 # (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# Validates that /core/watcher.py logs media detection events correctly
-# and applies redaction where needed. Uses caplog for reliable log capture.
+# Validates that /core/watcher.py logs media detection events correctly.
+# PII redaction is now handled by the centralized PIIRedactionFilter in
+# utils/log_config.py and is tested in tests/test_log_config.py.
 # ============================================================================
 
 import logging
@@ -14,8 +15,8 @@ from unittest.mock import patch
 from core import watcher
 
 
-def test_logging_redaction_and_rotation(caplog, tmp_path):
-    """Verify handle_file logs detection and metadata, and that redact() works."""
+def test_logging_detection_and_metadata(caplog, tmp_path):
+    """Verify handle_file logs file detection and metadata extraction."""
     # Create a dummy media file in a temp directory
     test_media_file = tmp_path / "test_music.mp3"
     test_media_file.write_text("FAKEAUDIO")
@@ -29,8 +30,8 @@ def test_logging_redaction_and_rotation(caplog, tmp_path):
     watcher.simulate_enabled = False
 
     try:
-        # Capture log output from the watcher logger at INFO level
-        with caplog.at_level(logging.INFO, logger="watcher"):
+        # Capture log output from the MeedyaManager.Watcher logger at INFO level
+        with caplog.at_level(logging.INFO, logger="MeedyaManager.Watcher"):
             watcher.handle_file(str(test_media_file))
 
         # Verify file detection was logged
@@ -43,13 +44,6 @@ def test_logging_redaction_and_rotation(caplog, tmp_path):
         watcher.simulate_enabled = original_sim
 
 
-def test_redact_function():
-    """Verify the redact() function replaces user paths with <user>."""
-    # Test macOS-style path redaction
-    assert watcher.redact("/Users/johndoe/Music/song.mp3") == "<user>/Music/song.mp3"
-
-    # Test Windows-style path redaction
-    assert watcher.redact('C:\\Users\\johndoe') == "<user>"
-
-    # Test paths that don't match any pattern (should be unchanged)
-    assert watcher.redact("/var/folders/tmp/file.mp3") == "/var/folders/tmp/file.mp3"
+def test_watcher_uses_meedyamanager_logger():
+    """Verify the watcher module uses the centralized MeedyaManager logger hierarchy."""
+    assert watcher.logger.name == "MeedyaManager.Watcher"

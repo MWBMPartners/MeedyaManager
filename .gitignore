@@ -111,6 +111,17 @@ settings.local.json5
 *.spec
 *.onefile-build/
 *.onedir-build/
+*.build/
+*.dist/
+*.cmd
+*.AppImage
+*.deb
+
+# Nuitka compilation cache
+.cache/Nuitka/
+
+# Icon generation intermediates
+assets/*.iconset/
 
 # PySide6 / Qt
 *.qmlc
