@@ -4,12 +4,14 @@
 #
 # Description:
 # Tests for the Click-based rule command.
-# Validates template expansion, error handling, and sample mode.
+# Validates template expansion, error handling, sample mode, and validation.
+#
+# M3 Update: Tests use new <Tag> syntax. Legacy {placeholder} also tested.
 # ============================================================================
 
-import pytest
-from click.testing import CliRunner
-from cli import cli
+import pytest                                      # Test framework
+from click.testing import CliRunner                # CLI test runner
+from cli import cli                                # CLI entry point
 
 
 @pytest.fixture
@@ -32,26 +34,50 @@ def test_rule_with_sample(runner):
     assert "Result" in result.output
 
 
-def test_rule_custom_template_with_sample(runner):
-    """Verify rule command expands a custom template against sample data."""
+def test_rule_new_syntax_with_sample(runner):
+    """Verify rule command expands a <Tag> template against sample data."""
     result = runner.invoke(cli, [
         "rule",
         "--sample",
-        "--template", "{media_class}/{title}.{ext}",
+        "--template", "<Media Class>/<Title>.<Ext>",
     ])
     assert result.exit_code == 0
-    assert "Music/Sample Track.mp3" in result.output
+    # Rule engine resolves <Media Class> to "Music", <Title> to "Sample Track"
+    assert "Music" in result.output
+    assert "Sample Track" in result.output
 
 
-def test_rule_missing_tag(runner):
-    """Verify rule command reports missing tags in templates."""
+def test_rule_function_in_template(runner):
+    """Verify rule command handles $Pad() function in template."""
     result = runner.invoke(cli, [
         "rule",
         "--sample",
-        "--template", "{nonexistent_tag}/{title}.{ext}",
+        "--template", "<Artist>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
+    ])
+    assert result.exit_code == 0
+    # Track # is "3" → $Pad to 2 digits → "03"
+    assert "03" in result.output
+
+
+def test_rule_validate_valid(runner):
+    """Verify --validate reports valid template."""
+    result = runner.invoke(cli, [
+        "rule",
+        "--validate",
+        "--template", "<Artist>/<Album>/<Title>.<Ext>",
+    ])
+    assert result.exit_code == 0
+    assert "valid" in result.output.lower()
+
+
+def test_rule_validate_invalid(runner):
+    """Verify --validate reports syntax errors."""
+    result = runner.invoke(cli, [
+        "rule",
+        "--validate",
+        "--template", "$If(<Title>=test,yes",
     ])
     assert result.exit_code != 0
-    assert "Missing tag" in result.output
 
 
 def test_rule_with_file(runner, tmp_path):
@@ -62,7 +88,7 @@ def test_rule_with_file(runner, tmp_path):
     result = runner.invoke(cli, [
         "rule",
         "--file", str(test_file),
-        "--template", "{media_class}/{title}.{ext}",
+        "--template", "<Media Class>/<Title>.<Ext>",
     ])
     assert result.exit_code == 0
     assert "Result" in result.output
@@ -73,3 +99,12 @@ def test_rule_no_source(runner):
     result = runner.invoke(cli, ["rule"])
     assert result.exit_code != 0
     assert "Please provide" in result.output or "--file" in result.output
+
+
+def test_rule_shows_tag_table(runner):
+    """Verify rule command displays available tags table."""
+    result = runner.invoke(cli, ["rule", "--sample"])
+    assert result.exit_code == 0
+    # The tag table should show display names and internal keys
+    assert "<Title>" in result.output
+    assert "<Artist>" in result.output

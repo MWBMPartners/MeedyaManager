@@ -10,10 +10,10 @@
 
 | Item | Status |
 |------|--------|
-| **Current Milestone** | M3 — Rule Engine & Companion Files |
-| **Last Completed** | ✅ M2 — CLI & UI Frontend (Feb 2026) |
-| **Overall Progress** | ██░░░░░░░░ **20%** (2 of 10 milestones) |
-| **Latest Version** | `v1.1-M2` |
+| **Current Milestone** | M4 — Metadata Editor |
+| **Last Completed** | ✅ M3 — Rule Engine & Companion Files (Feb 2026) |
+| **Overall Progress** | ███░░░░░░░ **30%** (3 of 10 milestones) |
+| **Latest Version** | `v1.2-M3` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/python-app.yml/badge.svg) |
 
 ---
@@ -71,11 +71,34 @@
 
 ---
 
+### ✅ M3 — Rule Engine & Companion Files *(Complete)*
+
+> 🗓️ Completed: February 2026 | 📦 Release: `v1.2-M3`
+
+**Progress: ██████████ 100%**
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| Tag registry with 40+ tag mappings | ✅ Done | Bidirectional display ↔ internal key mapping |
+| Custom tag support (`<Custom:*>`) | ✅ Done | Unlimited user-defined tags |
+| Recursive descent template parser | ✅ Done | Lexer → Parser (AST) → Evaluator pipeline |
+| 20 template functions | ✅ Done | $If, $And, $Or, $IsNull, $Contains, $IsMatch, $Replace, $RxReplace, $Left, $Right, $Upper, $Lower, $Trim, $Split, $RSplit, $First, $Pad, $Date, $Sort, $Group |
+| Deep nesting support | ✅ Done | 50-level depth guard, `<$Func()>` wrappers |
+| Configurable character replacement | ✅ Done | Per-character mapping via settings.json5 |
+| Companion file detection | ✅ Done | SRT, LRC, CUE, NFO, ISO, cover art |
+| Companion destination computation | ✅ Done | Same-name + directory-level tracking |
+| Legacy `{placeholder}` backward compat | ✅ Done | Auto-detected with deprecation warning |
+| Rule engine integration (renamer + CLI) | ✅ Done | `--validate` flag, tag table display |
+| UI updates (rule builder + settings) | ✅ Done | Syntax highlighting, RuleEngine preview |
+| Preview panel companions column | ✅ Done | Count + tooltip showing companion files |
+| Comprehensive test suite | ✅ Done | 139 new tests (212 total) |
+
+---
+
 ### 🔮 Future Milestones
 
 | # | Milestone | Status | Target |
 |---|-----------|--------|--------|
-| M3 | 🧩 Rule Engine & Companion Files | 🔲 Planned | — |
 | M4 | ✏️ Metadata Editor | 🔲 Planned | — |
 | M5 | 🎵 Music Metadata Lookup | 🔲 Planned | — |
 | M6 | 🎬 TV/Film Metadata Lookup | 🔲 Planned | — |
@@ -90,9 +113,13 @@
 
 | Category | Tests | Status |
 |----------|-------|--------|
+| Rule engine (lexer, parser, evaluator) | 77 | ✅ Passing |
+| Companion tracker | 26 | ✅ Passing |
+| Tag registry | 20 | ✅ Passing |
+| Character replacer | 14 | ✅ Passing |
 | CLI: scan command | 6 | ✅ Passing |
 | CLI: debug command | 5 | ✅ Passing |
-| CLI: rule command | 6 | ✅ Passing |
+| CLI: rule command | 9 | ✅ Passing |
 | CLI: version flag | 1 | ✅ Passing |
 | GUI: smoke tests | 11 | ✅ Passing |
 | GUI: preview model | 12 | ✅ Passing |
@@ -106,7 +133,7 @@
 | Watcher logging & redaction | 2 | ✅ Passing |
 | Simulation log output | 1 | ✅ Passing |
 | Batch rename simulation | 1 | ✅ Passing |
-| **Total** | **73** | ✅ **All Passing** |
+| **Total** | **212** | ✅ **All Passing** |
 
 ---
 
@@ -114,15 +141,15 @@
 
 | Component | Files | Health |
 |-----------|-------|--------|
-| `core/` | 5 | ✅ Stable |
+| `core/` | 8 | ✅ Stable (+rule_engine, tag_registry, companion_tracker) |
 | `cli/` | 7 | ✅ Stable (Click framework) |
-| `cli/commands/` | 5 | ✅ New (scan, debug, watch, rule, gui) |
-| `ui/` | 8 | ✅ New (PySide6 GUI) |
-| `ui/themes/` | 2 | ✅ New (dark.qss, light.qss) |
-| `utils/` | 3 | ✅ Stable |
-| `tests/` | 20 | ✅ 73 tests, all passing |
+| `cli/commands/` | 5 | ✅ Stable (scan, debug, watch, rule, gui) |
+| `ui/` | 8 | ✅ Stable (PySide6 GUI) |
+| `ui/themes/` | 2 | ✅ Stable (dark.qss, light.qss) |
+| `utils/` | 4 | ✅ Stable (+char_replacer) |
+| `tests/` | 24 | ✅ 212 tests, all passing |
 | `config/` | 1 | ✅ Stable |
-| **Total** | **~51** | ✅ **Healthy** |
+| **Total** | **~59** | ✅ **Healthy** |
 
 ---
 
@@ -131,7 +158,7 @@
 | Issue | Priority | Milestone | Notes |
 |-------|----------|-----------|-------|
 | Polling mode not yet implemented | 🟡 Medium | M3 | Placeholder in `watcher.py` |
-| Rename engine uses `{placeholder}` not `<Tag>` syntax | 🟡 Medium | M3 | Migrate to MusicBee-style template syntax |
+| ~~Rename engine uses `{placeholder}` not `<Tag>` syntax~~ | ✅ Resolved | M3 | Migrated to MusicBee-style template syntax |
 | No `mutagen` integration for tag writing | 🔵 Low | M4 | Currently read-only via pymediainfo |
 | Watcher not integrated with GUI toggle | 🟡 Medium | M3 | GUI button state tracked, needs core watcher connection |
 | Rule builder text-only (no visual $If/$And/$Or) | 🔵 Low | M3 | Visual condition builder planned for M3 |
@@ -154,6 +181,7 @@
 
 | Date | Activity |
 |------|----------|
+| 2026-02-13 | **M3 Complete** — Rule engine (20 functions), companion tracker, 212 tests |
 | 2026-02-13 | **M2 Complete** — Click CLI, PySide6 GUI, 73 tests passing |
 | 2026-02-13 | GUI: Main window, preview panel, settings, rule builder, system tray |
 | 2026-02-13 | Platform styling: macOS Liquid Glass, Windows Mica, Linux Fusion |
@@ -165,4 +193,4 @@
 
 > 📝 *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-02-13*
+> *Last updated: 2026-02-14*

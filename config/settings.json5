@@ -19,8 +19,9 @@
   // Supported extensions for processing (auto-lowercased)
   valid_extensions: ["mp3", "flac", "m4a", "mp4", "mkv", "avi", "wav", "pdf", "jpg", "jpeg", "png", "ogg", "ac3", "alac"],
 
-  // Simulated renaming format (can use placeholders)
-  rename_format: "{media_class}/{artist}/{album}/{track_num} - {title}.{extension}",
+  // Rename template using MusicBee-style syntax (see help/rule-syntax.md)
+  // Tags: <Tag Name>, Functions: $FuncName(), e.g. $Pad(<Track #>,2)
+  rename_format: "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
 
   // Default fallback values for metadata classification if unavailable
   fallback_metadata: {

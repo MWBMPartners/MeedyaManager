@@ -17,6 +17,8 @@
 import os                                                   # File path operations
 import json5                                                # JSON5 config file parsing
 import logging                                              # Structured logging
+from core.rule_engine import RuleEngine, TemplateSyntaxError  # Template evaluation
+from core.tag_registry import get_display_tags               # Available tag names
 
 from PySide6.QtCore import Qt, Signal                       # Core constants and signals
 from PySide6.QtWidgets import (
@@ -250,15 +252,19 @@ class SettingsDialog(QDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
+        # Help text showing the new <Tag> and $Function() syntax
         layout.addWidget(QLabel(
-            "Rename template using {placeholder} tokens.\n"
-            "Available: {media_class}, {artist}, {album}, {track_num}, "
-            "{title}, {extension}, {format_class}, {quality_type}, {media_group}"
+            "Rename template using <Tag> references and $Function() calls.\n"
+            "Examples: <Artist>, <Album>, <Title>, <Ext>, <Media Class>,\n"
+            "<$Pad(<Track #>,2)>, $If(<Genre>=Rock,Rock,Other)\n"
+            "Use the Rule Builder tab for interactive template editing."
         ))
 
         # Template text editor
         self._template_input = QLineEdit()
-        self._template_input.setPlaceholderText("{media_class}/{artist}/{album}/{track_num} - {title}.{extension}")
+        self._template_input.setPlaceholderText(
+            "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>"
+        )
         self._template_input.textChanged.connect(self._update_template_preview)
         layout.addWidget(QLabel("Template:"))
         layout.addWidget(self._template_input)
@@ -271,32 +277,46 @@ class SettingsDialog(QDialog):
 
         layout.addStretch()
 
+        # Rule engine instance for live preview evaluation
+        self._preview_engine = RuleEngine()
+
         return tab
 
     def _update_template_preview(self, template_text):
         """
         Update the live preview with sample data expanded into the template.
+        Uses the RuleEngine to evaluate <Tag> and $Function() syntax.
 
         Args:
             template_text (str): Current template string from the editor
         """
-        # Sample metadata for preview display
+        # Sample metadata for preview display (internal snake_case keys)
         sample = {
             "media_class": "Music",
             "artist": "Test Artist",
             "album": "Test Album",
-            "track_num": "01",
+            "album_artist": "Test Artist",
+            "track_num": "3",
+            "disc_num": "1",
             "title": "Sample Track",
+            "year": "2024",
+            "genre": "Rock",
             "extension": "mp3",
+            "ext": "mp3",
+            "filename": "sample_track",
             "format_class": "mp3",
             "quality_type": "Lossy",
             "media_group": "Audio",
+            "codec": "MP3",
+            "bitrate": "320",
+            "sample_rate": "44100",
+            "audio_channels": "2",
         }
         try:
-            preview = template_text.format(**sample)
+            preview = self._preview_engine.evaluate(template_text, sample)
             self._template_preview.setText(f"Result: {preview}")
-        except KeyError as e:
-            self._template_preview.setText(f"Missing tag: {e}")
+        except TemplateSyntaxError as e:
+            self._template_preview.setText(f"Syntax error: {e}")
         except Exception as e:
             self._template_preview.setText(f"Error: {e}")
 
@@ -401,9 +421,12 @@ class SettingsDialog(QDialog):
         for ext in self._config.get("valid_extensions", []):
             self._ext_list.addItem(ext)
 
-        # Rename Template tab
+        # Rename Template tab (default uses new <Tag> syntax)
         self._template_input.setText(
-            self._config.get("rename_format", "{media_class}/{title}.{extension}")
+            self._config.get(
+                "rename_format",
+                "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>"
+            )
         )
 
         # Fallback Metadata tab

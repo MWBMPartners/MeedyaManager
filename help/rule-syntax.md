@@ -4,7 +4,7 @@
 
 MeedyaManager's rule engine uses a template syntax inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates), extended with unlimited custom tags, video support, and audio characteristic detection.
 
-> **Note:** The full template syntax (described below) is planned for **Milestone 3**. M1 uses a simpler `{placeholder}` syntax. This document describes the target syntax.
+> **Implemented in Milestone 3 (v1.2-M3).** The full template syntax described below is fully functional. Legacy `{placeholder}` syntax from M1/M2 is still supported but deprecated — templates are auto-detected.
 
 ---
 
@@ -398,4 +398,4 @@ $If(<Media Class>=Music,
 
 ---
 
-> 📝 *This syntax guide will be expanded as the rule engine matures in M2 and M3.*
+> 📝 *This syntax is fully implemented as of M3 (v1.2-M3). Use `meedyamanager rule --validate --template "..."` to check template syntax from the command line.*

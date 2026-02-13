@@ -76,14 +76,14 @@ def sample_results():
 
 
 def test_empty_model(model):
-    """Verify a new model has zero rows and 5 columns."""
+    """Verify a new model has zero rows and 6 columns."""
     assert model.rowCount() == 0
-    assert model.columnCount() == 5
+    assert model.columnCount() == 6
 
 
 def test_column_headers(model):
-    """Verify all 5 column headers are correctly defined."""
-    expected = ["Original", "Proposed Path", "Type", "Format", "Quality"]
+    """Verify all 6 column headers are correctly defined."""
+    expected = ["Original", "Proposed Path", "Type", "Format", "Quality", "Companions"]
     for i, header in enumerate(expected):
         result = model.headerData(i, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
         assert result == header, f"Column {i}: expected '{header}', got '{result}'"

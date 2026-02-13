@@ -69,28 +69,29 @@ Additional relationships:
 - ✅ Drag-and-drop file import
 - ✅ System tray icon with context menu
 - ✅ 73 tests (CLI + GUI + core), all passing
-- 🔲 Per-rule dry-run and file override support (deferred to M3)
-- 🔲 MusicBee-inspired template syntax parser (deferred to M3)
-- 🔲 Visual rule builder with AND/OR/nested conditions (deferred to M3)
+- ✅ MusicBee-inspired template syntax parser (completed in M3)
+- 🔲 Per-rule dry-run and file override support (deferred to M4+)
+- 🔲 Visual rule builder with AND/OR/nested conditions (deferred to M4+)
 
 ---
 
-### 🧩 M3 — Rule Engine & Companion Files
+### ✅ M3 — Rule Engine & Companion Files *(Completed February 2026)*
 
 **Release:** `v1.2-M3`
 
-- 🔲 Full MusicBee-style template syntax: `<Tag>`, `$If()`, `$And()`, `$Or()`
-- 🔲 String functions: `$Replace()`, `$RxReplace()`, `$Left()`, `$Right()`, `$Upper()`, `$Lower()`, `$Trim()`
-- 🔲 Logic functions: `$Contains()`, `$IsMatch()`, `$IsNull()`
-- 🔲 Splitting: `$Split()`, `$RSplit()`, `$RxSplit()`
-- 🔲 Formatting: `$Pad()`, `$Date()`, `$Sort()`, `$Group()`
-- 🔲 `$First()` for multi-value field extraction
-- 🔲 Unlimited custom tag support (`<Custom:AnyName>`)
-- 🔲 Companion file detection (SRT, LRC, cover art, ISO, CUE)
-- 🔲 Companion file group movement (move all when media moves)
-- 🔲 Advanced filename character replacement (configurable per-rule)
-- 🔲 Extension filtering and fallback patterns
-- 🔲 Deeply nested condition support
+- ✅ Full MusicBee-style template syntax: `<Tag>`, `$If()`, `$And()`, `$Or()`
+- ✅ String functions: `$Replace()`, `$RxReplace()`, `$Left()`, `$Right()`, `$Upper()`, `$Lower()`, `$Trim()`
+- ✅ Logic functions: `$Contains()`, `$IsMatch()`, `$IsNull()`
+- ✅ Splitting: `$Split()`, `$RSplit()`, `$First()`
+- ✅ Formatting: `$Pad()`, `$Date()`, `$Sort()`, `$Group()`
+- ✅ `$First()` for multi-value field extraction
+- ✅ Unlimited custom tag support (`<Custom:AnyName>`)
+- ✅ Companion file detection (SRT, LRC, cover art, ISO, CUE, NFO)
+- ✅ Companion file destination computation (same-name + directory-level)
+- ✅ Advanced filename character replacement (configurable via settings.json5)
+- ✅ Deeply nested condition support (50-level depth guard)
+- ✅ Legacy `{placeholder}` backward compatibility with auto-detection
+- ✅ 212 tests (139 new), all passing
 
 ---
 
@@ -247,4 +248,4 @@ Purpose: Create searchable intranet/web-hosted media library index.
 
 > 📝 *This roadmap is maintained alongside the codebase. For current status, see [PROJECT_STATUS.md](../PROJECT_STATUS.md).*
 >
-> *Last updated: 2026-02-13*
+> *Last updated: 2026-02-14*

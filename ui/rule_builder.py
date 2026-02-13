@@ -5,16 +5,16 @@
 # Description:
 # Rule builder widget for the MeedyaManager GUI.
 # Provides a text-based template editor with:
-#   - Syntax highlighting for {placeholder} tokens
-#   - Tag dropdown for quick insertion of available metadata keys
+#   - Syntax highlighting for <Tag> references and $Function() calls
+#   - Tag dropdown for quick insertion of available metadata tags
 #   - Test button to preview template expansion with sample data
 #   - Live result display showing the expanded rename path
+#   - Template validation with error reporting
 #
-# Note: Full visual builder with $If/$And/$Or condition support
-# is planned for M3 (Conditional Rules milestone).
+# Uses MusicBee-style template syntax (M3): <Tag Name>, $Function()
+# Legacy {placeholder} syntax is highlighted with a deprecation warning.
 # ============================================================================
 
-import re                                                   # Regex for token highlighting
 import logging                                              # Structured logging
 
 from PySide6.QtCore import Qt, QRegularExpression           # Core constants, regex
@@ -35,19 +35,28 @@ from PySide6.QtWidgets import (
     QGroupBox,                                              # Framed group container
 )
 
+from core.tag_registry import get_display_tags, is_valid_tag  # Tag name registry
+from core.rule_engine import (
+    RuleEngine,                                             # Template evaluator
+    TemplateSyntaxError,                                    # Syntax error type
+    TemplateEvalError,                                      # Evaluation error type
+)
+
 logger = logging.getLogger("MeedyaManager.RuleBuilder")
 
-# Available metadata tag names for template insertion
-AVAILABLE_TAGS = [
-    "media_class", "media_group", "format_class", "quality_type",
-    "artist", "album", "track_num", "title", "extension",
-    "duration", "audio_channels", "is_lossless", "description",
-    "filepath",
+# List of available template functions for reference display
+AVAILABLE_FUNCTIONS = [
+    "$If()", "$And()", "$Or()", "$IsNull()", "$Contains()", "$IsMatch()",
+    "$Replace()", "$RxReplace()", "$Left()", "$Right()", "$Upper()", "$Lower()",
+    "$Trim()", "$Split()", "$RSplit()", "$First()", "$Pad()", "$Date()",
+    "$Sort()", "$Group()",
 ]
 
-# Sample metadata for template testing — matches the CLI rule command's sample data
+# Sample metadata for template testing — uses internal snake_case keys
+# (the rule engine handles <Tag Name> → internal key resolution)
 SAMPLE_METADATA = {
     "filepath": "/example/media/sample_track.mp3",
+    "filename": "sample_track",
     "extension": "mp3",
     "format": "mp3",
     "duration": "245",
@@ -61,33 +70,60 @@ SAMPLE_METADATA = {
     "quality_type": "Lossy",
     "artist": "Test Artist",
     "album": "Test Album",
-    "track_num": "01",
+    "album_artist": "Test Artist",
+    "year": "2025",
+    "genre": "Rock; Alternative",
+    "track_num": "3",
+    "track_number": "3",
+    "disc_num": "1",
+    "total_tracks": "12",
+    "codec": "MP3",
+    "bitrate": "320",
+    "sample_rate": "44100",
+    "bit_depth": "16",
+    "date_added": "2025-06-15",
 }
+
+# Shared rule engine instance for template testing
+_engine = RuleEngine()
 
 
 class TemplateHighlighter(QSyntaxHighlighter):
     """
-    Syntax highlighter for rename template text.
-    Highlights {placeholder} tokens in a distinct colour to make them
-    visually distinguishable from literal path text.
+    Syntax highlighter for MusicBee-style rename templates.
+    Highlights three pattern types:
+      - <TagName> references: cyan/blue for valid, red for unknown
+      - $FunctionName( calls: green, bold
+      - {placeholder} (legacy): yellow with deprecation indication
     """
 
     def __init__(self, parent=None):
-        """Initialize with highlighting rules for placeholder tokens."""
+        """Initialize with highlighting rules for all token types."""
         super().__init__(parent)
 
-        # Format for valid {placeholder} tokens — blue/cyan, bold
+        # Format for valid <Tag> references — cyan, bold
         self._tag_format = QTextCharFormat()
         self._tag_format.setForeground(QColor("#4fc3f7"))
         self._tag_format.setFontWeight(QFont.Weight.Bold)
 
-        # Format for unrecognised {tokens} — orange/red warning colour
+        # Format for unrecognised <Tags> — red warning colour
         self._unknown_tag_format = QTextCharFormat()
         self._unknown_tag_format.setForeground(QColor("#ef5350"))
         self._unknown_tag_format.setFontWeight(QFont.Weight.Bold)
 
-        # Regex pattern to match any {word} token in the template
-        self._pattern = QRegularExpression(r"\{(\w+)\}")
+        # Format for $Function( calls — green, bold
+        self._func_format = QTextCharFormat()
+        self._func_format.setForeground(QColor("#66bb6a"))
+        self._func_format.setFontWeight(QFont.Weight.Bold)
+
+        # Format for legacy {placeholder} tokens — yellow (deprecated)
+        self._legacy_format = QTextCharFormat()
+        self._legacy_format.setForeground(QColor("#ffa726"))
+
+        # Regex patterns for the three token types
+        self._tag_pattern = QRegularExpression(r"<([^>]+)>")      # <TagName>
+        self._func_pattern = QRegularExpression(r"\$([A-Za-z]+)\(")  # $FuncName(
+        self._legacy_pattern = QRegularExpression(r"\{(\w+)\}")   # {placeholder}
 
     def highlightBlock(self, text):
         """
@@ -97,28 +133,45 @@ class TemplateHighlighter(QSyntaxHighlighter):
         Args:
             text (str): The line of text to highlight
         """
-        # Find all {token} matches in the text
-        match_iterator = self._pattern.globalMatch(text)
+        # Highlight <Tag> references
+        match_iterator = self._tag_pattern.globalMatch(text)
         while match_iterator.hasNext():
             match = match_iterator.next()
             start = match.capturedStart()
             length = match.capturedLength()
-            tag_name = match.captured(1)                     # The word inside {}
+            tag_name = match.captured(1).strip()   # Text between < and >
 
-            # Use valid format for known tags, warning format for unknown tags
-            if tag_name in AVAILABLE_TAGS:
+            # Use valid format for known/custom tags, warning format otherwise
+            if is_valid_tag(tag_name):
                 self.setFormat(start, length, self._tag_format)
             else:
                 self.setFormat(start, length, self._unknown_tag_format)
+
+        # Highlight $Function( calls — green
+        match_iterator = self._func_pattern.globalMatch(text)
+        while match_iterator.hasNext():
+            match = match_iterator.next()
+            start = match.capturedStart()
+            length = match.capturedLength()
+            self.setFormat(start, length, self._func_format)
+
+        # Highlight legacy {placeholder} tokens — yellow (deprecated)
+        match_iterator = self._legacy_pattern.globalMatch(text)
+        while match_iterator.hasNext():
+            match = match_iterator.next()
+            start = match.capturedStart()
+            length = match.capturedLength()
+            self.setFormat(start, length, self._legacy_format)
 
 
 class RuleBuilder(QWidget):
     """
     Rule builder panel containing:
-    - Template text editor with syntax highlighting
-    - Tag dropdown for quick tag insertion
-    - Test button to expand template with sample data
+    - Template text editor with MusicBee-style syntax highlighting
+    - Tag dropdown for quick <Tag Name> insertion
+    - Test button to expand template with sample data via the rule engine
     - Result display showing the expanded path
+    - Available tags and functions reference
 
     This provides a visual way to build and test rename templates
     before applying them in the configuration.
@@ -139,13 +192,16 @@ class RuleBuilder(QWidget):
         editor_layout = QVBoxLayout(editor_group)
 
         editor_layout.addWidget(QLabel(
-            "Enter your rename template below. Use {tag} syntax for metadata placeholders.\n"
-            "Tags shown in blue are valid; tags shown in red are unrecognised."
+            "Enter your rename template below using <Tag Name> syntax.\n"
+            "Tags shown in cyan are valid; unknown tags are shown in red.\n"
+            "Functions like $If(), $Pad() are shown in green."
         ))
 
         # Multi-line template editor with syntax highlighting
         self._editor = QPlainTextEdit()
-        self._editor.setPlaceholderText("{media_class}/{artist}/{album}/{track_num} - {title}.{extension}")
+        self._editor.setPlaceholderText(
+            "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>"
+        )
         self._editor.setMaximumHeight(100)
 
         # Attach the syntax highlighter to the editor's document
@@ -158,8 +214,9 @@ class RuleBuilder(QWidget):
 
         tag_layout.addWidget(QLabel("Insert tag:"))
 
+        # Populate dropdown from the tag registry
         self._tag_combo = QComboBox()
-        self._tag_combo.addItems(AVAILABLE_TAGS)
+        self._tag_combo.addItems(get_display_tags())
         tag_layout.addWidget(self._tag_combo)
 
         insert_btn = QPushButton("Insert")
@@ -190,30 +247,38 @@ class RuleBuilder(QWidget):
 
         layout.addWidget(result_group)
 
-        # --- Available Tags Reference ---
-        tags_group = QGroupBox("Available Tags")
-        tags_layout = QVBoxLayout(tags_group)
+        # --- Available Tags & Functions Reference ---
+        ref_group = QGroupBox("Available Tags & Functions")
+        ref_layout = QVBoxLayout(ref_group)
 
-        tags_text = ", ".join(f"{{{tag}}}" for tag in AVAILABLE_TAGS)
-        tags_label = QLabel(tags_text)
+        # Display tags from registry
+        tags_text = ", ".join(f"<{tag}>" for tag in get_display_tags())
+        tags_label = QLabel(f"Tags: {tags_text}")
         tags_label.setWordWrap(True)
-        tags_layout.addWidget(tags_label)
+        ref_layout.addWidget(tags_label)
 
-        layout.addWidget(tags_group)
+        # Display available functions
+        funcs_text = ", ".join(AVAILABLE_FUNCTIONS)
+        funcs_label = QLabel(f"Functions: {funcs_text}")
+        funcs_label.setWordWrap(True)
+        ref_layout.addWidget(funcs_label)
+
+        layout.addWidget(ref_group)
 
         layout.addStretch()
 
     def _insert_tag(self):
-        """Insert the selected tag at the current cursor position in the editor."""
+        """Insert the selected tag at the current cursor position using <Tag> syntax."""
         tag = self._tag_combo.currentText()
         if tag:
-            self._editor.insertPlainText(f"{{{tag}}}")
+            # Insert as <Tag Name> (MusicBee-style syntax)
+            self._editor.insertPlainText(f"<{tag}>")
             self._editor.setFocus()
 
     def _test_template(self):
         """
-        Expand the current template using sample metadata and display the result.
-        Reports any missing or invalid tags with a clear error message.
+        Expand the current template using sample metadata via the rule engine.
+        Reports any syntax or evaluation errors with clear error messages.
         """
         template = self._editor.toPlainText().strip()
         if not template:
@@ -221,12 +286,13 @@ class RuleBuilder(QWidget):
             return
 
         try:
-            result = template.format(**SAMPLE_METADATA)
+            # Evaluate using the M3 rule engine
+            result = _engine.evaluate(template, SAMPLE_METADATA)
             self._result_label.setText(f"Result: {result}")
-        except KeyError as e:
-            self._result_label.setText(
-                f"Missing tag: {e}\n\nAvailable tags: {', '.join(AVAILABLE_TAGS)}"
-            )
+        except TemplateSyntaxError as e:
+            self._result_label.setText(f"Syntax error: {e}")
+        except TemplateEvalError as e:
+            self._result_label.setText(f"Evaluation error: {e}")
         except Exception as e:
             self._result_label.setText(f"Error: {e}")
 

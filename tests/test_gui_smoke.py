@@ -85,7 +85,7 @@ def test_rule_builder_get_set_template(qapp):
     """Verify RuleBuilder can get and set template text."""
     from ui.rule_builder import RuleBuilder
     builder = RuleBuilder()
-    test_template = "{media_class}/{artist}/{title}.{extension}"
+    test_template = "<Media Class>/<Artist>/<Title>.<Ext>"
     builder.set_template(test_template)
     assert builder.get_template() == test_template
 

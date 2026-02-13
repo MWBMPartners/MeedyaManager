@@ -16,6 +16,10 @@ from PySide6.QtCore import QThread, Signal             # Thread and signal infra
 from core.metadata_extractor import extract_metadata   # Core metadata extraction pipeline
 from core.renamer import simulate_rename               # Dry-run rename path computation
 from utils.config_loader import get_config             # Config access for extensions
+from core.companion_tracker import (
+    find_companions,                                   # Companion file detection
+    get_companion_summary,                             # Human-readable companion summary
+)
 
 logger = logging.getLogger("MeedyaManager.Workers")
 
@@ -118,12 +122,17 @@ class ScanWorker(QThread):
                     except Exception as rename_err:
                         logger.debug(f"Rename simulation failed for {filepath}: {rename_err}")
 
+                    # Detect companion files (subtitles, lyrics, cover art, etc.)
+                    companions = find_companions(filepath)
+
                     # Build the result entry for this file
                     result_entry = {
                         "filepath": filepath,
                         "filename": os.path.basename(filepath),
                         "proposed_path": proposed_path,
                         "metadata": metadata,
+                        "companions": companions,
+                        "companion_summary": get_companion_summary(companions),
                     }
 
                     results.append(result_entry)

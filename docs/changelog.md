@@ -8,6 +8,66 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.2-M3] — 2026-02-14 — Rule Engine & Companion Files
+
+> 🏷️ **Milestone 3** — Full MusicBee-inspired template engine with recursive descent parser, 20 template functions, companion file tracking, and configurable character replacement.
+
+### 🚀 Added
+
+- **Tag Registry** (`core/tag_registry.py`)
+  - Bidirectional mapping of 40+ display tag names ↔ internal snake_case keys
+  - Unlimited custom tag support via `<Custom:AnyName>` prefix
+  - Functions: `resolve_tag()`, `get_internal_key()`, `get_display_name()`, `get_display_tags()`, `is_valid_tag()`
+
+- **Rule Engine** (`core/rule_engine.py`)
+  - Three-stage pipeline: Lexer (tokenizer) → Parser (AST) → Evaluator
+  - Context-sensitive lexer disambiguates `<`/`>` as tag delimiters vs comparison operators
+  - Support for `<$Func()>` angle bracket wrappers (MusicBee convention)
+  - 50-level nesting depth guard
+  - Template validation without evaluation (`validate()`)
+  - 20 template functions:
+    - Conditional: `$If`, `$And`, `$Or`
+    - Logic: `$IsNull`, `$Contains`, `$IsMatch`
+    - String: `$Replace`, `$RxReplace`, `$Left`, `$Right`, `$Upper`, `$Lower`, `$Trim`
+    - Splitting: `$Split`, `$RSplit`, `$First`
+    - Formatting: `$Pad`, `$Date`, `$Sort`, `$Group`
+
+- **Character Replacer** (`utils/char_replacer.py`)
+  - Two-stage sanitization: user-configured per-character replacements, then regex fallback
+  - Activates the `filename_replacements` config key from settings.json5
+  - Functions: `sanitize_component()`, `sanitize_path()`
+
+- **Companion File Tracker** (`core/companion_tracker.py`)
+  - Same-name companion detection: subtitles (.srt, .sub, .ass, .ssa, .vtt, .idx), lyrics (.lrc), cue sheets (.cue), metadata (.nfo), disc images (.iso, .img, .bin)
+  - Directory-level companion detection: cover art (cover.jpg, folder.jpg, artwork.jpg, front.jpg, album.jpg + PNG/BMP variants)
+  - Destination computation: same-name companions follow media file's new name, cover art follows directory
+  - Human-readable companion summary for UI tooltips
+
+- **CLI `--validate` flag** (`cli/commands/rule.py`)
+  - Syntax-only template checking without evaluation
+  - Available tags table display from tag registry
+
+- **Preview Panel companions column** (`ui/preview_panel.py`)
+  - "Companions" column showing count per file
+  - Tooltip with companion filenames on hover
+
+### 🔧 Changed
+
+- **Renamer** (`core/renamer.py`) — Integrated rule engine with auto-detection of template syntax; legacy `{placeholder}` syntax still works with deprecation warning
+- **Rule Builder** (`ui/rule_builder.py`) — Syntax highlighter now supports `<Tag>` (cyan), `$Function(` (green), and legacy `{placeholder}` (yellow); tag dropdown populated from registry; test button uses RuleEngine
+- **Settings Dialog** (`ui/settings_dialog.py`) — Rename template tab updated with `<Tag>` syntax help text and RuleEngine-powered live preview
+- **Scan Worker** (`ui/workers.py`) — Companion file detection integrated into scan results
+- **Watcher** (`core/watcher.py`) — Logs companion files found during file processing
+- **Default template** (`config/settings.json5`) — Updated to `<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>`
+
+### 🧪 Testing
+
+- **212 tests** all passing (up from 73 in M2)
+- New test files: `test_rule_engine.py` (77), `test_companion_tracker.py` (26), `test_tag_registry.py` (20), `test_char_replacer.py` (14)
+- Updated: `test_cli_rule.py` (9 tests with new syntax), `test_gui_smoke.py`, `test_gui_preview_model.py`
+
+---
+
 ## [v1.1-M2] — 2026-02-13 — CLI & UI Frontend
 
 > 🏷️ **Milestone 2** — Click-based CLI framework and PySide6 cross-platform GUI.
@@ -192,7 +252,7 @@ Format: `## [Version] — YYYY-MM-DD`
 |---------|-----------|-------------|
 | `v1.0-M1` | ✅ Core Engine | Watcher, metadata, classification, dry-run rename |
 | `v1.1-M2` | ✅ CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
-| `v1.2-M3` | 🔲 Rule Engine | Full template syntax, companion file tracking |
+| `v1.2-M3` | ✅ Rule Engine | Full template syntax, companion file tracking |
 | `v1.3-M4` | 🔲 Metadata Editor | Tag editing, multi-value support |
 | `v1.4-M5` | 🔲 Music Lookup | MusicBrainz, Spotify, Apple Music, Shazam |
 | `v1.5-M6` | 🔲 TV/Film Lookup | TMDb, TheTVDB, IMDb, EIDR |

@@ -51,9 +51,10 @@ class RenamePreviewModel(QAbstractTableModel):
     COL_TYPE = 2
     COL_FORMAT = 3
     COL_QUALITY = 4
+    COL_COMPANIONS = 5
 
     # Column headers displayed in the table
-    HEADERS = ["Original", "Proposed Path", "Type", "Format", "Quality"]
+    HEADERS = ["Original", "Proposed Path", "Type", "Format", "Quality", "Companions"]
 
     def __init__(self, parent=None):
         """Initialize the model with an empty results list."""
@@ -98,9 +99,20 @@ class RenamePreviewModel(QAbstractTableModel):
                 return metadata.get("format_class", "Unknown")
             elif col == self.COL_QUALITY:
                 return metadata.get("quality_type", "Unknown")
+            elif col == self.COL_COMPANIONS:
+                return result.get("companion_summary", "None")
 
         elif role == Qt.ItemDataRole.ToolTipRole:
-            # Show full file path on hover
+            col = index.column()
+            if col == self.COL_COMPANIONS:
+                # Show companion file names as tooltip
+                companions = result.get("companions", [])
+                if companions:
+                    return "\n".join(
+                        os.path.basename(c.path) for c in companions
+                    )
+                return "No companion files"
+            # Default: show full file path on hover
             return result.get("filepath", "")
 
         return None
@@ -223,6 +235,7 @@ class PreviewPanel(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Type
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Format
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Quality
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Companions
 
         layout.addWidget(self._table_view)
 

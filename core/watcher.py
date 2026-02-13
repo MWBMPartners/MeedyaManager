@@ -21,6 +21,10 @@ import re                   # Regex patterns for PII redaction
 from utils.config_loader import get_config          # Safe config access with defaults
 from core.metadata_extractor import extract_metadata # Metadata + classification pipeline
 from core.renamer import simulate_rename             # Dry-run rename path computation
+from core.companion_tracker import (
+    find_companions,                                # Companion file detection
+    get_companion_summary,                          # Human-readable companion summary
+)
 
 # Optional watchdog import with graceful fallback to polling mode
 try:
@@ -89,6 +93,14 @@ def handle_file(filepath):
     except Exception as e:
         logger.error(f"❌ Failed to extract metadata from {redact(filepath)}: {e}")
         return
+
+    # Detect companion files (subtitles, lyrics, cover art, etc.)
+    companions = find_companions(filepath)
+    if companions:
+        logger.info(
+            f"📎 Companions for {redact(os.path.basename(filepath))}: "
+            f"{get_companion_summary(companions)}"
+        )
 
     # Run dry-run rename simulation if enabled
     if simulate_enabled:
