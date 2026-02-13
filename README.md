@@ -1,7 +1,7 @@
-# MediaMancer
+# MeedyaManager
 
 <p align="center">
-  <img src="branding/mediamancer-logo-animated.svg" alt="MediaMancer Logo" width="480" height="160" />
+  <img src="branding/meedyamanager-logo-animated.svg" alt="MeedyaManager Logo" width="480" height="160" />
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/MWBMPartners/MediaMancer/actions/workflows/python-app.yml/badge.svg" alt="CI Tests" />
+  <img src="https://github.com/MWBMPartners/MeedyaManager/actions/workflows/python-app.yml/badge.svg" alt="CI Tests" />
   <img src="https://img.shields.io/badge/python-3.14+-blue.svg" alt="Python 3.14+" />
   <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-green.svg" alt="Platforms" />
   <img src="https://img.shields.io/badge/license-GPL--2.0+-orange.svg" alt="License" />
@@ -23,9 +23,9 @@
 
 ---
 
-## 🌟 What is MediaMancer?
+## 🌟 What is MeedyaManager?
 
-**MediaMancer** is a cross-platform media file management application that **automatically monitors folders**, reads metadata from audio and video files, and **renames/organizes them** according to user-defined rules.
+**MeedyaManager** is a cross-platform media file management application that **automatically monitors folders**, reads metadata from audio and video files, and **renames/organizes them** according to user-defined rules.
 
 Think of it as **MusicBee's auto-organize feature** — but available everywhere, supporting both audio and video, and running silently in the background.
 
@@ -50,9 +50,9 @@ Think of it as **MusicBee's auto-organize feature** — but available everywhere
 
 ### For End Users (Release Packages)
 
-> ⚡ **No Python installation required!** MediaMancer ships as a standalone native executable with its own bundled, sandboxed Python 3.14 runtime (compiled via Nuitka). It will **never** interfere with any other Python on your system.
+> ⚡ **No Python installation required!** MeedyaManager ships as a standalone native executable with its own bundled, sandboxed Python 3.14 runtime (compiled via Nuitka). It will **never** interfere with any other Python on your system.
 
-1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MediaMancer/releases)
+1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MeedyaManager/releases)
 2. Install/extract and run — that's it!
 
 ### For Developers (From Source)
@@ -69,8 +69,8 @@ Think of it as **MusicBee's auto-organize feature** — but available everywhere
 
 ```bash
 # Clone the repository
-git clone https://github.com/MWBMPartners/MediaMancer.git
-cd MediaMancer
+git clone https://github.com/MWBMPartners/MeedyaManager.git
+cd MeedyaManager
 
 # Create a virtual environment (recommended)
 python -m venv venv
@@ -124,7 +124,7 @@ Edit `config/settings.json5` to set your preferences:
 
 ## 🧠 Metadata Classification
 
-MediaMancer classifies all media into a 4-level hierarchy:
+MeedyaManager classifies all media into a 4-level hierarchy:
 
 | Level | Field | Examples |
 |-------|-------|---------|
@@ -139,7 +139,7 @@ This powers intelligent file routing, rule matching, and future UI grouping.
 
 ## 📐 Rule Engine (Coming in M2/M3)
 
-MediaMancer's rule engine is inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates) with extensions for unlimited custom tags and video support.
+MeedyaManager's rule engine is inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates) with extensions for unlimited custom tags and video support.
 
 **Example rules:**
 ```
@@ -216,7 +216,7 @@ See [help/configuration.md](help/configuration.md) for all available settings.
 After downloading a release archive:
 
 ```bash
-python utils/verify_checksum.py dist/MediaMancer-macos-arm64.tar.gz dist/MediaMancer-macos-arm64.tar.gz.sha256
+python utils/verify_checksum.py dist/MeedyaManager-macos-arm64.tar.gz dist/MeedyaManager-macos-arm64.tar.gz.sha256
 ```
 
 ---

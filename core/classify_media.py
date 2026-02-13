@@ -40,7 +40,7 @@ def classify_media(metadata: dict) -> dict:
     # === 1. Media Group ===
     if format_tag in ["flac", "mp3", "aac", "m4a", "wav", "ac3", "alac", "ogg"]:
         media_group = "Audio"
-    elif format_tag in ["mp4", "mkv", "avi", "webm", "mov", "m4v"]:
+    elif format_tag in ["mp4", "mkv", "matroska", "avi", "webm", "mov", "m4v"]:
         media_group = "Video"
     elif extension in ["jpg", "jpeg", "png", "gif", "webp"]:
         media_group = "Image"
@@ -64,10 +64,10 @@ def classify_media(metadata: dict) -> dict:
     elif media_group == "Video":
         if duration < 180:  # < 3 mins
             media_class = "Music Video"
-        elif "tv" in title or "episode" in title:
-            media_class = "TV Show"
         elif "movie" in title or "film" in title:
             media_class = "Movie"
+        elif "tv" in title or "episode" in title:
+            media_class = "TV Show"
         else:
             media_class = "Video"
     elif media_group == "Image":

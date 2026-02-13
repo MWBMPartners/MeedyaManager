@@ -1,14 +1,14 @@
-# 📍 ROADMAP — MediaMancer
+# 📍 ROADMAP — MeedyaManager
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
-This file outlines all milestone objectives and sequencing for MediaMancer — a smart, cross-platform media manager focused on intelligent metadata-driven file organization.
+This file outlines all milestone objectives and sequencing for MeedyaManager — a smart, cross-platform media manager focused on intelligent metadata-driven file organization.
 
 ---
 
 ## 🧠 Metadata Hierarchy
 
-MediaMancer classifies all media according to a strict, extensible hierarchy:
+MeedyaManager classifies all media according to a strict, extensible hierarchy:
 
 | Level | Field | Purpose | Example Values |
 | ----- | ----- | ----- | ----- |
@@ -53,23 +53,25 @@ Additional relationships:
 
 ---
 
-### 🔨 M2 — CLI & UI Frontend *(Next)*
+### ✅ M2 — CLI & UI Frontend *(Completed February 2026)*
 
 **Release:** `v1.1-M2`
 
-- 🔲 Interactive CLI rename preview wizard
-- 🔲 Migration to `click`-based CLI framework
-- 🔲 Rule builder with conditional logic (AND/OR/nested)
-- 🔲 MusicBee-inspired template syntax parser
-- 🔲 PySide6 6.10+ (Qt6) cross-platform GUI
-- 🔲 🍎 macOS Liquid Glass support via PyObjC → `NSGlassEffectView` bridge
-- 🔲 🪟 Windows 11 Mica/Acrylic native styling
-- 🔲 Dark/light theme support (system-aware via `darkdetect` + native APIs)
-- 🔲 Rename preview queue and simulation panel
-- 🔲 Drag-and-drop file import
-- 🔲 Per-rule dry-run and file override support
-- 🔲 Settings dialog for watch folders, extensions, rules
-- 🔲 Rule validation with real-time error reporting
+- ✅ Migration to `click`-based CLI framework (5 subcommands: scan, debug, watch, rule, gui)
+- ✅ Rich-formatted CLI output with tables and panels
+- ✅ PySide6 6.10+ (Qt6) cross-platform GUI
+- ✅ 🍎 macOS Liquid Glass support via PyObjC → `NSGlassEffectView` bridge
+- ✅ 🪟 Windows 11 Mica/Acrylic native styling via DWM API
+- ✅ Dark/light theme support (system-aware via `darkdetect` + QSS stylesheets)
+- ✅ Rename preview panel with table model, progress bar, search filter
+- ✅ Settings dialog (5 tabs: watch folders, extensions, template, fallback, replacements)
+- ✅ Rule builder with syntax highlighting for `{placeholder}` tokens
+- ✅ Drag-and-drop file import
+- ✅ System tray icon with context menu
+- ✅ 73 tests (CLI + GUI + core), all passing
+- 🔲 Per-rule dry-run and file override support (deferred to M3)
+- 🔲 MusicBee-inspired template syntax parser (deferred to M3)
+- 🔲 Visual rule builder with AND/OR/nested conditions (deferred to M3)
 
 ---
 
@@ -214,10 +216,10 @@ Purpose: Create searchable intranet/web-hosted media library index.
 ## 🛠️ Planned Utilities
 
 - `metadata_debugger.py` — Single file debug/export (✅ M1)
-- Rule tester & simulator (CLI + UI) — M2/M3
-- Format recogniser tool — M2
+- Rule tester & simulator (CLI + UI) — ✅ M2 (`meedyamanager rule`, Rule Builder GUI)
+- Format recogniser tool — ✅ M2 (`meedyamanager debug`)
 - Auto-log redactor for troubleshooting — ✅ M1
-- Smart CLI auto-detection/scan mode — M2
+- Smart CLI auto-detection/scan mode — ✅ M2 (`meedyamanager scan`)
 - `verify_checksum.py` post-install validator — ✅ M1
 
 ---
@@ -245,4 +247,4 @@ Purpose: Create searchable intranet/web-hosted media library index.
 
 > 📝 *This roadmap is maintained alongside the codebase. For current status, see [PROJECT_STATUS.md](../PROJECT_STATUS.md).*
 >
-> *Last updated: 2026-02-12*
+> *Last updated: 2026-02-13*

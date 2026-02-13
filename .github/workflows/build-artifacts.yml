@@ -3,12 +3,12 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# GitHub Actions workflow to package MediaMancer for release on version tag.
+# GitHub Actions workflow to package MeedyaManager for release on version tag.
 # Builds ZIP (Windows) and TAR.GZ (macOS/Linux) archives and uploads them
 # to the GitHub Releases tab automatically, including SHA256 checksums.
 # ============================================================================
 
-name: 📦 MediaMancer Release Packager
+name: 📦 MeedyaManager Release Packager
 
 on:
   push:
@@ -50,36 +50,36 @@ jobs:
 
       - name: 📁 Prepare dist folder
         run: |
-          mkdir -p dist/MediaMancer
-          cp -r cli core settings.json5 README.md LICENSE.md dist/MediaMancer/
-          if [ -d branding ]; then cp -r branding dist/MediaMancer/; fi
+          mkdir -p dist/MeedyaManager
+          cp -r cli core settings.json5 README.md LICENSE.md dist/MeedyaManager/
+          if [ -d branding ]; then cp -r branding dist/MeedyaManager/; fi
 
       - name: 📦 Compress for ${{ matrix.os }}
         run: |
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            powershell -Command "Compress-Archive -Path dist/MediaMancer -DestinationPath dist/MediaMancer-${{ matrix.os }}.zip"
+            powershell -Command "Compress-Archive -Path dist/MeedyaManager -DestinationPath dist/MeedyaManager-${{ matrix.os }}.zip"
           else
-            tar -czf dist/MediaMancer-${{ matrix.os }}.tar.gz dist/MediaMancer/
+            tar -czf dist/MeedyaManager-${{ matrix.os }}.tar.gz dist/MeedyaManager/
           fi
 
       - name: 🔐 Generate SHA256 checksums
         shell: bash
         run: |
           cd dist
-          if [[ -f MediaMancer-${{ matrix.os }}.zip ]]; then
-            shasum -a 256 MediaMancer-${{ matrix.os }}.zip > MediaMancer-${{ matrix.os }}.zip.sha256
+          if [[ -f MeedyaManager-${{ matrix.os }}.zip ]]; then
+            shasum -a 256 MeedyaManager-${{ matrix.os }}.zip > MeedyaManager-${{ matrix.os }}.zip.sha256
           fi
-          if [[ -f MediaMancer-${{ matrix.os }}.tar.gz ]]; then
-            shasum -a 256 MediaMancer-${{ matrix.os }}.tar.gz > MediaMancer-${{ matrix.os }}.tar.gz.sha256
+          if [[ -f MeedyaManager-${{ matrix.os }}.tar.gz ]]; then
+            shasum -a 256 MeedyaManager-${{ matrix.os }}.tar.gz > MeedyaManager-${{ matrix.os }}.tar.gz.sha256
           fi
 
       - name: 🚀 Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/MediaMancer-${{ matrix.os }}.zip
-            dist/MediaMancer-${{ matrix.os }}.zip.sha256
-            dist/MediaMancer-${{ matrix.os }}.tar.gz
-            dist/MediaMancer-${{ matrix.os }}.tar.gz.sha256
+            dist/MeedyaManager-${{ matrix.os }}.zip
+            dist/MeedyaManager-${{ matrix.os }}.zip.sha256
+            dist/MeedyaManager-${{ matrix.os }}.tar.gz
+            dist/MeedyaManager-${{ matrix.os }}.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

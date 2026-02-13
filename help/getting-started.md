@@ -1,8 +1,8 @@
-# 🚀 Getting Started with MediaMancer
+# 🚀 Getting Started with MeedyaManager
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
-Welcome to MediaMancer! This guide will help you install, configure, and run the application for the first time.
+Welcome to MeedyaManager! This guide will help you install, configure, and run the application for the first time.
 
 ---
 
@@ -20,7 +20,7 @@ Welcome to MediaMancer! This guide will help you install, configure, and run the
 
 ### For End Users (Release Packages)
 
-> ⚡ **No prerequisites required!** Release packages include everything you need — a bundled, sandboxed Python 3.14 runtime and all dependencies are compiled into the native executable via Nuitka. MediaMancer will **never** interfere with any other software on your system.
+> ⚡ **No prerequisites required!** Release packages include everything you need — a bundled, sandboxed Python 3.14 runtime and all dependencies are compiled into the native executable via Nuitka. MeedyaManager will **never** interfere with any other software on your system.
 
 | Component | Requirement |
 | --------- | ----------- |
@@ -43,7 +43,7 @@ If you want to contribute or build from source, you'll need:
 
 #### Installing MediaInfo (Developers Only)
 
-MediaMancer uses the [MediaInfo](https://mediaarea.net/en/MediaInfo) library for metadata extraction.
+MeedyaManager uses the [MediaInfo](https://mediaarea.net/en/MediaInfo) library for metadata extraction.
 
 **macOS (Homebrew):**
 
@@ -73,19 +73,19 @@ Download the installer from [mediaarea.net](https://mediaarea.net/en/MediaInfo/D
 
 ### From Release Package (Recommended)
 
-1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MediaMancer/releases)
+1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MeedyaManager/releases)
 2. Install or extract:
    - **Windows:** Run the `.msi` installer, or extract the `.zip`
    - **macOS:** Open the `.dmg` and drag to Applications
    - **Linux:** Run the `.AppImage`, or install the `.deb` package
-3. Launch MediaMancer — no additional setup needed!
+3. Launch MeedyaManager — no additional setup needed!
 
 ### From Source (Development)
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/MWBMPartners/MediaMancer.git
-cd MediaMancer
+git clone https://github.com/MWBMPartners/MeedyaManager.git
+cd MeedyaManager
 
 # 2. Create a virtual environment (keeps your system Python clean)
 python3.14 -m venv venv
@@ -124,7 +124,7 @@ The resulting executable includes the Python 3.14 runtime and all dependencies �
 
 ### Scan a Single File
 
-The quickest way to test MediaMancer is to scan a single media file:
+The quickest way to test MeedyaManager is to scan a single media file:
 
 ```bash
 python cli/metadata_debugger.py path/to/your/song.mp3
@@ -160,7 +160,7 @@ python cli/runner.py --simulate-off
 
 ## Basic Configuration
 
-Edit `config/settings.json5` to customise MediaMancer's behaviour:
+Edit `config/settings.json5` to customise MeedyaManager's behaviour:
 
 ```json5
 {

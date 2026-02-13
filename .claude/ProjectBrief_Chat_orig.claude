@@ -69,7 +69,7 @@ Can the project plan and outline be updated again accordingly before we get star
 
 Any code should be produced with full DETAILED Annotations and comments to assisst with understanding what each line/block of code does, help with debugging, learning and future expansion. Code blocks not use shorted annotation, but rather full code to assist further with code reading and understanding.
 
-Code and project progress is to be uploaded and managed in a GitHub Repo. The Repo may include code from previous/earlier iterations, but we're happy to replace all of this (apart from product name "MediaMancer" and logo/branding). Any files no longer needed should be deleted.
+Code and project progress is to be uploaded and managed in a GitHub Repo. The Repo may include code from previous/earlier iterations, but we're happy to replace all of this (apart from product name "MeedyaManager" and logo/branding). Any files no longer needed should be deleted.
 
 To assist with future development and maintenance, a modularised development architecture is preferred.
 

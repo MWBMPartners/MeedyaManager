@@ -1,4 +1,4 @@
-# 📦 CHANGELOG — MediaMancer
+# 📦 CHANGELOG — MeedyaManager
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
@@ -8,11 +8,84 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.1-M2] — 2026-02-13 — CLI & UI Frontend
+
+> 🏷️ **Milestone 2** — Click-based CLI framework and PySide6 cross-platform GUI.
+
+### 🚀 Added
+
+- **Click CLI Framework** (`cli/__init__.py`, `cli/commands/`)
+  - Migrated from argparse to Click with subcommand architecture
+  - `meedyamanager scan` — Batch scan with `--json`, `--out`, `--mkdir`, `--simulate-off`, `--path`
+  - `meedyamanager debug <file>` — Single-file metadata inspector with `--json`, `--out`, `--mkdir`
+  - `meedyamanager watch` — Real-time folder monitoring with `--mode`, `--simulate/--no-simulate`
+  - `meedyamanager rule` — Template testing with `--sample`, `--file`, `--template`
+  - `meedyamanager gui` — Launch graphical interface (lazy PySide6 import)
+  - `--version` flag shows `MeedyaManager v1.1-M2`
+  - Rich-formatted output with tables and panels
+
+- **PySide6 GUI** (`ui/`)
+  - `MainWindow` — Tabbed interface (Scan/Preview, Rules), menu bar, toolbar, status bar
+  - `PreviewPanel` — Table view with sort/filter, scan button, progress bar, search field
+  - `RenamePreviewModel` — Qt model/view for efficient large-file-list display
+  - `SettingsDialog` — 5-tab settings: Watch Folders, Extensions, Rename Template, Fallback Metadata, Character Replacements
+  - `RuleBuilder` — Template editor with syntax highlighting for `{placeholder}` tokens, tag dropdown, test button
+  - `SystemTrayIcon` — Tray icon with context menu (show/hide, scan, watch toggle, quit)
+  - `ScanWorker` — QThread-based background scanning with progress signals
+  - Drag-and-drop file import support
+
+- **Platform-Native Styling** (`ui/platform_style.py`)
+  - macOS: Liquid Glass (NSGlassEffectView) via PyObjC with NSVisualEffectView fallback
+  - Windows: Mica/Acrylic backdrop via DWM API (ctypes)
+  - Linux: Qt Fusion style for consistent cross-desktop appearance
+  - System dark/light mode detection via `darkdetect`
+
+- **Theme Stylesheets** (`ui/themes/`)
+  - `dark.qss` — Dark theme with #1e1e1e base, #4fc3f7 accent
+  - `light.qss` — Light theme with #ffffff base, #1976d2 accent
+  - Full styling for all Qt widgets (tables, buttons, tabs, menus, progress bars, etc.)
+
+- **GUI Tests** (`tests/test_gui_smoke.py`, `tests/test_gui_preview_model.py`)
+  - 11 smoke tests: all widgets instantiate without crashing (offscreen mode)
+  - 12 model tests: empty state, data insertion, headers, data retrieval, tooltips
+
+- **CLI Tests** (`tests/test_cli_*.py`)
+  - 18 new CliRunner-based tests replacing old subprocess tests
+  - Tests for scan, debug, rule, and version commands
+
+### 🔧 Fixed
+
+- **Config key mismatches** — Code now uses `watch_paths`, `rename_format`, `fallback_metadata` matching config/settings.json5
+- **Circular dependency** — `core/watcher.py` no longer imports from `cli/runner.py`
+- **Missing `handle_file()` function** — Added to `core/watcher.py` for full pipeline processing
+- **Missing `cli/__init__.py`** — Created as Click group entry point
+- **Matroska classification** — Added `"matroska"` to video format list in `classify_media.py`
+- **Classification priority** — "movie"/"film" now checked before "episode"/"tv" for media_class
+- **`sanitize_filename_component`** — Handles None input (returns "Unknown")
+- **Template expansion** — Dynamic `template.format(**sanitized)` supports any metadata key
+- **Watcher logging tests** — Migrated from file-based to `caplog` for reliable test assertions
+- **`redact()` function** — Handles non-string input with `str()` conversion
+- **`CliRunner(mix_stderr=False)`** — Removed deprecated parameter for Click 8.3.1 compatibility
+
+### 🗑️ Removed
+
+- `tests/test_runner_cli.py` — Replaced by `test_cli_scan.py`
+- `tests/test_runner_dryrun_json.py` — Replaced by `test_cli_scan.py`
+- `tests/test_metadata_debugger.py` — Replaced by `test_cli_debug.py`
+
+### 🧪 Testing
+
+- **73 tests** all passing (up from 17 in M1)
+- New test categories: CLI commands (18), GUI smoke (11), GUI model (12)
+- All tests use offscreen Qt rendering for CI compatibility
+
+---
+
 ## [Unreleased]
 
 ### 📝 Changed — 2026-02-12
 
-- Standardised project name from "MetaMancer" to **MediaMancer** across all documentation
+- Standardised project name from "MetaMancer" to **MeedyaManager** across all documentation
 - Created comprehensive [Project_Plan.md](../Project_Plan.md) with full architecture, tech stack, and milestone details
 - Created [PROJECT_STATUS.md](../PROJECT_STATUS.md) as the go-to project status tracker
 - Rewrote [README.md](../README.md) with branding, badges, quick start guide, and full documentation links
@@ -86,31 +159,15 @@ Format: `## [Version] — YYYY-MM-DD`
   - Post-install integrity validation tool
 
 - **Branding**
-  - Static SVG logo (`branding/mediamancer-logo.svg`)
-  - Animated SVG logo (`branding/mediamancer-logo-animated.svg`)
+  - Static SVG logo (`branding/meedyamanager-logo.svg`)
+  - Animated SVG logo (`branding/meedyamanager-logo-animated.svg`)
     - Waveform sweep animation
     - Gradient colour cycling (4-second loop)
     - Dark/light mode auto-detection via CSS `prefers-color-scheme`
 
 ### 🧪 Testing
 
-- 17 unit tests across 787 lines:
-  - `test_metadata_extractor.py` — Format and classification logic
-  - `test_classify_media_sanity.py` — Classification edge cases
-  - `test_simulate_flag_behaviour.py` — Simulation toggle
-  - `test_watcher_simulation_trigger.py` — Watcher event simulation
-  - `test_simulation_log_output.py` — Log content and redaction
-  - `test_batch_rename_simulation.py` — Multi-file integration
-  - `test_env_loader.py` — `.env` fallback loader validation
-  - `test_verify_checksum.py` — SHA256 verifier edge cases
-  - `test_config_required_key.py` — Config key validation
-  - `test_runner_cli.py` — CLI argument parsing
-  - `test_runner_dryrun_json.py` — JSON export functionality
-  - `test_watcher_logging.py` — Watcher log output
-  - `test_watcher_modes.py` — Watchdog vs polling modes
-  - `test_path_integrity.py` — Path construction safety
-  - `test_import_resolution.py` — Module import validation
-  - `test_metadata_debugger.py` — Debug tool functionality
+- 17 unit tests across 787 lines
 
 ### 🏗️ CI/CD
 
@@ -134,7 +191,7 @@ Format: `## [Version] — YYYY-MM-DD`
 | Version | Milestone | Description |
 |---------|-----------|-------------|
 | `v1.0-M1` | ✅ Core Engine | Watcher, metadata, classification, dry-run rename |
-| `v1.1-M2` | 🔨 CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
+| `v1.1-M2` | ✅ CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
 | `v1.2-M3` | 🔲 Rule Engine | Full template syntax, companion file tracking |
 | `v1.3-M4` | 🔲 Metadata Editor | Tag editing, multi-value support |
 | `v1.4-M5` | 🔲 Music Lookup | MusicBrainz, Spotify, Apple Music, Shazam |

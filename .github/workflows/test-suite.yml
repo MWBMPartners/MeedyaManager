@@ -3,7 +3,7 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# GitHub Actions configuration for MediaMancer project. This CI script will
+# GitHub Actions configuration for MeedyaManager project. This CI script will
 # automatically run Python-based unit tests and metadata dry-runs on every push
 # and pull request to main, dev, or milestone branches.
 #
@@ -14,7 +14,7 @@
 # - Verifies that core modules compile
 # ============================================================================
 
-name: CI - MediaMancer Tests
+name: CI - MeedyaManager Tests
 
 on:
   push:

@@ -3,7 +3,7 @@
 // (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 //
 // Description:
-// This file defines the user-editable configuration settings for MediaMancer.
+// This file defines the user-editable configuration settings for MeedyaManager.
 // It includes folder paths to monitor, allowed extensions, filename rules,
 // and fallback metadata classification defaults if MediaInfo fails or tags
 // are missing.

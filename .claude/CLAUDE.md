@@ -1,10 +1,10 @@
-# MediaMancer — Claude Code Project Instructions
+# MeedyaManager — Claude Code Project Instructions
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
 ## Project Identity
 
-- **Name:** MediaMancer
+- **Name:** MeedyaManager
 - **Type:** Cross-platform media file manager and auto-organizer
 - **Language:** Python 3.14+ (bundled & sandboxed via Nuitka — never impacts host Python)
 - **Licence:** GPL-2.0-or-later
@@ -35,7 +35,7 @@
 - **Copyright year** must be automated (start 2025, end current year)
 - Code formatting: proper line breaks, indentation, full code (no shortened annotations)
 - Emojis are welcome in documentation and UI
-- Use the canonical name **MediaMancer** (not MetaMancer) everywhere
+- Use the canonical name **MeedyaManager** (not MetaMancer) everywhere
 
 ## Documentation Requirements
 

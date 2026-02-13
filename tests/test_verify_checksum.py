@@ -13,7 +13,7 @@ from utils.verify_checksum import calculate_sha256, load_checksum_file
 
 
 def test_known_sha256_match():
-    content = b"TestMediaMancerChecksum"
+    content = b"TestMeedyaManagerChecksum"
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
         temp_file.write(content)
         temp_path = temp_file.name

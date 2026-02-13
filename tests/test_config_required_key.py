@@ -1,6 +1,6 @@
 # ============================================================================
 # File: /tests/test_config_required_key.py
-# (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
 # Tests for `get_config()` from utils.config_loader:
@@ -17,8 +17,9 @@ def test_get_config_requires_key():
         get_config()
 
 def test_get_config_known_key():
-    value = get_config("simulate")
-    assert isinstance(value, (bool, str, int, float, dict)), "Returned config value is not a supported type"
+    # Test with a key that actually exists in config/settings.json5
+    value = get_config("watch_paths")
+    assert isinstance(value, list), "watch_paths should return a list"
 
 def test_get_config_unknown_key():
     with pytest.raises(KeyError):

@@ -1,9 +1,9 @@
 # ============================================================================
 # File: /core/renamer.py
-# (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# This module is part of MediaMancer's Milestone 1 deliverables. It processes
+# This module is part of MeedyaManager's Milestone 1 deliverables. It processes
 # file paths received from the `watcher.py` module, performs dry-run evaluations
 # of their new names/locations based on rule templates, and logs the results.
 # This module does not actually move/rename files in this milestone — it
@@ -34,7 +34,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "rename_preview.log")
 
 # Logger for console output
-logger = logging.getLogger("MediaMancer.Renamer")
+logger = logging.getLogger("MeedyaManager.Renamer")
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
@@ -42,7 +42,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 # Logger for file logging
-file_logger = logging.getLogger("MediaMancer.RenamerFile")
+file_logger = logging.getLogger("MeedyaManager.RenamerFile")
 file_handler = logging.FileHandler(LOG_FILE, mode='a', encoding='utf-8')
 file_handler.setFormatter(logging.Formatter("[%(asctime)s] FROM: %(message)s"))
 file_logger.addHandler(file_handler)
@@ -56,7 +56,10 @@ def sanitize_filename_component(name):
     """
     Remove or replace characters in a string that are not safe for filenames.
     This helps prevent filesystem errors across platforms.
+    Returns "Unknown" if the input is None or empty.
     """
+    if not name:                                        # Handle None or empty string
+        return "Unknown"
     replacement = get_config("replacement_char", "_")
     safe = UNSAFE_CHARS_PATTERN.sub(replacement, name)
     return safe.strip().strip('.')
@@ -75,25 +78,36 @@ def simulate_rename(filepath, metadata):
         str: Proposed new file path (simulated)
     """
     # Load template and fallback defaults from config
-    template = get_config("rename_template")
-    fallback = get_config("default_metadata", {})
+    template = get_config("rename_format")
+    fallback = get_config("fallback_metadata", {})
 
     # Merge metadata with defaults
     combined = fallback.copy()
     combined.update(metadata)
 
+    # Add file extension to metadata for use in template
     ext = os.path.splitext(filepath)[1].lstrip('.')
     combined['ext'] = sanitize_filename_component(ext)
+    combined['extension'] = combined['ext']            # Alias: {extension} and {ext} both work
+
+    # Sanitize all string values in the metadata dict for safe filename use
+    sanitized = {}
+    for key, value in combined.items():
+        if isinstance(value, str):
+            sanitized[key] = sanitize_filename_component(value)
+        elif isinstance(value, (int, float)):
+            sanitized[key] = str(value)                # Convert numbers to strings
+        else:
+            sanitized[key] = str(value) if value is not None else "Unknown"
+
+    # Zero-pad track numbers if present (common naming convention)
+    if 'track_num' in sanitized:
+        sanitized['track_num'] = sanitized['track_num'].zfill(2)
+    if 'track_number' in sanitized:
+        sanitized['track_number'] = sanitized['track_number'].zfill(2)
 
     try:
-        relative_path = template.format(
-            media_type=sanitize_filename_component(combined.get('media_type')),
-            artist=sanitize_filename_component(combined.get('artist')),
-            album=sanitize_filename_component(combined.get('album')),
-            track_number=str(combined.get('track_number')).zfill(2),
-            title=sanitize_filename_component(combined.get('title')),
-            ext=combined.get('ext')
-        )
+        relative_path = template.format(**sanitized)   # Dynamic: any metadata key works as {placeholder}
     except KeyError as e:
         logger.error(f"Missing required metadata tag: {e}")
         return None

@@ -1,10 +1,10 @@
 # ============================================================================
 # File: /tests/test_batch_rename_simulation.py
-# (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
 # Integration-style test that simulates batch file handling and rename simulation.
-# Ensures runner + watcher handle multiple files correctly and consistently.
+# Ensures watcher handles multiple files correctly and consistently.
 # ============================================================================
 
 import os
@@ -23,7 +23,7 @@ def batch_folder():
 
 
 def test_batch_rename_simulation(batch_folder):
-    watcher.watch_folders = [batch_folder]
+    watcher.watch_paths = [batch_folder]
     watcher.valid_extensions = [".mp3", ".flac", ".mkv"]
     watcher.simulate_enabled = True
 
@@ -33,8 +33,10 @@ def test_batch_rename_simulation(batch_folder):
         with open(os.path.join(batch_folder, filename), "w") as f:
             f.write("FAKE")
 
-    with patch("cli.runner.simulate_rename") as mock_sim:
-        mock_sim.side_effect = lambda path, metadata, dry_run=True: f"/simulated/output/{os.path.basename(path)}"
+    # Patch simulate_rename where it's imported in the watcher module
+    # Signature matches core.renamer.simulate_rename(filepath, metadata)
+    with patch("core.watcher.simulate_rename") as mock_sim:
+        mock_sim.side_effect = lambda path, metadata: f"/simulated/output/{os.path.basename(path)}"
 
         for filename in files:
             full_path = os.path.join(batch_folder, filename)

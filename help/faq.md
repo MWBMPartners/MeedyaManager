@@ -1,4 +1,4 @@
-# ❓ Frequently Asked Questions — MediaMancer
+# ❓ Frequently Asked Questions — MeedyaManager
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
@@ -6,13 +6,13 @@
 
 ## General
 
-### What is MediaMancer?
+### What is MeedyaManager?
 
-MediaMancer is a cross-platform media file management application that automatically monitors folders, reads metadata from audio and video files, and renames/organizes them according to user-defined rules. It's inspired by MusicBee's auto-organize feature but works on Windows, macOS, and Linux.
+MeedyaManager is a cross-platform media file management application that automatically monitors folders, reads metadata from audio and video files, and renames/organizes them according to user-defined rules. It's inspired by MusicBee's auto-organize feature but works on Windows, macOS, and Linux.
 
-### Is MediaMancer free?
+### Is MeedyaManager free?
 
-Yes. MediaMancer is open-source software licensed under GPL-2.0-or-later.
+Yes. MeedyaManager is open-source software licensed under GPL-2.0-or-later.
 
 ### What platforms are supported?
 
@@ -22,7 +22,7 @@ Yes. MediaMancer is open-source software licensed under GPL-2.0-or-later.
 
 ### Does it run in the background?
 
-Yes. MediaMancer can run as:
+Yes. MeedyaManager can run as:
 
 - A **system service** (starts at boot, no login required)
 - A **login agent** (starts when a user logs in)
@@ -30,7 +30,7 @@ Yes. MediaMancer can run as:
 
 ### Will it mess up my files?
 
-By default, MediaMancer runs in **simulation mode** — it logs what it *would* do without actually moving or renaming anything. You must explicitly disable simulation to perform real operations. Additionally, it never touches files that are open in other applications.
+By default, MeedyaManager runs in **simulation mode** — it logs what it *would* do without actually moving or renaming anything. You must explicitly disable simulation to perform real operations. Additionally, it never touches files that are open in other applications.
 
 ---
 
@@ -46,7 +46,7 @@ MP4, M4V, MKV, AVI, DivX, MPG/MPEG, HEVC, MOV, WMV, WebM, TS. See [supported-for
 
 ### Can it detect Dolby Atmos / Spatial Audio?
 
-Yes. MediaMancer uses MediaInfo to detect spatial audio formats including Dolby Atmos, Sony 360 Reality Audio, and Apple Spatial Audio. These can be used in sorting rules.
+Yes. MeedyaManager uses MediaInfo to detect spatial audio formats including Dolby Atmos, Sony 360 Reality Audio, and Apple Spatial Audio. These can be used in sorting rules.
 
 ### Can it tell the difference between lossy and lossless?
 
@@ -54,7 +54,7 @@ Yes. The `<Quality Type>` tag automatically classifies files as Lossy or Lossles
 
 ### What about subtitle files and cover art?
 
-MediaMancer recognises companion files (SRT, LRC, ASS, cover art, disc images, CUE sheets) and moves them alongside their associated media files.
+MeedyaManager recognises companion files (SRT, LRC, ASS, cover art, disc images, CUE sheets) and moves them alongside their associated media files.
 
 ---
 
@@ -75,7 +75,7 @@ Yes. The rule engine supports:
 
 ### Is there a limit on custom tags?
 
-No. Unlike MusicBee's limit of 16-20 custom tags, MediaMancer supports **unlimited** custom tags using the `<Custom:Name>` syntax.
+No. Unlike MusicBee's limit of 16-20 custom tags, MeedyaManager supports **unlimited** custom tags using the `<Custom:Name>` syntax.
 
 ### Can I preview rules before applying them?
 
@@ -123,7 +123,7 @@ Planned for M8. It will generate a systemd unit file.
 
 ### What happens if a file is in use?
 
-MediaMancer detects file locks and adds the file to a retry queue. Once the file is no longer in use, it will be processed automatically. This prevents file corruption.
+MeedyaManager detects file locks and adds the file to a retry queue. Once the file is no longer in use, it will be processed automatically. This prevents file corruption.
 
 ---
 
@@ -131,7 +131,7 @@ MediaMancer detects file locks and adds the file to a retry queue. Once the file
 
 ### What metadata extraction library does it use?
 
-MediaMancer uses [MediaInfo](https://mediaarea.net) via the `pymediainfo` Python wrapper for reading metadata. For writing metadata (M4+), it will use [mutagen](https://mutagen.readthedocs.io).
+MeedyaManager uses [MediaInfo](https://mediaarea.net) via the `pymediainfo` Python wrapper for reading metadata. For writing metadata (M4+), it will use [mutagen](https://mutagen.readthedocs.io).
 
 ### Can it edit metadata tags?
 
@@ -151,7 +151,7 @@ Yes, in future milestones:
 
 ### Will it keep my files playable?
 
-Yes. MediaMancer uses standard container formats and tag specifications wherever possible. Custom tags are stored in a way that preserves playability on all players/devices, even if some players can't read the custom fields.
+Yes. MeedyaManager uses standard container formats and tag specifications wherever possible. Custom tags are stored in a way that preserves playability on all players/devices, even if some players can't read the custom fields.
 
 ---
 
@@ -175,12 +175,12 @@ Python 3.11+ with plans for a PySide6 (Qt6) GUI.
 
 ### How can I contribute?
 
-Contributions are welcome! Check the [GitHub Issues](https://github.com/MWBMPartners/MediaMancer/issues) for open tasks, or submit a pull request.
+Contributions are welcome! Check the [GitHub Issues](https://github.com/MWBMPartners/MeedyaManager/issues) for open tasks, or submit a pull request.
 
 ### Where do I report bugs?
 
-[GitHub Issues](https://github.com/MWBMPartners/MediaMancer/issues/new?template=bug_report.md) — please include your OS, Python version, and relevant log output.
+[GitHub Issues](https://github.com/MWBMPartners/MeedyaManager/issues/new?template=bug_report.md) — please include your OS, Python version, and relevant log output.
 
 ---
 
-> 📝 *This FAQ is updated regularly. If your question isn't here, please [open an issue](https://github.com/MWBMPartners/MediaMancer/issues/new).*
+> 📝 *This FAQ is updated regularly. If your question isn't here, please [open an issue](https://github.com/MWBMPartners/MeedyaManager/issues/new).*

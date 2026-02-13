@@ -3,7 +3,7 @@
 # (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# Core runtime and development dependencies for the MediaMancer project.
+# Core runtime and development dependencies for the MeedyaManager project.
 # Requires Python 3.14+ (bundled via Nuitka for distribution).
 # ============================================================================
 
@@ -22,11 +22,11 @@ pydantic>=2.5             # Settings/config validation and type safety
 pytest>=8.0               # Unit testing framework
 pytest-cov>=5.0           # Code coverage reporting
 
-# --- UI Dependencies (install separately for GUI development) ---
-# PySide6>=6.10           # Qt6 GUI framework (native platform styling)
-# darkdetect>=0.8         # System dark/light mode detection
-#
-# macOS-only (Liquid Glass support):
+# --- UI Dependencies ---
+PySide6>=6.7              # Qt6 GUI framework (native platform styling)
+darkdetect>=0.8           # System dark/light mode detection
+
+# macOS-only (Liquid Glass support — install manually):
 # pyobjc-framework-Cocoa>=10.0  # Native AppKit access for NSGlassEffectView
 # pyobjc-framework-Quartz>=10.0 # Core Animation layer access
 

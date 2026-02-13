@@ -1,8 +1,8 @@
-# 📐 Rule & Template Syntax Guide — MediaMancer
+# 📐 Rule & Template Syntax Guide — MeedyaManager
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
-MediaMancer's rule engine uses a template syntax inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates), extended with unlimited custom tags, video support, and audio characteristic detection.
+MeedyaManager's rule engine uses a template syntax inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates), extended with unlimited custom tags, video support, and audio characteristic detection.
 
 > **Note:** The full template syntax (described below) is planned for **Milestone 3**. M1 uses a simpler `{placeholder}` syntax. This document describes the target syntax.
 
@@ -307,7 +307,7 @@ Folder separators in templates create directory structure:
 <Media Class>/<Album Artist>/<Album>/<Title>.<Ext>
 ```
 
-Use `/` as the separator — MediaMancer automatically converts to the correct OS path separator.
+Use `/` as the separator — MeedyaManager automatically converts to the correct OS path separator.
 
 ### Nested Folders
 

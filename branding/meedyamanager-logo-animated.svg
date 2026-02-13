@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+===============================================================================
+File: /branding/meedyamanager_logo_animated.svg
+(C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+
+Description:
+Dynamic animated SVG logo for the MeedyaManager project.
+Features: shifting waveform sweep, animated gradient, and dark/light mode compatibility.
+Use for README, GitHub branding, and app splash display.
+===============================================================================
+-->
+<svg
+  id="meedyamanager-logo"
+  width="240"
+  height="80"
+  viewBox="0 0 240 80"
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  role="img"
+  aria-label="MeedyaManager animated logo"
+>
+  <defs>
+    <!-- Gradient background that responds to system light/dark mode -->
+    <linearGradient id="wave-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6a11cb">
+        <animate attributeName="stop-color" values="#6a11cb;#2575fc;#6a11cb" dur="4s" repeatCount="indefinite" />
+      </stop>
+      <stop offset="100%" stop-color="#2575fc">
+        <animate attributeName="stop-color" values="#2575fc;#6a11cb;#2575fc" dur="4s" repeatCount="indefinite" />
+      </stop>
+    </linearGradient>
+
+    <!-- Waveform path shape -->
+    <path id="wave-path" d="M0 40 Q30 10 60 40 T120 40 T180 40 T240 40" fill="none" />
+  </defs>
+
+  <!-- Background pulse line -->
+  <use xlink:href="#wave-path" stroke="#ddd" stroke-width="6" />
+
+  <!-- Animated waveform overlay with gradient -->
+  <use xlink:href="#wave-path" stroke="url(#wave-gradient)" stroke-width="4">
+    <animateTransform attributeName="transform" attributeType="XML" type="translate" from="-240 0" to="0 0" dur="2.5s" repeatCount="indefinite" />
+  </use>
+
+  <!-- Logo Text with fallback style -->
+  <text x="10" y="72" font-family="Segoe UI, sans-serif" font-size="16" fill="currentColor">MeedyaManager</text>
+
+  <style>
+    /* Auto-adapt text color based on preferred color scheme */
+    @media (prefers-color-scheme: dark) {
+      #meedyamanager-logo text {
+        fill: white;
+      }
+    }
+    @media (prefers-color-scheme: light) {
+      #meedyamanager-logo text {
+        fill: black;
+      }
+    }
+  </style>
+</svg>

@@ -1,4 +1,4 @@
-# 📋 MediaMancer — Project Plan
+# 📋 MeedyaManager — Project Plan
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 >
@@ -25,7 +25,7 @@
 
 ## 🎯 Project Overview
 
-**MediaMancer** is a cross-platform media file management application that automatically monitors folders, reads metadata from audio/video files, and renames/organizes them according to user-defined rules — similar to MusicBee's auto-organize feature, but available on **Windows, macOS, and Linux**.
+**MeedyaManager** is a cross-platform media file management application that automatically monitors folders, reads metadata from audio/video files, and renames/organizes them according to user-defined rules — similar to MusicBee's auto-organize feature, but available on **Windows, macOS, and Linux**.
 
 ### 🌟 Core Goals
 
@@ -59,7 +59,7 @@
 
 ### Primary Language: **Python 3.14+**
 
-> ⚡ **Bundled & Sandboxed Runtime:** MediaMancer ships with its own embedded Python runtime, compiled via **Nuitka**. This means:
+> ⚡ **Bundled & Sandboxed Runtime:** MeedyaManager ships with its own embedded Python runtime, compiled via **Nuitka**. This means:
 > - The app is completely self-contained — no Python installation required on the host
 > - It will **never** interfere with any other Python version or virtual environment on the user's machine
 > - Users don't need to know or care that Python is involved at all
@@ -115,7 +115,7 @@ PySide6 6.10 (latest as of Feb 2026) provides native platform styling:
 
 #### 🍎 macOS: Liquid Glass Support
 
-On macOS 26 (Tahoe), Apple introduced **Liquid Glass** — a translucent, depth-aware design language that is the biggest visual redesign since iOS 7. MediaMancer will support Liquid Glass on macOS through a **PyObjC bridge** approach:
+On macOS 26 (Tahoe), Apple introduced **Liquid Glass** — a translucent, depth-aware design language that is the biggest visual redesign since iOS 7. MeedyaManager will support Liquid Glass on macOS through a **PyObjC bridge** approach:
 
 | Layer | Technology | What It Does |
 |-------|-----------|--------------|
@@ -132,7 +132,7 @@ On macOS 26 (Tahoe), Apple introduced **Liquid Glass** — a translucent, depth-
 
 **Material options available:** Sidebar, HUD, Popover, Frosted, Clear Glass, and more — matching Apple's native material presets.
 
-> **Note:** Qt is also working on native Liquid Glass support in a future PySide6 release. When that ships, MediaMancer will adopt it and the PyObjC bridge will become a graceful fallback.
+> **Note:** Qt is also working on native Liquid Glass support in a future PySide6 release. When that ships, MeedyaManager will adopt it and the PyObjC bridge will become a graceful fallback.
 
 Dark/light mode follows the system setting automatically via `darkdetect` + Qt6's built-in theme awareness + native macOS `NSAppearance`.
 
@@ -161,10 +161,10 @@ Dark/light mode follows the system setting automatically via `darkdetect` + Qt6'
 
 ## 🏗️ Architecture
 
-MediaMancer follows a **modular, layered architecture** designed for maintainability and progressive feature addition.
+MeedyaManager follows a **modular, layered architecture** designed for maintainability and progressive feature addition.
 
 ```
-MediaMancer/
+MeedyaManager/
 ├── 📁 core/                    # Core business logic
 │   ├── __init__.py
 │   ├── watcher.py              # File system monitoring (watchdog + polling)
@@ -252,8 +252,8 @@ MediaMancer/
 │   └── fixtures/               # Test data files
 │
 ├── 📁 branding/                # Logo and brand assets
-│   ├── mediamancer-logo.svg
-│   └── mediamancer-logo-animated.svg
+│   ├── meedyamanager-logo.svg
+│   └── meedyamanager-logo-animated.svg
 │
 ├── 📁 docs/                    # Developer documentation
 │   ├── CHANGELOG.md
@@ -501,7 +501,7 @@ Each database engine is a sub-release:
 
 ## 🔧 Rule Engine Design
 
-MediaMancer's rule engine is inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates) but extended to support unlimited custom tags and additional media types.
+MeedyaManager's rule engine is inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates) but extended to support unlimited custom tags and additional media types.
 
 ### Template Syntax
 
@@ -583,7 +583,7 @@ $If($Or($Contains(<Spatial Format>,"Atmos"), $Contains(<Spatial Format>,"360 Rea
 
 ## 🧠 Metadata Hierarchy
 
-All media processed by MediaMancer is classified into a 4-level hierarchy:
+All media processed by MeedyaManager is classified into a 4-level hierarchy:
 
 | Level | Field | Description | Example Values |
 |-------|-------|-------------|----------------|
@@ -700,11 +700,11 @@ All release builds are **compiled via Nuitka** with an embedded Python 3.14 runt
 
 | Platform | Architecture | Format | Filename Pattern |
 |----------|-------------|--------|-----------------|
-| 🪟 Windows | x64 | `.msi` / `.zip` | `MediaMancer-windows-x64-vX.X.msi` |
-| 🪟 Windows | ARM64 | `.msi` / `.zip` | `MediaMancer-windows-arm64-vX.X.msi` |
-| 🍎 macOS | Apple Silicon | `.dmg` / `.tar.gz` | `MediaMancer-macos-arm64-vX.X.dmg` |
-| 🐧 Linux | x86_64 | `.AppImage` / `.deb` / `.tar.gz` | `MediaMancer-linux-x64-vX.X.AppImage` |
-| 🐧 Linux | ARM64 | `.AppImage` / `.deb` / `.tar.gz` | `MediaMancer-linux-arm64-vX.X.AppImage` |
+| 🪟 Windows | x64 | `.msi` / `.zip` | `MeedyaManager-windows-x64-vX.X.msi` |
+| 🪟 Windows | ARM64 | `.msi` / `.zip` | `MeedyaManager-windows-arm64-vX.X.msi` |
+| 🍎 macOS | Apple Silicon | `.dmg` / `.tar.gz` | `MeedyaManager-macos-arm64-vX.X.dmg` |
+| 🐧 Linux | x86_64 | `.AppImage` / `.deb` / `.tar.gz` | `MeedyaManager-linux-x64-vX.X.AppImage` |
+| 🐧 Linux | ARM64 | `.AppImage` / `.deb` / `.tar.gz` | `MeedyaManager-linux-arm64-vX.X.AppImage` |
 
 Each release includes:
 - ✅ SHA256 checksum file (`.sha256`)

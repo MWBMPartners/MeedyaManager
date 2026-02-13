@@ -3,7 +3,7 @@
 # (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# Ignore rules for MediaMancer project across macOS, Windows,
+# Ignore rules for MeedyaManager project across macOS, Windows,
 # VS Code, Xcode, and Visual Studio environments.
 # Also handles secrets, env files, and dev/testing tools.
 # ============================================================================

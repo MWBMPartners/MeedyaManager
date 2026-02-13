@@ -1,4 +1,4 @@
-# 🔧 Troubleshooting — MediaMancer
+# 🔧 Troubleshooting — MeedyaManager
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
@@ -39,7 +39,7 @@ venv\Scripts\activate     # Windows
 
 ### "Python version X.X is not supported"
 
-**Cause:** MediaMancer requires Python 3.10 or newer.
+**Cause:** MeedyaManager requires Python 3.10 or newer.
 
 **Solution:** Install Python 3.11+ from [python.org](https://www.python.org/downloads/).
 
@@ -56,7 +56,7 @@ venv\Scripts\activate     # Windows
 python utils/verify_checksum.py <archive> <archive>.sha256
 ```
 
-3. If it still fails, report it as a [security issue](https://github.com/MWBMPartners/MediaMancer/issues)
+3. If it still fails, report it as a [security issue](https://github.com/MWBMPartners/MeedyaManager/issues)
 
 ---
 
@@ -104,7 +104,7 @@ sudo dnf install mediainfo libmediainfo-devel
 
 1. Verify the file plays correctly in a media player
 2. Check MediaInfo directly: `mediainfo path/to/file`
-3. If the file is being copied, wait and retry — MediaMancer's retry queue handles this automatically
+3. If the file is being copied, wait and retry — MeedyaManager's retry queue handles this automatically
 
 ---
 
@@ -209,7 +209,7 @@ simulate_watcher: false
 
 **Cause:** The file is open in another application.
 
-**Solution:** This is expected behaviour. MediaMancer will:
+**Solution:** This is expected behaviour. MeedyaManager will:
 
 1. Detect the file is locked
 2. Queue it for later processing
@@ -268,7 +268,7 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /
 
 1. Check mount options: `mount | grep <drive>`
 2. Remount with appropriate permissions if needed
-3. Run MediaMancer as a user with access to the mount point
+3. Run MeedyaManager as a user with access to the mount point
 
 ---
 
@@ -278,7 +278,7 @@ If your issue isn't covered here:
 
 1. **Check the logs:** `logs/watcher_events.log` and `logs/rename_preview.log`
 2. **Check the FAQ:** [faq.md](faq.md)
-3. **Open an issue:** [GitHub Issues](https://github.com/MWBMPartners/MediaMancer/issues/new)
+3. **Open an issue:** [GitHub Issues](https://github.com/MWBMPartners/MeedyaManager/issues/new)
    - Include your OS, Python version, and relevant log output
    - Use the appropriate issue template (bug report, feature request, etc.)
 

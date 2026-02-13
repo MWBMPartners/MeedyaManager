@@ -1,8 +1,8 @@
-# ⚙️ Configuration Reference — MediaMancer
+# ⚙️ Configuration Reference — MeedyaManager
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
-MediaMancer is configured through two primary mechanisms: a **JSON5 settings file** and **environment variables**.
+MeedyaManager is configured through two primary mechanisms: a **JSON5 settings file** and **environment variables**.
 
 ---
 
@@ -173,7 +173,7 @@ METAMANCER_LOG_LEVEL=INFO         # Logging level: DEBUG, INFO, WARNING, ERROR
 
 ## API Key Management
 
-MediaMancer supports three tiers of API key management:
+MeedyaManager supports three tiers of API key management:
 
 ### 1. Developer Keys (Private)
 

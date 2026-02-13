@@ -1,4 +1,4 @@
-# 📊 MediaMancer — Project Status
+# 📊 MeedyaManager — Project Status
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 >
@@ -10,11 +10,11 @@
 
 | Item | Status |
 |------|--------|
-| **Current Milestone** | M2 — CLI & UI Frontend |
-| **Last Completed** | ✅ M1 — Core Engine (June 2025) |
-| **Overall Progress** | █░░░░░░░░░ **10%** (1 of 10 milestones) |
-| **Latest Version** | `v1.0-M1` |
-| **Build Status** | ![CI](https://github.com/MWBMPartners/MediaMancer/actions/workflows/python-app.yml/badge.svg) |
+| **Current Milestone** | M3 — Rule Engine & Companion Files |
+| **Last Completed** | ✅ M2 — CLI & UI Frontend (Feb 2026) |
+| **Overall Progress** | ██░░░░░░░░ **20%** (2 of 10 milestones) |
+| **Latest Version** | `v1.1-M2` |
+| **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/python-app.yml/badge.svg) |
 
 ---
 
@@ -43,24 +43,31 @@
 
 ---
 
-### 🔨 M2 — CLI & UI Frontend *(Next Up)*
+### ✅ M2 — CLI & UI Frontend *(Complete)*
 
-> 🗓️ Target: TBD | 📦 Release: `v1.1-M2`
+> 🗓️ Completed: February 2026 | 📦 Release: `v1.1-M2`
 
-**Progress: ░░░░░░░░░░ 0%**
+**Progress: ██████████ 100%**
 
 | Deliverable | Status | Notes |
 |-------------|--------|-------|
-| Interactive CLI rename preview wizard | 🔲 Not Started | |
-| `click`-based CLI framework migration | 🔲 Not Started | |
-| Rule builder (AND/OR/nested conditions) | 🔲 Not Started | |
-| MusicBee-inspired template syntax parser | 🔲 Not Started | |
-| PySide6 (Qt6) cross-platform GUI | 🔲 Not Started | |
-| Dark/light theme support | 🔲 Not Started | System-aware |
-| Rename preview queue + simulation panel | 🔲 Not Started | |
-| Drag-and-drop file import | 🔲 Not Started | |
-| Rule validation with error reporting | 🔲 Not Started | |
-| Settings dialog | 🔲 Not Started | |
+| Click-based CLI framework | ✅ Done | 5 subcommands: scan, debug, watch, rule, gui |
+| Scan command with rich output | ✅ Done | `--json`, `--out`, `--mkdir`, `--simulate-off`, `--path` |
+| Debug command (metadata inspector) | ✅ Done | Rich tables, JSON export |
+| Watch command (folder monitoring) | ✅ Done | `--mode`, `--simulate/--no-simulate`, `--path` |
+| Rule template tester | ✅ Done | `--sample`, `--file`, `--template` |
+| PySide6 6.10+ cross-platform GUI | ✅ Done | Tabbed interface, drag-and-drop |
+| macOS Liquid Glass support | ✅ Done | PyObjC → NSGlassEffectView with vibrancy fallback |
+| Windows Mica/Acrylic styling | ✅ Done | DWM API via ctypes |
+| Dark/light theme (system-aware) | ✅ Done | darkdetect + QSS stylesheets |
+| Rename preview panel | ✅ Done | Table model, progress bar, search filter |
+| Settings dialog | ✅ Done | 5 tabs: folders, extensions, template, fallback, replacements |
+| Rule builder with syntax highlighting | ✅ Done | Token highlighting, tag insertion, live preview |
+| System tray icon | ✅ Done | Show/hide, scan, watch toggle, quit |
+| Drag-and-drop file import | ✅ Done | Drop files onto main window |
+| GUI test suite | ✅ Done | 23 tests (smoke + model) |
+| CLI test suite (CliRunner) | ✅ Done | 18 tests replacing subprocess tests |
+| Foundation bug fixes | ✅ Done | Config keys, circular dep, handle_file, classify_media |
 
 ---
 
@@ -81,31 +88,41 @@
 
 ## 🧪 Test Suite Status
 
-| Category | Tests | Lines | Status |
-|----------|-------|-------|--------|
-| Metadata extraction | 3 | ~140 | ✅ Passing |
-| Watcher functionality | 3 | ~130 | ✅ Passing |
-| Rename simulation | 3 | ~120 | ✅ Passing |
-| Config loading | 2 | ~80 | ✅ Passing |
-| ENV loading | 1 | ~45 | ✅ Passing |
-| Checksum verification | 1 | ~50 | ✅ Passing |
-| CLI runner | 2 | ~100 | ✅ Passing |
-| Path integrity | 1 | ~60 | ✅ Passing |
-| Import resolution | 1 | ~60 | ✅ Passing |
-| **Total** | **17** | **~787** | ✅ **All Passing** |
+| Category | Tests | Status |
+|----------|-------|--------|
+| CLI: scan command | 6 | ✅ Passing |
+| CLI: debug command | 5 | ✅ Passing |
+| CLI: rule command | 6 | ✅ Passing |
+| CLI: version flag | 1 | ✅ Passing |
+| GUI: smoke tests | 11 | ✅ Passing |
+| GUI: preview model | 12 | ✅ Passing |
+| Metadata extraction | 6 | ✅ Passing |
+| Media classification | 2 | ✅ Passing |
+| Watcher functionality | 6 | ✅ Passing |
+| Rename simulation | 1 | ✅ Passing |
+| Config & ENV loading | 5 | ✅ Passing |
+| Checksum verification | 3 | ✅ Passing |
+| Path & import integrity | 5 | ✅ Passing |
+| Watcher logging & redaction | 2 | ✅ Passing |
+| Simulation log output | 1 | ✅ Passing |
+| Batch rename simulation | 1 | ✅ Passing |
+| **Total** | **73** | ✅ **All Passing** |
 
 ---
 
 ## 🏗️ Architecture Health
 
-| Component | Files | Lines | Health |
-|-----------|-------|-------|--------|
-| `core/` | 5 | ~400 | ✅ Stable |
-| `cli/` | 2 | ~160 | ✅ Stable |
-| `utils/` | 3 | ~140 | ✅ Stable |
-| `tests/` | 17 | ~787 | ✅ Good coverage |
-| `config/` | 1 | 46 | ✅ Stable |
-| **Total** | **~28** | **~1,533** | ✅ **Healthy** |
+| Component | Files | Health |
+|-----------|-------|--------|
+| `core/` | 5 | ✅ Stable |
+| `cli/` | 7 | ✅ Stable (Click framework) |
+| `cli/commands/` | 5 | ✅ New (scan, debug, watch, rule, gui) |
+| `ui/` | 8 | ✅ New (PySide6 GUI) |
+| `ui/themes/` | 2 | ✅ New (dark.qss, light.qss) |
+| `utils/` | 3 | ✅ Stable |
+| `tests/` | 20 | ✅ 73 tests, all passing |
+| `config/` | 1 | ✅ Stable |
+| **Total** | **~51** | ✅ **Healthy** |
 
 ---
 
@@ -113,12 +130,11 @@
 
 | Issue | Priority | Milestone | Notes |
 |-------|----------|-----------|-------|
-| ~~Naming inconsistency~~ | ✅ Resolved | — | Standardised to "MediaMancer" across all 14 files |
-| Polling mode not yet implemented | 🟡 Medium | M2 | Placeholder in `watcher.py` |
+| Polling mode not yet implemented | 🟡 Medium | M3 | Placeholder in `watcher.py` |
 | Rename engine uses `{placeholder}` not `<Tag>` syntax | 🟡 Medium | M3 | Migrate to MusicBee-style template syntax |
-| No GUI exists yet | 🔵 Low | M2 | PySide6 GUI planned for M2 |
 | No `mutagen` integration for tag writing | 🔵 Low | M4 | Currently read-only via pymediainfo |
-| Copyright year not yet automated | 🟡 Medium | M2 | Need build-time year substitution |
+| Watcher not integrated with GUI toggle | 🟡 Medium | M3 | GUI button state tracked, needs core watcher connection |
+| Rule builder text-only (no visual $If/$And/$Or) | 🔵 Low | M3 | Visual condition builder planned for M3 |
 
 ---
 
@@ -138,14 +154,15 @@
 
 | Date | Activity |
 |------|----------|
+| 2026-02-13 | **M2 Complete** — Click CLI, PySide6 GUI, 73 tests passing |
+| 2026-02-13 | GUI: Main window, preview panel, settings, rule builder, system tray |
+| 2026-02-13 | Platform styling: macOS Liquid Glass, Windows Mica, Linux Fusion |
+| 2026-02-13 | Click CLI: scan, debug, watch, rule, gui commands |
+| 2026-02-13 | Foundation fixes: config keys, circular deps, classify_media |
 | 2025-02-12 | Animated SVG logo, enhanced PII redaction patterns |
-| 2025-02-12 | Enhanced logging and config handling in watcher |
-| 2025-02-12 | Fallback settings generation and coverage report config |
-| 2025-02-12 | Config handling for "simulate" mode |
-| 2025-02-12 | Import path refactoring for classify_media module |
 
 ---
 
 > 📝 *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-02-12*
+> *Last updated: 2026-02-13*

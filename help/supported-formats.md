@@ -1,8 +1,8 @@
-# 🎵 Supported Formats — MediaMancer
+# 🎵 Supported Formats — MeedyaManager
 
 > **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
 
-MediaMancer supports a wide range of audio, video, and companion file formats.
+MeedyaManager supports a wide range of audio, video, and companion file formats.
 
 ---
 
@@ -48,7 +48,7 @@ MediaMancer supports a wide range of audio, video, and companion file formats.
 
 ## 🔊 Audio Characteristics Detection
 
-MediaMancer can detect and classify these audio properties:
+MeedyaManager can detect and classify these audio properties:
 
 ### Lossy vs Lossless
 
@@ -128,7 +128,7 @@ These files are tracked alongside media files and moved together:
 
 ## 🔧 Companion File Behaviour
 
-When MediaMancer moves media files, companion files in the same directory are handled as follows:
+When MeedyaManager moves media files, companion files in the same directory are handled as follows:
 
 1. **All media files moved** — All companion files are also moved to the destination
 2. **Some media files moved** — Companion files stay with the remaining media
@@ -138,4 +138,4 @@ This ensures subtitles, cover art, and other associated files always stay with t
 
 ---
 
-> 📝 *Format support is continuously expanded. If you need a format not listed here, please [open an issue](https://github.com/MWBMPartners/MediaMancer/issues/new?template=feature_request.md).*
+> 📝 *Format support is continuously expanded. If you need a format not listed here, please [open an issue](https://github.com/MWBMPartners/MeedyaManager/issues/new?template=feature_request.md).*

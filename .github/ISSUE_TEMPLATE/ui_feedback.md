@@ -15,7 +15,7 @@ Please describe the visual/design issue you experienced or the improvement you'd
 > - Suggest swapping icon for a more recognizable one
 
 ### 🧪 Steps to Reproduce (if applicable)
-1. Open MediaMancer
+1. Open MeedyaManager
 2. Go to '...'
 3. Observe layout or behavior issue
 
@@ -25,7 +25,7 @@ Include any screenshots or screen captures that help illustrate the issue.
 ### 🧭 Platform Details
 - OS and version:
 - Display resolution:
-- MediaMancer version:
+- MeedyaManager version:
 - Theme: [ ] Light  [ ] Dark  [ ] System
 
 ### 🤔 Severity (Subjective)
