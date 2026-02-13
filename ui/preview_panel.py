@@ -14,8 +14,10 @@ import logging                                              # Structured logging
 
 from PySide6.QtCore import (
     Qt,                                                     # Core Qt constants
+    Signal,                                                 # Custom signal declarations
     QSortFilterProxyModel,                                  # Filter/sort proxy for search
 )
+from PySide6.QtGui import QAction                           # Context menu actions
 from PySide6.QtWidgets import (
     QWidget,                                                # Base widget class
     QVBoxLayout,                                            # Vertical layout manager
@@ -27,6 +29,7 @@ from PySide6.QtWidgets import (
     QLabel,                                                 # Text label widget
     QHeaderView,                                            # Table header configuration
     QAbstractItemView,                                      # Abstract view base (selection modes)
+    QMenu,                                                  # Context menu widget
 )
 from PySide6.QtCore import QAbstractTableModel, QModelIndex  # Table model base class
 
@@ -158,7 +161,14 @@ class PreviewPanel(QWidget):
     - Table view displaying rename preview results with sorting
 
     This is the primary tab in the MeedyaManager main window.
+
+    Signals:
+        files_selected(list): Emitted when the user selects file(s) in the table.
+            Contains a list of file path strings for the selected rows.
     """
+
+    # Signal emitted when user selects files in the table (for metadata editor)
+    files_selected = Signal(list)
 
     def __init__(self, parent=None):
         """Initialize the preview panel with all child widgets and layout."""
@@ -225,8 +235,19 @@ class PreviewPanel(QWidget):
         self._table_view.setModel(self._proxy_model)
         self._table_view.setAlternatingRowColors(True)        # Zebra-striped rows
         self._table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # ExtendedSelection allows multi-select (Ctrl+click, Shift+click) for batch editing
+        self._table_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table_view.setSortingEnabled(True)              # Clickable column headers
+
+        # Context menu for right-click actions
+        self._table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table_view.customContextMenuRequested.connect(self._show_context_menu)
+
+        # Connect selection changes to emit files_selected signal
+        self._table_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
+
+        # Double-click opens the metadata editor for the selected file
+        self._table_view.doubleClicked.connect(self._on_double_click)
 
         # Configure column sizing — stretch first two columns, fit others
         header = self._table_view.horizontalHeader()
@@ -309,3 +330,73 @@ class PreviewPanel(QWidget):
         self._scan_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
         self._progress_bar.setVisible(False)
+
+    def _get_selected_filepaths(self):
+        """
+        Return file paths for all selected rows in the table.
+
+        Returns:
+            list[str]: List of file paths for the selected rows.
+        """
+        filepaths = []
+        indexes = self._table_view.selectionModel().selectedRows()
+        for proxy_index in indexes:
+            source_index = self._proxy_model.mapToSource(proxy_index)
+            row = source_index.row()
+            if row < len(self._model._results):
+                filepath = self._model._results[row].get("filepath", "")
+                if filepath:
+                    filepaths.append(filepath)
+        return filepaths
+
+    def _on_selection_changed(self, selected, deselected):
+        """Emit files_selected signal when the table selection changes."""
+        filepaths = self._get_selected_filepaths()
+        if filepaths:
+            self.files_selected.emit(filepaths)
+
+    def _on_double_click(self, proxy_index):
+        """
+        Handle double-click on a table row — emit files_selected for the
+        single clicked file (metadata editor will load it).
+        """
+        source_index = self._proxy_model.mapToSource(proxy_index)
+        row = source_index.row()
+        if row < len(self._model._results):
+            filepath = self._model._results[row].get("filepath", "")
+            if filepath:
+                self.files_selected.emit([filepath])
+
+    def _show_context_menu(self, pos):
+        """
+        Show a right-click context menu at the given position.
+        Provides quick actions: Edit Metadata, Copy Path.
+        """
+        menu = QMenu(self)
+
+        # Edit Metadata action
+        edit_action = QAction("Edit Metadata", self)
+        edit_action.triggered.connect(self._context_edit_metadata)
+        menu.addAction(edit_action)
+
+        menu.addSeparator()
+
+        # Copy Path action
+        copy_action = QAction("Copy Path", self)
+        copy_action.triggered.connect(self._context_copy_path)
+        menu.addAction(copy_action)
+
+        menu.exec(self._table_view.viewport().mapToGlobal(pos))
+
+    def _context_edit_metadata(self):
+        """Context menu: emit selected files for metadata editing."""
+        filepaths = self._get_selected_filepaths()
+        if filepaths:
+            self.files_selected.emit(filepaths)
+
+    def _context_copy_path(self):
+        """Context menu: copy selected file path to clipboard."""
+        from PySide6.QtWidgets import QApplication
+        filepaths = self._get_selected_filepaths()
+        if filepaths:
+            QApplication.clipboard().setText(filepaths[0])

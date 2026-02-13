@@ -159,3 +159,69 @@ class ScanWorker(QThread):
         except Exception as e:
             logger.error(f"Scan worker error: {e}")
             self.error.emit(str(e))
+
+
+class TagWriteWorker(QThread):
+    """
+    Background worker for writing metadata tags to multiple files.
+
+    Runs tag writing in a separate thread to keep the GUI responsive
+    during batch editing operations.
+
+    Signals:
+        progress(int, int): Emits (current_file_index, total_files)
+        file_written(str, dict): Emits (filepath, changes_dict) per successful write
+        error(str, str): Emits (filepath, error_message) per failed write
+        finished_all(int, int): Emits (success_count, error_count) when complete
+    """
+
+    # Signal definitions
+    progress = Signal(int, int)         # (current, total) for progress tracking
+    file_written = Signal(str, dict)    # (filepath, changes) per file written
+    error = Signal(str, str)            # (filepath, error_message) per file error
+    finished_all = Signal(int, int)     # (success_count, error_count) final summary
+
+    def __init__(self, file_tags, parent=None):
+        """
+        Initialize the tag write worker.
+
+        Args:
+            file_tags (list[tuple]): List of (filepath, {key: new_value}) tuples.
+                Each tuple specifies one file and the tags to write to it.
+            parent: Parent QObject for proper lifecycle management.
+        """
+        super().__init__(parent)
+        self._file_tags = file_tags
+
+    def run(self):
+        """
+        Write tags to each file using TagEditor.
+        Emits progress and result signals for each file processed.
+        """
+        from metadata.editor import TagEditor, TagWriteError, UnsupportedFormatError
+
+        editor = TagEditor()
+        total = len(self._file_tags)
+        success_count = 0
+        error_count = 0
+
+        for index, (filepath, tags) in enumerate(self._file_tags):
+            try:
+                changes = editor.write_tags(filepath, tags)
+                self.file_written.emit(filepath, changes)
+                success_count += 1
+            except (TagWriteError, UnsupportedFormatError) as e:
+                self.error.emit(filepath, str(e))
+                error_count += 1
+                logger.warning(f"Tag write failed for {filepath}: {e}")
+            except Exception as e:
+                self.error.emit(filepath, str(e))
+                error_count += 1
+                logger.error(f"Unexpected error writing tags to {filepath}: {e}")
+
+            # Emit progress update (1-indexed)
+            self.progress.emit(index + 1, total)
+
+        # Emit final summary
+        self.finished_all.emit(success_count, error_count)
+        logger.info(f"Tag write complete: {success_count} succeeded, {error_count} failed")

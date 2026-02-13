@@ -13,7 +13,7 @@ import click                                        # CLI framework for commands
 
 @click.group()
 @click.version_option(
-    version="1.1-M2",                              # Current milestone version
+    version="1.3-M4",                              # Current milestone version
     prog_name="MeedyaManager",                       # Application name shown in --version
     message="%(prog)s v%(version)s"                # Output format: "MeedyaManager v1.1-M2"
 )
@@ -32,9 +32,11 @@ from cli.commands.debug import debug     # noqa: E402  # Single-file metadata in
 from cli.commands.watch import watch     # noqa: E402  # Real-time folder monitoring
 from cli.commands.rule import rule       # noqa: E402  # Rule template testing
 from cli.commands.gui import gui         # noqa: E402  # Graphical interface launcher
+from cli.commands.edit import edit       # noqa: E402  # Metadata tag editor (M4)
 
 cli.add_command(scan)
 cli.add_command(debug)
 cli.add_command(watch)
 cli.add_command(rule)
 cli.add_command(gui)
+cli.add_command(edit)

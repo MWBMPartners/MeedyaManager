@@ -95,20 +95,23 @@ Additional relationships:
 
 ---
 
-### ✏️ M4 — Metadata Editor
+### ✅ M4 — Metadata Editor *(Completed February 2026)*
 
 **Release:** `v1.3-M4`
 
-- 🔲 Full tag reading/writing via `mutagen`
-- 🔲 Supported formats: ID3v2 (MP3), MP4/M4A atoms, FLAC Vorbis Comments, OGG, MKV/MKA
-- 🔲 Multi-value tag support (artists, genres, etc.)
-- 🔲 Custom tag creation and editing (unlimited)
-- 🔲 Batch tag editing across multiple files
-- 🔲 Tag preview before applying changes
-- 🔲 Booklet (PDF) and animated album art attachment
-- 🔲 Cover art management (embed, extract, replace)
-- 🔲 Ensure playability preserved across all players/devices
-- 🔲 Standard containers used wherever possible for custom tags
+- ✅ Full tag reading/writing via `mutagen` (TagEditor class)
+- ✅ Supported formats: ID3v2 (MP3, AIFF), MP4/M4A atoms, FLAC Vorbis Comments, OGG Vorbis/Opus, ASF (read-only)
+- ✅ Multi-value tag support (artists, genres, composers — semicolon-delimited)
+- ✅ Custom tag creation and editing (TXXX, freeform atoms, Vorbis Comment keys)
+- ✅ Batch tag editing across multiple files (GUI + CLI)
+- ✅ Tag preview before applying changes (dry-run mode)
+- ✅ Cover art management (embed, extract, replace, remove)
+- ✅ GUI metadata editor panel with tag table, cover art widget, save/revert
+- ✅ CLI `meedyamanager edit` command with --set, --remove, --cover, --dry-run, --json
+- ✅ Metadata extractor enriched with mutagen tags (two-stage pipeline)
+- ✅ 342 tests (130 new), all passing
+- 🔲 Booklet (PDF) and animated album art attachment (deferred to M5+)
+- 🔲 MKV/MKA tag writing (mutagen limitation — deferred to future sub-milestone)
 
 ---
 

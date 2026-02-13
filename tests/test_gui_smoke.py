@@ -39,12 +39,13 @@ def test_main_window_instantiates(qapp):
 
 
 def test_main_window_has_tabs(qapp):
-    """Verify MainWindow contains the expected tabs."""
+    """Verify MainWindow contains the expected tabs (including Metadata from M4)."""
     from ui.main_window import MainWindow
     window = MainWindow()
-    assert window._tab_widget.count() == 2
+    assert window._tab_widget.count() == 3
     assert window._tab_widget.tabText(0) == "Scan / Preview"
     assert window._tab_widget.tabText(1) == "Rules"
+    assert window._tab_widget.tabText(2) == "Metadata"
 
 
 def test_preview_panel_instantiates(qapp):

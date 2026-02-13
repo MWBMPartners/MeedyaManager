@@ -8,6 +8,86 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.3-M4] — 2026-02-14 — Metadata Editor
+
+> 🏷️ **Milestone 4** — Full tag reading/writing via mutagen, metadata editor GUI, CLI edit command, cover art management, and batch editing support.
+
+### 🚀 Added
+
+- **Tag Editor Engine** (`metadata/editor.py`)
+  - Unified `TagEditor` class normalizing ID3v2, MP4 atoms, and Vorbis Comments to TAG_MAP internal keys
+  - Format-specific mappings: `ID3_TAG_MAP`, `MP4_TAG_MAP`, `VORBIS_TAG_MAP` with reverse maps for writing
+  - Methods: `read_tags()`, `write_tags()`, `read_cover_art()`, `write_cover_art()`, `remove_cover_art()`, `get_supported_format()`
+  - Track/disc number splitting: ID3 "3/12" and MP4 (3, 12) tuples → `track_num` + `total_tracks`
+  - Custom tag support: TXXX frames (ID3), freeform atoms (MP4), any Vorbis Comment key
+  - Cover art: APIC (MP3), covr atom (MP4), Picture blocks (FLAC), base64 METADATA_BLOCK_PICTURE (OGG)
+  - ASF/WMA read-only support
+  - Dry-run mode for write preview
+  - Custom exceptions: `UnsupportedFormatError`, `TagWriteError`
+  - `CoverArt` dataclass for cover art images
+
+- **Multi-Value Field Handling** (`metadata/multi_value.py`)
+  - `parse_multi_value()` — Converts strings, lists, None to normalized value lists
+  - `format_multi_value()` — Joins values with semicolons for display
+  - `is_multi_value_field()` — Identifies fields with multiple values (artist, genre, composer, album_artist)
+
+- **Metadata Extractor Integration** (`core/metadata_extractor.py`)
+  - Two-stage pipeline: pymediainfo (technical) + mutagen/TagEditor (embedded tags)
+  - All TAG_MAP fields now populated from actual file tags (artist, album, genre, year, etc.)
+  - Merge strategy: mutagen preferred for title/description, pymediainfo for technical fields
+
+- **Tag Registry Additions** (`core/tag_registry.py`)
+  - `TECHNICAL_TAGS` set — 20 read-only fields (codec, bitrate, classification, etc.)
+  - `is_editable_tag()` function — Distinguishes writable vs read-only fields
+  - New TAG_MAP entries: ISRC, Lyrics
+
+- **GUI: Metadata Editor Panel** (`ui/metadata_editor.py`)
+  - `TagTableModel` — Two-column table model (Tag Name, Value) with editability flags
+  - `CoverArtWidget` — Thumbnail display with Replace, Remove, Extract buttons
+  - `MetadataEditorPanel` — Full editor with tag table, cover art, Save/Revert/Add Custom Tag
+  - Batch editing support — Multi-file selection shows `<Multiple>` for differing values
+  - Change tracking with modified values highlighted in blue
+
+- **GUI: MainWindow Updates** (`ui/main_window.py`)
+  - "Metadata" tab (3rd tab) with MetadataEditorPanel
+  - Edit → "Edit Metadata" menu action (Ctrl+M)
+  - Preview panel selection connected to metadata editor
+  - About dialog updated to v1.3-M4
+
+- **GUI: Preview Panel Updates** (`ui/preview_panel.py`)
+  - `ExtendedSelection` mode for multi-file selection (Ctrl+click, Shift+click)
+  - `files_selected` signal emitted on selection change
+  - Right-click context menu with "Edit Metadata" and "Copy Path"
+  - Double-click loads file in metadata editor
+
+- **GUI: TagWriteWorker** (`ui/workers.py`)
+  - QThread-based background worker for batch tag writing
+  - Progress, per-file results, and error signals
+
+- **CLI: `meedyamanager edit` command** (`cli/commands/edit.py`)
+  - Display all tags in Rich table (default, no options)
+  - `--set "Key=Value"` — Set tag values (multiple allowed)
+  - `--remove Tag` — Remove tags (multiple allowed)
+  - `--cover image.jpg` — Set cover art from image file
+  - `--remove-cover` — Remove all cover art
+  - `--dry-run` — Preview changes without writing
+  - `--json` — Export tags as JSON
+  - Accepts display names ("Album Artist"), internal keys ("album_artist"), or custom tags
+
+### 🔧 Changed
+
+- **CLI version** — Updated to `v1.3-M4`
+- **requirements.txt** — Added `mutagen>=1.47`
+
+### 🧪 Testing
+
+- **342 tests** all passing (up from 212 in M3)
+- New test files: `test_tag_editor.py` (33), `test_multi_value.py` (25), `test_extractor_integration.py` (35), `test_metadata_editor_gui.py` (22), `test_cli_edit.py` (15)
+- Updated: `test_gui_smoke.py` (3 tabs), `test_cli_version.py` (v1.3-M4)
+- Real media file fixtures in `conftest.py` (`real_mp3_file`, `real_flac_file`)
+
+---
+
 ## [v1.2-M3] — 2026-02-14 — Rule Engine & Companion Files
 
 > 🏷️ **Milestone 3** — Full MusicBee-inspired template engine with recursive descent parser, 20 template functions, companion file tracking, and configurable character replacement.
@@ -253,7 +333,7 @@ Format: `## [Version] — YYYY-MM-DD`
 | `v1.0-M1` | ✅ Core Engine | Watcher, metadata, classification, dry-run rename |
 | `v1.1-M2` | ✅ CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
 | `v1.2-M3` | ✅ Rule Engine | Full template syntax, companion file tracking |
-| `v1.3-M4` | 🔲 Metadata Editor | Tag editing, multi-value support |
+| `v1.3-M4` | ✅ Metadata Editor | Tag editing, mutagen integration, GUI panel, CLI edit |
 | `v1.4-M5` | 🔲 Music Lookup | MusicBrainz, Spotify, Apple Music, Shazam |
 | `v1.5-M6` | 🔲 TV/Film Lookup | TMDb, TheTVDB, IMDb, EIDR |
 | `v1.6-M7` | 🔲 Cloud Monitoring | OneDrive, Google Drive, Dropbox, MEGA, iCloud |

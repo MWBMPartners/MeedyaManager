@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from ui.preview_panel import PreviewPanel                   # Scan/Preview tab
 from ui.rule_builder import RuleBuilder                     # Rule builder tab
+from ui.metadata_editor import MetadataEditorPanel          # Metadata editor tab (M4)
 from ui.settings_dialog import SettingsDialog               # Settings dialog
 from ui.system_tray import SystemTrayIcon                   # System tray icon
 
@@ -110,12 +111,21 @@ class MainWindow(QMainWindow):
         # --- Edit Menu ---
         edit_menu = menu_bar.addMenu("&Edit")
 
-        # Placeholder for future edit actions (copy path, select all, etc.)
+        # Copy path action
         copy_path_action = QAction("Copy &Path", self)
         copy_path_action.setShortcut("Ctrl+Shift+C")
         copy_path_action.setStatusTip("Copy selected file path to clipboard")
         copy_path_action.triggered.connect(self._copy_selected_path)
         edit_menu.addAction(copy_path_action)
+
+        edit_menu.addSeparator()
+
+        # Edit Metadata action — switches to the Metadata tab
+        edit_metadata_action = QAction("Edit &Metadata", self)
+        edit_metadata_action.setShortcut("Ctrl+M")
+        edit_metadata_action.setStatusTip("Open the metadata editor for the selected file")
+        edit_metadata_action.triggered.connect(self._on_edit_metadata)
+        edit_menu.addAction(edit_metadata_action)
 
         # --- View Menu ---
         view_menu = menu_bar.addMenu("&View")
@@ -162,7 +172,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(settings_action)
 
     def _setup_tabs(self):
-        """Create the central tabbed widget with Scan/Preview and Rules tabs."""
+        """Create the central tabbed widget with Scan/Preview, Rules, and Metadata tabs."""
         self._tab_widget = QTabWidget()
         self.setCentralWidget(self._tab_widget)
 
@@ -173,6 +183,13 @@ class MainWindow(QMainWindow):
         # Rules tab — template editor with syntax highlighting
         self._rule_builder = RuleBuilder()
         self._tab_widget.addTab(self._rule_builder, "Rules")
+
+        # Metadata tab — tag editor for viewing/editing embedded tags (M4)
+        self._metadata_editor = MetadataEditorPanel()
+        self._tab_widget.addTab(self._metadata_editor, "Metadata")
+
+        # Connect preview panel selection to metadata editor
+        self._preview_panel.files_selected.connect(self._on_preview_files_selected)
 
     def _setup_status_bar(self):
         """Create the status bar with watcher status and file count labels."""
@@ -252,6 +269,21 @@ class MainWindow(QMainWindow):
             self.activateWindow()
             self.raise_()
 
+    def _on_edit_metadata(self):
+        """Switch to the Metadata tab and load the selected file."""
+        self._tab_widget.setCurrentWidget(self._metadata_editor)
+
+    def _on_preview_files_selected(self, filepaths):
+        """
+        Handle file selection from the preview panel.
+        Loads the selected file(s) into the metadata editor.
+
+        Args:
+            filepaths (list[str]): List of selected file paths.
+        """
+        if filepaths:
+            self._metadata_editor.load_files(filepaths)
+
     def _copy_selected_path(self):
         """Copy the selected file's path to the system clipboard."""
         # Get the selected row from the preview table
@@ -270,10 +302,10 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About MeedyaManager",
-            "MeedyaManager v1.1-M2\n\n"
+            "MeedyaManager v1.3-M4\n\n"
             "Cross-platform media file manager and auto-organizer.\n\n"
             "(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)\n\n"
-            "Built with Python, PySide6, and pymediainfo."
+            "Built with Python, PySide6, pymediainfo, and mutagen."
         )
 
     def _on_quit(self):

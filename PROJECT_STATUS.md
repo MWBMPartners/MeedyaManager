@@ -10,10 +10,10 @@
 
 | Item | Status |
 |------|--------|
-| **Current Milestone** | M4 — Metadata Editor |
-| **Last Completed** | ✅ M3 — Rule Engine & Companion Files (Feb 2026) |
-| **Overall Progress** | ███░░░░░░░ **30%** (3 of 10 milestones) |
-| **Latest Version** | `v1.2-M3` |
+| **Current Milestone** | M5 — Music Metadata Lookup |
+| **Last Completed** | ✅ M4 — Metadata Editor (Feb 2026) |
+| **Overall Progress** | ████░░░░░░ **40%** (4 of 10 milestones) |
+| **Latest Version** | `v1.3-M4` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/python-app.yml/badge.svg) |
 
 ---
@@ -95,11 +95,37 @@
 
 ---
 
+### ✅ M4 — Metadata Editor *(Complete)*
+
+> 🗓️ Completed: February 2026 | 📦 Release: `v1.3-M4`
+
+**Progress: ██████████ 100%**
+
+| Deliverable | Status | Notes |
+|-------------|--------|-------|
+| mutagen-based tag reader/writer engine | ✅ Done | Unified API for ID3v2, MP4, Vorbis Comments, ASF |
+| Format-specific tag mappings | ✅ Done | ID3_TAG_MAP, MP4_TAG_MAP, VORBIS_TAG_MAP |
+| Multi-value field handling | ✅ Done | Semicolon-delimited, native Vorbis multi-value |
+| Custom tag support (TXXX, freeform, Vorbis) | ✅ Done | Unlimited custom tags via `custom_` prefix |
+| Cover art read/write/remove | ✅ Done | APIC (MP3), covr (MP4), Picture (FLAC), base64 (OGG) |
+| Track/disc number splitting | ✅ Done | "3/12" → track_num + total_tracks |
+| Metadata extractor integration | ✅ Done | pymediainfo + mutagen two-stage pipeline |
+| TECHNICAL_TAGS and is_editable_tag() | ✅ Done | Distinguish read-only vs editable fields |
+| ISRC and Lyrics tags in TAG_MAP | ✅ Done | New tag registry entries |
+| GUI: Metadata editor panel | ✅ Done | Tag table, cover art widget, save/revert |
+| GUI: Batch editing support | ✅ Done | Multi-file selection with `<Multiple>` handling |
+| GUI: Metadata tab in MainWindow | ✅ Done | Third tab with edit menu action |
+| GUI: Preview panel multi-select | ✅ Done | ExtendedSelection, context menu, files_selected signal |
+| GUI: TagWriteWorker background thread | ✅ Done | QThread-based batch write |
+| CLI: `meedyamanager edit` command | ✅ Done | --set, --remove, --cover, --remove-cover, --dry-run, --json |
+| Comprehensive test suite | ✅ Done | 130 new tests (342 total) |
+
+---
+
 ### 🔮 Future Milestones
 
 | # | Milestone | Status | Target |
 |---|-----------|--------|--------|
-| M4 | ✏️ Metadata Editor | 🔲 Planned | — |
 | M5 | 🎵 Music Metadata Lookup | 🔲 Planned | — |
 | M6 | 🎬 TV/Film Metadata Lookup | 🔲 Planned | — |
 | M7 | ☁️ Cloud Storage Monitoring | 🔲 Planned | — |
@@ -114,13 +140,18 @@
 | Category | Tests | Status |
 |----------|-------|--------|
 | Rule engine (lexer, parser, evaluator) | 77 | ✅ Passing |
+| Tag editor (ID3, Vorbis, cover art) | 33 | ✅ Passing |
+| Multi-value handling | 25 | ✅ Passing |
+| Extractor integration (mutagen + pymediainfo) | 35 | ✅ Passing |
 | Companion tracker | 26 | ✅ Passing |
 | Tag registry | 20 | ✅ Passing |
 | Character replacer | 14 | ✅ Passing |
+| CLI: edit command | 15 | ✅ Passing |
 | CLI: scan command | 6 | ✅ Passing |
 | CLI: debug command | 5 | ✅ Passing |
 | CLI: rule command | 9 | ✅ Passing |
 | CLI: version flag | 1 | ✅ Passing |
+| GUI: metadata editor | 22 | ✅ Passing |
 | GUI: smoke tests | 11 | ✅ Passing |
 | GUI: preview model | 12 | ✅ Passing |
 | Metadata extraction | 6 | ✅ Passing |
@@ -133,7 +164,7 @@
 | Watcher logging & redaction | 2 | ✅ Passing |
 | Simulation log output | 1 | ✅ Passing |
 | Batch rename simulation | 1 | ✅ Passing |
-| **Total** | **212** | ✅ **All Passing** |
+| **Total** | **342** | ✅ **All Passing** |
 
 ---
 
@@ -141,15 +172,16 @@
 
 | Component | Files | Health |
 |-----------|-------|--------|
-| `core/` | 8 | ✅ Stable (+rule_engine, tag_registry, companion_tracker) |
+| `core/` | 8 | ✅ Stable (+metadata_extractor with mutagen integration) |
+| `metadata/` | 3 | ✅ New (editor.py, multi_value.py, __init__.py) |
 | `cli/` | 7 | ✅ Stable (Click framework) |
-| `cli/commands/` | 5 | ✅ Stable (scan, debug, watch, rule, gui) |
-| `ui/` | 8 | ✅ Stable (PySide6 GUI) |
+| `cli/commands/` | 6 | ✅ Stable (+edit command) |
+| `ui/` | 9 | ✅ Stable (+metadata_editor.py) |
 | `ui/themes/` | 2 | ✅ Stable (dark.qss, light.qss) |
 | `utils/` | 4 | ✅ Stable (+char_replacer) |
-| `tests/` | 24 | ✅ 212 tests, all passing |
+| `tests/` | 29 | ✅ 342 tests, all passing |
 | `config/` | 1 | ✅ Stable |
-| **Total** | **~59** | ✅ **Healthy** |
+| **Total** | **~69** | ✅ **Healthy** |
 
 ---
 
@@ -159,7 +191,7 @@
 |-------|----------|-----------|-------|
 | Polling mode not yet implemented | 🟡 Medium | M3 | Placeholder in `watcher.py` |
 | ~~Rename engine uses `{placeholder}` not `<Tag>` syntax~~ | ✅ Resolved | M3 | Migrated to MusicBee-style template syntax |
-| No `mutagen` integration for tag writing | 🔵 Low | M4 | Currently read-only via pymediainfo |
+| ~~No `mutagen` integration for tag writing~~ | ✅ Resolved | M4 | Full mutagen read/write via TagEditor |
 | Watcher not integrated with GUI toggle | 🟡 Medium | M3 | GUI button state tracked, needs core watcher connection |
 | Rule builder text-only (no visual $If/$And/$Or) | 🔵 Low | M3 | Visual condition builder planned for M3 |
 
@@ -181,6 +213,7 @@
 
 | Date | Activity |
 |------|----------|
+| 2026-02-14 | **M4 Complete** — Metadata editor (mutagen), tag read/write, GUI panel, CLI edit, 342 tests |
 | 2026-02-13 | **M3 Complete** — Rule engine (20 functions), companion tracker, 212 tests |
 | 2026-02-13 | **M2 Complete** — Click CLI, PySide6 GUI, 73 tests passing |
 | 2026-02-13 | GUI: Main window, preview panel, settings, rule builder, system tray |

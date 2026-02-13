@@ -9,6 +9,7 @@
 
 # --- Core Runtime Dependencies ---
 pymediainfo>=6.0          # Metadata extraction via MediaInfo library
+mutagen>=1.47             # Tag reading/writing (ID3, MP4, FLAC, OGG)
 watchdog>=4.0             # Real-time filesystem event monitoring
 json5>=0.9                # JSON5 config file parsing (supports comments)
 python-dotenv>=1.0.0      # .env file loading for API keys and overrides

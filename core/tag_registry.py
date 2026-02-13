@@ -43,6 +43,8 @@ TAG_MAP = {
     "Publisher": "publisher",           # Record label / publisher
     "Comment": "description",           # Comment / description field
     "BPM": "bpm",                       # Beats per minute
+    "ISRC": "isrc",                     # International Standard Recording Code
+    "Lyrics": "lyrics",                 # Embedded lyrics text
 
     # -------------------------------------------------------------------------
     # Standard Video Tags — TV show and movie metadata
@@ -99,6 +101,54 @@ REVERSE_TAG_MAP = {v: k for k, v in TAG_MAP.items()}
 # Example: <Custom:SpotifyURL> → metadata key "custom_spotifyurl"
 # ============================================================================
 CUSTOM_TAG_PREFIX = "Custom:"
+
+
+# ============================================================================
+# Technical Tags — Read-only fields that cannot be edited via mutagen.
+# These are computed or extracted from the file container/stream, not from
+# embedded tag frames. Used by the metadata editor to determine which
+# fields are editable (tag fields) vs read-only (technical fields).
+# ============================================================================
+TECHNICAL_TAGS = {
+    "filepath",                  # File system path (not a tag)
+    "filename",                  # Derived from filepath
+    "extension",                 # Derived from filepath
+    "format",                    # Container format (pymediainfo)
+    "duration",                  # Stream duration (pymediainfo)
+    "audio_channels",            # Channel count (pymediainfo)
+    "is_lossless",               # Lossless detection (pymediainfo)
+    "media_group",               # Classification (computed)
+    "format_class",              # Classification (computed)
+    "media_class",               # Classification (computed)
+    "quality_type",              # Classification (computed)
+    "codec",                     # Audio codec (pymediainfo)
+    "bitrate",                   # Bitrate (pymediainfo)
+    "sample_rate",               # Sample rate (pymediainfo)
+    "bit_depth",                 # Bit depth (pymediainfo)
+    "channel_layout",            # Channel layout (pymediainfo)
+    "spatial_format",            # Spatial audio format (pymediainfo)
+    "multichannel",              # Multichannel format (pymediainfo)
+    "resolution",                # Video resolution (pymediainfo)
+    "file_size",                 # File size (filesystem)
+    "date_added",                # Date first detected (internal)
+}
+
+
+def is_editable_tag(internal_key):
+    """
+    Check whether a metadata field can be written to files via mutagen.
+
+    Technical fields (codec, bitrate, channels, classification, etc.) are
+    read-only — they describe the container/stream, not embedded tags.
+    All other fields (artist, album, genre, custom tags, etc.) are editable.
+
+    Args:
+        internal_key (str): The internal snake_case metadata key.
+
+    Returns:
+        bool: True if the field is an embedded tag that can be written.
+    """
+    return internal_key not in TECHNICAL_TAGS
 
 
 def resolve_tag(display_name, metadata):

@@ -99,6 +99,12 @@ meedyamanager rule --sample --template "<Artist>/<Album>/<$Pad(<Track #>,2)> - <
 # Validate template syntax
 meedyamanager rule --validate --template "<Artist>/<Title>.<Ext>"
 
+# View metadata tags for a file
+meedyamanager edit path/to/song.mp3
+
+# Edit metadata tags
+meedyamanager edit path/to/song.mp3 --set "Artist=New Artist" --set "Genre=Rock"
+
 # Start the folder watcher (simulation mode — safe, no files moved)
 meedyamanager watch
 
@@ -173,8 +179,8 @@ TV Shows/<Show>/Season <$Pad(<Season>,2)>/<Show> - S<$Pad(<Season>,2)>E<$Pad(<Ep
 | M1 | 🧱 Core Engine | ✅ **Complete** | Watcher, metadata, classification, dry-run rename |
 | M2 | 🧙 CLI & UI Frontend | ✅ **Complete** | Interactive CLI, PySide6 GUI, rule builder |
 | M3 | 🧩 Rule Engine & Companions | ✅ **Complete** | 20 template functions, companion tracking, 212 tests |
-| M4 | ✏️ Metadata Editor | 🔨 **Next** | Manual tag editing, multi-value support |
-| M5 | 🎵 Music Metadata Lookup | 🔲 Planned | MusicBrainz, Spotify, Apple Music, Shazam + more |
+| M4 | ✏️ Metadata Editor | ✅ **Complete** | Tag read/write via mutagen, GUI editor, CLI edit, 342 tests |
+| M5 | 🎵 Music Metadata Lookup | 🔨 **Next** | MusicBrainz, Spotify, Apple Music, Shazam + more |
 | M6 | 🎬 TV/Film Metadata Lookup | 🔲 Planned | TMDb, TheTVDB, IMDb, EIDR + more |
 | M7 | ☁️ Cloud Monitoring | 🔲 Planned | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
 | M8 | 📦 Public Release | 🔲 Planned | Packaged installers, auto-updater |
