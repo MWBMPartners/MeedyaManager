@@ -1,16 +1,16 @@
 # ============================================================================
 # File: .github/workflows/test-suite.yml
-# (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
 # GitHub Actions configuration for MeedyaManager project. This CI script will
-# automatically run Python-based unit tests and metadata dry-runs on every push
-# and pull request to main, dev, or milestone branches.
+# automatically run Python-based unit tests on every push and pull request to
+# main, dev, or milestone branches.
 #
 # Key Features:
 # - Python 3.11 on all platforms (Linux, macOS, Windows)
-# - Installs all dependencies
-# - Runs pytest on /tests folder
+# - Installs all dependencies including GUI (PySide6)
+# - Runs core + CLI tests, then GUI tests in offscreen mode
 # - Verifies that core modules compile
 # ============================================================================
 
@@ -29,7 +29,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-14, windows-latest]
-        python-version: [3.11]
+        python-version: ["3.11"]
 
     steps:
       - name: Checkout repo
@@ -44,11 +44,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pymediainfo pytest
+          pip install pymediainfo pytest pytest-cov python-dotenv PySide6 darkdetect
 
-      - name: Run unit tests
+      - name: Run core + CLI tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest tests --maxfail=3 --disable-warnings --tb=short
+          pytest tests/ --ignore=tests/test_gui_smoke.py --ignore=tests/test_gui_preview_model.py --maxfail=3 --disable-warnings --tb=short
+
+      - name: Run GUI tests (offscreen mode)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          pytest tests/test_gui_smoke.py tests/test_gui_preview_model.py --maxfail=3 --disable-warnings --tb=short
 
       - name: Validate import integrity
         run: |

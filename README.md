@@ -84,20 +84,26 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### Usage
+### Usage (CLI)
 
 ```bash
-# Scan a single file and view its metadata
-python cli/metadata_debugger.py path/to/song.mp3
+# Scan watch folders and preview renames
+meedyamanager scan
 
-# Scan and export metadata as JSON
-python cli/metadata_debugger.py path/to/song.mp3 --json --out output/
+# Inspect a single file's metadata
+meedyamanager debug path/to/song.mp3
 
-# Run the folder watcher (simulation mode — safe, no files moved)
-python cli/runner.py
+# Test a rename template with sample data
+meedyamanager rule --sample --template "<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>"
 
-# Run with simulation disabled (actually rename/move files)
-python cli/runner.py --simulate-off
+# Validate template syntax
+meedyamanager rule --validate --template "<Artist>/<Title>.<Ext>"
+
+# Start the folder watcher (simulation mode — safe, no files moved)
+meedyamanager watch
+
+# Launch the GUI
+meedyamanager gui
 ```
 
 ### Configuration
@@ -112,8 +118,8 @@ Edit `config/settings.json5` to set your preferences:
   // Supported file extensions
   valid_extensions: ["mp3", "flac", "m4a", "mp4", "mkv", "avi", "wav", "ogg"],
 
-  // Rename template (uses metadata placeholders)
-  rename_format: "{media_class}/{artist}/{album}/{track_num} - {title}.{extension}",
+  // Rename template using <Tag> and $Function() syntax
+  rename_format: "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
 
   // Characters to replace in filenames
   filename_replacements: { "/": "-", "\\": "-", ":": "-", "*": "", "?": "" }
@@ -137,9 +143,9 @@ This powers intelligent file routing, rule matching, and future UI grouping.
 
 ---
 
-## 📐 Rule Engine (Coming in M2/M3)
+## 📐 Rule Engine
 
-MeedyaManager's rule engine is inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates) with extensions for unlimited custom tags and video support.
+MeedyaManager's rule engine is inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates) with extensions for unlimited custom tags, video support, and 20 built-in functions.
 
 **Example rules:**
 ```
@@ -165,9 +171,9 @@ TV Shows/<Show>/Season <$Pad(<Season>,2)>/<Show> - S<$Pad(<Season>,2)>E<$Pad(<Ep
 | # | Milestone | Status | Description |
 |---|-----------|--------|-------------|
 | M1 | 🧱 Core Engine | ✅ **Complete** | Watcher, metadata, classification, dry-run rename |
-| M2 | 🧙 CLI & UI Frontend | 🔨 **Next** | Interactive CLI, PySide6 GUI, rule builder |
-| M3 | 🧩 Rule Engine & Companions | 🔲 Planned | Full template syntax, companion file tracking |
-| M4 | ✏️ Metadata Editor | 🔲 Planned | Manual tag editing, multi-value support |
+| M2 | 🧙 CLI & UI Frontend | ✅ **Complete** | Interactive CLI, PySide6 GUI, rule builder |
+| M3 | 🧩 Rule Engine & Companions | ✅ **Complete** | 20 template functions, companion tracking, 212 tests |
+| M4 | ✏️ Metadata Editor | 🔨 **Next** | Manual tag editing, multi-value support |
 | M5 | 🎵 Music Metadata Lookup | 🔲 Planned | MusicBrainz, Spotify, Apple Music, Shazam + more |
 | M6 | 🎬 TV/Film Metadata Lookup | 🔲 Planned | TMDb, TheTVDB, IMDb, EIDR + more |
 | M7 | ☁️ Cloud Monitoring | 🔲 Planned | OneDrive, Google Drive, Dropbox, MEGA, iCloud |

@@ -5,7 +5,7 @@
 # Description:
 # GitHub Actions CI test matrix for the MeedyaManager project.
 # Runs core + CLI tests on all platforms, and GUI tests in offscreen mode.
-# Includes PYTHONPATH config, coverage reports, and fallback config file generation.
+# Includes PYTHONPATH config and coverage reports.
 # ============================================================================
 
 name: 🧪 MeedyaManager CI Test Matrix
@@ -42,14 +42,6 @@ jobs:
       - name: 🖥️ Install GUI dependencies
         run: |
           pip install PySide6 darkdetect
-
-      - name: 📄 Generate fallback settings.json5 for CI
-        run: |
-          echo '{
-            simulate: true,
-            log_path: "./logs/",
-            default_watch_path: "./watch/"
-          }' > settings.json5
 
       - name: 🔐 Verify .env loader functionality
         run: |
