@@ -8,7 +8,29 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v1.5-M6] — 2026-02-12 — Packaging, Error Handling & Config Profiles
+## [Unreleased]
+
+### 📝 Changed — 2026-02-12
+
+- Standardised project name from "MetaMancer" to **MeedyaManager** across all documentation
+- Created comprehensive [Project_Plan.md](../Project_Plan.md) with full architecture, tech stack, and milestone details
+- Created [PROJECT_STATUS.md](../PROJECT_STATUS.md) as the go-to project status tracker
+- Rewrote [README.md](../README.md) with branding, badges, quick start guide, and full documentation links
+- Updated [ROADMAP.md](ROADMAP.md) to align with revised milestone ordering
+- Updated [CHANGELOG.md](CHANGELOG.md) (this file) with proper formatting and conventions
+- Created user documentation in `help/` directory:
+  - `getting-started.md` — Installation and first run guide
+  - `configuration.md` — Settings reference
+  - `rule-syntax.md` — Complete template syntax reference
+  - `supported-formats.md` — Full format support list
+  - `troubleshooting.md` — Common issues and solutions
+  - `faq.md` — Frequently asked questions
+- Updated `.claude/CLAUDE.md` with consolidated project brief
+- Saved full project brief to `.claude/ProjectBrief_Chat.claude`
+
+---
+
+## [v1.5-M6] — 2026-02-13 — Packaging, Error Handling & Config Profiles
 
 > 🏷️ **Milestone 6** — Centralized logging, crash protection, user-friendly error dialogs, configuration export/import, native platform installers via Nuitka, and CI/CD build pipeline.
 
@@ -93,7 +115,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v1.4-M5] — 2026-02-15 — Metadata Lookup
+## [v1.4-M5] — 2026-02-13 — Metadata Lookup
 
 > 🏷️ **Milestone 5** — 19 metadata lookup providers across music, video, podcasts, and identifier registries. Provider framework with auto-discovery, credential management, rate limiting, cover art management, fuzzy match scoring, CLI lookup command, and GUI lookup panel.
 
@@ -190,7 +212,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v1.3-M4] — 2026-02-14 — Metadata Editor
+## [v1.3-M4] — 2026-02-13 — Metadata Editor
 
 > 🏷️ **Milestone 4** — Full tag reading/writing via mutagen, metadata editor GUI, CLI edit command, cover art management, and batch editing support.
 
@@ -270,7 +292,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v1.2-M3] — 2026-02-14 — Rule Engine & Companion Files
+## [v1.2-M3] — 2026-02-12 — Rule Engine & Companion Files
 
 > 🏷️ **Milestone 3** — Full MusicBee-inspired template engine with recursive descent parser, 20 template functions, companion file tracking, and configurable character replacement.
 
@@ -400,28 +422,6 @@ Format: `## [Version] — YYYY-MM-DD`
 - **73 tests** all passing (up from 17 in M1)
 - New test categories: CLI commands (18), GUI smoke (11), GUI model (12)
 - All tests use offscreen Qt rendering for CI compatibility
-
----
-
-## [Unreleased]
-
-### 📝 Changed — 2026-02-12
-
-- Standardised project name from "MetaMancer" to **MeedyaManager** across all documentation
-- Created comprehensive [Project_Plan.md](../Project_Plan.md) with full architecture, tech stack, and milestone details
-- Created [PROJECT_STATUS.md](../PROJECT_STATUS.md) as the go-to project status tracker
-- Rewrote [README.md](../README.md) with branding, badges, quick start guide, and full documentation links
-- Updated [ROADMAP.md](ROADMAP.md) to align with revised milestone ordering
-- Updated [CHANGELOG.md](CHANGELOG.md) (this file) with proper formatting and conventions
-- Created user documentation in `help/` directory:
-  - `getting-started.md` — Installation and first run guide
-  - `configuration.md` — Settings reference
-  - `rule-syntax.md` — Complete template syntax reference
-  - `supported-formats.md` — Full format support list
-  - `troubleshooting.md` — Common issues and solutions
-  - `faq.md` — Frequently asked questions
-- Updated `.claude/CLAUDE.md` with consolidated project brief
-- Saved full project brief to `.claude/ProjectBrief_Chat.claude`
 
 ---
 

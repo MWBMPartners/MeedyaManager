@@ -231,7 +231,7 @@ MeedyaManager can automatically look up and match your media files against **19 
 | M3 | 🧩 Rule Engine & Companions | ✅ **Complete** | 20 template functions, companion tracking, 212 tests |
 | M4 | ✏️ Metadata Editor | ✅ **Complete** | Tag read/write via mutagen, GUI editor, CLI edit, 342 tests |
 | M5 | 🔍 Metadata Lookup | ✅ **Complete** | 19 providers across music, video, podcasts & identifiers |
-| M6 | 🎬 TV/Film Metadata Lookup | 🔲 Planned | Video providers (TMDB, TheTVDB, IMDb) partially done in M5 |
+| M6 | 📦 Packaging & Error Handling | ✅ **Complete** | Centralized logging, crash protection, config profiles, native installers, 1007 tests |
 | M7 | ☁️ Cloud Monitoring | 🔲 Planned | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
 | M8 | 📦 Public Release | 🔲 Planned | Packaged installers, auto-updater |
 | M9 | 🗄️ Database Export | 🔲 Planned | MySQL, MariaDB, SQLite, PostgreSQL, SQL Server |

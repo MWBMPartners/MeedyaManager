@@ -307,19 +307,19 @@
 
 | Date | Activity |
 |------|----------|
-| 2026-02-12 | **M6 Complete** — Packaging & error handling: centralized logging, crash protection, error dialogs, config export/import, native installers (macOS .dmg, Windows .exe, Linux .AppImage/.deb), 1007 tests |
-| 2026-02-15 | **M5 Complete** — Metadata lookup: 19 providers (music, video, podcasts, identifiers), provider framework, credential management, rate limiting, cover art, fuzzy matching, CLI lookup, GUI lookup panel, 751 tests |
-| 2026-02-14 | **M4 Complete** — Metadata editor (mutagen), tag read/write, GUI panel, CLI edit, 342 tests |
-| 2026-02-13 | **M3 Complete** — Rule engine (20 functions), companion tracker, 212 tests |
-| 2026-02-13 | **M2 Complete** — Click CLI, PySide6 GUI, 73 tests passing |
-| 2026-02-13 | GUI: Main window, preview panel, settings, rule builder, system tray |
-| 2026-02-13 | Platform styling: macOS Liquid Glass, Windows Mica, Linux Fusion |
-| 2026-02-13 | Click CLI: scan, debug, watch, rule, gui commands |
-| 2026-02-13 | Foundation fixes: config keys, circular deps, classify_media |
-| 2025-02-12 | Animated SVG logo, enhanced PII redaction patterns |
+| 2026-02-13 | **M6 Complete** — Packaging & error handling: centralized logging, crash protection, error dialogs, config export/import, native installers (macOS .dmg, Windows .exe, Linux .AppImage/.deb), 1007 tests |
+| 2026-02-13 | **M5 Complete** — Metadata lookup: 19 providers (music, video, podcasts, identifiers), provider framework, credential management, rate limiting, cover art, fuzzy matching, CLI lookup, GUI lookup panel, 751 tests |
+| 2026-02-13 | **M4 Complete** — Metadata editor (mutagen), tag read/write, GUI panel, CLI edit, 342 tests |
+| 2026-02-12 | **M3 Complete** — Rule engine (20 functions), companion tracker, 212 tests |
+| 2026-02-12 | **M2 Complete** — Click CLI, PySide6 GUI, 73 tests passing |
+| 2026-02-12 | GUI: Main window, preview panel, settings, rule builder, system tray |
+| 2026-02-12 | Platform styling: macOS Liquid Glass, Windows Mica, Linux Fusion |
+| 2026-02-12 | Click CLI: scan, debug, watch, rule, gui commands |
+| 2026-02-12 | Foundation fixes: config keys, circular deps, classify_media |
+| 2025-06-XX | Animated SVG logo, enhanced PII redaction patterns |
 
 ---
 
 > 📝 *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-02-12*
+> *Last updated: 2026-02-13*

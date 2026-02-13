@@ -70,11 +70,8 @@ valid_extensions: [
 ### `rename_format` — Rename Template
 
 ```json5
-// Current M1 placeholder syntax:
-rename_format: "{media_class}/{artist}/{album}/{track_num} - {title}.{extension}"
-
-// Future M3 MusicBee-style syntax:
-// rename_format: "<Media Class>/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>"
+// MusicBee-style <Tag> syntax with template functions:
+rename_format: "<Media Class>/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>"
 ```
 
 See [rule-syntax.md](rule-syntax.md) for the full template syntax reference.

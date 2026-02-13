@@ -51,11 +51,11 @@
 ## Milestone Order
 
 1. ✅ M1 — Core Engine (Complete)
-2. M2 — CLI & UI Frontend
-3. M3 — Rule Engine & Companion Files
-4. M4 — Metadata Editor
-5. M5 — Metadata Lookup: Music (MusicBrainz, Spotify, Apple Music, Tidal, Amazon, Shazam, AcousticBrainz)
-6. M6 — Metadata Lookup: TV/Film (Apple TV, iTunes, TheTVDB, TMDb, IMDb, EIDR)
+2. ✅ M2 — CLI & UI Frontend (Complete)
+3. ✅ M3 — Rule Engine & Companion Files (Complete)
+4. ✅ M4 — Metadata Editor (Complete)
+5. ✅ M5 — Metadata Lookup (19 providers: music, video, podcasts, identifiers) (Complete)
+6. ✅ M6 — Packaging, Error Handling & Config Profiles (Complete)
 7. M7 — Cloud Storage Monitoring (OneDrive, Google Drive, Dropbox, MEGA, iCloud)
 8. M8 — Public Release & Packaging
 9. M9 — Database Export (MySQL, MariaDB, SQL Server, SQLite, PostgreSQL)

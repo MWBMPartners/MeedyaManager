@@ -169,26 +169,31 @@ Additional relationships:
 
 ---
 
-### 🎬 M6 — Metadata Lookup: TV & Film (Enhancements)
+### ✅ M6 — Packaging, Error Handling & Config Profiles *(Completed February 2026)*
 
 **Release:** `v1.5-M6`
 
-> **Note:** The core video providers (TMDB, TheTVDB, IMDb, Apple TV, iTunes Store, EIDR) were implemented ahead of schedule in M5. This milestone will focus on enhancements and deeper integration.
+> **Note:** The original M6 scope (TV/Film enhancements) was absorbed into M5. M6 was repurposed for packaging, error handling, and configuration management.
 
-Providers already completed in M5:
-
-- ✅ **Apple TV** — TV/movie matching, artwork
-- ✅ **iTunes Store** — Purchase metadata, artwork
-- ✅ **TheTVDB** — TV show/episode matching
-- ✅ **TheMovieDB (TMDb)** — Movie matching, cast, crew
-- ✅ **IMDb** — Movie/TV identification, ratings
-- ✅ **EIDR** — Entertainment Identifier Registry lookup & embed
-
-Remaining enhancements:
-
-- 🔲 Enhanced season/episode matching with filename parsing
-- 🔲 Batch TV series lookup with automatic episode assignment
-- 🔲 Download animated cover art (square and portrait) as MP4
+- ✅ Centralized logging (`utils/log_config.py`) — platform-aware log dirs, PII redaction, daily rotation, 30-day auto-cleanup
+- ✅ Global exception handling (`utils/exception_handler.py`) — `sys.excepthook` + `threading.excepthook`, crash report files
+- ✅ SafeWorker base class (`ui/workers.py`) — QThread safety-net for all background workers
+- ✅ User-friendly error dialogs (`ui/error_dialog.py`) — headline, explanation, suggestion, collapsible details
+- ✅ Error message catalog (`utils/error_messages.py`) — MRO-based exception-to-message resolution
+- ✅ Error reporting (`utils/error_reporter.py`) — email-based bug reports with PII redaction
+- ✅ CLI: `meedyamanager report-bug` command
+- ✅ Startup health checks (`utils/health_check.py`) — Python version, config, watch dirs, log dir, disk space
+- ✅ Crash recovery & state management (`core/state_manager.py`) — WatcherState + AppLockFile
+- ✅ Configuration export/import (`utils/config_profile.py`) — `.mmprofile` ZIP bundles, cross-platform path tokens
+- ✅ CLI: `meedyamanager config export/import` commands
+- ✅ GUI: Settings Export/Import buttons, Help → Report Bug
+- ✅ `pyproject.toml` (PEP 621) with hatchling build backend
+- ✅ Icon assets: `icon.png`, `icon.ico`, `icon.icns`
+- ✅ Nuitka build entry scripts: `meedyamanager_gui.py`, `meedyamanager_cli.py`
+- ✅ Windows installer (Inno Setup): `build/innosetup.iss`
+- ✅ Linux desktop entry: `build/meedyamanager.desktop`
+- ✅ CI: `build-installers.yml` — macOS .dmg, Windows .exe, Linux .AppImage + .deb
+- ✅ 1007 tests (256 new), all passing
 
 ---
 
@@ -293,4 +298,4 @@ Purpose: Create searchable intranet/web-hosted media library index.
 
 > 📝 *This roadmap is maintained alongside the codebase. For current status, see [PROJECT_STATUS.md](../PROJECT_STATUS.md).*
 >
-> *Last updated: 2026-02-15*
+> *Last updated: 2026-02-13*

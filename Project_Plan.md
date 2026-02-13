@@ -136,16 +136,30 @@ On macOS 26 (Tahoe), Apple introduced **Liquid Glass** — a translucent, depth-
 
 Dark/light mode follows the system setting automatically via `darkdetect` + Qt6's built-in theme awareness + native macOS `NSAppearance`.
 
+### Metadata Lookup Dependencies (M5)
+
+| Package | Purpose |
+|---------|---------|
+| `httpx` | Async HTTP client for provider API calls |
+| `tenacity` | Retry logic for API calls |
+| `spotipy` | Spotify Web API client (OAuth2) |
+| `musicbrainzngs` | MusicBrainz API client |
+| `deezer-python` | Deezer public API client |
+| `tidalapi` | Tidal API client (OAuth2.1) |
+| `ytmusicapi` | YouTube Music (cookie-based auth) |
+| `shazamio` | Shazam audio fingerprinting |
+| `tmdbsimple` | TMDb API client |
+| `cinemagoer` | IMDb data access |
+| `pyjwt[crypto]` | JWT authentication (Apple Music) |
+| `cryptography` | AES-256-GCM encrypted credential storage |
+| `keyring` | OS-native secure credential storage |
+| `fuzzywuzzy` | Fuzzy string matching for metadata scoring |
+| `python-Levenshtein` | Fast Levenshtein distance for fuzzy matching |
+
 ### Future Dependencies (as needed per milestone)
 
 | Package | Milestone | Purpose |
 |---------|-----------|---------|
-| `musicbrainzngs` | M5 | MusicBrainz API client |
-| `spotipy` | M5 | Spotify Web API client |
-| `ShazamIO` | M5 | Shazam audio fingerprinting |
-| `tmdbsimple` | M6 | TMDb API client |
-| `tvdbsimple` | M6 | TheTVDB API client |
-| `imdbpy`/`cinemagoer` | M6 | IMDb data access |
 | `SQLAlchemy` | M9 | Multi-database ORM |
 
 ### Development / Build Dependencies
@@ -340,97 +354,103 @@ MeedyaManager/
 
 ---
 
-### 🔨 M2 — CLI & UI Frontend *(In Progress)*
+### ✅ M2 — CLI & UI Frontend *(Completed — February 2026)*
 
 > Interactive CLI wizard and cross-platform GUI for configuring rules and previewing renames.
 
 | Feature | Status |
 |---------|--------|
-| Interactive CLI rename preview wizard | 🔲 Planned |
-| `click`-based CLI framework migration | 🔲 Planned |
-| Rule builder with conditional logic (AND/OR/nested) | 🔲 Planned |
-| MusicBee-inspired template syntax parser | 🔲 Planned |
-| PySide6 6.10+ (Qt6) cross-platform GUI | 🔲 Planned |
-| 🍎 macOS Liquid Glass via PyObjC → `NSGlassEffectView` bridge | 🔲 Planned |
-| 🪟 Windows 11 Mica/Acrylic native styling | 🔲 Planned |
-| Dark/light theme support (system-aware) | 🔲 Planned |
-| Rename preview queue and simulation panel | 🔲 Planned |
-| Drag-and-drop file import | 🔲 Planned |
-| Rule validation with real-time error reporting | 🔲 Planned |
-| Settings dialog for watch folders, extensions | 🔲 Planned |
+| `click`-based CLI framework migration (5 subcommands) | ✅ Complete |
+| Rich-formatted CLI output with tables and panels | ✅ Complete |
+| PySide6 6.10+ (Qt6) cross-platform GUI | ✅ Complete |
+| 🍎 macOS Liquid Glass via PyObjC → `NSGlassEffectView` bridge | ✅ Complete |
+| 🪟 Windows 11 Mica/Acrylic native styling | ✅ Complete |
+| Dark/light theme support (system-aware) | ✅ Complete |
+| Rename preview panel with table model, progress bar, search | ✅ Complete |
+| Settings dialog (5 tabs) | ✅ Complete |
+| Rule builder with syntax highlighting | ✅ Complete |
+| System tray icon with context menu | ✅ Complete |
+| Drag-and-drop file import | ✅ Complete |
+| 73 tests (CLI + GUI + core), all passing | ✅ Complete |
 
 ---
 
-### 🧩 M3 — Rule Engine & Companion Files
+### ✅ M3 — Rule Engine & Companion Files *(Completed — February 2026)*
 
 > Advanced template engine, filename sanitisation, and companion file tracking.
 
 | Feature | Status |
 |---------|--------|
-| Full template syntax: `<Tag>`, `$If()`, `$And()`, `$Or()` | 🔲 Planned |
-| `$Replace()`, `$RxReplace()`, `$Contains()`, `$IsMatch()` | 🔲 Planned |
-| `$Left()`, `$Right()`, `$Upper()`, `$Lower()`, `$Trim()` | 🔲 Planned |
-| `$Split()`, `$RSplit()`, `$Pad()`, `$Date()`, `$IsNull()` | 🔲 Planned |
-| `$First()` for multi-value fields | 🔲 Planned |
-| Unlimited custom tag support (beyond MusicBee's 16-20 limit) | 🔲 Planned |
-| Companion file detection (SRT, LRC, cover art, ISO) | 🔲 Planned |
-| Companion file group movement (move all when media moves) | 🔲 Planned |
-| Advanced filename character replacement (configurable) | 🔲 Planned |
-| Extension filtering and fallback patterns | 🔲 Planned |
-| Deep nesting support for rule conditions | 🔲 Planned |
+| Full template syntax: `<Tag>`, `$If()`, `$And()`, `$Or()` | ✅ Complete |
+| 20 template functions ($Replace, $RxReplace, $Pad, $Date, etc.) | ✅ Complete |
+| Unlimited custom tag support (`<Custom:AnyName>`) | ✅ Complete |
+| Companion file detection (SRT, LRC, cover art, ISO) | ✅ Complete |
+| Companion file group movement (move all when media moves) | ✅ Complete |
+| Advanced filename character replacement (configurable) | ✅ Complete |
+| Deep nesting support (50-level depth guard) | ✅ Complete |
+| Legacy `{placeholder}` backward compatibility | ✅ Complete |
+| 212 tests (139 new), all passing | ✅ Complete |
 
 ---
 
-### ✏️ M4 — Metadata Editor
+### ✅ M4 — Metadata Editor *(Completed — February 2026)*
 
 > Manual metadata editing with multi-value tag support and batch operations.
 
 | Feature | Status |
 |---------|--------|
-| Full tag reading/writing via `mutagen` | 🔲 Planned |
-| Support for ID3v2 (MP3), MP4/M4A, FLAC, OGG Vorbis, MKV/MKA | 🔲 Planned |
-| Multi-value tag support (artists, genres, etc.) | 🔲 Planned |
-| Custom tag creation and editing | 🔲 Planned |
-| Batch tag editing across multiple files | 🔲 Planned |
-| Tag preview before applying changes | 🔲 Planned |
-| Booklet (PDF) and animated album art attachment | 🔲 Planned |
-| Cover art management (embed, extract, replace) | 🔲 Planned |
-| Ensure file playability is preserved across all players | 🔲 Planned |
+| Full tag reading/writing via `mutagen` (TagEditor class) | ✅ Complete |
+| Support for ID3v2 (MP3), MP4/M4A, FLAC, OGG Vorbis, ASF (read-only) | ✅ Complete |
+| Multi-value tag support (artists, genres, composers) | ✅ Complete |
+| Custom tag creation and editing (TXXX, freeform, Vorbis) | ✅ Complete |
+| Batch tag editing across multiple files (GUI + CLI) | ✅ Complete |
+| Tag preview before applying changes (dry-run) | ✅ Complete |
+| Cover art management (embed, extract, replace, remove) | ✅ Complete |
+| GUI metadata editor panel with tag table, cover art widget | ✅ Complete |
+| CLI `meedyamanager edit` command | ✅ Complete |
+| 342 tests (130 new), all passing | ✅ Complete |
 
 ---
 
-### 🎵 M5 — Metadata Lookup: Music
+### ✅ M5 — Metadata Lookup *(Completed — February 2026)*
 
-> Automatic metadata lookup from music services with custom tag storage.
+> 19 metadata lookup providers across music, video, podcasts, and identifier registries.
 
-| Provider | Features | Status |
-|----------|----------|--------|
-| 🎵 **MusicBrainz** | Tags, release info, MBIDs, direct URL storage | 🔲 Planned |
-| 🍎 **Apple Music** | Track matching, artwork, URL storage | 🔲 Planned |
-| 🟢 **Spotify** | Track matching, audio features, URL storage | 🔲 Planned |
-| 🔵 **Tidal** | HiFi metadata, URL storage | 🔲 Planned |
-| 📦 **Amazon Music** | Track matching, URL storage | 🔲 Planned |
-| 🎤 **Shazam** | Audio fingerprinting, ID storage, identification | 🔲 Planned |
-| 🧬 **AcousticBrainz** | Audio analysis data | 🔲 Planned |
-
-All services store their direct URL + ID in dedicated custom tags per file.
+| Provider / Feature | Status |
+|----------|--------|
+| Provider framework with `@register_provider` auto-discovery | ✅ Complete |
+| 4-tier credential management (.env → config → keyring → bundle) | ✅ Complete |
+| Token bucket rate limiting per provider | ✅ Complete |
+| Cover art: static (JPEG/PNG) + animated (MP4 square, portrait) | ✅ Complete |
+| Fuzzy match scoring (title 35%, artist 30%, album 20%, ISRC bonus) | ✅ Complete |
+| 🎵 Apple Music, Spotify, MusicBrainz, Deezer, YouTube Music | ✅ Complete |
+| 🎵 Amazon Music, Pandora, Tidal, Shazam, iHeart | ✅ Complete |
+| 🎬 TMDB, TheTVDB, IMDb, Apple TV, iTunes Store | ✅ Complete |
+| 🎙️ Apple Podcasts | ✅ Complete |
+| 🆔 ISRC, EIDR, ISWC | ✅ Complete |
+| CLI: `meedyamanager lookup` command | ✅ Complete |
+| GUI: Lookup tab with provider checkboxes, results table | ✅ Complete |
+| 751 tests (409 new), all passing | ✅ Complete |
 
 ---
 
-### 🎬 M6 — Metadata Lookup: TV & Film
+### ✅ M6 — Packaging, Error Handling & Config Profiles *(Completed — February 2026)*
 
-> Automatic metadata lookup from TV/movie databases.
+> Centralized logging, crash protection, user-friendly error dialogs, configuration export/import, native platform installers.
 
-| Provider | Features | Status |
-|----------|----------|--------|
-| 📺 **Apple TV** | TV/movie matching, artwork | 🔲 Planned |
-| 🛒 **iTunes Store** | Purchase metadata, artwork | 🔲 Planned |
-| 📺 **TheTVDB** | TV show/episode matching | 🔲 Planned |
-| 🎬 **TheMovieDB (TMDb)** | Movie matching, cast, crew | 🔲 Planned |
-| ⭐ **IMDb** | Movie/TV identification, ratings | 🔲 Planned |
-| 🆔 **EIDR** | Entertainment Identifier Registry lookup & embed | 🔲 Planned |
-
-Additional: Support for downloading animated cover art (square and portrait) as MP4.
+| Feature | Status |
+|---------|--------|
+| Centralized logging with platform-aware log dirs | ✅ Complete |
+| Global exception handling + crash reports | ✅ Complete |
+| SafeWorker QThread base class | ✅ Complete |
+| User-friendly error dialogs with message catalog | ✅ Complete |
+| Error reporting (email-based bug reports) | ✅ Complete |
+| Startup health checks | ✅ Complete |
+| Crash recovery & state management (WatcherState + AppLockFile) | ✅ Complete |
+| Config export/import (.mmprofile ZIP bundles) | ✅ Complete |
+| pyproject.toml (PEP 621), icon assets, Nuitka entry scripts | ✅ Complete |
+| CI: build-installers.yml (macOS .dmg, Windows .exe, Linux .AppImage/.deb) | ✅ Complete |
+| 1007 tests (256 new), all passing | ✅ Complete |
 
 ---
 
@@ -782,17 +802,17 @@ All source files include an automated copyright header:
 
 | Metric | Value |
 |--------|-------|
-| **Current Milestone** | M1 ✅ Complete |
-| **Next Milestone** | M2 — CLI & UI Frontend |
-| **Source Files** | ~30 |
-| **Lines of Code** | ~2,200 |
-| **Test Count** | 17 |
-| **Test Lines** | 787 |
+| **Current Milestone** | M6 ✅ Complete |
+| **Next Milestone** | M7 — Cloud Storage Monitoring |
+| **Source Files** | ~150 |
+| **Test Files** | 66 |
+| **Test Count** | 1007 |
+| **Latest Version** | `v1.5-M6` |
 | **CI Platforms** | 3 (Windows, macOS, Linux) |
-| **Python Versions** | 3.10, 3.11 |
+| **Python Version** | 3.14 |
 
 ---
 
 > 📝 *This document is maintained alongside the codebase and updated with each milestone.*
 >
-> *Last updated: 2026-02-12*
+> *Last updated: 2026-02-13*

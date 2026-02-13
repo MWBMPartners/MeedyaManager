@@ -125,10 +125,10 @@ The resulting executable includes the Python 3.14 runtime and all dependencies â
 
 ### Scan a Single File
 
-The quickest way to test MeedyaManager is to scan a single media file:
+The quickest way to test MeedyaManager is to inspect a single media file:
 
 ```bash
-python cli/metadata_debugger.py path/to/your/song.mp3
+meedyamanager debug path/to/your/song.mp3
 ```
 
 This will display all detected metadata including:
@@ -142,17 +142,30 @@ This will display all detected metadata including:
 ### Export Metadata as JSON
 
 ```bash
-python cli/metadata_debugger.py path/to/song.mp3 --json --out output/ --mkdir
+meedyamanager debug path/to/song.mp3 --json --out output/ --mkdir
+```
+
+### Batch Scan Watch Folders
+
+```bash
+# Scan all configured watch folders and preview renames
+meedyamanager scan
 ```
 
 ### Start the Folder Watcher
 
 ```bash
 # Safe simulation mode (no files moved â€” just logs what would happen)
-python cli/runner.py
+meedyamanager watch
 
 # With simulation disabled (actually renames/moves files)
-python cli/runner.py --simulate-off
+meedyamanager watch --no-simulate
+```
+
+### Launch the GUI
+
+```bash
+meedyamanager gui
 ```
 
 > **Tip:** Always run in simulation mode first to verify your rules produce the expected results before enabling actual file operations.
@@ -177,8 +190,8 @@ Edit `config/settings.json5` to customise MeedyaManager's behaviour:
     "wav", "ogg", "ac3", "alac", "mka", "m4v"
   ],
 
-  // Rename template using metadata placeholders
-  rename_format: "{media_class}/{artist}/{album}/{track_num} - {title}.{extension}",
+  // Rename template using MusicBee-style <Tag> syntax
+  rename_format: "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
 
   // Characters to replace in generated filenames
   filename_replacements: {
