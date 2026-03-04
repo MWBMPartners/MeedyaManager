@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just version)",
+      "Bash(for num in 34 35)",
+      "Bash(do gh issue close $num --comment \"Completed: version fields fixed and synced with Cargo.toml workspace version 2.0.0-alpha.1\")",
+      "Bash(done)",
+      "Bash(gh issue close 32 --comment \"Completed: version-bump.yml workflow created with support for explicit version, bump types \\(major/minor/patch/pre-*\\), PR creation, and git tagging\")",
+      "Bash(gh issue close 33 --comment \"Completed: version-check job added to ci-rust.yml — verifies Cargo.toml, Package.appxmanifest, and Info.plist are in sync\")",
+      "Bash(gh issue close 36 --comment \"Completed: release.yml enhanced with version extraction, SHA256 checksums, release notes from CHANGELOG, consistent artifact naming, and pre-release detection\")",
+      "Bash(gh issue close 37 --comment \"Completed: version and release-local commands added to justfile\")",
+      "Bash(gh issue close 38 --comment \"Completed: docs/Dev_Notes.md created with version management, release process, CI/CD overview, and GitHub Projects workflow documentation\")",
+      "Bash(gh issue close 39 --comment \"Completed: GitHub Wiki pages created — Home, Version Management, Release Process, CI/CD Pipelines\")"
+    ],
+    "additionalDirectories": [
+      "/dev"
+    ]
+  }
+}

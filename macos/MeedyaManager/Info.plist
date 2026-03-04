@@ -14,13 +14,13 @@
     <key>CFBundleIdentifier</key>
     <string>com.mwbm.MeedyaManager</string>
 
-    <!-- Bundle version (build number) -->
+    <!-- Bundle version (build number — incremented each build) -->
     <key>CFBundleVersion</key>
     <string>1</string>
 
-    <!-- Short version string shown to users -->
+    <!-- Short version string shown to users (must match Cargo.toml workspace version) -->
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>2.0.0</string>
 
     <!-- Bundle package type: application -->
     <key>CFBundlePackageType</key>

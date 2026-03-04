@@ -1,5 +1,6 @@
 # (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 # MeedyaManager — Release Build
+# Triggered by pushing a tag matching v* (e.g. v2.0.0-alpha.2)
 
 name: Release Build
 
@@ -11,13 +12,82 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  # ---------------------------------------------------------------------------
+  # Prepare — extract version from tag, validate, set artifact name prefix
+  # ---------------------------------------------------------------------------
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      artifact_prefix: ${{ steps.meta.outputs.artifact_prefix }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract release metadata from tag
+        id: meta
+        run: |
+          # Strip 'v' prefix from tag to get semver
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "artifact_prefix=MeedyaManager-${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # Determine if this is a pre-release (contains hyphen)
+          if echo "$VERSION" | grep -q '-'; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "## Release: v${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pre-release: $(echo "$VERSION" | grep -q '-' && echo 'yes' || echo 'no')" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify tag matches Cargo.toml version
+        run: |
+          CARGO_VER=$(grep -A 20 '\[workspace\.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
+          TAG_VER="${{ steps.meta.outputs.version }}"
+          if [ "$CARGO_VER" != "$TAG_VER" ]; then
+            echo "::error::Tag version ($TAG_VER) does not match Cargo.toml ($CARGO_VER)"
+            echo "Run the version-bump workflow first: gh workflow run version-bump.yml -f version=$TAG_VER"
+            exit 1
+          fi
+          echo "Tag matches Cargo.toml: $CARGO_VER"
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          # Extract the section for this version from CHANGELOG.md
+          # Match from "## [vX.Y.Z]" until the next "## [v" or end of file
+          NOTES=$(sed -n "/^## \[v${VERSION}\]/,/^## \[v/{ /^## \[v${VERSION}\]/d; /^## \[v/d; p; }" docs/CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="No changelog entry found for v${VERSION}. See [docs/CHANGELOG.md](docs/CHANGELOG.md) for details."
+          fi
+          # Write to file for the release step
+          echo "$NOTES" > /tmp/release-notes.md
+          echo "Release notes extracted for v${VERSION}"
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: /tmp/release-notes.md
+
   # ---------------------------------------------------------------------------
   # macOS — Apple Silicon (arm64)
   # ---------------------------------------------------------------------------
   release-macos:
     name: macOS arm64
     runs-on: macos-14
+    needs: prepare
 
     steps:
       - name: Checkout repository
@@ -29,40 +99,64 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Build Rust core (release)
+      - name: Build Rust workspace (release)
         run: cargo build --release --workspace
 
-      - name: Build mm-ffi for macOS
-        # TODO: Build the FFI crate as a universal static/dynamic library
-        run: echo "Placeholder — cargo build -p mm-ffi --release"
+      - name: Build mm-ffi dynamic library
+        run: cargo build -p mm-ffi --release
 
       - name: Build SwiftUI app
         working-directory: macos
-        # TODO: Replace with xcodebuild archive + export
-        run: echo "Placeholder — swift build -c release"
+        run: swift build -c release
 
+      # TODO: Code signing requires Apple Developer ID certificate
+      # When available, add these steps:
+      #   - Import certificate from GitHub Secrets
+      #   - codesign --deep --force --verify --verbose --sign "Developer ID" app
+      #   - xcrun notarytool submit app.zip --apple-id $APPLE_ID --team-id $TEAM_ID
+      #   - xcrun stapler staple app
       - name: Code sign macOS app
-        # TODO: Import Developer ID cert from secrets, codesign, notarize
-        run: echo "Placeholder — code signing step"
+        run: echo "::warning::Code signing skipped — requires Apple Developer ID certificate in secrets"
 
-      - name: Generate SHA256 checksums
+      - name: Package macOS artifacts
         run: |
-          echo "Placeholder — shasum -a 256 output artifacts"
+          PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
+          mkdir -p staging
+
+          # Copy Rust libraries
+          cp target/release/libmm_ffi.dylib staging/ 2>/dev/null || true
+          cp target/release/mm-cli staging/ 2>/dev/null || true
+
+          # Copy Swift build output
+          cp macos/.build/release/MeedyaManager staging/ 2>/dev/null || true
+
+          # Generate SHA256 checksums
+          cd staging
+          for f in *; do
+            [ -f "$f" ] && shasum -a 256 "$f" >> "${PREFIX}-macos-arm64.sha256"
+          done
+
+          # Create tarball
+          tar -czf "../${PREFIX}-macos-arm64.tar.gz" .
+          cd ..
+          shasum -a 256 "${PREFIX}-macos-arm64.tar.gz" >> "staging/${PREFIX}-macos-arm64.sha256"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
           path: |
-            target/release/*.dylib
+            ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.tar.gz
+            staging/*.sha256
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
-  # Windows — x64 and arm64
+  # Windows — x64
   # ---------------------------------------------------------------------------
   release-windows-x64:
     name: Windows x64
     runs-on: windows-latest
+    needs: prepare
 
     steps:
       - name: Checkout repository
@@ -74,12 +168,11 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Build Rust core (release)
+      - name: Build Rust workspace (release)
         run: cargo build --release --workspace
 
-      - name: Build mm-ffi for Windows
-        # TODO: Build the FFI crate as a DLL
-        run: echo "Placeholder — cargo build -p mm-ffi --release"
+      - name: Build mm-ffi DLL
+        run: cargo build -p mm-ffi --release
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
@@ -88,28 +181,47 @@ jobs:
 
       - name: Build WinUI 3 app (x64)
         working-directory: windows
-        # TODO: Replace with actual publish command for MSIX/MSI
-        run: echo "Placeholder — dotnet publish -c Release -r win-x64"
+        run: dotnet publish -c Release -r win-x64 --self-contained
 
+      # TODO: Code signing requires a Windows code signing certificate
+      # When available, add these steps:
+      #   - Import PFX certificate from GitHub Secrets
+      #   - signtool sign /fd SHA256 /f cert.pfx /p $PASSWORD app.exe
       - name: Code sign Windows binaries
-        # TODO: Import code signing certificate, signtool
-        run: echo "Placeholder — code signing step"
+        run: echo "::warning::Code signing skipped — requires code signing certificate in secrets"
 
-      - name: Generate SHA256 checksums
-        run: echo "Placeholder — certutil -hashfile or sha256sum"
+      - name: Package Windows x64 artifacts
+        shell: bash
+        run: |
+          PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
+          mkdir -p staging
+
+          # Copy Rust binaries
+          cp target/release/mm_ffi.dll staging/ 2>/dev/null || true
+          cp target/release/mm-cli.exe staging/ 2>/dev/null || true
+
+          # Copy .NET publish output
+          cp -r windows/MeedyaManager/bin/Release/net8.0-windows*/win-x64/publish/* staging/ 2>/dev/null || true
+
+          # Generate SHA256 checksums
+          cd staging
+          sha256sum * > "${PREFIX}-windows-x64.sha256" 2>/dev/null || true
 
       - name: Upload Windows x64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
           path: |
-            target/release/*.dll
-            target/release/*.exe
+            staging/
           if-no-files-found: warn
 
+  # ---------------------------------------------------------------------------
+  # Windows — arm64
+  # ---------------------------------------------------------------------------
   release-windows-arm64:
     name: Windows arm64
     runs-on: windows-latest
+    needs: prepare
 
     steps:
       - name: Checkout repository
@@ -123,12 +235,11 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Build Rust core (release, arm64)
+      - name: Build Rust workspace (release, arm64)
         run: cargo build --release --workspace --target aarch64-pc-windows-msvc
 
-      - name: Build mm-ffi for Windows arm64
-        # TODO: Cross-compile FFI crate for arm64
-        run: echo "Placeholder — cargo build -p mm-ffi --release --target aarch64-pc-windows-msvc"
+      - name: Build mm-ffi DLL (arm64)
+        run: cargo build -p mm-ffi --release --target aarch64-pc-windows-msvc
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
@@ -137,31 +248,43 @@ jobs:
 
       - name: Build WinUI 3 app (arm64)
         working-directory: windows
-        # TODO: Replace with actual publish command for arm64
-        run: echo "Placeholder — dotnet publish -c Release -r win-arm64"
+        run: dotnet publish -c Release -r win-arm64 --self-contained
 
       - name: Code sign Windows binaries
-        # TODO: Import code signing certificate, signtool
-        run: echo "Placeholder — code signing step"
+        run: echo "::warning::Code signing skipped — requires code signing certificate in secrets"
 
-      - name: Generate SHA256 checksums
-        run: echo "Placeholder — certutil -hashfile or sha256sum"
+      - name: Package Windows arm64 artifacts
+        shell: bash
+        run: |
+          PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
+          mkdir -p staging
+
+          # Copy Rust binaries
+          cp target/aarch64-pc-windows-msvc/release/mm_ffi.dll staging/ 2>/dev/null || true
+          cp target/aarch64-pc-windows-msvc/release/mm-cli.exe staging/ 2>/dev/null || true
+
+          # Copy .NET publish output
+          cp -r windows/MeedyaManager/bin/Release/net8.0-windows*/win-arm64/publish/* staging/ 2>/dev/null || true
+
+          # Generate SHA256 checksums
+          cd staging
+          sha256sum * > "${PREFIX}-windows-arm64.sha256" 2>/dev/null || true
 
       - name: Upload Windows arm64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-arm64
           path: |
-            target/aarch64-pc-windows-msvc/release/*.dll
-            target/aarch64-pc-windows-msvc/release/*.exe
+            staging/
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
-  # Linux — x64 and arm64
+  # Linux — x64
   # ---------------------------------------------------------------------------
   release-linux-x64:
     name: Linux x64
     runs-on: ubuntu-latest
+    needs: prepare
 
     steps:
       - name: Checkout repository
@@ -178,23 +301,44 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Build Rust core and GTK4 frontend (release)
+      - name: Build Rust workspace and GTK4 frontend (release)
         run: cargo build --release --workspace
 
-      - name: Generate SHA256 checksums
-        run: echo "Placeholder — sha256sum target/release/mm-gtk"
+      - name: Package Linux x64 artifacts
+        run: |
+          PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
+          mkdir -p staging
+
+          # Copy binaries
+          cp target/release/mm-gtk staging/ 2>/dev/null || true
+          cp target/release/mm-cli staging/ 2>/dev/null || true
+          cp target/release/libmm_ffi.so staging/ 2>/dev/null || true
+
+          # Generate SHA256 checksums
+          cd staging
+          sha256sum * > "${PREFIX}-linux-x64.sha256" 2>/dev/null || true
+
+          # Create tarball
+          tar -czf "../${PREFIX}-linux-x64.tar.gz" .
+          cd ..
+          sha256sum "${PREFIX}-linux-x64.tar.gz" >> "staging/${PREFIX}-linux-x64.sha256"
 
       - name: Upload Linux x64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
           path: |
-            target/release/mm-gtk
+            ${{ needs.prepare.outputs.artifact_prefix }}-linux-x64.tar.gz
+            staging/*.sha256
           if-no-files-found: warn
 
+  # ---------------------------------------------------------------------------
+  # Linux — arm64 (cross-compilation)
+  # ---------------------------------------------------------------------------
   release-linux-arm64:
     name: Linux arm64
     runs-on: ubuntu-latest
+    needs: prepare
 
     steps:
       - name: Checkout repository
@@ -213,19 +357,37 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Build Rust core (release, arm64)
-        # TODO: Full cross-compilation needs GTK4 arm64 sysroot
-        run: echo "Placeholder — cargo build --release --workspace --target aarch64-unknown-linux-gnu"
+      # Note: Full cross-compilation for GTK4 arm64 requires a sysroot with
+      # arm64 GTK4/Libadwaita libraries. For now, only core + CLI are built.
+      - name: Build Rust core and CLI (release, arm64)
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          cargo build --release -p mm-core -p mm-cli -p mm-ffi \
+            --target aarch64-unknown-linux-gnu
 
-      - name: Generate SHA256 checksums
-        run: echo "Placeholder — sha256sum artifacts"
+      - name: Package Linux arm64 artifacts
+        run: |
+          PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
+          mkdir -p staging
+          TARGET=target/aarch64-unknown-linux-gnu/release
+
+          cp ${TARGET}/mm-cli staging/ 2>/dev/null || true
+          cp ${TARGET}/libmm_ffi.so staging/ 2>/dev/null || true
+
+          cd staging
+          sha256sum * > "${PREFIX}-linux-arm64.sha256" 2>/dev/null || true
+          tar -czf "../${PREFIX}-linux-arm64.tar.gz" .
+          cd ..
+          sha256sum "${PREFIX}-linux-arm64.tar.gz" >> "staging/${PREFIX}-linux-arm64.sha256"
 
       - name: Upload Linux arm64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
           path: |
-            target/aarch64-unknown-linux-gnu/release/mm-gtk
+            ${{ needs.prepare.outputs.artifact_prefix }}-linux-arm64.tar.gz
+            staging/*.sha256
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
@@ -235,6 +397,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs:
+      - prepare
       - release-macos
       - release-windows-x64
       - release-windows-arm64
@@ -250,9 +413,30 @@ jobs:
         with:
           path: release-artifacts
 
+      - name: Consolidate checksums
+        run: |
+          PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
+          # Merge all per-platform checksum files into one
+          find release-artifacts -name "*.sha256" -exec cat {} \; | sort > "${PREFIX}-SHA256SUMS.txt"
+          echo "Consolidated checksums:"
+          cat "${PREFIX}-SHA256SUMS.txt"
+
+      - name: Extract release notes
+        run: |
+          if [ -f release-artifacts/release-notes/release-notes.md ]; then
+            cp release-artifacts/release-notes/release-notes.md /tmp/body.md
+          else
+            echo "See [CHANGELOG](docs/CHANGELOG.md) for details." > /tmp/body.md
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          name: "MeedyaManager v${{ needs.prepare.outputs.version }}"
+          body_path: /tmp/body.md
           draft: true
-          files: release-artifacts/**/*
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+          files: |
+            release-artifacts/**/*.tar.gz
+            release-artifacts/**/*.sha256
+            ${{ needs.prepare.outputs.artifact_prefix }}-SHA256SUMS.txt

@@ -50,3 +50,50 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+
+  # ---------------------------------------------------------------------------
+  # Version Sync — verify all platform version files match Cargo.toml
+  # ---------------------------------------------------------------------------
+  version-check:
+    name: Version Sync Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify version consistency across platforms
+        run: |
+          # Extract version from Cargo.toml [workspace.package]
+          CARGO_VER=$(grep -A 20 '\[workspace\.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "Cargo.toml version: $CARGO_VER"
+
+          # Strip pre-release suffix for platform comparisons
+          BASE_VER=$(echo "$CARGO_VER" | sed 's/-.*//')
+          echo "Base version (no pre-release): $BASE_VER"
+
+          # Check Windows MSIX manifest (expects X.Y.Z.0 format)
+          MSIX_VER=$(grep -oP 'Version="\K[^"]+' windows/MeedyaManager/Package.appxmanifest)
+          EXPECTED_MSIX="${BASE_VER}.0"
+          echo "MSIX version: $MSIX_VER (expected: $EXPECTED_MSIX)"
+          if [ "$MSIX_VER" != "$EXPECTED_MSIX" ]; then
+            echo "::error file=windows/MeedyaManager/Package.appxmanifest::MSIX version ($MSIX_VER) does not match Cargo.toml ($EXPECTED_MSIX)"
+            FAILED=1
+          fi
+
+          # Check macOS Info.plist (expects X.Y.Z format)
+          PLIST_VER=$(grep -A1 'CFBundleShortVersionString' macos/MeedyaManager/Info.plist | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>/\1/')
+          echo "Info.plist version: $PLIST_VER (expected: $BASE_VER)"
+          if [ "$PLIST_VER" != "$BASE_VER" ]; then
+            echo "::error file=macos/MeedyaManager/Info.plist::Info.plist version ($PLIST_VER) does not match Cargo.toml ($BASE_VER)"
+            FAILED=1
+          fi
+
+          if [ -n "$FAILED" ]; then
+            echo ""
+            echo "Version files are out of sync!"
+            echo "Run the version-bump workflow to fix: gh workflow run version-bump.yml -f version=$CARGO_VER"
+            exit 1
+          fi
+
+          echo "All platform versions in sync with Cargo.toml ($CARGO_VER)"

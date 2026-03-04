@@ -62,6 +62,15 @@ audit:
     cargo deny check
     cargo audit
 
+# Display current workspace version
+version:
+    @grep -A 20 '\[workspace\.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/'
+
+# Build release artifacts locally for testing
+release-local:
+    cargo build --workspace --release
+    @echo "Release binaries in target/release/"
+
 # Clean all build artifacts
 clean:
     cargo clean

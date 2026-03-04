@@ -1,0 +1,283 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Automated Version Bump
+# Triggered manually via GitHub Actions UI or CLI:
+#   gh workflow run version-bump.yml -f version=2.0.0-alpha.2
+#   gh workflow run version-bump.yml -f bump_type=patch
+
+name: Version Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Explicit version to set (e.g. 2.0.0-alpha.2). Leave blank to use bump_type instead.
+        required: false
+        type: string
+      bump_type:
+        description: >
+          Increment type (ignored if version is set). One of: major, minor, patch, pre-alpha, pre-beta, pre-rc.
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - pre-alpha
+          - pre-beta
+          - pre-rc
+        default: patch
+      create_tag:
+        description: "Create a git tag after bumping?"
+        required: false
+        type: boolean
+        default: false
+      create_pr:
+        description: "Create a PR with the version bump changes?"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  GIT_AUTHOR_NAME: "github-actions[bot]"
+  GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+  GIT_COMMITTER_NAME: "github-actions[bot]"
+  GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
+
+jobs:
+  bump:
+    name: Bump Version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # -----------------------------------------------------------------------
+      # Step 1: Read current version from Cargo.toml
+      # -----------------------------------------------------------------------
+      - name: Read current version
+        id: current
+        run: |
+          # Extract version from [workspace.package] section
+          CURRENT=$(grep -A 20 '\[workspace\.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Current version: $CURRENT"
+
+      # -----------------------------------------------------------------------
+      # Step 2: Compute new version
+      # -----------------------------------------------------------------------
+      - name: Compute new version
+        id: new
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+
+          if [ -n "${{ inputs.version }}" ]; then
+            # Explicit version provided — validate it looks like semver
+            NEW="${{ inputs.version }}"
+            if ! echo "$NEW" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+              echo "::error::Invalid semver format: $NEW"
+              exit 1
+            fi
+          else
+            # Parse current version into components
+            # Strip any pre-release suffix for base version
+            BASE=$(echo "$CURRENT" | sed 's/-.*//')
+            MAJOR=$(echo "$BASE" | cut -d. -f1)
+            MINOR=$(echo "$BASE" | cut -d. -f2)
+            PATCH=$(echo "$BASE" | cut -d. -f3)
+            PRE=$(echo "$CURRENT" | grep -oP '(?<=-).+' || true)
+
+            case "${{ inputs.bump_type }}" in
+              major)
+                NEW="$((MAJOR + 1)).0.0"
+                ;;
+              minor)
+                NEW="${MAJOR}.$((MINOR + 1)).0"
+                ;;
+              patch)
+                NEW="${MAJOR}.${MINOR}.$((PATCH + 1))"
+                ;;
+              pre-alpha)
+                # Increment alpha number (alpha.1 → alpha.2) or start alpha.1
+                if echo "$PRE" | grep -qE '^alpha\.[0-9]+$'; then
+                  NUM=$(echo "$PRE" | grep -oP '[0-9]+$')
+                  NEW="${BASE}-alpha.$((NUM + 1))"
+                else
+                  NEW="${BASE}-alpha.1"
+                fi
+                ;;
+              pre-beta)
+                if echo "$PRE" | grep -qE '^beta\.[0-9]+$'; then
+                  NUM=$(echo "$PRE" | grep -oP '[0-9]+$')
+                  NEW="${BASE}-beta.$((NUM + 1))"
+                else
+                  NEW="${BASE}-beta.1"
+                fi
+                ;;
+              pre-rc)
+                if echo "$PRE" | grep -qE '^rc\.[0-9]+$'; then
+                  NUM=$(echo "$PRE" | grep -oP '[0-9]+$')
+                  NEW="${BASE}-rc.$((NUM + 1))"
+                else
+                  NEW="${BASE}-rc.1"
+                fi
+                ;;
+              *)
+                echo "::error::Unknown bump type: ${{ inputs.bump_type }}"
+                exit 1
+                ;;
+            esac
+          fi
+
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "New version: $NEW"
+
+          # Compute MSIX 4-part version (strip pre-release, append .0)
+          MSIX_BASE=$(echo "$NEW" | sed 's/-.*//')
+          echo "msix_version=${MSIX_BASE}.0" >> "$GITHUB_OUTPUT"
+          echo "MSIX version: ${MSIX_BASE}.0"
+
+          # Compute macOS CFBundleShortVersionString (strip pre-release)
+          echo "macos_version=${MSIX_BASE}" >> "$GITHUB_OUTPUT"
+          echo "macOS version: ${MSIX_BASE}"
+
+      # -----------------------------------------------------------------------
+      # Step 3: Update all version files
+      # -----------------------------------------------------------------------
+      - name: Update Cargo.toml workspace version
+        run: |
+          # Update the version in [workspace.package] section
+          sed -i 's/^version = ".*"/version = "${{ steps.new.outputs.version }}"/' Cargo.toml
+          echo "Updated Cargo.toml → ${{ steps.new.outputs.version }}"
+
+      - name: Update Windows Package.appxmanifest
+        run: |
+          sed -i 's/Version="[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*"/Version="${{ steps.new.outputs.msix_version }}"/' \
+            windows/MeedyaManager/Package.appxmanifest
+          echo "Updated Package.appxmanifest → ${{ steps.new.outputs.msix_version }}"
+
+      - name: Update macOS Info.plist
+        run: |
+          # Update CFBundleShortVersionString (the line after the key)
+          sed -i '/<key>CFBundleShortVersionString<\/key>/{n;s|<string>.*</string>|<string>${{ steps.new.outputs.macos_version }}</string>|}' \
+            macos/MeedyaManager/Info.plist
+          echo "Updated Info.plist → ${{ steps.new.outputs.macos_version }}"
+
+      - name: Insert CHANGELOG.md entry
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          VERSION="${{ steps.new.outputs.version }}"
+
+          # Insert new version section after the "## [Unreleased]" line or after the header
+          # If there's an [Unreleased] section, insert after it; otherwise insert after first ## line
+          if grep -q '## \[Unreleased\]' docs/CHANGELOG.md; then
+            sed -i "/## \[Unreleased\]/a\\\\n## [v${VERSION}] — ${DATE}\\n\\n### Added\\n\\n### Changed\\n\\n### Fixed\\n" docs/CHANGELOG.md
+          else
+            # Insert after the first existing version entry marker
+            sed -i "0,/^## \[v/s//## [v${VERSION}] — ${DATE}\n\n### Added\n\n### Changed\n\n### Fixed\n\n## [v/" docs/CHANGELOG.md
+          fi
+          echo "Updated CHANGELOG.md with v${VERSION}"
+
+      # -----------------------------------------------------------------------
+      # Step 4: Verify consistency
+      # -----------------------------------------------------------------------
+      - name: Verify version sync
+        run: |
+          EXPECTED="${{ steps.new.outputs.version }}"
+          MSIX_EXPECTED="${{ steps.new.outputs.msix_version }}"
+          MACOS_EXPECTED="${{ steps.new.outputs.macos_version }}"
+
+          # Check Cargo.toml
+          CARGO_VER=$(grep -A 20 '\[workspace\.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
+          [ "$CARGO_VER" = "$EXPECTED" ] || { echo "::error::Cargo.toml version mismatch: $CARGO_VER != $EXPECTED"; exit 1; }
+
+          # Check MSIX manifest
+          MSIX_VER=$(grep -oP 'Version="\K[^"]+' windows/MeedyaManager/Package.appxmanifest)
+          [ "$MSIX_VER" = "$MSIX_EXPECTED" ] || { echo "::error::MSIX version mismatch: $MSIX_VER != $MSIX_EXPECTED"; exit 1; }
+
+          # Check Info.plist
+          PLIST_VER=$(grep -A1 'CFBundleShortVersionString' macos/MeedyaManager/Info.plist | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>/\1/')
+          [ "$PLIST_VER" = "$MACOS_EXPECTED" ] || { echo "::error::Info.plist version mismatch: $PLIST_VER != $MACOS_EXPECTED"; exit 1; }
+
+          echo "All version files in sync: $EXPECTED"
+
+      # -----------------------------------------------------------------------
+      # Step 5: Commit and create PR or tag
+      # -----------------------------------------------------------------------
+      - name: Create version bump branch and commit
+        if: inputs.create_pr
+        run: |
+          VERSION="${{ steps.new.outputs.version }}"
+          BRANCH="version/v${VERSION}"
+          git checkout -b "$BRANCH"
+          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/CHANGELOG.md
+          git commit -m "chore: bump version to v${VERSION}"
+          git push origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Create Pull Request
+        if: inputs.create_pr
+        run: |
+          VERSION="${{ steps.new.outputs.version }}"
+          PREVIOUS="${{ steps.current.outputs.version }}"
+          gh pr create \
+            --title "chore: bump version to v${VERSION}" \
+            --body "$(cat <<EOF
+          ## Version Bump: v${PREVIOUS} → v${VERSION}
+
+          ### Files Updated
+          - \`Cargo.toml\` — workspace version
+          - \`windows/MeedyaManager/Package.appxmanifest\` — MSIX identity version
+          - \`macos/MeedyaManager/Info.plist\` — CFBundleShortVersionString
+          - \`docs/CHANGELOG.md\` — new version section
+
+          ### How to verify
+          1. Check all version files are consistent
+          2. \`cargo build --workspace\` succeeds
+          3. CI version-sync check passes
+
+          ---
+          *Automated by version-bump workflow*
+          EOF
+          )" \
+            --base main \
+            --head "version/v${VERSION}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit directly (no PR)
+        if: ${{ !inputs.create_pr }}
+        run: |
+          VERSION="${{ steps.new.outputs.version }}"
+          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/CHANGELOG.md
+          git commit -m "chore: bump version to v${VERSION}"
+          git push origin HEAD
+
+      - name: Create git tag
+        if: inputs.create_tag
+        run: |
+          VERSION="${{ steps.new.outputs.version }}"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
+
+      # -----------------------------------------------------------------------
+      # Step 6: Summary
+      # -----------------------------------------------------------------------
+      - name: Summary
+        run: |
+          echo "## Version Bump Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Version |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cargo.toml | \`${{ steps.new.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Package.appxmanifest | \`${{ steps.new.outputs.msix_version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Info.plist | \`${{ steps.new.outputs.macos_version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Previous version: \`${{ steps.current.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
