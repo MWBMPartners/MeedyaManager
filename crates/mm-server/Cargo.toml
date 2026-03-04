@@ -1,0 +1,45 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Secure media server crate
+# Serves media files over HTTPS with authentication and streaming (M10).
+
+[package]
+name = "mm-server"
+description = "Secure media server for MeedyaManager (HTTPS streaming with JWT auth)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Internal crate dependency — core types, config, and error handling
+mm-core = { path = "../mm-core" }
+
+# Serialization for API request/response payloads
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async runtime for the HTTP server event loop
+tokio = { workspace = true }
+
+# Typed error enums for server failures
+thiserror = { workspace = true }
+
+# Structured logging for request tracing and diagnostics
+tracing = { workspace = true }
+
+# Axum web framework — ergonomic, tower-based HTTP server
+axum = "0.8"
+
+# Tower service layer — middleware composition (timeouts, concurrency limits)
+tower = "0.5"
+
+# Tower-HTTP utilities — CORS headers and static file serving
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+
+# Rustls TLS — modern, memory-safe TLS for HTTPS termination
+rustls = "0.23"
+
+# JWT token verification for authenticated API endpoints
+jsonwebtoken = { workspace = true }

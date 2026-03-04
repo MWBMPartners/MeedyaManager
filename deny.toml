@@ -1,0 +1,49 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# cargo-deny configuration — license, advisory, and dependency auditing
+# Run with: cargo deny check
+
+[advisories]
+# Check RustSec advisory database for known vulnerabilities
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "warn"
+
+[licenses]
+# Only allow licenses compatible with GPL-2.0-or-later
+unlicensed = "deny"
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "GPL-2.0",
+    "GPL-3.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "BSL-1.0",
+    "OpenSSL",
+    "CC0-1.0",
+]
+copyleft = "allow"
+
+# Some crates don't have license info in Cargo.toml — allow known-good ones
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+[bans]
+# Warn on multiple versions of the same crate (dependency duplication)
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+# Only allow crates from crates.io (no unknown registries)
+unknown-registry = "deny"
+unknown-git = "warn"

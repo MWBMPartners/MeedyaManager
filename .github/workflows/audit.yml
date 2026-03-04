@@ -1,0 +1,37 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Security & License Audit
+
+name: Security Audit
+
+on:
+  schedule:
+    # Weekly on Monday at 09:00 UTC
+    - cron: "0 9 * * 1"
+  push:
+    branches: [main]
+
+jobs:
+  audit:
+    name: Security & License Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Run cargo-deny checks (licenses, bans, advisories, sources)
+        run: cargo deny check
+
+      - name: Run cargo audit (RustSec advisory database)
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

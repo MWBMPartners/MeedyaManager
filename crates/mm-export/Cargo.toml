@@ -1,0 +1,37 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Database export crate
+# Exports media library metadata to relational databases (M9).
+
+[package]
+name = "mm-export"
+description = "Database export for MeedyaManager (MySQL, MariaDB, PostgreSQL, SQLite, SQL Server)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Internal crate dependency — core types, config, and error handling
+mm-core = { path = "../mm-core" }
+
+# Serialization for schema definitions and export payloads
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async runtime for non-blocking database operations
+tokio = { workspace = true }
+
+# Typed error enums for database export failures
+thiserror = { workspace = true }
+
+# Structured logging for export progress and diagnostics
+tracing = { workspace = true }
+
+# SQL database driver — supports MySQL, PostgreSQL, and SQLite
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "mysql", "postgres", "sqlite"] }
+
+# SQL Server (TDS protocol) driver via Tiberius with TLS
+# Note: tiberius rustls feature has compatibility issues; using vendored-openssl instead
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "chrono"] }

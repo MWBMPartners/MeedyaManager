@@ -1,0 +1,26 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Foreign function interface crate
+# Exposes core and provider functionality to Python, Swift, and Kotlin via UniFFI.
+
+[package]
+name = "mm-ffi"
+description = "FFI bindings for MeedyaManager (UniFFI + cbindgen for Python, Swift, Kotlin)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+# cdylib: produces a shared library (.so/.dylib/.dll) for FFI consumers
+# lib:    allows other Rust crates to depend on this crate normally
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+# Internal crate dependencies — expose core types and provider APIs via FFI
+mm-core = { path = "../mm-core" }
+mm-providers = { path = "../mm-providers" }
+
+# UniFFI — generates language bindings (Python, Swift, Kotlin) from Rust
+uniffi = "0.29"

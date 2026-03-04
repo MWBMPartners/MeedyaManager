@@ -1,0 +1,43 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Command-line interface crate
+# Provides the `meedya` CLI binary for terminal-based media management.
+
+[package]
+name = "mm-cli"
+description = "Command-line interface for MeedyaManager"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "meedya"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crate dependencies
+mm-core = { path = "../mm-core" }
+mm-providers = { path = "../mm-providers" }
+
+# CLI argument parsing with derive macros and env-var support
+clap = { workspace = true }
+
+# JSON output formatting for structured CLI responses
+serde_json = { workspace = true }
+
+# Async runtime for provider queries and file operations
+tokio = { workspace = true }
+
+# Structured logging for CLI diagnostics
+tracing = { workspace = true }
+
+# Log output subscriber with env-filter and JSON formatting
+tracing-subscriber = { workspace = true }
+
+# Flexible error propagation with context for CLI error messages
+anyhow = { workspace = true }
+
+# Coloured terminal output for user-facing messages
+colored = "3"

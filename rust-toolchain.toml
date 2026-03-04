@@ -1,0 +1,13 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# Pin the Rust toolchain version for reproducible builds across all developers
+
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy", "rust-src"]
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+]

@@ -1,155 +1,179 @@
 # ============================================================================
 # File: /.gitignore
-# (C) 2025 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 #
 # Description:
-# Ignore rules for MeedyaManager project across macOS, Windows,
-# VS Code, Xcode, and Visual Studio environments.
-# Also handles secrets, env files, and dev/testing tools.
+# Ignore rules for MeedyaManager monorepo — Rust core + native UIs
+# Covers: macOS, Windows, Linux, Rust, Swift, C#/.NET, GTK4,
+#          VS Code, Xcode, Visual Studio, and CI/CD artifacts.
 # ============================================================================
 
+# ============================================================
 # OS-specific
+# ============================================================
 .DS_Store
 Thumbs.db
+Desktop.ini
 Icon?
 __MACOSX/
-
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-venv/
-.venv/
-ENV/
-env/
-
-# Logs, cache
-*.log
-*.tmp
-*.bak
 *.swp
 *.swo
-*.orig
-
-# Pytest
-.cache/
-.pytest_cache/
-htmlcov/
-.coverage
-coverage.xml
-
-# Tox
-.tox/
-
-# MyPy
-.mypy_cache/
-.dmypy.json
-
-# VS Code
-.vscode/
-
-# Visual Studio (Community/Pro)
-.vs/
-*.vcxproj.user
-*.suo
-*.ncb
-*.aps
-*.sdf
-*.opendb
-*.VC.db
-ipch/
-
-# Xcode / macOS
-*.xcworkspace
-*.xcodeproj
-*.xcuserdata/
-*.xcuserstate
-*.xcsettings
-DerivedData/
-build/
-
-# Packaging & Artifacts
-*.tar.gz
-*.zip
-*.dmg
-dist/
-logs/
-*.egg
-*.egg-info/
-build/
-
-# Node/npm (in case frontend included later)
-node_modules/
-package-lock.json
-yarn.lock
-
-# Editor backups
 *~
-*.bak
-*.tmp
-*.orig
 
+# ============================================================
+# Rust / Cargo
+# ============================================================
+/target/
+**/target/
+Cargo.lock
+# Note: Cargo.lock IS committed for binary crates (mm-cli, mm-gtk)
+# but the workspace Cargo.lock is committed too for reproducibility
+!Cargo.lock
+*.rlib
+*.rmeta
+
+# ============================================================
+# Swift / Xcode (macOS)
+# ============================================================
+macos/.build/
+macos/.swiftpm/
+macos/DerivedData/
+macos/**/*.xcuserdata/
+macos/**/*.xcuserstate
+macos/**/*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+DerivedData/
+
+# ============================================================
+# C# / .NET / WinUI 3 (Windows)
+# ============================================================
+windows/**/bin/
+windows/**/obj/
+windows/**/*.user
+windows/**/*.suo
+windows/**/.vs/
+windows/**/packages/
+*.nupkg
+*.snupkg
+
+# ============================================================
+# GTK4 / Linux
+# ============================================================
+# Flatpak build artifacts
+.flatpak-builder/
+builddir/
+repo/
+
+# ============================================================
+# IDE / Editor configuration
+# ============================================================
+.vscode/
+.idea/
+.vs/
+*.code-workspace
+
+# ============================================================
 # Secrets & environment overrides
+# ============================================================
 .env
 .env.*
+!.env.example
 .secrets
 .secrets.*
 settings.local.json5
 
-# Project-specific
+# ============================================================
+# Logs & temporary files
+# ============================================================
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+.temp/
+
+# ============================================================
+# Build artifacts & packages
+# ============================================================
+*.tar.gz
+*.zip
+*.dmg
+*.msi
+*.msix
+*.AppImage
+*.deb
+*.rpm
+*.flatpak
+*.snap
+dist/
+build/
+
+# ============================================================
+# Testing & coverage
+# ============================================================
+*.profraw
+*.profdata
+lcov.info
+coverage/
+htmlcov/
+tarpaulin-report.html
+
+# ============================================================
+# Database files
+# ============================================================
 *.sqlite3
 *.db
 *.metadata.json
 
-# JetBrains IDEs (PyCharm, WebStorm, etc)
-.idea/
+# ============================================================
+# Generated FFI bindings (auto-generated, not committed)
+# ============================================================
+# UniFFI-generated Swift bindings (regenerated on build)
+# macos/MeedyaManager/Bindings/*.swift
+# cbindgen-generated C headers (regenerated on build)
+# windows/MeedyaManager/Interop/mm_ffi.h
 
-# PyInstaller / Nuitka
-*.spec
-*.onefile-build/
-*.onedir-build/
-*.build/
-*.dist/
-*.cmd
-*.AppImage
-*.deb
-
-# Nuitka compilation cache
-.cache/Nuitka/
-
-# Icon generation intermediates
+# ============================================================
+# Asset generation intermediates
+# ============================================================
 assets/*.iconset/
 
-# PySide6 / Qt
-*.qmlc
-*.jsc
-ui_*.py
-*_rc.py
-
-# Ruff / linting
-.ruff_cache/
-
-# Claude Code session logs
+# ============================================================
+# Claude Code session files
+# ============================================================
 .claude/*.jsonl
+.claude/plans/
 
 # ============================================================
-# Logs
+# Node (if web frontend added later for mm-server)
 # ============================================================
-*.log
-logs/
+node_modules/
+package-lock.json
+yarn.lock
 
 # ============================================================
-# Temporary files
+# Legacy (from Python v1.x era — archived at v1.5-M6-python-final)
 # ============================================================
-tmp/
-temp/
-*.tmp
-.temp/
-
-# ============================================================
-# Legacy (from previous PyQt5 iteration)
-# ============================================================
-ProjectBrief_Chat.gpt
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.spec

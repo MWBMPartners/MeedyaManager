@@ -1,0 +1,40 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Linux GTK4 CI
+
+name: Linux GTK4 CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/mm-gtk/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/mm-gtk/**"
+
+jobs:
+  linux-gtk4-ci:
+    name: Linux GTK4
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install GTK4 and Libadwaita system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build mm-gtk crate
+        run: cargo build -p mm-gtk
+
+      - name: Run mm-gtk tests under Xvfb
+        run: xvfb-run cargo test -p mm-gtk

@@ -1,0 +1,258 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Release Build
+
+name: Release Build
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # macOS — Apple Silicon (arm64)
+  # ---------------------------------------------------------------------------
+  release-macos:
+    name: macOS arm64
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust core (release)
+        run: cargo build --release --workspace
+
+      - name: Build mm-ffi for macOS
+        # TODO: Build the FFI crate as a universal static/dynamic library
+        run: echo "Placeholder — cargo build -p mm-ffi --release"
+
+      - name: Build SwiftUI app
+        working-directory: macos
+        # TODO: Replace with xcodebuild archive + export
+        run: echo "Placeholder — swift build -c release"
+
+      - name: Code sign macOS app
+        # TODO: Import Developer ID cert from secrets, codesign, notarize
+        run: echo "Placeholder — code signing step"
+
+      - name: Generate SHA256 checksums
+        run: |
+          echo "Placeholder — shasum -a 256 output artifacts"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: |
+            target/release/*.dylib
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Windows — x64 and arm64
+  # ---------------------------------------------------------------------------
+  release-windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust core (release)
+        run: cargo build --release --workspace
+
+      - name: Build mm-ffi for Windows
+        # TODO: Build the FFI crate as a DLL
+        run: echo "Placeholder — cargo build -p mm-ffi --release"
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build WinUI 3 app (x64)
+        working-directory: windows
+        # TODO: Replace with actual publish command for MSIX/MSI
+        run: echo "Placeholder — dotnet publish -c Release -r win-x64"
+
+      - name: Code sign Windows binaries
+        # TODO: Import code signing certificate, signtool
+        run: echo "Placeholder — code signing step"
+
+      - name: Generate SHA256 checksums
+        run: echo "Placeholder — certutil -hashfile or sha256sum"
+
+      - name: Upload Windows x64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            target/release/*.dll
+            target/release/*.exe
+          if-no-files-found: warn
+
+  release-windows-arm64:
+    name: Windows arm64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust core (release, arm64)
+        run: cargo build --release --workspace --target aarch64-pc-windows-msvc
+
+      - name: Build mm-ffi for Windows arm64
+        # TODO: Cross-compile FFI crate for arm64
+        run: echo "Placeholder — cargo build -p mm-ffi --release --target aarch64-pc-windows-msvc"
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build WinUI 3 app (arm64)
+        working-directory: windows
+        # TODO: Replace with actual publish command for arm64
+        run: echo "Placeholder — dotnet publish -c Release -r win-arm64"
+
+      - name: Code sign Windows binaries
+        # TODO: Import code signing certificate, signtool
+        run: echo "Placeholder — code signing step"
+
+      - name: Generate SHA256 checksums
+        run: echo "Placeholder — certutil -hashfile or sha256sum"
+
+      - name: Upload Windows arm64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-arm64
+          path: |
+            target/aarch64-pc-windows-msvc/release/*.dll
+            target/aarch64-pc-windows-msvc/release/*.exe
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Linux — x64 and arm64
+  # ---------------------------------------------------------------------------
+  release-linux-x64:
+    name: Linux x64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install GTK4 and Libadwaita system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust core and GTK4 frontend (release)
+        run: cargo build --release --workspace
+
+      - name: Generate SHA256 checksums
+        run: echo "Placeholder — sha256sum target/release/mm-gtk"
+
+      - name: Upload Linux x64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: |
+            target/release/mm-gtk
+          if-no-files-found: warn
+
+  release-linux-arm64:
+    name: Linux arm64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install cross-compilation toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust core (release, arm64)
+        # TODO: Full cross-compilation needs GTK4 arm64 sysroot
+        run: echo "Placeholder — cargo build --release --workspace --target aarch64-unknown-linux-gnu"
+
+      - name: Generate SHA256 checksums
+        run: echo "Placeholder — sha256sum artifacts"
+
+      - name: Upload Linux arm64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: |
+            target/aarch64-unknown-linux-gnu/release/mm-gtk
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Create GitHub Release
+  # ---------------------------------------------------------------------------
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - release-macos
+      - release-windows-x64
+      - release-windows-arm64
+      - release-linux-x64
+      - release-linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: true
+          files: release-artifacts/**/*

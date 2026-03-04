@@ -1,0 +1,44 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Windows WinUI 3 CI
+
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows/**"
+      - "crates/mm-ffi/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "windows/**"
+      - "crates/mm-ffi/**"
+
+jobs:
+  windows-ci:
+    name: Windows WinUI 3
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build mm-ffi native library
+        # TODO: Replace with actual mm-ffi build command once crate is scaffolded
+        run: echo "Placeholder — cargo build -p mm-ffi --release"
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build WinUI 3 application
+        working-directory: windows
+        run: dotnet build

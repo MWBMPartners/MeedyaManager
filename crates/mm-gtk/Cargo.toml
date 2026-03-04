@@ -1,0 +1,28 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — GTK4/Adwaita GUI crate
+# Native Linux desktop interface using GTK4 and libadwaita.
+
+[package]
+name = "mm-gtk"
+description = "GTK4/Adwaita desktop GUI for MeedyaManager (Linux)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "meedya-gtk"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crate dependencies — core engine and metadata providers
+mm-core = { path = "../mm-core" }
+mm-providers = { path = "../mm-providers" }
+
+# GTK4 Rust bindings — native Linux widget toolkit
+gtk4 = "0.9"
+
+# Libadwaita — GNOME adaptive UI patterns and modern styling
+libadwaita = "0.7"

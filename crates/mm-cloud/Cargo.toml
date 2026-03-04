@@ -1,0 +1,36 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Cloud storage monitoring crate
+# Watches and syncs media libraries across cloud providers (M7).
+
+[package]
+name = "mm-cloud"
+description = "Cloud storage monitoring and sync for MeedyaManager (OneDrive, Google Drive, Dropbox, MEGA, iCloud)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Internal crate dependency — core types, config, and error handling
+mm-core = { path = "../mm-core" }
+
+# Serialization for cloud API payloads and cached state
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async runtime for background sync tasks and file watching
+tokio = { workspace = true }
+
+# HTTP client for cloud provider REST APIs
+reqwest = { workspace = true }
+
+# Typed error enums for cloud-specific failures
+thiserror = { workspace = true }
+
+# Structured logging for sync operations and API calls
+tracing = { workspace = true }
+
+# OAuth2 authentication flows for cloud provider authorization
+oauth2 = { workspace = true }

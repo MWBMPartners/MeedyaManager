@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Bundle display name shown to users -->
+    <key>CFBundleName</key>
+    <string>MeedyaManager</string>
+
+    <!-- Human-readable display name -->
+    <key>CFBundleDisplayName</key>
+    <string>MeedyaManager</string>
+
+    <!-- Unique bundle identifier -->
+    <key>CFBundleIdentifier</key>
+    <string>com.mwbm.MeedyaManager</string>
+
+    <!-- Bundle version (build number) -->
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <!-- Short version string shown to users -->
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+
+    <!-- Bundle package type: application -->
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <!-- Info.plist format version -->
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <!-- Executable name -->
+    <key>CFBundleExecutable</key>
+    <string>MeedyaManager</string>
+
+    <!-- Minimum macOS deployment target -->
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+
+    <!-- Application category -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+
+    <!-- Support high-resolution displays -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Copyright notice -->
+    <key>NSHumanReadableCopyright</key>
+    <string>(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services). Licensed under GPL-2.0-or-later.</string>
+
+    <!-- Principal class for SwiftUI app lifecycle -->
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+</dict>
+</plist>

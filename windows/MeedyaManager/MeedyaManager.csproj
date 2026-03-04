@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Target .NET 8 with Windows 10 SDK (Build 22621 = Windows 11 22H2) -->
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>MeedyaManager</RootNamespace>
+    <AssemblyName>MeedyaManager</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWinUI>true</UseWinUI>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
+    <WindowsPackageType>MSIX</WindowsPackageType>
+
+    <!-- Assembly metadata -->
+    <Company>MWBM Partners Ltd</Company>
+    <Product>MeedyaManager</Product>
+    <Authors>MWBM Partners Ltd</Authors>
+    <Copyright>(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)</Copyright>
+    <Description>Cross-platform media file manager and auto-organizer</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Windows App SDK (WinUI 3) -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />
+    <!-- Windows SDK Build Tools -->
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.*" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,58 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Metadata lookup providers crate
+# Supports 19 providers across music, video, podcasts, and identifier services.
+
+[package]
+name = "mm-providers"
+description = "Metadata lookup providers for MeedyaManager (music, video, podcasts, identifiers)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Internal crate dependency — core types, config, and error handling
+mm-core = { path = "../mm-core" }
+
+# Serialization (derive macros for provider response structs)
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async runtime for concurrent provider queries
+tokio = { workspace = true }
+
+# HTTP client for REST API calls to metadata providers
+reqwest = { workspace = true }
+
+# Typed error enums for provider-specific failures
+thiserror = { workspace = true }
+
+# Flexible error propagation across provider boundaries
+anyhow = { workspace = true }
+
+# Structured logging for provider request/response tracing
+tracing = { workspace = true }
+
+# OAuth2 authentication flows (Spotify, Discogs, etc.)
+oauth2 = { workspace = true }
+
+# JWT token handling for authenticated provider APIs
+jsonwebtoken = { workspace = true }
+
+# Rate limiting to respect provider API quotas
+governor = { workspace = true }
+
+# Fuzzy string matching for metadata result scoring
+fuzzy-matcher = { workspace = true }
+
+# Secure credential storage for API keys and tokens
+keyring = { workspace = true }
+
+[dev-dependencies]
+# HTTP mock server for provider API integration tests
+wiremock = { workspace = true }
+
+# Temporary file/directory creation for test fixtures
+tempfile = { workspace = true }

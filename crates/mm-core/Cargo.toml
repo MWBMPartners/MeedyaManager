@@ -1,0 +1,28 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+
+[package]
+name = "mm-core"
+description = "MeedyaManager core business logic — config, watcher, classifier, rule engine, renamer, metadata, companion tracker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+json5 = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+notify = { workspace = true }
+lofty = { workspace = true }
+regex = { workspace = true }
+dotenvy = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

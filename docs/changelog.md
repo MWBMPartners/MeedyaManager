@@ -8,31 +8,63 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
+## [v2.0.0-alpha.1] — 2026-03-04 — Rust Rewrite (M0: Repository Setup)
 
-### 📝 Changed — 2026-02-12
+> 🏷️ **Milestone 0** — Complete architecture change from Python to Rust core with platform-native UIs. The Python v1.x codebase (M1–M6) is archived at tag `v1.5-M6-python-final`.
 
-- Standardised project name from "MetaMancer" to **MeedyaManager** across all documentation
-- Created comprehensive [Project_Plan.md](../Project_Plan.md) with full architecture, tech stack, and milestone details
-- Created [PROJECT_STATUS.md](../PROJECT_STATUS.md) as the go-to project status tracker
-- Rewrote [README.md](../README.md) with branding, badges, quick start guide, and full documentation links
-- Updated [ROADMAP.md](ROADMAP.md) to align with revised milestone ordering
-- Updated [CHANGELOG.md](CHANGELOG.md) (this file) with proper formatting and conventions
-- Created user documentation in `help/` directory:
-  - `getting-started.md` — Installation and first run guide
-  - `configuration.md` — Settings reference
-  - `rule-syntax.md` — Complete template syntax reference
-  - `supported-formats.md` — Full format support list
-  - `troubleshooting.md` — Common issues and solutions
-  - `faq.md` — Frequently asked questions
-- Updated `.claude/CLAUDE.md` with consolidated project brief
-- Saved full project brief to `.claude/ProjectBrief_Chat.claude`
+### 🔄 Architecture Change
+
+- **Language:** Python 3.14 → **Rust** (core engine, CLI, metadata, rules, cloud, export, service)
+- **GUI:** PySide6/Qt6 → **Platform-native UIs** (SwiftUI on macOS, WinUI 3 on Windows, GTK4 on Linux)
+- **FFI:** UniFFI (Swift bindings) and cbindgen (C header generation for C#/GTK)
+- **Build:** Nuitka → **Cargo** (Rust workspace) + Xcode + MSBuild
+
+### 🗃️ Archived
+
+- Python v1.x source tree archived at tag `v1.5-M6-python-final`
+- Removed: `core/`, `cli/`, `ui/`, `metadata/`, `utils/`, `tests/`, `config/`, `build/`, `scripts/`
+- Preserved: 6 completed milestones, 1007 tests, 19 metadata providers in git history
+
+### 🚀 Added
+
+- **Cargo workspace** with 8 crates:
+  - `mm-core` — File watcher, metadata extraction, classification, rename engine
+  - `mm-cli` — `clap`-based command-line interface
+  - `mm-ffi` — UniFFI/cbindgen FFI bridge for native UIs
+  - `mm-metadata` — Tag reading/writing via `lofty`, metadata lookup providers
+  - `mm-rules` — MusicBee-inspired template parser and evaluator
+  - `mm-cloud` — Cloud storage monitoring (OneDrive, Google Drive, Dropbox, MEGA, iCloud)
+  - `mm-export` — Database export (MySQL, MariaDB, SQL Server, SQLite, PostgreSQL)
+  - `mm-service` — Background service / daemon
+- **macOS SwiftUI scaffold** (`native/macos/`) — Xcode project consuming Rust core via UniFFI
+- **Windows WinUI 3 scaffold** (`native/windows/`) — .csproj consuming Rust core via cbindgen C API
+- **Rust toolchain configuration** (`rust-toolchain.toml`) — Stable channel
+- **7 CI/CD workflows** (`.github/workflows/`):
+  - `rust-ci.yml` — Cargo build + test + clippy (Ubuntu, macOS, Windows)
+  - `swiftui-ci.yml` — Xcode build (macOS)
+  - `winui-ci.yml` — MSBuild (Windows)
+  - `gtk-ci.yml` — GTK4 build (Ubuntu)
+  - `release.yml` — Cross-platform release packaging on git tags
+  - `lint.yml` — `rustfmt` + `clippy` checks
+  - `docs.yml` — `cargo doc` generation
+- **GitHub Projects v2 board** — 11 milestones (M0–M10) with issue tracking
+- **11 new milestones** (M0–M10) replacing the original 10 Python milestones
+
+### 📝 Changed
+
+- All documentation rewritten for Rust architecture
+- `.claude/CLAUDE.md` updated with Rust coding standards and architecture
+- `PROJECT_STATUS.md` rewritten with new milestone structure
+- `docs/ROADMAP.md` rewritten with v2.0 timeline
+- `docs/CHANGELOG.md` updated (this entry)
 
 ---
 
 ## [v1.5-M6] — 2026-02-13 — Packaging, Error Handling & Config Profiles
 
 > 🏷️ **Milestone 6** — Centralized logging, crash protection, user-friendly error dialogs, configuration export/import, native platform installers via Nuitka, and CI/CD build pipeline.
+>
+> ⚠️ **This is the final Python release.** The codebase was archived at tag `v1.5-M6-python-final` before the Rust rewrite.
 
 ### 🚀 Added
 
@@ -512,16 +544,13 @@ Format: `## [Version] — YYYY-MM-DD`
 
 | Version | Milestone | Description |
 |---------|-----------|-------------|
-| `v1.0-M1` | ✅ Core Engine | Watcher, metadata, classification, dry-run rename |
-| `v1.1-M2` | ✅ CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
-| `v1.2-M3` | ✅ Rule Engine | Full template syntax, companion file tracking |
-| `v1.3-M4` | ✅ Metadata Editor | Tag editing, mutagen integration, GUI panel, CLI edit |
-| `v1.4-M5` | ✅ Metadata Lookup | 19 providers (music, video, podcasts, identifiers), framework, CLI, GUI |
+| `v2.0.0-alpha.1` | 🔧 M0: Repository Setup | Rust rewrite, Cargo workspace, native scaffolds, CI/CD |
 | `v1.5-M6` | ✅ Packaging & Error Handling | Centralized logging, crash protection, config profiles, native installers |
-| `v1.6-M7` | 🔲 Cloud Monitoring | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
-| `v2.0-M8` | 🔲 Public Release | Auto-updater, code signing |
-| `v2.1-M9` | 🔲 DB Export | MySQL, MariaDB, SQLite, PostgreSQL, SQL Server |
-| `v2.2-M10` | 🔲 Media Server | Secure web interface, access control |
+| `v1.4-M5` | ✅ Metadata Lookup | 19 providers (music, video, podcasts, identifiers), framework, CLI, GUI |
+| `v1.3-M4` | ✅ Metadata Editor | Tag editing, mutagen integration, GUI panel, CLI edit |
+| `v1.2-M3` | ✅ Rule Engine | Full template syntax, companion file tracking |
+| `v1.1-M2` | ✅ CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
+| `v1.0-M1` | ✅ Core Engine | Watcher, metadata, classification, dry-run rename |
 
 ---
 

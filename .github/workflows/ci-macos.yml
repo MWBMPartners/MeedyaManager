@@ -1,0 +1,40 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — macOS SwiftUI CI
+
+name: macOS CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "macos/**"
+      - "crates/mm-ffi/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "macos/**"
+      - "crates/mm-ffi/**"
+
+jobs:
+  macos-ci:
+    name: macOS SwiftUI (Apple Silicon)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build mm-ffi native library
+        # TODO: Replace with actual mm-ffi build command once crate is scaffolded
+        run: echo "Placeholder — cargo build -p mm-ffi --release"
+
+      - name: Build SwiftUI application
+        working-directory: macos
+        # TODO: Replace with xcodebuild once Xcode project is created
+        run: swift build

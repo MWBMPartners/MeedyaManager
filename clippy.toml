@@ -1,0 +1,11 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# Clippy lint configuration — enforced by `cargo clippy`
+
+# Maximum number of lines in a single function before warning
+too-many-lines-threshold = 150
+
+# Maximum cognitive complexity of a function
+cognitive-complexity-threshold = 30
+
+# Warn on functions with too many arguments
+too-many-arguments-threshold = 8

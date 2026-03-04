@@ -1,0 +1,17 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# Rust formatting rules — enforced by `cargo fmt`
+
+# Maximum line width before wrapping
+max_width = 100
+
+# Use Unix-style line endings for cross-platform consistency
+newline_style = "Unix"
+
+# Use block indentation (not visual alignment)
+indent_style = "Block"
+
+# 4-space indentation (Rust standard)
+tab_spaces = 4
+
+# Use standard Rust edition for formatting rules
+edition = "2024"
