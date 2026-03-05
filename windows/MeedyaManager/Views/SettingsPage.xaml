@@ -1,9 +1,9 @@
 <!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
 <!--
-    MeedyaManager — Settings Page (WinUI 3) — M4 stub
+    MeedyaManager — Settings Page (WinUI 3, M6)
 
-    Displays preferences read from the mm-core config (or defaults when the
-    config file is absent).  Full save-to-JSON5 support is planned for M6.
+    Displays and edits preferences. Changes can be saved back to the
+    config file on disk via the Save Settings button (M6).
 -->
 <Page
     x:Class="MeedyaManager.Views.SettingsPage"
@@ -110,13 +110,19 @@
                 </ScrollViewer>
             </Border>
 
-            <!-- ── M6 Notice ──────────────────────────────────────────────── -->
-            <InfoBar
-                IsOpen="True"
-                IsClosable="False"
-                Severity="Informational"
-                Title="Coming in M6"
-                Message="Settings editing (save to settings.json5) is planned for v2.0.0-beta.1." />
+            <!-- ── Save Settings ─────────────────────────────────────────── -->
+            <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                <TextBlock
+                    x:Name="SaveStatusText"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    FontSize="12" />
+                <Button
+                    x:Name="SaveButton"
+                    Content="Save Settings"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="SaveButton_Click" />
+            </StackPanel>
 
             <!-- Core version -->
             <TextBlock

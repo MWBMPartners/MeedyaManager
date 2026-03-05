@@ -13,8 +13,8 @@ using Microsoft.UI.Xaml.Controls;
 namespace MeedyaManager.Views;
 
 /// <summary>
-/// Rules page (M4 stub): live template validator + tag reference grid.
-/// The full rule builder is planned for M6.
+/// Rules page (M6): full template builder with live validator, live preview,
+/// sample tag editor, and tag pill reference grid.
 /// </summary>
 public sealed partial class RulesPage : Page
 {

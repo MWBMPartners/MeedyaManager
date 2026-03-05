@@ -1,9 +1,9 @@
 // (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 //
-// MeedyaManager — Metadata Editor View (macOS)
+// MeedyaManager — Metadata Editor View (macOS, M6)
 //
 // Displays all embedded tags of a selected media file and allows
-// the user to edit and save them.
+// the user to edit and save them. Includes cover art display (M6).
 
 import SwiftUI
 
@@ -43,7 +43,7 @@ struct MetadataView: View {
 
             Divider()
 
-            // ── Tag editor ─────────────────────────────────────────────────
+            // ── Content area: cover art (left) + tag editor (right) ────────
             if model.tags.isEmpty {
                 ContentUnavailableView(
                     "No file loaded",
@@ -51,7 +51,14 @@ struct MetadataView: View {
                     description: Text("Open a media file to view and edit its metadata.")
                 )
             } else {
-                TagEditorList(model: model)
+                HSplitView {
+                    // Cover art panel — shown when a URL is available
+                    CoverArtPanel(coverArtUrl: model.coverArtUrl)
+                        .frame(minWidth: 160, idealWidth: 180, maxWidth: 200)
+
+                    // Editable tag list
+                    TagEditorList(model: model)
+                }
             }
 
             // ── Bottom status bar + action buttons ─────────────────────────
@@ -97,6 +104,61 @@ struct MetadataView: View {
             }
         }
         .navigationTitle("Metadata")
+    }
+}
+
+// MARK: – Cover art panel
+
+/// Shows embedded cover art (or a placeholder) on the left side of the metadata panel.
+private struct CoverArtPanel: View {
+    let coverArtUrl: String?
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if let urlString = coverArtUrl, let url = URL(string: urlString) {
+                // Network-loaded cover art with placeholder while loading
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(width: 160, height: 160)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 160, height: 160)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    case .failure:
+                        CoverArtPlaceholder()
+                    @unknown default:
+                        CoverArtPlaceholder()
+                    }
+                }
+            } else {
+                // No art URL — show placeholder icon
+                CoverArtPlaceholder()
+            }
+
+            Text("Cover Art")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Placeholder icon displayed when no cover art is available.
+private struct CoverArtPlaceholder: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(.quaternary)
+            .frame(width: 160, height: 160)
+            .overlay {
+                Image(systemName: "music.note")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+            }
     }
 }
 

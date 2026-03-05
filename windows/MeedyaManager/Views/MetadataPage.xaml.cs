@@ -133,6 +133,20 @@ public sealed partial class MetadataPage : Page
             StatusText.Text = "No tags found.";
         }
 
+        // Load cover art: look for a "coverart" or "picture" tag URL
+        // (set by the lookup provider in M6)
+        string? artUrl = null;
+        foreach (TagEntry tag in tags)
+        {
+            if (tag.Key.Equals("coverart", StringComparison.OrdinalIgnoreCase) ||
+                tag.Key.Equals("picture",  StringComparison.OrdinalIgnoreCase))
+            {
+                artUrl = tag.Value;
+                break;
+            }
+        }
+        LoadCoverArt(artUrl);
+
         SaveButton.IsEnabled   = true;
         RevertButton.IsEnabled = true;
         SetLoading(false);
@@ -170,6 +184,36 @@ public sealed partial class MetadataPage : Page
                 row.Value = original.Value;
         }
         StatusText.Text = "Changes reverted.";
+    }
+
+    // ── Cover Art ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads cover art from <paramref name="url"/> into the CoverArtImage control,
+    /// or shows the placeholder icon when no URL is available.
+    /// </summary>
+    private void LoadCoverArt(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+        {
+            // Show placeholder, hide image
+            CoverArtImage.Visibility       = Visibility.Collapsed;
+            CoverArtPlaceholder.Visibility = Visibility.Visible;
+            return;
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+        {
+            CoverArtImage.Visibility       = Visibility.Collapsed;
+            CoverArtPlaceholder.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // Load into a BitmapImage (async — WinUI 3 handles the download)
+        var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(uri);
+        CoverArtImage.Source           = bmp;
+        CoverArtImage.Visibility       = Visibility.Visible;
+        CoverArtPlaceholder.Visibility = Visibility.Collapsed;
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────

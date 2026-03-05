@@ -1,10 +1,9 @@
 <!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
 <!--
-    MeedyaManager — Scan Page (WinUI 3)
+    MeedyaManager — Scan Page (WinUI 3, M6)
 
-    Left column: options pane (folder, template, recursive toggle, action buttons).
+    Left column: options pane (folder picker with drag-and-drop, template, recursive toggle, action buttons).
     Right column: results list (rename previews with conflict/unchanged badges).
-    Full WinUI polish (Mica backdrop, acrylic cards, InfoBar feedback) is planned for M6.
 -->
 <Page
     x:Class="MeedyaManager.Views.ScanPage"
@@ -26,24 +25,32 @@
         <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="16" Padding="16">
 
-                <!-- Folder picker -->
+                <!-- Folder picker — accepts Browse or drag-and-drop from Explorer -->
                 <TextBlock Text="Source Folder" Style="{StaticResource BodyStrongTextBlockStyle}" />
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
+                    <!-- AllowDrop + DragOver/Drop wired in code-behind -->
                     <TextBox
                         x:Name="FolderBox"
                         Grid.Column="0"
-                        PlaceholderText="Select a folder…"
-                        IsReadOnly="True" />
+                        PlaceholderText="Select or drop a folder here…"
+                        IsReadOnly="True"
+                        AllowDrop="True"
+                        DragOver="FolderBox_DragOver"
+                        Drop="FolderBox_Drop" />
                     <Button
                         x:Name="BrowseButton"
                         Grid.Column="1"
                         Content="Browse…"
                         Click="BrowseButton_Click" />
                 </Grid>
+                <TextBlock
+                    Text="Tip: drag a folder from Explorer to set the path."
+                    FontSize="11"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
                 <!-- Template entry + validation -->
                 <TextBlock Text="Rename Template" Style="{StaticResource BodyStrongTextBlockStyle}" />

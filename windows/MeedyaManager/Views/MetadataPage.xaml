@@ -38,6 +38,34 @@
                 HorizontalAlignment="Stretch"
                 Click="OpenFileButton_Click" />
 
+            <!-- Cover art (shown when a URL is loaded by the metadata provider) -->
+            <TextBlock
+                Text="Cover Art"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Margin="0,8,0,0" />
+            <Border
+                CornerRadius="8"
+                Width="160"
+                Height="160"
+                HorizontalAlignment="Left"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <Grid>
+                    <!-- Placeholder icon shown when no art is available -->
+                    <FontIcon
+                        x:Name="CoverArtPlaceholder"
+                        Glyph="&#xE8D6;"
+                        FontSize="48"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    <!-- Actual cover art image (hidden until URL is set) -->
+                    <Image
+                        x:Name="CoverArtImage"
+                        Stretch="Uniform"
+                        Visibility="Collapsed" />
+                </Grid>
+            </Border>
+
             <!-- Audio properties -->
             <TextBlock
                 Text="Audio Properties"

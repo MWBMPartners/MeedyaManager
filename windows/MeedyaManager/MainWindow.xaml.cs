@@ -17,7 +17,7 @@ namespace MeedyaManager;
 /// <summary>
 /// Main application window.
 /// Hosts a NavigationView with Mica backdrop and navigates between the
-/// Library (Scan), Rules, Metadata, and Settings pages.
+/// Library (Scan), Rules, Metadata, Lookup, and Settings pages.
 /// </summary>
 public sealed partial class MainWindow : Window
 {
@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window
             NavigationViewItem { Tag: "Library"  } => typeof(ScanPage),
             NavigationViewItem { Tag: "Rules"    } => typeof(RulesPage),
             NavigationViewItem { Tag: "Metadata" } => typeof(MetadataPage),
+            NavigationViewItem { Tag: "Lookup"   } => typeof(LookupPage),
             NavigationViewItem { Tag: "Settings" } => typeof(SettingsPage),
             _ => null,
         };

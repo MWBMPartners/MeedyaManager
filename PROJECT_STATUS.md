@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M6 — Full Native UI — **Up Next** |
-| **Overall Progress** | **55%** (6 of 11 milestones complete) |
-| **Latest Version** | `v0.6.0` |
+| **Current Milestone** | M7 — Cloud Storage Monitoring — **Up Next** |
+| **Overall Progress** | **64%** (7 of 11 milestones complete) |
+| **Latest Version** | `v0.7.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -180,11 +180,25 @@
 
 ---
 
-### M6 — Full Native UI *(Planned)*
+### M6 — Full Native UI *(Complete)*
 
-> Target: `v0.7.0`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.7.0`
 
-Complete views on all 3 platforms: Rule Builder, Metadata Editor, Lookup Panel, accessibility.
+**Progress: 100%** | Issues: #85-93 | **~90 UI tests** (53 macOS Swift + 58 Windows C# = 111 total; GTK4 Rust tests counted in mm-gtk)
+
+| Deliverable | Status | Platform |
+| ----------- | ------ | -------- |
+| Lookup panel (search + results + providers) | Done | GTK4, macOS, Windows |
+| Full rule builder (template + live preview + tag pills) | Done | GTK4, macOS, Windows |
+| Cover art display | Done | GTK4 (gtk::Picture), macOS (AsyncImage), Windows (Image/BitmapImage) |
+| Drag-and-drop folder import | Done | GTK4 (DropTarget), macOS (onDrop), Windows (DragOver/Drop) |
+| Real settings save to disk | Done | GTK4, macOS, Windows |
+| Dark/light theme toggle | Done | GTK4 (adw::StyleManager) |
+| Error dialogs | Done | GTK4 (adw::AlertDialog) |
+| macOS 5-tab navigation | Done | Lookup tab added to ContentView |
+| Windows LookupPage | Done | LookupPage.xaml + .xaml.cs |
+| macOS XCTest target (53 tests) | Done | AppTab, RenamePreviewItem, LookupResult, ProviderEntry, MetadataModel, ScanModel |
+| Windows xUnit project (58 tests) | Done | PreviewRow, LookupResultRow, ProviderEntry, TemplateValidation, SettingsSave |
 
 ---
 
@@ -231,9 +245,9 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 | `mm-server` | `crates/mm-server/` | Scaffold (stubs) |
 | `mm-cli` | `crates/mm-cli/` | **M3 Complete** (45 tests) |
 | `mm-ffi` | `crates/mm-ffi/` | **M4 Complete** (20 tests) |
-| `mm-gtk` | `crates/mm-gtk/` | **M4 Complete** (GTK4/Adwaita Linux shell) |
-| macOS SwiftUI app | `macos/` | **M4 Complete** (4 views: Scan, Metadata, Rules, Settings) |
-| Windows WinUI 3 app | `windows/` | **M4 Complete** (4 pages: Scan, Metadata, Rules, Settings) |
+| `mm-gtk` | `crates/mm-gtk/` | **M6 Complete** (5 tabs, Lookup panel, cover art, DnD, real save, dark/light theme, 35 tests) |
+| macOS SwiftUI app | `macos/` | **M6 Complete** (5 tabs, Lookup+Rules builder, cover art, DnD, real settings save, 53 tests) |
+| Windows WinUI 3 app | `windows/` | **M6 Complete** (5 pages, LookupPage, cover art, DnD, real settings save, 58 tests) |
 
 ---
 
@@ -268,6 +282,8 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-05 | **M6 Complete** (`v0.7.0`) — Full Native UI: Lookup panel (all 3 platforms), rule builder, cover art, DnD, real settings save, dark/light theme (GTK4), error dialogs; ~90 UI tests (776 → ~866 total) |
+| 2026-03-05 | **M5 Complete** (`v0.6.0`) — Metadata Lookup Providers: 19 providers, credentials, rate limiting, fuzzy scoring, cover art; 332 new tests (776 total) |
 | 2026-03-05 | **M4 Complete** (`v0.5.0`) — FFI Layer & Native UI Shells: mm-ffi (UniFFI + cbindgen), mm-gtk (GTK4/Adwaita Linux shell), macOS SwiftUI shell (4 views), Windows WinUI 3 shell (4 pages), 20 new tests (464 total) |
 | 2026-03-05 | **M3 Complete** (`v0.4.0`) — CLI: 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), shared output infrastructure, CLI context, dual output modes (Human/JSON), 45 new tests (444 total) |
 | 2026-03-05 | **M2 Complete** (`v0.3.0`) — Rule engine: lexer, recursive descent parser, 40+ tag registry, 24 template functions, evaluator with EvalContext, declarative rule system, renamer integration, config extension. 182 new tests (399 total) |

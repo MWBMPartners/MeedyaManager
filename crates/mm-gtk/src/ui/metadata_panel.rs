@@ -39,6 +39,9 @@ use mm_core::metadata::{self, TagMap};
 
 use crate::state::MetadataState;
 
+// Cover art display size (px × px square)
+const COVER_ART_SIZE: i32 = 180;
+
 /// The Metadata editor panel.
 pub struct MetadataPanel {
     root: gtk::Box,
@@ -152,8 +155,45 @@ impl MetadataPanel {
             .build();
 
         // ------------------------------------------------------------------
-        // Root layout
+        // Cover art display (gtk::Picture, shown when art is available)
         // ------------------------------------------------------------------
+
+        let cover_frame = gtk::Frame::builder()
+            .margin_start(12)
+            .margin_end(12)
+            .margin_bottom(8)
+            .visible(false)
+            .build();
+
+        let cover_picture = gtk::Picture::builder()
+            .width_request(COVER_ART_SIZE)
+            .height_request(COVER_ART_SIZE)
+            .can_shrink(true)
+            .keep_aspect_ratio(true)
+            .build();
+
+        cover_frame.set_child(Some(&cover_picture));
+
+        // ------------------------------------------------------------------
+        // Root layout (cover art on the left, tags on the right in a paned)
+        // ------------------------------------------------------------------
+
+        let content_paned = gtk::Paned::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .position(COVER_ART_SIZE + 32) // default split position
+            .vexpand(true)
+            .build();
+
+        // Left side: cover art + file info
+        let left_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
+        left_box.append(&cover_frame);
+
+        // Right side: scrolled tag list
+        content_paned.set_start_child(Some(&left_box));
+        content_paned.set_end_child(Some(&scrolled));
+        content_paned.set_shrink_start_child(false);
 
         let root = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -162,7 +202,7 @@ impl MetadataPanel {
         root.append(&file_row);
         root.append(&props_label);
         root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-        root.append(&scrolled);
+        root.append(&content_paned);
         root.append(&status_label);
         root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         root.append(&btn_row);
@@ -192,6 +232,8 @@ impl MetadataPanel {
                     let sb = save_btn_clone.clone();
                     let rb = revert_btn_clone.clone();
                     let sl = status_label_clone.clone();
+                    // cover art widgets captured from outer scope are not
+                    // available here — cover loading happens in load_file()
 
                     // Build file filter for audio/video formats
                     let filter = gtk::FileFilter::new();

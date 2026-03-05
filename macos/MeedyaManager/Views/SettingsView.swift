@@ -1,6 +1,6 @@
 // (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 //
-// MeedyaManager — Settings View (macOS)
+// MeedyaManager — Settings View (macOS, M6)
 //
 // Displays application preferences mirroring the JSON5 config file:
 //   - General: dry-run mode toggle
@@ -8,8 +8,7 @@
 //   - Logging: log level picker, PII redaction toggle
 //   - About: core version, config file path, open-in-Finder button
 //
-// Full settings editing (save back to settings.json5) is planned for M6.
-// This M4 view is read-only with clearly labelled stub indicators.
+// Settings are editable and saved to disk as JSON (M6).
 
 import SwiftUI
 
@@ -20,15 +19,21 @@ struct SettingsView: View {
 
     @Environment(AppState.self) private var appState
 
-    // Local mirror of config values — sourced from MmCore stub in M4
+    // Local mirror of config values — editable in M6
     @State private var dryRun:        Bool   = false
     @State private var recursive:     Bool   = true
     @State private var debounceMs:    Int    = 500
     @State private var logLevel:      String = "info"
     @State private var redactPii:     Bool   = true
 
-    // Raw JSON5 config text for the read-only preview panel
+    // Raw config text for the preview panel (refreshed after save)
     @State private var rawConfigText: String = ""
+
+    // Status message shown below the save button
+    @State private var saveStatus: String = ""
+
+    // True between save start and completion for the progress indicator
+    @State private var isSaving: Bool = false
 
     // Config file path reported by the core
     private let configFilePath = MmCore.shared.configPath()
@@ -145,6 +150,26 @@ struct SettingsView: View {
                     .padding(.vertical, 10)
                 }
 
+                // ── Save Button ───────────────────────────────────────────────
+                HStack {
+                    if isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    if !saveStatus.isEmpty {
+                        Text(saveStatus)
+                            .font(.caption)
+                            .foregroundStyle(saveStatus.hasPrefix("✓") ? .green : .red)
+                    }
+                    Spacer()
+                    Button("Save Settings") {
+                        saveConfig()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isSaving)
+                }
+                .padding(.bottom, 8)
+
                 // ── Raw Config Preview ────────────────────────────────────────
                 SettingsGroup(title: "Raw Config (Read-only)") {
                     ScrollView(.vertical) {
@@ -161,13 +186,6 @@ struct SettingsView: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
                 }
-
-                // ── M6 Notice ────────────────────────────────────────────────
-                Label("Settings editing (save to JSON5) coming in M6", systemImage: "hammer.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 16)
 
                 // ── Core Version ─────────────────────────────────────────────
                 Text("MeedyaManager core \(appState.coreVersion)")
@@ -189,6 +207,50 @@ struct SettingsView: View {
     private func loadConfig() {
         let url = URL(fileURLWithPath: configFilePath)
         rawConfigText = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    }
+
+    /// Serialise the current settings to JSON and write them to `configFilePath`.
+    private func saveConfig() {
+        isSaving  = true
+        saveStatus = ""
+
+        // Build a JSON representation of the current settings snapshot
+        let snapshot: [String: Any] = [
+            "dry_run":      dryRun,
+            "recursive":    recursive,
+            "debounce_ms":  debounceMs,
+            "log_level":    logLevel,
+            "redact_pii":   redactPii,
+        ]
+
+        do {
+            // Serialize as pretty-printed JSON (JSON5 superset — valid JSON5)
+            let data = try JSONSerialization.data(
+                withJSONObject: snapshot,
+                options: [.prettyPrinted, .sortedKeys]
+            )
+            guard let jsonString = String(data: data, encoding: .utf8) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+
+            // Ensure the parent directory exists
+            let url = URL(fileURLWithPath: configFilePath)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+
+            // Write to disk
+            try jsonString.write(to: url, atomically: true, encoding: .utf8)
+
+            // Refresh the raw config preview
+            rawConfigText = jsonString
+            saveStatus    = "✓ Settings saved."
+        } catch {
+            saveStatus = "Save failed: \(error.localizedDescription)"
+        }
+
+        isSaving = false
     }
 
     /// Reveal the given path in Finder (opens the parent directory and selects the file).

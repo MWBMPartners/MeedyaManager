@@ -1,17 +1,14 @@
 // (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 //
-// MeedyaManager — Application-wide Observable State
+// MeedyaManager — Application-wide Observable State (M6)
 //
-// AppState is the root ObservableObject injected via .environmentObject()
-// into all views.  It owns the two main feature states (scan and metadata)
-// and drives navigation selection.
+// AppState is the root @Observable class injected via .environment()
+// into all views.  It owns all feature states and drives navigation selection.
 
 import SwiftUI
 import Combine
 
 /// Application-wide shared state injected into the SwiftUI environment.
-///
-/// All published properties trigger view updates automatically via Combine.
 @Observable
 final class AppState {
 
@@ -28,6 +25,9 @@ final class AppState {
     /// State for the Metadata editor panel
     var metadata: MetadataModel = MetadataModel()
 
+    /// State for the Metadata Lookup panel (M6)
+    var lookup: LookupModel = LookupModel()
+
     // MARK: – Core Version
 
     /// The MeedyaManager core version string (from mm-ffi or hardcoded fallback)
@@ -38,6 +38,7 @@ final class AppState {
 enum AppTab: String, CaseIterable, Identifiable {
     case library  = "Library"
     case metadata = "Metadata"
+    case lookup   = "Lookup"
     case rules    = "Rules"
     case settings = "Settings"
 
@@ -48,6 +49,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .library:  "folder.fill"
         case .metadata: "tag.fill"
+        case .lookup:   "magnifyingglass"
         case .rules:    "list.bullet.rectangle.fill"
         case .settings: "gearshape.fill"
         }

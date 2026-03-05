@@ -8,6 +8,53 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v0.7.0] — 2026-03-05 — Full Native UI (M6)
+
+> **Milestone 6** — Full native UI across all three platforms (GTK4/Rust, SwiftUI/macOS, WinUI 3/Windows). Adds the Lookup panel on all platforms, full rule builder (template + live preview), cover art display, drag-and-drop folder import, real settings save to JSON, dark/light theme toggle (GTK4), and 90+ platform UI tests.
+
+### Added
+
+**GTK4 / Linux (`mm-gtk`):**
+- `lookup_panel.rs` — Full lookup panel: search fields, async search via background thread + mpsc + `glib::idle_add_local`, provider checklist, results `ListBox`, detail label, Apply/Clear actions.
+- `error_dialog.rs` — `show_error()`, `show_info()`, `build_confirm_dialog()` using `adw::AlertDialog`.
+- `main_window.rs` — 5-tab layout (Library, Metadata, Lookup, Rules, Settings); dark/light theme toggle via `adw::StyleManager::set_color_scheme()`.
+- `scan_panel.rs` — Drag-and-drop folder import via `gtk::DropTarget` with `gtk::gio::File::static_type()`.
+- `metadata_panel.rs` — Cover art `gtk::Picture` (180×180 px) in horizontal `gtk::Paned` split.
+- `rules_panel.rs` — Full rewrite: live template entry + validator, live preview `adw::PreferencesGroup`, tag pill buttons, sample tag `adw::EntryRow` editor. Removed M4 notice.
+- `settings_panel.rs` — Real `save_config()` writing JSON to disk via `serde_json::to_string_pretty` + `std::fs::write`. "Open Folder" and "Copy Path" buttons.
+- `state.rs` — Added `LookupResult`, `LookupState` (19 providers, toggle), `RulesState` (live preview), `SettingsSnapshot` (validate + sanitise). 35 tests.
+
+**macOS / SwiftUI:**
+- `LookupView.swift` — `HSplitView`: search form, results `List` with `ResultRow`, detail `GroupBox`, action buttons, provider checklist.
+- `LookupModel.swift` — `@Observable` model: `search()`, `clear()`, `toggleProvider()`, 19 providers, mock search.
+- `ContentView.swift` — Added Lookup tab (5 tabs total); minimum width bumped to 880.
+- `RulesView.swift` — Added Rule Name field; removed M4 stub notice.
+- `ScanView.swift` — `onDrop` drag-and-drop for folder import via `UTType.fileURL`.
+- `MetadataView.swift` — `HSplitView` with `CoverArtPanel` (AsyncImage + placeholder icon).
+- `SettingsView.swift` — Real `saveConfig()` serialising settings to JSON and writing to `configFilePath`; Save button with status feedback.
+- `AppState.swift` — `.lookup` case added to `AppTab` enum; `var lookup: LookupModel`.
+- `MetadataModel.swift` — `applyLookupResult(title:artist:album:year:genre:)` + `var coverArtUrl: String?`.
+- `MeedyaManagerTests/` — 53 XCTest tests (Swift Testing framework) across `AppTabTests`, `RenamePreviewItemTests`, `LookupResultTests`, `ProviderEntryTests`, `MetadataModelTests`, `ScanModelTests`.
+
+**Windows / WinUI 3:**
+- `LookupPage.xaml` + `LookupPage.xaml.cs` — Full lookup page: search fields, results `ListView`, detail card, provider checklist, mock search on background thread.
+- `MainWindow.xaml.cs` — Added `LookupPage` navigation route.
+- `RulesPage.xaml` / `.cs` — Added Rule Name field; removed M6 InfoBar.
+- `SettingsPage.xaml` — Added "Save Settings" button + `SaveStatusText`.
+- `SettingsPage.xaml.cs` — `SaveSettings()` serialising to JSON via `System.Text.Json` and writing atomically to disk.
+- `MetadataPage.xaml` / `.cs` — Cover art `Image` control with `LoadCoverArt()` from tag URL; `BitmapImage` loaded asynchronously.
+- `ScanPage.xaml` / `.cs` — Drag-and-drop support via `DragOver`/`Drop` handlers accepting `StandardDataFormats.StorageItems`.
+- `MeedyaManager.Tests/` — xUnit test project (58 tests): `PreviewRowTests`, `LookupResultRowTests`, `ProviderEntryTests`, `TemplateValidationTests`, `SettingsSaveTests`.
+
+### Changed
+
+- `Cargo.toml` workspace version: `0.6.0` → `0.7.0`
+- `macos/MeedyaManager/Info.plist`: `CFBundleShortVersionString` `0.6.0` → `0.7.0`
+- `windows/MeedyaManager/Package.appxmanifest`: `Version` `0.6.0.0` → `0.7.0.0`
+- `docs/roadmap.md`: M6 row changed to ✅ Complete; total test count updated
+
+---
+
 ## [v0.6.0] — 2026-03-05 — Metadata Lookup Providers (M5)
 
 > **Milestone 5** — Full `mm-providers` crate implementing 19 metadata lookup providers across music, video, podcasts, and identifier categories. Includes credential management, rate limiting, fuzzy match scoring, cover art utilities, and a central provider registry. 332 new tests (776 total).

@@ -48,6 +48,16 @@ let package = Package(
                 // Enable FFI when the XCFramework is present in CI/release builds
                 // .define("MM_FFI_AVAILABLE") — uncomment when XCFramework is linked
             ]
+        ),
+
+        // Unit test target — tests model logic without the SwiftUI runtime.
+        // Sources in MeedyaManagerTests/ are compiled independently; the test
+        // models are copied here rather than @testable-importing the executable
+        // (SPM does not support @testable import from .executableTarget).
+        .testTarget(
+            name: "MeedyaManagerTests",
+            dependencies: [],
+            path: "MeedyaManagerTests"
         )
     ]
 )

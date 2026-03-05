@@ -26,6 +26,12 @@ path = "src/lib.rs"
 # Internal crate — core business logic (scan, metadata, rules, watcher)
 mm-core = { path = "../mm-core" }
 
+# Internal crate — metadata lookup providers (M5)
+mm-providers = { path = "../mm-providers" }
+
+# Async runtime — needed to drive mm-providers async search from a background thread
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+
 # GTK4 Rust bindings — native Linux widget toolkit (wraps GTK 4.16)
 gtk4 = { version = "0.9", features = ["v4_10"] }
 

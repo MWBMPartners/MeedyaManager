@@ -1,16 +1,16 @@
 // (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 //
-// MeedyaManager — Rules / Template Builder View (macOS)
+// MeedyaManager — Rules / Template Builder View (macOS, M6)
 //
-// M4 stub: provides a live template validator and tag reference panel.
-// The full visual rule builder (condition editor, priority ordering, etc.)
-// is planned for M6 (v2.0.0-beta.1).
+// Full template builder: live validator, live preview with sample tags,
+// and a tag-pill reference panel that appends tokens at the cursor.
 
 import SwiftUI
 
 /// Rules and template builder panel for macOS.
 struct RulesView: View {
 
+    @State private var ruleName: String = "Default Rule"
     @State private var template: String = "<Artist> - <Title>"
     @State private var sampleTags: [String: String] = [
         "artist": "Pink Floyd",
@@ -27,6 +27,12 @@ struct RulesView: View {
             // ── Left: template editor + validator ─────────────────────────
             VStack(alignment: .leading, spacing: 0) {
                 Form {
+                    Section("Rule") {
+                        // Rule name — used to identify this template in the rule list
+                        TextField("Rule name", text: $ruleName)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
                     Section("Rename Template") {
                         TextField("Template", text: $template)
                             .textFieldStyle(.roundedBorder)
@@ -66,12 +72,6 @@ struct RulesView: View {
                 .formStyle(.grouped)
 
                 Spacer()
-
-                // M6 notice
-                Label("Full rule builder coming in M6", systemImage: "hammer.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(12)
             }
             .frame(minWidth: 300, idealWidth: 340)
 

@@ -160,12 +160,44 @@ impl ScanPanel {
             .build();
 
         // ------------------------------------------------------------------
+        // Drag-and-drop — accept folders dropped from the file manager
+        // ------------------------------------------------------------------
+
+        // DropTarget accepts URIs (files/folders dragged from Files/Nautilus)
+        let drop_target = gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
+
+        {
+            let folder_entry_dnd = folder_entry.clone();
+            let state_dnd        = Rc::clone(&state);
+
+            drop_target.connect_drop(move |_, value, _, _| {
+                if let Ok(file) = value.get::<gtk::gio::File>() {
+                    if let Some(path) = file.path() {
+                        // Accept both folders (scan root) and files (use parent)
+                        let scan_path = if path.is_dir() {
+                            path
+                        } else {
+                            path.parent().map(|p| p.to_path_buf()).unwrap_or(path)
+                        };
+                        folder_entry_dnd.set_text(&scan_path.to_string_lossy());
+                        state_dnd.borrow_mut().directory = Some(scan_path);
+                        return true;
+                    }
+                }
+                false
+            });
+        }
+
+        // ------------------------------------------------------------------
         // Root container
         // ------------------------------------------------------------------
 
         let root = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .build();
+
+        // Attach the drop target to the root widget
+        root.add_controller(drop_target);
 
         root.append(&options_box);
         root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));

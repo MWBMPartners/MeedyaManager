@@ -105,4 +105,40 @@ final class MetadataModel {
             hasUnsavedEdits = true
         }
     }
+
+    // MARK: – Lookup Integration (M6)
+
+    /// Apply metadata from a lookup result, merging it into the current tag map.
+    ///
+    /// If a file is loaded, the provided values overwrite the corresponding tags.
+    /// This does NOT write to disk — the user must still press Save.
+    func applyLookupResult(
+        title:  String?,
+        artist: String?,
+        album:  String?,
+        year:   String?,
+        genre:  String?
+    ) {
+        func set(_ key: String, _ value: String?) {
+            guard let value, !value.isEmpty else { return }
+            if let idx = tags.firstIndex(where: { $0.key.lowercased() == key }) {
+                tags[idx].value = value
+            } else {
+                tags.append(TagItem(key: key, value: value))
+            }
+            hasUnsavedEdits = true
+        }
+        set("title",  title)
+        set("artist", artist)
+        set("album",  album)
+        set("year",   year)
+        set("genre",  genre)
+
+        if hasUnsavedEdits {
+            status = "Lookup result applied — review and Save."
+        }
+    }
+
+    /// Cover art URL set from a lookup result or file extraction.
+    var coverArtUrl: String? = nil
 }

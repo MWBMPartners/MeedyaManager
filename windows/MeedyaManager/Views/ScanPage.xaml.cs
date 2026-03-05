@@ -16,6 +16,8 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -108,6 +110,43 @@ public sealed partial class ScanPage : Page
         {
             FolderBox.Text = folder.Path;
         }
+    }
+
+    // ── Drag-and-drop ────────────────────────────────────────────────────────
+
+    /// <summary>Accepts folder drops on the FolderBox text field.</summary>
+    private void FolderBox_DragOver(object sender, DragEventArgs e)
+    {
+        // Only accept items that contain storage items (files/folders)
+        if (e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "Set as source folder";
+        }
+        else
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+        }
+    }
+
+    /// <summary>
+    /// Handles a drop onto FolderBox.
+    /// If a folder is dropped, its path is used directly.
+    /// If a file is dropped, its parent directory is used.
+    /// </summary>
+    private async void FolderBox_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+
+        var items = await e.DataView.GetStorageItemsAsync();
+        if (items.Count == 0) return;
+
+        IStorageItem first = items[0];
+        string path = first is StorageFolder folder
+            ? folder.Path
+            : Path.GetDirectoryName(first.Path) ?? first.Path;
+
+        FolderBox.Text = path;
     }
 
     // ── Template validation ─────────────────────────────────────────────────

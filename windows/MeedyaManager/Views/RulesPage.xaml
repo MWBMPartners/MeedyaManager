@@ -1,13 +1,12 @@
 <!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
 <!--
-    MeedyaManager — Rules Page (WinUI 3) — M4 stub
+    MeedyaManager — Rules Page (WinUI 3, M6)
 
-    Provides:
-      - A live template validator with per-keystroke feedback
-      - A tag reference grid whose pill buttons insert tags into the template entry
-
-    The full visual rule builder (condition editor, priority ordering, etc.)
-    is planned for M6 (v2.0.0-beta.1).
+    Full template builder:
+      - Rule name entry
+      - Live template validator with per-keystroke feedback
+      - Live preview computed with sample tags
+      - Tag reference grid whose pill buttons insert tags at cursor position
 -->
 <Page
     x:Class="MeedyaManager.Views.RulesPage"
@@ -82,13 +81,12 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- ── M6 Notice ──────────────────────────────────────────────── -->
-            <InfoBar
-                IsOpen="True"
-                IsClosable="False"
-                Severity="Informational"
-                Title="Coming in M6"
-                Message="Full visual rule builder (condition editor, priority ordering, dry-run toggle) is planned for v2.0.0-beta.1." />
+            <!-- ── Rule Name ──────────────────────────────────────────────── -->
+            <TextBox
+                x:Name="RuleNameBox"
+                Header="Rule Name"
+                PlaceholderText="e.g. Music Rule"
+                Text="Default Rule" />
 
         </StackPanel>
     </ScrollViewer>

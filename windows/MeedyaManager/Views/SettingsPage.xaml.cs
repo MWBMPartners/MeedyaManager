@@ -16,8 +16,8 @@ using Windows.System;
 namespace MeedyaManager.Views;
 
 /// <summary>
-/// Settings page (M4 stub): displays current configuration values.
-/// Full save-to-JSON5 support is planned for M6.
+/// Settings page (M6): displays and edits configuration values.
+/// Changes can be saved back to the config file on disk.
 /// </summary>
 public sealed partial class SettingsPage : Page
 {
@@ -86,5 +86,57 @@ public sealed partial class SettingsPage : Page
         var data = new DataPackage();
         data.SetText(_configPath);
         Clipboard.SetContent(data);
+    }
+
+    // ── Save Settings ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Serialises the current control values to JSON and writes to <see cref="_configPath"/>.
+    /// Refreshes the raw config preview after a successful save.
+    /// </summary>
+    private void SaveButton_Click(object sender, RoutedEventArgs e)
+    {
+        SaveSettings();
+    }
+
+    /// <summary>Builds a JSON settings snapshot and writes it to disk.</summary>
+    private void SaveSettings()
+    {
+        try
+        {
+            // Build a dictionary of current settings from the control values
+            var snapshot = new System.Collections.Generic.Dictionary<string, object>
+            {
+                ["dry_run"]     = DryRunToggle.IsOn,
+                ["recursive"]   = RecursiveToggle.IsOn,
+                ["debounce_ms"] = (int)DebounceBox.Value,
+                ["log_level"]   = LogLevelBox.SelectedItem?.ToString() ?? "info",
+                ["redact_pii"]  = RedactPiiToggle.IsOn,
+            };
+
+            // Serialize to pretty-printed JSON (valid JSON5 superset)
+            string json = System.Text.Json.JsonSerializer.Serialize(
+                snapshot,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true }
+            );
+
+            // Ensure the parent directory exists before writing
+            string? dir = Path.GetDirectoryName(_configPath);
+            if (dir is not null)
+                Directory.CreateDirectory(dir);
+
+            // Write atomically — write to a temp file then rename
+            string tempPath = _configPath + ".tmp";
+            File.WriteAllText(tempPath, json, System.Text.Encoding.UTF8);
+            File.Move(tempPath, _configPath, overwrite: true);
+
+            // Refresh the raw config preview with the new content
+            RawConfigBox.Text = json;
+            SaveStatusText.Text = "✓ Settings saved.";
+        }
+        catch (Exception ex)
+        {
+            SaveStatusText.Text = $"Save failed: {ex.Message}";
+        }
     }
 }

@@ -36,6 +36,12 @@ struct ContentView: View {
                     .applyContentBackground()
             }
 
+            // ── Metadata Lookup tab (M6) ───────────────────────────────────
+            Tab("Lookup", systemImage: "magnifyingglass", value: AppTab.lookup) {
+                LookupView()
+                    .applyContentBackground()
+            }
+
             // ── Rules / Template builder tab ───────────────────────────────
             Tab("Rules", systemImage: "list.bullet.rectangle.fill", value: AppTab.rules) {
                 RulesView()
@@ -49,7 +55,8 @@ struct ContentView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .frame(minWidth: 800, minHeight: 560)
+        // Increased minimum width to 880 to accommodate the 5-tab sidebar
+        .frame(minWidth: 880, minHeight: 560)
     }
 }
 

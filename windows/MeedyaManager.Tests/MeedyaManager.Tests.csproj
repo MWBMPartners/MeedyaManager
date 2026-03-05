@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Target .NET 8 — console runner (no WinUI required for pure-logic tests) -->
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!-- Assembly metadata -->
+    <Company>MWBM Partners Ltd</Company>
+    <Product>MeedyaManager</Product>
+    <Authors>MWBM Partners Ltd</Authors>
+    <Copyright>(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)</Copyright>
+    <Description>Unit tests for pure-logic model classes in MeedyaManager</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- xUnit test framework -->
+    <PackageReference Include="xunit"                            Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio"        Version="2.8.*">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- .NET Test SDK — enables 'dotnet test' discovery -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk"           Version="17.11.*" />
+    <!-- FluentAssertions for readable assertions -->
+    <PackageReference Include="FluentAssertions"                 Version="6.12.*" />
+  </ItemGroup>
+
+</Project>
