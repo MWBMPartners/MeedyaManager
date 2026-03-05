@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M5 — Metadata Lookup Providers — **In Progress** |
-| **Overall Progress** | **45%** (5 of 11 milestones complete, M5 in progress) |
-| **Latest Version** | `v0.5.0` |
+| **Current Milestone** | M6 — Full Native UI — **Up Next** |
+| **Overall Progress** | **55%** (6 of 11 milestones complete) |
+| **Latest Version** | `v0.6.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -148,11 +148,35 @@
 
 ---
 
-### M5 — Metadata Lookup Providers *(In Progress)*
+### M5 — Metadata Lookup Providers *(Complete)*
 
-> Target: `v0.6.0`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.6.0`
 
-19 providers via `reqwest`/`tokio`: Music (10), Video (5), Podcasts (1), Identifiers (3).
+**Progress: 100%** | Issues: #73-#84 | **332 tests**
+
+| Deliverable | Status | Tests |
+| ----------- | ------ | ----- |
+| `traits.rs` — MetadataProvider, SearchQuery, ProviderResult, CoverArtInfo, Capabilities, ProviderError, MediaType | Done | 20 |
+| `credentials.rs` — 4-tier resolution (env/config/keyring/file), CredentialStore | Done | 30 |
+| `rate_limiter.rs` — token-bucket per-provider, RateLimiterRegistry, default_rpm_for() | Done | 25 |
+| `match_scoring.rs` — weighted fuzzy scoring, MatchScorer, ScoringWeights, rank_results() | Done | 40 |
+| `cover_art.rs` — CoverArtSize, select/filter/deduplicate helpers, URL validators | Done | 20 |
+| `registry.rs` — ProviderRegistry, search() fan-out, search_provider(), find_by_name() | Done | 25 |
+| `MusicBrainzProvider` — XML2 REST, ISRC lookup | Done | 20 |
+| `SpotifyProvider` — OAuth2 client-credentials, album art | Done | 18 |
+| `AppleMusicProvider` — iTunes Search API, hi-res cover | Done | 14 |
+| `DeezerProvider` — public JSON API, ISRC via endpoint | Done | 18 |
+| 6 stub providers (YouTube Music, Amazon Music, Pandora, Tidal, Shazam, iHeart) | Done | 12 |
+| `TmdbProvider` — TMDb multi-search, movie+TV | Done | 15 |
+| `TheTvdbProvider` — TheTVDB v4 Bearer auth | Done | 10 |
+| `OmdbProvider` — OMDb query + N/A handling | Done | 12 |
+| `AppleTvProvider` — iTunes movie search, hi-res cover | Done | 8 |
+| `ItunesStoreProvider` — iTunes tvShow/tvSeason search | Done | 10 |
+| `ApplePodcastsProvider` — iTunes podcast search, feed_url/episode_count in extra | Done | 12 |
+| `IsrcProvider` — MusicBrainz recording by ISRC | Done | 10 |
+| `EidrProvider` — EIDR registry Basic-auth | Done | 10 |
+| `IswcProvider` — MusicBrainz work by ISWC | Done | 10 |
+| `lib.rs` integration smoke tests (15 tests) | Done | 15 |
 
 ---
 
@@ -201,7 +225,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 | Crate / Component | Path | Status |
 | ----------------- | ---- | ------ |
 | `mm-core` | `crates/mm-core/` | **M2 Complete** (399 tests) |
-| `mm-providers` | `crates/mm-providers/` | Scaffold (stubs) |
+| `mm-providers` | `crates/mm-providers/` | **M5 Complete** (332 tests, 19 providers) |
 | `mm-cloud` | `crates/mm-cloud/` | Scaffold (stubs) |
 | `mm-export` | `crates/mm-export/` | Scaffold (stubs) |
 | `mm-server` | `crates/mm-server/` | Scaffold (stubs) |

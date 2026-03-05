@@ -8,6 +8,53 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v0.6.0] — 2026-03-05 — Metadata Lookup Providers (M5)
+
+> **Milestone 5** — Full `mm-providers` crate implementing 19 metadata lookup providers across music, video, podcasts, and identifier categories. Includes credential management, rate limiting, fuzzy match scoring, cover art utilities, and a central provider registry. 332 new tests (776 total).
+
+### Added
+
+**`mm-providers` crate infrastructure:**
+- `traits.rs` — Core trait definitions: `MetadataProvider` (RPITIT async `search()`), `SearchQuery` (with `music()`/`video()`/`podcast()` constructors), `ProviderResult` (title, artist, album, year, genre, ISRC, cover art, score, extra), `CoverArtInfo` (url, width, height, mime, `pixel_count()`), `Capabilities` (media types, auth, cover art, fingerprint flags), `ProviderError` (6 variants: Network/Auth/RateLimited/Parse/Disabled/NotSupported), `MediaType` enum (Music/Video/Podcast/Audiobook/Ebook).
+- `credentials.rs` — 4-tier credential resolution: Tier 1 env var (`MM_<PROVIDER>_<KEY>`), Tier 2 config map, Tier 3 OS keyring (`keyring` v3 crate), Tier 4 local `credentials.json`. `CredentialStore`, `Credential`, `CredentialSource`. 30 tests.
+- `rate_limiter.rs` — Per-provider token-bucket rate limiter wrapping `governor`. `ProviderRateLimiter` (check/wait), `RateLimiterRegistry` (pre-configured for all 19 providers), `default_rpm_for()`. 25 tests.
+- `match_scoring.rs` — Weighted fuzzy scoring using `fuzzy_matcher::skim::SkimMatcherV2`. `MatchScorer`, `ScoringWeights` (title 35%, artist 30%, album 20%, year 10%, ISRC 5%), `score_result()` convenience function, `rank_results()`. 40 tests.
+- `cover_art.rs` — `CoverArtSize` enum (Unknown/Thumbnail/Small/Medium/Large/ExtraLarge), `select_largest/smallest/best()`, `filter_by_min_size()`, `is_valid_art_url()`, `url_has_image_extension()`, `mime_type_for_url()`, `deduplicate()`. 20 tests.
+- `registry.rs` — `ProviderRegistry` holding `Arc<dyn MetadataProvider>`. `register()`, `providers_for()`, `find_by_name()`, `search()` (sequential fan-out, scored/ranked), `search_provider()` (named provider only). 25 tests.
+
+**Music providers (10):**
+- `MusicBrainzProvider` — MusicBrainz XML2 REST API with custom User-Agent; ISRC lookup via Lucene `isrc:` query; HTTP 503 → `RateLimited`. 20 tests.
+- `SpotifyProvider` — OAuth2 client-credentials token exchange; `parse_tracks()` with album cover art; popularity 0–100 → score. 18 tests.
+- `AppleMusicProvider` — iTunes Search API (no auth); hi-res cover URL by replacing `100x100` → `3000x3000`. 14 tests.
+- `DeezerProvider` — Public JSON API; ISRC lookup via `/track/isrc:` endpoint; rank → score. 18 tests.
+- 6 stubs via `stub_provider!` macro — `YouTubeMusicProvider`, `AmazonMusicProvider`, `PandoraProvider`, `TidalProvider`, `ShazamProvider`, `iHeartProvider` — all disabled by default, return `NotSupported` when enabled. 12 tests (2 each).
+
+**Video providers (5):**
+- `TmdbProvider` — TMDb `/3/search/multi`; parses movies (`title`) and TV (`name`); `vote_average/10` → score; poster → `original` + `w500` URLs. 15 tests.
+- `TheTvdbProvider` — TheTVDB `/v4/search` with Bearer auth; `first_air_time` year parsing. 10 tests.
+- `OmdbProvider` — OMDb `?s=` query + API key; handles `"N/A"` poster; OMDb error field → `Parse`. 12 tests.
+- `AppleTvProvider` — iTunes movie search; `100x100` → `600x600` hi-res cover. 8 tests.
+- `ItunesStoreProvider` — iTunes tvShow/tvSeason search; reuses `AppleTvProvider::parse_itunes_video()`. 8 tests (+ 2 combined).
+
+**Podcast providers (1):**
+- `ApplePodcastsProvider` — iTunes Search API `media=podcast`; `collectionName` → title, `artistName` → author, `feedUrl` / `trackCount` in `extra` map, 600px cover preferred. 12 tests.
+
+**Identifier providers (3):**
+- `IsrcProvider` — MusicBrainz recording lookup by ISRC; validates format before request. 10 tests.
+- `EidrProvider` — EIDR registry Basic-auth lookup; parses `ResourceName.value` → title, directors → artist. 10 tests.
+- `IswcProvider` — MusicBrainz work lookup by ISWC; extracts composer from relations. 10 tests.
+- `validate_isrc()`, `validate_iswc()`, `validate_eidr()` public validator functions.
+
+**`lib.rs` integration tests (15):** smoke tests covering crate load, all 19 providers instantiate, unique names, valid capabilities, scorer, rate limiter, credentials, cover art, registry dispatch, identifier validation, scoring weights, default RPMs, `select_best`, URL validation, `score_result` consistency.
+
+### Changed
+
+- `Cargo.toml` — workspace version bumped: `0.5.0` → `0.6.0`.
+- `macos/MeedyaManager/Info.plist` — `CFBundleShortVersionString`: `0.5.0` → `0.6.0`.
+- `windows/MeedyaManager/Package.appxmanifest` — `Identity Version`: `0.5.0.0` → `0.6.0.0`.
+
+---
+
 ## [v0.5.0] — 2026-03-05 — FFI Layer & Native UI Shells (M4)
 
 > **Milestone 4** — UniFFI Swift bridge, cbindgen C API, GTK4/Adwaita Linux shell, macOS SwiftUI shell, Windows WinUI 3 shell. All three platforms now have functional UI stubs wired to mm-core via the FFI layer.

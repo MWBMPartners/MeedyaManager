@@ -21,14 +21,14 @@ MeedyaManager is a complete rewrite from Python to **Rust** with **platform-nati
 | M2 | 📐 Rule Engine | ✅ Complete | `v0.3.0` | — | Lexer, parser, evaluator, 24 template functions, 40+ tag mappings, rule system (182 tests) |
 | M3 | ⌨️ CLI | ✅ Complete | `v0.4.0` | #52-62 | 8 commands: scan, debug, edit, rule, watch, lookup, config, report-bug (45 tests) |
 | M4 | 🖥️ FFI Layer & Native UI Shells | ✅ Complete | `v0.5.0` | #63-72 | UniFFI (Swift), cbindgen (C#), async callbacks, SwiftUI/WinUI 3/GTK4 shells (20 tests) |
-| M5 | 🔍 Metadata Lookup Providers | 🔲 Planned | `v0.6.0` | #73-84 | 19 providers (music, video, podcasts, identifiers), framework, credentials, rate limiting |
+| M5 | 🔍 Metadata Lookup Providers | ✅ Complete | `v0.6.0` | #73-84 | 19 providers (music, video, podcasts, identifiers), credentials, rate limiting, fuzzy scoring (332 tests) |
 | M6 | 🎨 Full Native UI | 🔲 Planned | `v0.7.0` | #85-93 | Rule Builder, Metadata Editor, Lookup Panel, accessibility, themes |
 | M7 | ☁️ Cloud Storage Monitoring | 🔲 Planned | `v0.8.0` | #94-102 | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
 | M8 | 📦 Packaging & Public Beta | 🔲 Planned | `v0.9.0` | #103-111 | App Store, Microsoft Store, Flatpak/Snap, auto-updater, first public beta |
 | M9 | 🗄️ Database Export | 🔲 Planned | `v0.10.0` | #112-119 | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via sqlx/tiberius |
 | M10 | 🌐 Secure Media Server + Public Release | 🔲 Planned | `v1.0.0` | #120-127 | axum HTTP server, JWT auth, media streaming, TLS, web frontend |
 
-**Total: 464 tests passing** (399 mm-core + 45 mm-cli + 20 mm-ffi)
+**Total: 776 tests passing** (399 mm-core + 45 mm-cli + 20 mm-ffi + 332 mm-providers-M5 — est.)
 
 ---
 
