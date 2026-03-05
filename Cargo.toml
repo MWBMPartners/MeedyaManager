@@ -112,3 +112,40 @@ semver = { version = "1", features = ["serde"] }
 # Testing
 wiremock = "0.6"
 tempfile = "3"
+
+# ---------------------------------------------------------------------------
+# Build profiles
+# ---------------------------------------------------------------------------
+
+# Development builds — fast compile, debug symbols, no optimisation.
+# `cargo build` (no flags) uses this.
+[profile.dev]
+opt-level = 0          # No optimisation — fastest compilation
+debug = true           # Full debug info for gdb/lldb/rust-analyzer
+incremental = true     # Enable incremental compilation
+
+# Release builds — full optimisation, stripped symbols.
+# `cargo build --release` or CI release workflow uses this.
+[profile.release]
+opt-level = 3          # Maximum speed optimisation (O3)
+lto = "fat"            # Full link-time optimisation across all codegen units
+codegen-units = 1      # Single codegen unit maximises LTO effectiveness
+strip = "symbols"      # Strip debug symbols from the binary (reduces size ~30-60%)
+panic = "abort"        # Abort on panic (no unwinding machinery — smaller binary)
+debug = false          # No debug info in release builds
+incremental = false    # Disable incremental compilation for reproducible builds
+
+# Distribution profile — like release but also strips debuginfo and DWARF.
+# Used by the `release.yml` GitHub Actions workflow for final shipped artifacts.
+# Run with: cargo build --profile dist
+[profile.dist]
+inherits = "release"
+strip = "debuginfo"    # Strip DWARF debug info as well as symbol table
+debug = 0              # No debug information whatsoever
+lto = "fat"            # Redundant but explicit for clarity
+codegen-units = 1      # Redundant but explicit for clarity
+
+# Test profile — inherits dev but with enough optimisation for timing tests.
+[profile.test]
+opt-level = 1          # Minimal optimisation for faster test execution
+debug = true           # Keep debug info for test failure tracebacks

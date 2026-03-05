@@ -71,6 +71,11 @@ release-local:
     cargo build --workspace --release
     @echo "Release binaries in target/release/"
 
+# Build distribution artifacts with full hardening (strip, LTO, panic=abort)
+dist:
+    cargo build --workspace --profile dist
+    @echo "Distribution binaries in target/dist/"
+
 # Clean all build artifacts
 clean:
     cargo clean

@@ -121,19 +121,22 @@ MAJOR.MINOR.PATCH[-PRE_RELEASE]
 
 ### Milestone-to-Version Mapping
 
-| Milestone | Version |
-|-----------|---------|
-| M0 — Repository Setup | `2.0.0-alpha.1` |
-| M1 — Core Engine | `2.0.0-alpha.2` |
-| M2 — Rule Engine | `2.0.0-alpha.3` |
-| M3 — CLI | `2.0.0-alpha.4` |
-| M4 — FFI + UI Shells | `2.0.0-alpha.5` |
-| M5 — Providers | `2.0.0-alpha.6` |
-| M6 — Full Native UI | `2.0.0-beta.1` |
-| M7 — Cloud Storage | `2.0.0-beta.2` |
-| M8 — Packaging | `2.0.0-beta.3` |
-| M9 — Database Export | `2.0.0-rc.1` |
-| M10 — Public Release | `2.0.0` |
+| Milestone | Version | Status |
+|-----------|---------|--------|
+| M0 — Repository Setup | `v0.1.0` | ✅ Released |
+| M1 — Core Engine | `v0.2.0` | ✅ Released |
+| M2 — Rule Engine | `v0.3.0` | ✅ Released |
+| M3 — CLI | `v0.4.0` | ✅ Released |
+| M4 — FFI + UI Shells | `v0.5.0` | ✅ Released |
+| M5 — Providers | `v0.6.0` | ✅ Released |
+| M6 — Full Native UI | `v0.7.0` | ✅ Released |
+| M7 — Cloud Storage | `v0.8.0` | ✅ Released |
+| M8 — Packaging | `v0.9.0` | ✅ Released |
+| M9 — Database Export | `v0.10.0` | ✅ Released |
+| M10 — Public Release | `v1.0.0` | 🔲 Planned |
+
+> **Note:** The project uses `v0.x.0` pre-release versioning through M9.
+> `v1.0.0` is reserved for the first public release at M10.
 
 ---
 
@@ -204,6 +207,83 @@ MeedyaManager-{version}-SHA256SUMS.txt
 | macOS | Pending | Apple Developer ID certificate in `APPLE_CERT_P12` secret |
 | Windows | Pending | Code signing certificate in `WINDOWS_CERT_PFX` secret |
 | Linux | N/A | Not required for Flatpak/Snap distribution |
+
+---
+
+## Release Binary Hardening
+
+All release and `dist` profile builds include hardening flags that reduce
+binary size, improve runtime performance, and remove debug information from
+shipped artifacts. This is compliant with all platform store guidelines and
+with the GPL-2.0-or-later licence (source code remains fully available).
+
+### Cargo Build Profiles
+
+| Profile | Use case | Key flags |
+|---------|----------|-----------|
+| `dev` | Local development | `opt-level=0`, `debug=true`, incremental |
+| `release` | Release builds | `opt-level=3`, `lto=fat`, `strip=symbols`, `panic=abort` |
+| `dist` | Final shipped artifacts | inherits `release` + `strip=debuginfo` |
+| `test` | Test runs | `opt-level=1`, `debug=true` |
+
+### What Each Flag Does
+
+| Flag | Effect | Platform compliance |
+|------|--------|---------------------|
+| `opt-level = 3` | Maximum compiler speed optimisations | All platforms |
+| `lto = "fat"` | Cross-crate link-time optimisation — dead code elimination | All platforms |
+| `codegen-units = 1` | Single codegen unit for maximum LTO effectiveness | All platforms |
+| `strip = "symbols"` | Remove symbol table from binary (~30–60% size reduction) | All platforms |
+| `strip = "debuginfo"` | Remove DWARF debug info as well (dist profile only) | All platforms |
+| `panic = "abort"` | No unwinding machinery — smaller binary, no stack unwind tables | All platforms |
+| `debug = false` | No embedded debug information | All platforms |
+| `incremental = false` | Reproducible builds (same input → same output) | All platforms |
+
+### Platform-Specific Hardening
+
+#### macOS
+- **Hardened Runtime** — `MeedyaManager.entitlements` enforces:
+  - `com.apple.security.app-sandbox = true` — sandboxed execution
+  - `com.apple.security.hardened-runtime = true` — JIT disabled, library validation on
+- **Notarisation** — all `.dmg` releases notarised via Apple notary service
+- **Code signing** — Developer ID certificate required for Gatekeeper
+
+#### Windows
+- **MSIX packaging** — authenticode signing via WinAppSDK build pipeline
+- **DEP/ASLR** — enforced automatically for all managed (.NET/WinUI 3) code
+- **Integrity Level** — MSIX packages run at `Medium IL` by default
+
+#### Linux
+- **PIE (Position-Independent Executable)** — Rust enables this by default on Linux
+- **RELRO / BIND_NOW** — enabled by default in the Rust linker on ELF targets
+- **Strip** — the `cargo build --profile dist` step strips all symbols
+- **Flatpak sandboxing** — `strict` confinement via portal permissions
+
+### What We Do NOT Do (and Why)
+
+| Technique | Reason not used |
+|-----------|-----------------|
+| LLVM obfuscation / obfuscator-llvm | GPL-2.0-or-later requires source availability; obfuscation conflicts with the spirit and legal requirements of the licence |
+| Binary packing (UPX) | Triggers antivirus false positives; breaks code signing on macOS/Windows |
+| Anti-debugging traps | Not permitted by Apple App Store / Microsoft Store ToS |
+| String encryption | Incompatible with GPL source requirements; adds runtime overhead |
+
+### Build Commands
+
+```bash
+# Development build (fast, with debug info)
+cargo build
+
+# Optimised release build (shipped in CI release workflow)
+cargo build --release
+
+# Full distribution build (final shipped artifacts)
+cargo build --profile dist
+
+# Check binary size after stripping
+size target/release/meedya
+file target/release/meedya
+```
 
 ---
 
