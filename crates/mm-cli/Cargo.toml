@@ -20,6 +20,8 @@ path = "src/main.rs"
 # Internal crate dependencies
 mm-core = { path = "../mm-core" }
 mm-providers = { path = "../mm-providers" }
+# Database export crate (M9) — provides ExportConfig, SchemaBuilder, backends
+mm-export = { path = "../mm-export" }
 
 # CLI argument parsing with derive macros and env-var support
 clap = { workspace = true }

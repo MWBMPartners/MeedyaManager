@@ -61,8 +61,8 @@ struct ContentView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        // Increased minimum width to 920 to accommodate the 6-tab sidebar
-        .frame(minWidth: 920, minHeight: 560)
+        // Increased minimum width to 960 to accommodate the 7-tab sidebar
+        .frame(minWidth: 960, minHeight: 560)
     }
 }
 

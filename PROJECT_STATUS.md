@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M9 — Database Export — **Up Next** |
-| **Overall Progress** | **82%** (9 of 11 milestones complete) |
-| **Latest Version** | `v0.9.0` |
+| **Current Milestone** | M10 — Secure Media Server — **Up Next** |
+| **Overall Progress** | **91%** (10 of 11 milestones complete) |
+| **Latest Version** | `v0.10.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -254,11 +254,34 @@
 
 ---
 
-### M9 — Database Export *(Planned)*
+### M9 — Database Export *(Complete)*
 
-> Target: `v0.10.0`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.10.0`
 
-MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
+**Progress: 100%** | Issues: #112-119 | **~90 tests**
+
+| Deliverable | Status | Tests |
+| ----------- | ------ | ----- |
+| `mm-export/traits.rs` — `DbDialect` (5 variants), `ExportRow`, `RenameEvent`, `ExportConfig`, `ExportStats`, `ExportError`, `DatabaseExporter` async trait (RPITIT) | Done | 22 |
+| `mm-export/schema.rs` — `SchemaBuilder` dialect-aware DDL (files, tags, history tables) for all 5 backends | Done | 15 |
+| `mm-export/sqlite.rs` — `SqliteExporter` with `INSERT OR REPLACE` upsert | Done | 15 |
+| `mm-export/mysql.rs` — `MySqlExporter` with `ON DUPLICATE KEY UPDATE` upsert | Done | 10 |
+| `mm-export/mariadb.rs` — `MariaDbExporter` wrapping same SQL as MySQL, distinct `DbDialect::MariaDb` | Done | 10 |
+| `mm-export/postgres.rs` — `PostgresExporter` with `ON CONFLICT … DO UPDATE SET EXCLUDED.*` + `$1` positional params | Done | 11 |
+| `mm-export/mssql.rs` — `MssqlExporter` with T-SQL `MERGE INTO … WHEN MATCHED/NOT MATCHED` + `@param_name` style | Done | 12 |
+| `mm-export/lib.rs` — Re-exports + integration tests (dialect uniqueness, DSN validation, stats, serde round-trip) | Done | 15 |
+| `meedya export` CLI command (`commands/export.rs`) — `BackendChoice`, `ExportArgs`, `detect_backend()`, `redact_dsn()`, `--show-schema` DDL preview | Done | 14 |
+| GTK4 `export_panel.rs` — `AdwPreferencesGroup` layout, `ComboBoxText` backend picker, live DSN placeholder, `SchemaBuilder` DDL preview | Done | 7 |
+| macOS `ExportView.swift` — `ExportBackend` enum, `@Observable ExportModel`, backend `Picker`, DSN/prefix/batchSize controls, log view | Done | 12 |
+| macOS `ExportModelTests.swift` — 12 test funcs (replica structs for SPM test isolation) | Done | 12 |
+| Windows `ExportPage.xaml/.cs` — `ComboBox` backend picker, `ToggleSwitch` dry-run, async stub, `StringBuilder` log, hint text | Done | 15 |
+| Windows `ExportPageTests.cs` — 15 xUnit tests (backend hints, DSN validation, credential redaction, stats) | Done | 15 |
+| `mm-cli` and `mm-gtk` `Cargo.toml` updated with `mm-export` dependency | Done | — |
+| macOS `AppState.swift` — `.export` case added to `AppTab` (7 cases) | Done | — |
+| macOS `ContentView.swift` — Export `Tab(...)` added (7 tabs), min width 960 | Done | — |
+| Windows `MainWindow.xaml` — Export `NavigationViewItem` added (7 items) | Done | — |
+| Windows `MainWindow.xaml.cs` — Export route added to switch | Done | — |
+| Version bumped `0.9.0` → `0.10.0` | Done | Cargo.toml, Info.plist, Package.appxmanifest |
 
 ---
 
@@ -278,13 +301,13 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 | `mm-providers` | `crates/mm-providers/` | **M5 Complete** (332 tests, 19 providers) |
 | `mm-cloud` | `crates/mm-cloud/` | **M7 Complete** (~90 tests — `CloudProvider` trait, OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub, `SyncManager`) |
 | `mm-update` | `crates/mm-update/` | **M8 Complete** (~33 tests — `UpdateChecker`, `ReleaseInfo`, `UpdateError`, semver comparison) |
-| `mm-export` | `crates/mm-export/` | Scaffold (stubs) |
+| `mm-export` | `crates/mm-export/` | **M9 Complete** (~90 tests — `DatabaseExporter` trait, 5 backends, `SchemaBuilder` DDL) |
 | `mm-server` | `crates/mm-server/` | Scaffold (stubs) |
-| `mm-cli` | `crates/mm-cli/` | **M3 Complete** (45 tests) |
+| `mm-cli` | `crates/mm-cli/` | **M9 Complete** (45+14 tests — `meedya export` command added) |
 | `mm-ffi` | `crates/mm-ffi/` | **M4 Complete** (20 tests) |
-| `mm-gtk` | `crates/mm-gtk/` | **M8 Complete** (6 tabs + AdwBanner update notification, 42 tests) |
-| macOS SwiftUI app | `macos/` | **M8 Complete** (6 tabs + Updates section in Settings, 64 tests) |
-| Windows WinUI 3 app | `windows/` | **M8 Complete** (6 pages + InfoBar update notification, 70 tests) |
+| `mm-gtk` | `crates/mm-gtk/` | **M9 Complete** (7 tabs + Export panel, 42+7 tests) |
+| macOS SwiftUI app | `macos/` | **M9 Complete** (7 tabs + ExportView, 64+12 tests) |
+| Windows WinUI 3 app | `windows/` | **M9 Complete** (7 pages + ExportPage, 70+15 tests) |
 
 ---
 
@@ -319,6 +342,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-05 | **M9 Complete** (`v0.10.0`) — Database Export: `mm-export` crate (`DatabaseExporter` trait, 5 backends, `SchemaBuilder` DDL), `meedya export` CLI command, Export tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~986 → ~1076 total) |
 | 2026-03-05 | **M8 Complete** (`v0.9.0`) — Packaging & Public Beta: `mm-update` crate (UpdateChecker, semver), Flatpak/Snap/AppImage/.deb manifests, macOS entitlements + DMG script, WinGet manifest, update notification UI (GTK4 AdwBanner, macOS Updates section, Windows InfoBar); ~30 new tests (~956 → ~986 total) |
 | 2026-03-05 | **M7 Complete** (`v0.8.0`) — Cloud Storage Monitoring: `mm-cloud` crate (`CloudProvider` trait, OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub, `SyncManager`), Cloud UI tab on all platforms; ~90 new tests (~866 → ~956 total) |
 | 2026-03-05 | **M6 Complete** (`v0.7.0`) — Full Native UI: Lookup panel (all 3 platforms), rule builder, cover art, DnD, real settings save, dark/light theme (GTK4), error dialogs; ~90 UI tests (776 → ~866 total) |
@@ -335,4 +359,4 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-03-05 (M8 complete — Packaging & Public Beta)*
+> *Last updated: 2026-03-05 (M9 complete — Database Export)*

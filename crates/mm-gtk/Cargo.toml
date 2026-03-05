@@ -29,6 +29,9 @@ mm-core = { path = "../mm-core" }
 # Internal crate — metadata lookup providers (M5)
 mm-providers = { path = "../mm-providers" }
 
+# Internal crate — database export (M9)
+mm-export = { path = "../mm-export" }
+
 # Async runtime — needed to drive mm-providers async search from a background thread
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 

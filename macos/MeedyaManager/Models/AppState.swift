@@ -41,6 +41,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     case lookup   = "Lookup"
     case rules    = "Rules"
     case cloud    = "Cloud"    // M7 — Cloud Storage Monitor
+    case export   = "Export"   // M9 — Database Export
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -53,6 +54,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .lookup:   "magnifyingglass"
         case .rules:    "list.bullet.rectangle.fill"
         case .cloud:    "cloud.fill"
+        case .export:   "cylinder.split.1x2.fill"
         case .settings: "gearshape.fill"
         }
     }

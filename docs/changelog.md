@@ -8,6 +8,51 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v0.10.0] — 2026-03-05 — Database Export (M9)
+
+> **Milestone 9** — Database Export. Implements the full `mm-export` crate with `DatabaseExporter` trait and five backends (SQLite, MySQL, MariaDB, PostgreSQL, SQL Server), `SchemaBuilder` DDL generation, `meedya export` CLI command, and Export tab UI on all three platforms. ~90 new tests.
+
+### Added
+
+**Rust (`mm-export` crate — fully implemented):**
+- `traits.rs` — `DbDialect` (5 variants, Display), `ExportRow` (new(), has_tags(), tag()), `RenameEvent`, `ExportConfig` (with_dsn(), table_name(), is_valid()), `ExportStats` (total(), persisted(), is_clean(), merge()), `ExportError` (9 variants, is_retryable()), `DatabaseExporter` async trait (RPITIT). 22 unit tests.
+- `schema.rs` — `SchemaBuilder`: `files_ddl()`, `tags_ddl()`, `history_ddl()`, `all_ddl()` for all 5 dialects. SQLite uses AUTOINCREMENT + unixepoch(); MySQL/MariaDB use InnoDB + utf8mb4; PostgreSQL uses BIGSERIAL + TIMESTAMPTZ; SQL Server uses IDENTITY(1,1) + GETUTCDATE(). 15 unit tests.
+- `sqlite.rs` — `SqliteExporter`: `INSERT OR REPLACE INTO mm_files` upsert, delete-then-reinsert tags, `insert_history_sql()`. 15 unit tests (including async `#[tokio::test]` for all trait methods).
+- `mysql.rs` — `MySqlExporter`: `INSERT INTO … ON DUPLICATE KEY UPDATE`. 10 unit tests.
+- `mariadb.rs` — `MariaDbExporter`: thin wrapper over MySQL with `DbDialect::MariaDb`. 10 unit tests.
+- `postgres.rs` — `PostgresExporter`: `INSERT INTO … ON CONFLICT (file_hash) DO UPDATE SET …` with `$1` positional params. 11 unit tests.
+- `mssql.rs` — `MssqlExporter`: T-SQL MERGE statement (`WHEN MATCHED … WHEN NOT MATCHED`), named `@param` style. 12 unit tests.
+- `lib.rs` — Re-exports all public types + 15 integration tests (dialect coverage, schema DDL coverage, ExportRow serde round-trip, ExportStats accumulation, error retryability, all backends reject empty DSN).
+
+**CLI (`mm-cli` — `meedya export` command):**
+- `commands/export.rs` — `ExportArgs` (--db, --path, --backend, --prefix, --batch-size, --skip-schema, --show-schema), `BackendChoice` (5 variants with Display), `detect_backend()` (auto-detects from DSN prefix), `redact_dsn()` (hides credentials from logs), `run()` (human + JSON output, schema preview, dry-run mode). 14 unit tests.
+- `Cargo.toml` — Added `mm-export = { path = "../mm-export" }` dependency.
+- `main.rs` / `commands/mod.rs` — `Export(ExportArgs)` variant wired; dispatch calls `commands::export::run()`.
+
+**GTK4 / Linux (`mm-gtk`):**
+- `ui/export_panel.rs` — `ExportPanel`: backend `ComboBoxText` (5 options), DSN `Entry` with live placeholder update, table-prefix `Entry`, Export + Show Schema buttons, status `Label`, scrollable log `TextView`, Clear button. Schema DDL preview calls `mm-export::SchemaBuilder`. 7 unit tests.
+- `ui/mod.rs` — Registered `export_panel` module.
+- `main_window.rs` — Added Export tab (7 tabs total; 🗄️ `drive-harddisk-symbolic`).
+- `Cargo.toml` — Added `mm-export = { path = "../mm-export" }` dependency.
+
+**macOS / SwiftUI:**
+- `Views/ExportView.swift` — `ExportBackend` enum (5 cases, `exampleDSN`), `ExportModel` (`@Observable`, `runExport()`, `showSchema()`, `clearLog()`), `ExportView` with backend picker, DSN `TextEditor`, prefix/batch-size/dry-run controls, Export + Show Schema buttons, status text, log `ScrollView`.
+- `Models/AppState.swift` — Added `.export` case to `AppTab` with `"cylinder.split.1x2.fill"` icon.
+- `ContentView.swift` — Added Export tab (7 tabs); minimum width bumped to 960.
+- `MeedyaManagerTests/ExportModelTests.swift` — 12 Swift Testing tests for `ExportModel` default state, export flow, error handling, clear log, backend enum.
+
+**Windows / WinUI 3:**
+- `Views/ExportPage.xaml` + `Views/ExportPage.xaml.cs` — Export page: backend `ComboBox`, DSN `TextBox`, prefix `TextBox`, dry-run `ToggleSwitch`, Export + Schema buttons, status `TextBlock`, log `TextBox` in `ScrollViewer`. `AppendLog()` timestamps with `DateTime.Now.ToString("HH:mm:ss")`. Backend hint map updates placeholder on selection change. Async `ExportBtn_Click` uses `Task.Delay` stub.
+- `MainWindow.xaml` — Added Export `NavigationViewItem` (Save symbol).
+- `MainWindow.xaml.cs` — Routed `Tag: "Export"` → `typeof(ExportPage)`.
+- `MeedyaManager.Tests/ExportPageTests.cs` — 15 xUnit tests for `ExportBackendHints`, `ExportDsnHelper`, `ExportStatsReplica`.
+
+### Changed
+
+- Version bumped `0.9.0` → `0.10.0` across `Cargo.toml`, `Info.plist`, `Package.appxmanifest`.
+
+---
+
 ## [v0.9.0] — 2026-03-05 — Packaging & Public Beta (M8)
 
 > **Milestone 8** — Packaging & Public Beta. Adds the `mm-update` auto-update crate, Linux packaging manifests (Flatpak, Snap, AppImage, .deb), macOS packaging (entitlements, DMG creation script), Windows WinGet manifest, update notification UI on all three platforms, and updated release.yml with full platform packaging steps. ~30 new tests.

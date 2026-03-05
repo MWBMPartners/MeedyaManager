@@ -15,7 +15,7 @@
 //   meedya lookup <query>     — Search metadata providers (stub — M5)
 //   meedya config <action>    — Manage configuration
 //   meedya report-bug         — Generate a bug report
-//   meedya export             — Export library to database (stub — M9)
+//   meedya export             — Export library to database (M9)
 
 // Subcommand modules
 mod commands;
@@ -89,8 +89,8 @@ enum Commands {
     #[command(name = "report-bug")]
     ReportBug(commands::report_bug::ReportBugArgs),
 
-    /// Export media library metadata to a database (coming in M9)
-    Export,
+    /// Export media library metadata to a database (M9)
+    Export(commands::export::ExportArgs),
 }
 
 /// Application entry point.
@@ -134,10 +134,7 @@ async fn main() {
         Some(Commands::Lookup(ref args)) => commands::lookup::run(&ctx, args),
         Some(Commands::Config(ref args)) => commands::config_cmd::run(&ctx, args),
         Some(Commands::ReportBug(ref args)) => commands::report_bug::run(&ctx, args),
-        Some(Commands::Export) => {
-            output::print_warning("Database export is not yet available (coming in M9)");
-            Ok(ExitCode::SUCCESS)
-        }
+        Some(Commands::Export(ref args)) => commands::export::run(&ctx, args),
         None => {
             // No subcommand provided — print help
             use clap::CommandFactory;

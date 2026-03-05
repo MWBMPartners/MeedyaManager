@@ -29,3 +29,6 @@ pub mod lookup;
 
 /// `meedya report-bug` — System info + log collection for bug reports
 pub mod report_bug;
+
+/// `meedya export` — Export media library to a relational database (M9)
+pub mod export;

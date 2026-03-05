@@ -1,0 +1,125 @@
+<!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
+<!-- MeedyaManager — Database Export Page (WinUI 3, M9) -->
+<Page
+    x:Class="MeedyaManager.Views.ExportPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <ScrollViewer Padding="24,20,24,24" VerticalScrollMode="Auto">
+        <StackPanel Spacing="16" MaxWidth="700" HorizontalAlignment="Left">
+
+            <!-- Page title -->
+            <TextBlock Text="Database Export"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       Margin="0,0,0,4" />
+            <TextBlock
+                Text="Export your media library metadata to a relational database (SQLite, MySQL, MariaDB, PostgreSQL, SQL Server)."
+                TextWrapping="Wrap"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Margin="0,0,0,16" />
+
+            <!-- Backend selection -->
+            <StackPanel Spacing="6">
+                <TextBlock Text="Database Backend" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <ComboBox x:Name="BackendCombo"
+                          SelectionChanged="BackendCombo_SelectionChanged"
+                          HorizontalAlignment="Stretch"
+                          MinWidth="220">
+                    <ComboBoxItem Tag="sqlite"   Content="SQLite"      IsSelected="True" />
+                    <ComboBoxItem Tag="mysql"    Content="MySQL" />
+                    <ComboBoxItem Tag="mariadb"  Content="MariaDB" />
+                    <ComboBoxItem Tag="postgres" Content="PostgreSQL" />
+                    <ComboBoxItem Tag="mssql"    Content="SQL Server" />
+                </ComboBox>
+            </StackPanel>
+
+            <!-- Connection string -->
+            <StackPanel Spacing="6">
+                <TextBlock Text="Connection String" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBox x:Name="DsnBox"
+                         PlaceholderText="sqlite:///C:/Users/You/library.db"
+                         TextWrapping="Wrap"
+                         AcceptsReturn="False"
+                         HorizontalAlignment="Stretch" />
+                <TextBlock x:Name="DsnHintText"
+                           Text="Example: sqlite:///path/to/library.db"
+                           FontSize="11"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </StackPanel>
+
+            <!-- Table prefix -->
+            <StackPanel Spacing="6">
+                <TextBlock Text="Table Prefix" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBox x:Name="PrefixBox"
+                         Text="mm_"
+                         MaxLength="32"
+                         Width="160"
+                         HorizontalAlignment="Left" />
+                <TextBlock Text="Prefix applied to all created tables (e.g. mm_files, mm_tags, mm_history)."
+                           FontSize="11"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </StackPanel>
+
+            <!-- Dry run toggle -->
+            <ToggleSwitch x:Name="DryRunToggle"
+                          Header="Dry run — preview without writing to the database"
+                          IsOn="False" />
+
+            <!-- Action buttons -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                <Button x:Name="SchemaBtn"
+                        Content="Show Schema DDL"
+                        Click="SchemaBtn_Click" />
+                <Button x:Name="ExportBtn"
+                        Content="Export Library"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Click="ExportBtn_Click" />
+            </StackPanel>
+
+            <!-- Status bar -->
+            <TextBlock x:Name="StatusText"
+                       Text=""
+                       TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       FontSize="12" />
+
+            <!-- Export log -->
+            <StackPanel Spacing="6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Export Log"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Grid.Column="0" VerticalAlignment="Center" />
+                    <Button Content="Clear"
+                            Grid.Column="1"
+                            Click="ClearLogBtn_Click"
+                            Style="{StaticResource DefaultButtonStyle}" />
+                </Grid>
+
+                <ScrollViewer x:Name="LogScroll"
+                              Height="200"
+                              VerticalScrollMode="Auto"
+                              HorizontalScrollMode="Disabled"
+                              BorderThickness="1"
+                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                              CornerRadius="4"
+                              Background="{ThemeResource LayerFillColorDefaultBrush}">
+                    <TextBox x:Name="LogBox"
+                             AcceptsReturn="True"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             FontFamily="Consolas"
+                             FontSize="11"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Padding="8" />
+                </ScrollViewer>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

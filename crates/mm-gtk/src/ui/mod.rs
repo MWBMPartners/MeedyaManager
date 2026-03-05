@@ -28,3 +28,6 @@ pub mod error_dialog;
 
 /// Cloud Storage Monitor panel — provider connections + event log (M7)
 pub mod cloud_panel;
+
+/// Database Export panel — backend picker, DSN input, schema preview, export log (M9)
+pub mod export_panel;

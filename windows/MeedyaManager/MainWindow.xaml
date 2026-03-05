@@ -50,6 +50,13 @@
                     <SymbolIcon Symbol="Cloud" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+
+            <!-- Export — database export (M9) -->
+            <NavigationViewItem Content="Export" Tag="Export">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Save" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <!-- Settings item in the footer area -->
