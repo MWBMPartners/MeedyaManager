@@ -53,6 +53,10 @@ windows:
 linux:
     cargo build -p mm-gtk
 
+# Regenerate logos and app icons (SVG/PNG/ICO/ICNS + platform assets)
+icons:
+    python3 scripts/generate_brand_assets.py
+
 # Generate API documentation
 docs:
     cargo doc --workspace --no-deps --open

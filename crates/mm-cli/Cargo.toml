@@ -22,6 +22,8 @@ mm-core = { path = "../mm-core" }
 mm-providers = { path = "../mm-providers" }
 # Database export crate (M9) — provides ExportConfig, SchemaBuilder, backends
 mm-export = { path = "../mm-export" }
+# Secure media server crate (M10) — provides ServerConfig, JwtService, route handlers
+mm-server = { path = "../mm-server" }
 
 # CLI argument parsing with derive macros and env-var support
 clap = { workspace = true }

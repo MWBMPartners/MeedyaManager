@@ -20,7 +20,7 @@
 
     <!-- Short version string shown to users (must match Cargo.toml workspace version) -->
     <key>CFBundleShortVersionString</key>
-    <string>0.10.0</string>
+    <string>1.0.0</string>
 
     <!-- Bundle package type: application -->
     <key>CFBundlePackageType</key>
@@ -33,6 +33,10 @@
     <!-- Executable name -->
     <key>CFBundleExecutable</key>
     <string>MeedyaManager</string>
+
+    <!-- App icon inside the bundle resources -->
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
 
     <!-- Minimum macOS deployment target -->
     <key>LSMinimumSystemVersion</key>

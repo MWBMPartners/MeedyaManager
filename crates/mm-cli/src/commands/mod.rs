@@ -32,3 +32,6 @@ pub mod report_bug;
 
 /// `meedya export` — Export media library to a relational database (M9)
 pub mod export;
+
+/// `meedya serve` — Start the HTTPS media server with JWT auth (M10)
+pub mod serve;

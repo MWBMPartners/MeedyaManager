@@ -16,6 +16,7 @@
 //   ⚙️ Rules     — full template/rule builder
 //   ☁️ Cloud     — cloud storage monitor (OneDrive, Google Drive, Dropbox)
 //   🗄️ Export    — database export (SQLite, MySQL, MariaDB, PostgreSQL, SQL Server)
+//   🌐 Server    — HTTPS media server with JWT authentication (M10)
 //   🔧 Settings  — application configuration (with save)
 
 use gtk4 as gtk;
@@ -23,7 +24,7 @@ use gtk::prelude::*;
 use libadwaita as adw;
 use adw::prelude::*;
 
-use super::{cloud_panel, export_panel, lookup_panel, metadata_panel, rules_panel, scan_panel, settings_panel};
+use super::{cloud_panel, export_panel, lookup_panel, metadata_panel, rules_panel, scan_panel, server_panel, settings_panel};
 
 /// Build and return the fully constructed main application window.
 ///
@@ -38,6 +39,7 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     let rules    = rules_panel::RulesPanel::new();
     let cloud    = cloud_panel::CloudPanel::new();
     let export   = export_panel::ExportPanel::new();
+    let server   = server_panel::ServerPanel::new();
     let settings = settings_panel::SettingsPanel::new();
 
     // -----------------------------------------------------------------------
@@ -62,6 +64,7 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     add_tab(&tab_view, rules.widget(),    "Rules",    "preferences-system-symbolic");
     add_tab(&tab_view, cloud.widget(),    "Cloud",    "network-wireless-symbolic");
     add_tab(&tab_view, export.widget(),   "Export",   "drive-harddisk-symbolic");
+    add_tab(&tab_view, server.widget(),   "Server",   "network-server-symbolic");
     add_tab(&tab_view, settings.widget(), "Settings", "emblem-system-symbolic");
 
     // -----------------------------------------------------------------------

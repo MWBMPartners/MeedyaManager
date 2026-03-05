@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M10 — Secure Media Server — **Up Next** |
-| **Overall Progress** | **91%** (10 of 11 milestones complete) |
-| **Latest Version** | `v0.10.0` |
+| **Current Milestone** | M10 — Secure Media Server — **Complete** |
+| **Overall Progress** | **100%** (11 of 11 milestones complete) |
+| **Latest Version** | `v1.0.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -285,11 +285,30 @@
 
 ---
 
-### M10 — Secure Media Server *(Planned)*
+### M10 — Secure Media Server *(Complete)*
 
-> Target: `v1.0.0`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v1.0.0`
 
-`axum` HTTP server, REST API, JWT auth, media streaming, TLS.
+**Progress: 100%** | Issues: #120-127 | **~90 tests**
+
+| Deliverable | Status | Tests |
+| ----------- | ------ | ----- |
+| `mm-server/auth.rs` — `ServerConfig`, `UserRole`, `Claims`, `AuthError` (6 variants), `LoginRequest`, `LoginResponse`, `JwtService` (`issue()`, `validate()`, `extract_bearer()`) | Done | 20 |
+| `mm-server/streaming.rs` — `StreamConfig`, `StreamRequest` (Full/Range/FromStart/Suffix), `StreamResponse`, `StreamError` (7 variants), `RangeParser::parse()` (RFC 7233), `MediaStreamer` | Done | 20 |
+| `mm-server/routes.rs` — `ApiResponse<T>` JSON envelope, `HealthResponse`, `LibraryItem`, `LibraryResponse`, `SearchQuery`, `ServerInfoResponse`, 7 handler stubs | Done | 24 |
+| `mm-server/lib.rs` — Re-exports + integration tests (JWT round-trip, login, library, stream, range, server info, health, config validation) | Done | 15 |
+| `meedya serve` CLI command (`commands/serve.rs`) — `ServeArgs`, `build_server_config()`, `validate_config()`, route table constant (8 routes), `--show-routes`, `--check-config` | Done | 14 |
+| GTK4 `server_panel.rs` — network/TLS/auth/CORS `adw::PreferencesGroup` layout, `PasswordEntryRow` for JWT secret, status label, start/stop buttons, log `TextView` | Done | 6 |
+| macOS `ServerView.swift` — `ServerStatus` enum, `@Observable ServerModel` (`startServer()`, `stopServer()`, `validationError` computed property), 8-section form + log | Done | 18 |
+| macOS `AppState.swift` — `.server` case added to `AppTab` (8 cases, `"network"` icon) | Done | — |
+| macOS `ContentView.swift` — Server `Tab(...)` added (8 tabs), min width 1000 | Done | — |
+| macOS `ServerModelTests.swift` — 18 Swift Testing tests (defaults, validation, log, status display) | Done | 18 |
+| Windows `ServerPage.xaml/.cs` — network/TLS/auth/CORS config, `PasswordBox` JWT secret, `ToggleSwitch` no-TLS, start/stop/routes buttons, `ValidateConfig()`, access log | Done | 26 |
+| Windows `MainWindow.xaml` — Server `NavigationViewItem` added (Globe symbol) | Done | — |
+| Windows `MainWindow.xaml.cs` — Server route added: `Tag: "Server"` → `typeof(ServerPage)` | Done | — |
+| Windows `ServerPageTests.cs` — 26 xUnit tests (`ServerRoutes`, `ServerConfigValidator`, `JwtHelper`) | Done | 26 |
+| `mm-cli` and `mm-gtk` `Cargo.toml` updated with `mm-server` dependency | Done | — |
+| Version bumped `0.10.0` → `1.0.0` | Done | Cargo.toml, Info.plist, Package.appxmanifest |
 
 ---
 
@@ -302,12 +321,12 @@
 | `mm-cloud` | `crates/mm-cloud/` | **M7 Complete** (~90 tests — `CloudProvider` trait, OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub, `SyncManager`) |
 | `mm-update` | `crates/mm-update/` | **M8 Complete** (~33 tests — `UpdateChecker`, `ReleaseInfo`, `UpdateError`, semver comparison) |
 | `mm-export` | `crates/mm-export/` | **M9 Complete** (~90 tests — `DatabaseExporter` trait, 5 backends, `SchemaBuilder` DDL) |
-| `mm-server` | `crates/mm-server/` | Scaffold (stubs) |
-| `mm-cli` | `crates/mm-cli/` | **M9 Complete** (45+14 tests — `meedya export` command added) |
+| `mm-server` | `crates/mm-server/` | **M10 Complete** (~79 tests — `JwtService`, `RangeParser`, `MediaStreamer`, handler stubs) |
+| `mm-cli` | `crates/mm-cli/` | **M10 Complete** (45+14+14 tests — `meedya serve` command added) |
 | `mm-ffi` | `crates/mm-ffi/` | **M4 Complete** (20 tests) |
-| `mm-gtk` | `crates/mm-gtk/` | **M9 Complete** (7 tabs + Export panel, 42+7 tests) |
-| macOS SwiftUI app | `macos/` | **M9 Complete** (7 tabs + ExportView, 64+12 tests) |
-| Windows WinUI 3 app | `windows/` | **M9 Complete** (7 pages + ExportPage, 70+15 tests) |
+| `mm-gtk` | `crates/mm-gtk/` | **M10 Complete** (8 tabs + Server panel, 42+7+6 tests) |
+| macOS SwiftUI app | `macos/` | **M10 Complete** (8 tabs + ServerView, 64+12+18 tests) |
+| Windows WinUI 3 app | `windows/` | **M10 Complete** (8 pages + ServerPage, 70+15+26 tests) |
 
 ---
 
@@ -342,6 +361,7 @@
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-05 | **M10 Complete** (`v1.0.0`) — Secure Media Server: `mm-server` crate (JWT/HS256, RFC 7233 range streaming, REST API handler stubs), `meedya serve` CLI command, Server tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~1076 → ~1166 total) |
 | 2026-03-05 | **M9 Complete** (`v0.10.0`) — Database Export: `mm-export` crate (`DatabaseExporter` trait, 5 backends, `SchemaBuilder` DDL), `meedya export` CLI command, Export tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~986 → ~1076 total) |
 | 2026-03-05 | **M8 Complete** (`v0.9.0`) — Packaging & Public Beta: `mm-update` crate (UpdateChecker, semver), Flatpak/Snap/AppImage/.deb manifests, macOS entitlements + DMG script, WinGet manifest, update notification UI (GTK4 AdwBanner, macOS Updates section, Windows InfoBar); ~30 new tests (~956 → ~986 total) |
 | 2026-03-05 | **M7 Complete** (`v0.8.0`) — Cloud Storage Monitoring: `mm-cloud` crate (`CloudProvider` trait, OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub, `SyncManager`), Cloud UI tab on all platforms; ~90 new tests (~866 → ~956 total) |
@@ -359,4 +379,4 @@
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-03-05 (M9 complete — Database Export)*
+> *Last updated: 2026-03-05 (M10 complete — Secure Media Server + Public Release v1.0.0)*

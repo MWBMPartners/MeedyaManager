@@ -32,6 +32,9 @@ mm-providers = { path = "../mm-providers" }
 # Internal crate — database export (M9)
 mm-export = { path = "../mm-export" }
 
+# Internal crate — secure media server (M10)
+mm-server = { path = "../mm-server" }
+
 # Async runtime — needed to drive mm-providers async search from a background thread
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 

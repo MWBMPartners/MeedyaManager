@@ -8,6 +8,59 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.0.0] — 2026-03-05 — Secure Media Server + Public Release (M10)
+
+> **Milestone 10** — Secure Media Server. Implements the `mm-server` crate (axum HTTPS, JWT/HS256 auth, RFC 7233 range streaming, REST API), `meedya serve` CLI command, and Server tab UI on all three platforms. First public release — version `v1.0.0`. ~90 new tests, ~1166 total.
+
+### Added
+
+**Rust (`mm-server` crate):**
+- `auth.rs` — `ServerConfig` (bind_address, port, TLS paths, JWT secret/expiry, CORS origins, max_connections, request_logging), `UserRole` (Admin/User/ReadOnly), `Claims` (sub, exp, iat, role), `AuthError` (6 variants: MissingToken, InvalidToken, TokenExpired, InsufficientPermissions, MissingSecret, EncodingError), `LoginRequest`, `LoginResponse`, `JwtService` (`new()`, `issue()`, `validate()`, `extract_bearer()`). 20 unit tests.
+- `streaming.rs` — `StreamConfig` (chunk_size, max_file_bytes, enable_compression, media_root), `StreamRequest` (Full/Range/FromStart/Suffix variants, `resolve()`, `byte_count()`, `is_range_request()`), `StreamResponse` (`full()`, `partial()`, `content_length()`, `is_partial()`), `StreamError` (7 variants), `RangeParser::parse()` (RFC 7233), `MediaStreamer` (`content_type()`, `is_safe_path()`, `prepare_response()`). 20 unit tests.
+- `routes.rs` — `ApiResponse<T>` generic JSON envelope (`ok`, `data?`, `error?`; skip_serializing_if), `HealthResponse`, `LibraryItem`, `LibraryResponse`, `SearchQuery`, `ServerInfoResponse`, handler stubs: `handle_health`, `handle_login`, `handle_library`, `handle_library_item`, `handle_search`, `handle_stream`, `handle_server_info`. 24 unit tests.
+- `lib.rs` — Re-exports all public types + 15 integration tests (JWT round-trip, login flow, library pipeline, search, stream pipeline, range parser integration, media streamer pipeline, server info, health, ServerConfig validation).
+
+**CLI (`mm-cli` — `meedya serve` command):**
+- `commands/serve.rs` — `ServeArgs` (--bind, --port, --tls-cert, --tls-key, --no-tls, --jwt-secret, --cors-origin, --media-root, --show-routes, --check-config), `build_server_config()`, `validate_config()`, `run()`, route table constant (8 routes). 14 unit tests.
+- `Cargo.toml` — Added `mm-server = { path = "../mm-server" }` dependency.
+- `main.rs` / `commands/mod.rs` — `Serve(ServeArgs)` variant wired; dispatch calls `commands::serve::run()`.
+
+**GTK4 / Linux (`mm-gtk`):**
+- `ui/server_panel.rs` — `ServerPanel`: network group (bind address + port `adw::EntryRow`), TLS group (cert + key `EntryRow` + no-TLS `SwitchRow`), auth group (JWT secret `PasswordEntryRow` + expiry `EntryRow`), CORS group, control group (status label + start/stop buttons), log group (TextView + clear button). 6 unit tests.
+- `ui/mod.rs` — Registered `server_panel` module.
+- `main_window.rs` — Added Server tab (8 tabs total; `network-server-symbolic`).
+- `Cargo.toml` — Added `mm-server = { path = "../mm-server" }` dependency.
+
+**macOS / SwiftUI:**
+- `Views/ServerView.swift` — `ServerStatus` enum (stopped/starting/running/error), `ServerModel` (`@Observable`; `startServer()`, `stopServer()`, `showRoutes()`, `clearLog()`; `validationError` computed property), `ServerView` (8-section form + access log ScrollView).
+- `Models/AppState.swift` — Added `.server` case to `AppTab` with `"network"` icon.
+- `ContentView.swift` — Added Server tab (8 tabs total); minimum width bumped to 1000.
+- `MeedyaManagerTests/ServerModelTests.swift` — 18 Swift Testing tests for `ServerModel` defaults, validation, log management, status display.
+
+**Windows / WinUI 3:**
+- `Views/ServerPage.xaml` + `Views/ServerPage.xaml.cs` — Server page: network (bind + port), TLS (cert + key + no-TLS toggle), authentication (JWT PasswordBox + expiry), CORS origins, server control (start/stop/routes buttons + status), access log (Consolas 11pt + clear). `ValidateConfig()` checks port range, JWT secret ≥16 chars, TLS paths when TLS enabled, positive expiry. `AppendLog()` timestamps with `HH:mm:ss`.
+- `MainWindow.xaml` — Added Server `NavigationViewItem` (Globe symbol).
+- `MainWindow.xaml.cs` — Routed `Tag: "Server"` → `typeof(ServerPage)`.
+- `MeedyaManager.Tests/ServerPageTests.cs` — 26 xUnit tests for `ServerRoutes`, `ServerConfigValidator`, `JwtHelper`.
+
+**Release hardening (`Cargo.toml`):**
+- `[profile.release]` — `lto = "fat"`, `strip = "symbols"`, `panic = "abort"`, `opt-level = 3`, `codegen-units = 1`, `incremental = false`.
+- `[profile.dist]` — inherits release, `strip = "debuginfo"`, `lto = "fat"`.
+
+**Documentation:**
+- `docs/issues/github_issues.md` — Complete issues register #19–#129 (M0–M10 + accessibility + hardening).
+- `docs/issues/issue_128_accessibility.md` — Full accessibility issue spec (VoiceOver/Narrator/AT-SPI2, WCAG 2.1).
+- `docs/wiki/Version-Management.md` — Version strategy and sync CI documentation.
+- `docs/wiki/Release-Process.md` — Pre-release checklist and hotfix process.
+- `docs/wiki/CI-CD-Pipelines.md` — All 8 GitHub Actions workflows documented.
+- `justfile` — `dist` recipe for `cargo build --workspace --profile dist`.
+
+### Changed
+
+- Version bumped `0.10.0` → `1.0.0` across `Cargo.toml`, `Info.plist`, `Package.appxmanifest`.
+
+---
+
 ## [v0.10.0] — 2026-03-05 — Database Export (M9)
 
 > **Milestone 9** — Database Export. Implements the full `mm-export` crate with `DatabaseExporter` trait and five backends (SQLite, MySQL, MariaDB, PostgreSQL, SQL Server), `SchemaBuilder` DDL generation, `meedya export` CLI command, and Export tab UI on all three platforms. ~90 new tests.

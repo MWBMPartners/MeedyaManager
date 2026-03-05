@@ -57,6 +57,13 @@
                     <SymbolIcon Symbol="Save" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+
+            <!-- Server — secure HTTPS media server (M10) -->
+            <NavigationViewItem Content="Server" Tag="Server">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Globe" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <!-- Settings item in the footer area -->

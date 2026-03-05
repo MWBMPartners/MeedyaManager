@@ -42,6 +42,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     case rules    = "Rules"
     case cloud    = "Cloud"    // M7 — Cloud Storage Monitor
     case export   = "Export"   // M9 — Database Export
+    case server   = "Server"   // M10 — Secure Media Server
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -55,6 +56,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .rules:    "list.bullet.rectangle.fill"
         case .cloud:    "cloud.fill"
         case .export:   "cylinder.split.1x2.fill"
+        case .server:   "network"
         case .settings: "gearshape.fill"
         }
     }

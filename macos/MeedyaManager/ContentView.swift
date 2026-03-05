@@ -54,6 +54,18 @@ struct ContentView: View {
                     .applyContentBackground()
             }
 
+            // ── Database Export tab (M9) ──────────────────────────────────────
+            Tab("Export", systemImage: "cylinder.split.1x2.fill", value: AppTab.export) {
+                ExportView()
+                    .applyContentBackground()
+            }
+
+            // ── Secure Media Server tab (M10) ─────────────────────────────────
+            Tab("Server", systemImage: "network", value: AppTab.server) {
+                ServerView()
+                    .applyContentBackground()
+            }
+
             // ── Settings tab ───────────────────────────────────────────────
             Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
                 SettingsView()
@@ -62,7 +74,7 @@ struct ContentView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         // Increased minimum width to 960 to accommodate the 7-tab sidebar
-        .frame(minWidth: 960, minHeight: 560)
+        .frame(minWidth: 1000, minHeight: 560)
     }
 }
 

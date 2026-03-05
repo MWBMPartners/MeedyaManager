@@ -93,6 +93,7 @@ public sealed partial class MainWindow : Window
             NavigationViewItem { Tag: "Lookup"   } => typeof(LookupPage),
             NavigationViewItem { Tag: "Cloud"    } => typeof(CloudPage),
             NavigationViewItem { Tag: "Export"   } => typeof(ExportPage),
+            NavigationViewItem { Tag: "Server"   } => typeof(ServerPage),
             NavigationViewItem { Tag: "Settings" } => typeof(SettingsPage),
             _ => null,
         };
