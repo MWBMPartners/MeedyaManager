@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MmError, MmResult};
+use crate::rule_engine::{self, EvalContext, Rule};
 
 /// Result of a rename simulation — shows what would happen
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,6 +200,89 @@ pub fn simulate_rename(
     for (source, metadata) in files {
         // Substitute metadata into the template
         let raw_path = substitute_template(template, metadata);
+
+        // Split template result into directory components and filename
+        let template_path = Path::new(&raw_path);
+        let raw_name = template_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unnamed");
+
+        // Preserve the original extension if the template doesn't include one
+        let ext = source.extension().and_then(|e| e.to_str());
+        let name_with_ext = if Path::new(raw_name).extension().is_some() {
+            raw_name.to_string()
+        } else if let Some(e) = ext {
+            format!("{raw_name}.{e}")
+        } else {
+            raw_name.to_string()
+        };
+
+        // Sanitise the filename
+        let safe_name = sanitize_filename(&name_with_ext, config);
+
+        // Build parent directories from template (if any subdirectories)
+        let parent_parts = template_path.parent().unwrap_or(Path::new(""));
+        let destination = output_dir.join(parent_parts).join(&safe_name);
+
+        // Detect conflicts
+        let conflict = destination.exists()
+            || destinations_seen.contains_key(&destination);
+        let unchanged = source == &destination;
+
+        // Track this destination to detect intra-batch conflicts
+        *destinations_seen.entry(destination.clone()).or_insert(0) += 1;
+
+        previews.push(RenamePreview {
+            source: source.clone(),
+            destination,
+            conflict,
+            unchanged,
+        });
+    }
+
+    let renamed = previews.iter().filter(|p| !p.unchanged && !p.conflict).count();
+    let unchanged = previews.iter().filter(|p| p.unchanged).count();
+    let conflicts = previews.iter().filter(|p| p.conflict).count();
+
+    Ok(RenameSummary {
+        total: previews.len(),
+        renamed,
+        unchanged,
+        conflicts,
+        previews,
+    })
+}
+
+/// Simulate a batch rename using the rule engine.
+///
+/// Evaluates each file against the rule set (or falls back to the default
+/// template) to compute destination paths.  Returns a preview summary
+/// without moving any files.
+pub fn simulate_rename_with_rules(
+    files: &[PathBuf],
+    rules: &[Rule],
+    default_template: &str,
+    output_dir: &Path,
+    config: &SanitizeConfig,
+    ctx_builder: impl Fn(&Path) -> MmResult<EvalContext<'_>>,
+) -> MmResult<RenameSummary> {
+    let mut previews = Vec::with_capacity(files.len());
+    let mut destinations_seen: HashMap<PathBuf, usize> = HashMap::new();
+
+    for source in files {
+        // Build the evaluation context for this file
+        let ctx = ctx_builder(source)?;
+
+        // Try rules first, then fall back to the default template
+        let raw_path = if !rules.is_empty() {
+            match rule_engine::apply_rules(rules, &ctx)? {
+                Some(result) => result,
+                None => rule_engine::evaluate_template(default_template, &ctx)?,
+            }
+        } else {
+            rule_engine::evaluate_template(default_template, &ctx)?
+        };
 
         // Split template result into directory components and filename
         let template_path = Path::new(&raw_path);

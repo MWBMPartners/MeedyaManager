@@ -143,6 +143,22 @@ pub struct RenameConfig {
 
     /// Whether to preserve the original file (copy) instead of moving
     pub copy_mode: bool,
+
+    /// Named rules for conditional template selection.
+    /// Rules are evaluated in priority order; the first match wins.
+    /// If no rules match, the `template` field is used as fallback.
+    #[serde(default)]
+    pub rules: Vec<crate::rule_engine::Rule>,
+
+    /// Behaviour when a tag is missing during template evaluation:
+    /// "empty" (default), "literal" (show `<TagName>`), "error"
+    #[serde(default = "default_missing_tag_mode")]
+    pub missing_tag_mode: String,
+}
+
+/// Default value for `missing_tag_mode` — returns "empty"
+fn default_missing_tag_mode() -> String {
+    "empty".to_string()
 }
 
 impl Default for RenameConfig {
@@ -158,6 +174,10 @@ impl Default for RenameConfig {
             create_dirs: true,
             // Move files by default (not copy)
             copy_mode: false,
+            // No conditional rules by default — use the template field
+            rules: Vec::new(),
+            // Missing tags render as empty strings by default
+            missing_tag_mode: default_missing_tag_mode(),
         }
     }
 }

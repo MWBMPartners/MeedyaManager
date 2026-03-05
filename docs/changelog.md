@@ -8,6 +8,29 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v2.0.0-alpha.3] — 2026-03-05 — Rule Engine (M2)
+
+> **Milestone 2** — MusicBee-inspired template language with lexer, recursive descent parser, evaluator, 24 template functions, 40+ tag mappings, and declarative rule/condition system. 182 new tests (181 unit + 1 doc-test).
+
+### Added
+
+- **Lexer** (`rule_engine/lexer.rs`) — Character-by-character tokenizer recognising `<Tag>`, `$Func()`, `"quoted literals"`, `(`, `)`, `,`, bare text, and legacy `{key}` passthrough. 26 tests.
+- **Parser** (`rule_engine/parser.rs`) — Hand-written recursive descent parser producing `Node::Literal`, `Node::Tag`, `Node::FuncCall`, `Node::Sequence` AST. 50-level nesting depth guard. Legacy syntax detection via regex with `tracing::warn!()`. 24 tests.
+- **Tag registry** (`rule_engine/tag_registry.rs`) — 40+ bidirectional mappings: 19 standard audio tags (from `TAG_*` constants), 12 extended tags (sort fields, conductor, mood, etc.), 15 virtual/computed tags (Filename, Duration, Bitrate, MediaClass, etc.), Custom1–Custom16, MeedyaMeta.* namespace. Case-insensitive lookup via `OnceLock<HashMap>`. 24 tests.
+- **Template functions** (`rule_engine/functions.rs`) — 24 functions in 5 categories:
+  - Logical (6): `$If`, `$And`, `$Or`, `$Not`, `$IsNull`, `$Contains`
+  - String (8): `$Replace`, `$Upper`, `$Lower`, `$Left`, `$Right`, `$Mid`, `$Trim`, `$Split`
+  - Numeric (4): `$Pad`, `$Date`, `$Format`, `$Count`
+  - Lookup (3): `$Sort`, `$IsMatch` (cached regex), `$Lookup` (genre_folder, quality_folder tables)
+  - Extensions (3): `$MediaClass`, `$MediaGroup`, `$FirstValue`
+  - All functions receive pre-evaluated `&[String]` args. 47 tests.
+- **Evaluator** (`rule_engine/evaluator.rs`) — `EvalContext<'a>` with builder pattern, borrowing `TagMap`, `AudioProperties`, `MediaClassification`, and file path. Multi-value tag handling (path mode = first value, display mode = joined). `MissingTagMode` enum (Empty/Literal/Error). Convenience `evaluate_template()`. 30 tests + 1 doc-test.
+- **Rule system** (`rule_engine/mod.rs`) — `Rule`, `Condition`, `ConditionOp` (9 operators: Equals, NotEquals, Contains, StartsWith, EndsWith, Matches, IsEmpty, IsNotEmpty), `ConditionMode` (All/Any). `evaluate_rule()` and `apply_rules()` with priority ordering. Serde support for JSON5 config. 30 tests.
+- **Renamer integration** (`renamer/mod.rs`) — `simulate_rename_with_rules()` accepting `&[Rule]` and a context builder closure, with fallback to default template.
+- **Config extension** (`config/mod.rs`) — Added `rules: Vec<Rule>` and `missing_tag_mode: String` fields to `RenameConfig` with `#[serde(default)]`.
+
+---
+
 ## [v2.0.0-alpha.2] — 2026-03-05 — Core Engine (M1)
 
 > **Milestone 1** — Full implementation of `mm-core` crate with 217 tests (214 unit + 3 doc-tests).

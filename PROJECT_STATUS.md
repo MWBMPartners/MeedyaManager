@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M1 — Core Engine (Rust) — **Complete** |
-| **Overall Progress** | **18%** (2 of 11 milestones complete) |
-| **Latest Version** | `v2.0.0-alpha.1` |
+| **Current Milestone** | M2 — Rule Engine — **Complete** |
+| **Overall Progress** | **27%** (3 of 11 milestones complete) |
+| **Latest Version** | `v2.0.0-alpha.2` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -66,11 +66,22 @@
 
 ---
 
-### M2 — Rule Engine *(Planned)*
+### M2 — Rule Engine *(Complete)*
 
-> Target: `v2.0.0-alpha.3`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v2.0.0-alpha.3`
 
-Template lexer, recursive descent parser, evaluator. 20+ template functions, 40+ tag mappings.
+**Progress: 100%** | **182 tests** (181 unit + 1 doc-test)
+
+| Deliverable | Status | Tests |
+| ----------- | ------ | ----- |
+| Lexer (tokenizer: tags, functions, literals, legacy detection) | Done | 26 |
+| Parser (recursive descent, AST, 50-level depth guard) | Done | 24 |
+| Tag registry (40+ bidirectional mappings, virtual tags) | Done | 24 |
+| Template functions (24: logical, string, numeric, lookup, extensions) | Done | 47 |
+| Evaluator (EvalContext, multi-value, missing tag modes) | Done | 30 |
+| Rule system (conditions, operators, priority ordering, apply_rules) | Done | 30 |
+| Renamer integration (`simulate_rename_with_rules`) | Done | — |
+| Config extension (`rules` + `missing_tag_mode` in RenameConfig) | Done | — |
 
 ---
 
@@ -142,7 +153,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Crate / Component | Path | Status |
 | ----------------- | ---- | ------ |
-| `mm-core` | `crates/mm-core/` | **M1 Complete** (217 tests) |
+| `mm-core` | `crates/mm-core/` | **M2 Complete** (399 tests) |
 | `mm-providers` | `crates/mm-providers/` | Scaffold (stubs) |
 | `mm-cloud` | `crates/mm-cloud/` | Scaffold (stubs) |
 | `mm-export` | `crates/mm-export/` | Scaffold (stubs) |
@@ -186,6 +197,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-05 | **M2 Complete** — Rule engine: lexer, recursive descent parser, 40+ tag registry, 24 template functions, evaluator with EvalContext, declarative rule system, renamer integration, config extension. 182 new tests (399 total) |
 | 2026-03-05 | **M1 Complete** — All mm-core modules implemented: config, classify, metadata, watcher, renamer, companion, state, logging, health. 217 tests passing (Issues #40-#51) |
 | 2026-03-04 | **Version/Release Infrastructure** — Added version-bump workflow, version-sync CI check, enhanced release pipeline with checksums, created GitHub Wiki, Dev_Notes.md (Issues #32-#39) |
 | 2026-03-04 | **M0 Complete** — Archived Python, created Cargo workspace, scaffolded all platforms, set up CI/CD, GitHub Projects v2 (Issues #19-#31) |
@@ -195,4 +207,4 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-03-05*
+> *Last updated: 2026-03-05 (M2 complete)*
