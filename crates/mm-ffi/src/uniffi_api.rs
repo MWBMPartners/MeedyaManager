@@ -32,7 +32,7 @@ use crate::types::{AudioPropertiesFfi, MmFfiError, RenamePreviewFfi, TagEntry, V
 // Version
 // ---------------------------------------------------------------------------
 
-/// Return the MeedyaManager core version string (e.g. "2.0.0-alpha.5").
+/// Return the MeedyaManager core version string (e.g. "0.5.0").
 #[uniffi::export]
 pub fn mm_version() -> String {
     // Injected at compile time from Cargo.toml [package].version

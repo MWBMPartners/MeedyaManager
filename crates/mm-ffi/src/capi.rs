@@ -58,7 +58,7 @@ pub unsafe extern "C" fn mm_ffi_free_string(ptr: *mut c_char) {
 ///
 /// Caller must free the returned pointer with `mm_ffi_free_string`.
 ///
-/// Example return value: `"2.0.0-alpha.5"`
+/// Example return value: `"0.5.0"`
 #[no_mangle]
 pub extern "C" fn mm_ffi_version() -> *const c_char {
     // Allocate the version string and transfer ownership to the caller

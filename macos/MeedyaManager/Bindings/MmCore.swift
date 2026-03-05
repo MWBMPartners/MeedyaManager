@@ -56,7 +56,7 @@ final class MmCore {
         // Real implementation: return mmVersion() from UniFFI bindings
         return mmVersion()
         #else
-        return "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0-alpha.5") (stub)"
+        return "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.5.0") (stub)"
         #endif
     }
 

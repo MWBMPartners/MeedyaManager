@@ -220,12 +220,12 @@ mod tests {
 
     // --- mm_version ---
 
-    /// mm_version returns a non-empty string starting with "2."
+    /// mm_version returns a non-empty string starting with "0."
     #[test]
     fn version_not_empty() {
         let v = uniffi_api::mm_version();
         assert!(!v.is_empty(), "version string must not be empty");
-        assert!(v.starts_with("2."), "version should start with '2.' — got: {v}");
+        assert!(v.starts_with("0."), "version should start with '0.' — got: {v}");
     }
 
     // --- validate_template ---
@@ -274,7 +274,7 @@ mod tests {
 
         // Safety: the returned pointer is a valid C string allocated by CString::into_raw
         let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap() };
-        assert!(s.starts_with("2."), "C API version should start with '2.' — got: {s}");
+        assert!(s.starts_with("0."), "C API version should start with '0.' — got: {s}");
 
         // Free the allocated string to avoid memory leak in tests
         unsafe { capi::mm_ffi_free_string(ptr as *mut std::os::raw::c_char) };

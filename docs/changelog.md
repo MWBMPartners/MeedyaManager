@@ -8,7 +8,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v2.0.0-alpha.5] — 2026-03-05 — FFI Layer & Native UI Shells (M4)
+## [v0.5.0] — 2026-03-05 — FFI Layer & Native UI Shells (M4)
 
 > **Milestone 4** — UniFFI Swift bridge, cbindgen C API, GTK4/Adwaita Linux shell, macOS SwiftUI shell, Windows WinUI 3 shell. All three platforms now have functional UI stubs wired to mm-core via the FFI layer.
 
@@ -56,14 +56,14 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ### Changed
 
-- `Cargo.toml` — workspace version bumped: `2.0.0-alpha.1` → `2.0.0-alpha.5`.
+- `Cargo.toml` — workspace version bumped: `0.1.0` → `0.5.0`.
 - `mm-ffi/Cargo.toml` — `crate-type = ["cdylib", "lib"]`; added uniffi 0.29, cbindgen 0.27, tokio 1, serde 1, serde_json 1, thiserror 2.
 - `mm-gtk/Cargo.toml` — added `[lib]` target; added serde_json, dirs 6, anyhow, tracing deps.
 - `windows/MeedyaManager/MeedyaManager.csproj` — retained existing WinAppSDK 1.6 reference.
 
 ---
 
-## [v2.0.0-alpha.4] — 2026-03-05 — CLI (M3)
+## [v0.4.0] — 2026-03-05 — CLI (M3)
 
 > **Milestone 3** — Full `clap`-based CLI (`meedya` binary) with 8 commands, shared output infrastructure, dual output modes (Human/JSON), and 45 new tests.
 
@@ -100,7 +100,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v2.0.0-alpha.3] — 2026-03-05 — Rule Engine (M2)
+## [v0.3.0] — 2026-03-05 — Rule Engine (M2)
 
 > **Milestone 2** — MusicBee-inspired template language with lexer, recursive descent parser, evaluator, 24 template functions, 40+ tag mappings, and declarative rule/condition system. 182 new tests (181 unit + 1 doc-test).
 
@@ -123,7 +123,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v2.0.0-alpha.2] — 2026-03-05 — Core Engine (M1)
+## [v0.2.0] — 2026-03-05 — Core Engine (M1)
 
 > **Milestone 1** — Full implementation of `mm-core` crate with 217 tests (214 unit + 3 doc-tests).
 
@@ -147,7 +147,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v2.0.0-alpha.1] — 2026-03-04 — Rust Rewrite (M0: Repository Setup)
+## [v0.1.0] — 2026-03-04 — Rust Rewrite (M0: Repository Setup)
 
 > 🏷️ **Milestone 0** — Complete architecture change from Python to Rust core with platform-native UIs. The Python v1.x codebase (M1–M6) is archived at tag `v1.5-M6-python-final`.
 
@@ -194,7 +194,7 @@ Format: `## [Version] — YYYY-MM-DD`
 - All documentation rewritten for Rust architecture
 - `.claude/CLAUDE.md` updated with Rust coding standards and architecture
 - `PROJECT_STATUS.md` rewritten with new milestone structure
-- `docs/ROADMAP.md` rewritten with v2.0 timeline
+- `docs/ROADMAP.md` rewritten with v0.x.y pre-release timeline (v1.0.0 = first public release at M10)
 - `docs/CHANGELOG.md` updated (this entry)
 
 ---
@@ -683,16 +683,17 @@ Format: `## [Version] — YYYY-MM-DD`
 
 | Version | Milestone | Description |
 |---------|-----------|-------------|
-| `v2.0.0-alpha.4` | ✅ M3: CLI | 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), 45 tests |
-| `v2.0.0-alpha.3` | ✅ M2: Rule Engine | Lexer, parser, evaluator, 24 template functions, 182 tests |
-| `v2.0.0-alpha.2` | ✅ M1: Core Engine | Config, classify, metadata, watcher, renamer, companion, 217 tests |
-| `v2.0.0-alpha.1` | 🔧 M0: Repository Setup | Rust rewrite, Cargo workspace, native scaffolds, CI/CD |
-| `v1.5-M6` | ✅ Packaging & Error Handling | Centralized logging, crash protection, config profiles, native installers |
-| `v1.4-M5` | ✅ Metadata Lookup | 19 providers (music, video, podcasts, identifiers), framework, CLI, GUI |
-| `v1.3-M4` | ✅ Metadata Editor | Tag editing, mutagen integration, GUI panel, CLI edit |
-| `v1.2-M3` | ✅ Rule Engine | Full template syntax, companion file tracking |
-| `v1.1-M2` | ✅ CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
-| `v1.0-M1` | ✅ Core Engine | Watcher, metadata, classification, dry-run rename |
+| `v0.5.0` | ✅ M4: FFI & Native UI Shells | UniFFI Swift bridge, cbindgen C API, GTK4/Adwaita, SwiftUI, WinUI 3 shells, 20 tests |
+| `v0.4.0` | ✅ M3: CLI | 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), 45 tests |
+| `v0.3.0` | ✅ M2: Rule Engine | Lexer, parser, evaluator, 24 template functions, 182 tests |
+| `v0.2.0` | ✅ M1: Core Engine | Config, classify, metadata, watcher, renamer, companion, 217 tests |
+| `v0.1.0` | ✅ M0: Repository Setup | Rust rewrite, Cargo workspace, native scaffolds, CI/CD |
+| `v1.5-M6` | ✅ Python: Packaging & Error Handling | Centralized logging, crash protection, config profiles, native installers |
+| `v1.4-M5` | ✅ Python: Metadata Lookup | 19 providers (music, video, podcasts, identifiers), framework, CLI, GUI |
+| `v1.3-M4` | ✅ Python: Metadata Editor | Tag editing, mutagen integration, GUI panel, CLI edit |
+| `v1.2-M3` | ✅ Python: Rule Engine | Full template syntax, companion file tracking |
+| `v1.1-M2` | ✅ Python: CLI & UI | Interactive CLI, PySide6 GUI, rule builder |
+| `v1.0-M1` | ✅ Python: Core Engine | Watcher, metadata, classification, dry-run rename |
 
 ---
 

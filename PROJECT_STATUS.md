@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M4 — FFI Layer & Native UI Shells — **Complete** |
-| **Overall Progress** | **45%** (5 of 11 milestones complete) |
-| **Latest Version** | `v2.0.0-alpha.5` |
+| **Current Milestone** | M5 — Metadata Lookup Providers — **In Progress** |
+| **Overall Progress** | **45%** (5 of 11 milestones complete, M5 in progress) |
+| **Latest Version** | `v0.5.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -22,7 +22,7 @@
 
 ### M0 — Repository Setup & Scaffolding *(Complete)*
 
-> Started: 2026-03-04 | Version: `v2.0.0-alpha.1`
+> Started: 2026-03-04 | Version: `v0.1.0`
 
 **Progress: 100%** | Issues: #19-#31, #32-#39 (all closed)
 
@@ -46,7 +46,7 @@
 
 ### M1 — Core Engine *(Complete)*
 
-> Started: 2026-03-04 | Completed: 2026-03-05 | Version: `v2.0.0-alpha.2`
+> Started: 2026-03-04 | Completed: 2026-03-05 | Version: `v0.2.0`
 
 **Progress: 100%** | Issues: #40-#51 | **217 tests** (214 unit + 3 doc-tests)
 
@@ -68,7 +68,7 @@
 
 ### M2 — Rule Engine *(Complete)*
 
-> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v2.0.0-alpha.3`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.3.0`
 
 **Progress: 100%** | **182 tests** (181 unit + 1 doc-test)
 
@@ -87,7 +87,7 @@
 
 ### M3 — CLI *(Complete)*
 
-> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v2.0.0-alpha.4`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.4.0`
 
 **Progress: 100%** | Issues: #52-#62 (all closed) | **45 tests**
 
@@ -110,7 +110,7 @@
 
 ### M4 — FFI Layer & Native UI Shells *(Complete)*
 
-> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v2.0.0-alpha.5`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.5.0`
 
 **Progress: 100%** | Issues: #63-#72 | **20 tests** (mm-ffi unit + mm-gtk state)
 
@@ -148,9 +148,9 @@
 
 ---
 
-### M5 — Metadata Lookup Providers *(Planned)*
+### M5 — Metadata Lookup Providers *(In Progress)*
 
-> Target: `v2.0.0-alpha.6`
+> Target: `v0.6.0`
 
 19 providers via `reqwest`/`tokio`: Music (10), Video (5), Podcasts (1), Identifiers (3).
 
@@ -158,7 +158,7 @@
 
 ### M6 — Full Native UI *(Planned)*
 
-> Target: `v2.0.0-beta.1`
+> Target: `v0.7.0`
 
 Complete views on all 3 platforms: Rule Builder, Metadata Editor, Lookup Panel, accessibility.
 
@@ -166,7 +166,7 @@ Complete views on all 3 platforms: Rule Builder, Metadata Editor, Lookup Panel, 
 
 ### M7 — Cloud Storage Monitoring *(Planned)*
 
-> Target: `v2.0.0-beta.2`
+> Target: `v0.8.0`
 
 OneDrive, Google Drive, Dropbox, MEGA, iCloud.
 
@@ -174,7 +174,7 @@ OneDrive, Google Drive, Dropbox, MEGA, iCloud.
 
 ### M8 — Packaging & Public Release *(Planned)*
 
-> Target: `v2.0.0-beta.3`
+> Target: `v0.9.0`
 
 App Store (macOS), Microsoft Store (Windows), Flatpak/Snap (Linux). Code signing, notarization.
 
@@ -182,7 +182,7 @@ App Store (macOS), Microsoft Store (Windows), Flatpak/Snap (Linux). Code signing
 
 ### M9 — Database Export *(Planned)*
 
-> Target: `v2.0.0-rc.1`
+> Target: `v0.10.0`
 
 MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
@@ -190,7 +190,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 ### M10 — Secure Media Server *(Planned)*
 
-> Target: `v2.0.0`
+> Target: `v1.0.0`
 
 `axum` HTTP server, REST API, JWT auth, media streaming, TLS.
 
@@ -206,10 +206,10 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 | `mm-export` | `crates/mm-export/` | Scaffold (stubs) |
 | `mm-server` | `crates/mm-server/` | Scaffold (stubs) |
 | `mm-cli` | `crates/mm-cli/` | **M3 Complete** (45 tests) |
-| `mm-ffi` | `crates/mm-ffi/` | Scaffold (stubs) |
-| `mm-gtk` | `crates/mm-gtk/` | Scaffold (Linux only) |
-| macOS SwiftUI app | `macos/` | Shell (tabs, empty views) |
-| Windows WinUI 3 app | `windows/` | Shell (NavigationView, Mica) |
+| `mm-ffi` | `crates/mm-ffi/` | **M4 Complete** (20 tests) |
+| `mm-gtk` | `crates/mm-gtk/` | **M4 Complete** (GTK4/Adwaita Linux shell) |
+| macOS SwiftUI app | `macos/` | **M4 Complete** (4 views: Scan, Metadata, Rules, Settings) |
+| Windows WinUI 3 app | `windows/` | **M4 Complete** (4 pages: Scan, Metadata, Rules, Settings) |
 
 ---
 
@@ -244,15 +244,16 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Date | Activity |
 | ---- | -------- |
-| 2026-03-05 | **M3 Complete** — CLI: 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), shared output infrastructure, CLI context, dual output modes (Human/JSON), 45 new tests (444 total) |
-| 2026-03-05 | **M2 Complete** — Rule engine: lexer, recursive descent parser, 40+ tag registry, 24 template functions, evaluator with EvalContext, declarative rule system, renamer integration, config extension. 182 new tests (399 total) |
-| 2026-03-05 | **M1 Complete** — All mm-core modules implemented: config, classify, metadata, watcher, renamer, companion, state, logging, health. 217 tests passing (Issues #40-#51) |
+| 2026-03-05 | **M4 Complete** (`v0.5.0`) — FFI Layer & Native UI Shells: mm-ffi (UniFFI + cbindgen), mm-gtk (GTK4/Adwaita Linux shell), macOS SwiftUI shell (4 views), Windows WinUI 3 shell (4 pages), 20 new tests (464 total) |
+| 2026-03-05 | **M3 Complete** (`v0.4.0`) — CLI: 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), shared output infrastructure, CLI context, dual output modes (Human/JSON), 45 new tests (444 total) |
+| 2026-03-05 | **M2 Complete** (`v0.3.0`) — Rule engine: lexer, recursive descent parser, 40+ tag registry, 24 template functions, evaluator with EvalContext, declarative rule system, renamer integration, config extension. 182 new tests (399 total) |
+| 2026-03-05 | **M1 Complete** (`v0.2.0`) — All mm-core modules implemented: config, classify, metadata, watcher, renamer, companion, state, logging, health. 217 tests passing (Issues #40-#51) |
 | 2026-03-04 | **Version/Release Infrastructure** — Added version-bump workflow, version-sync CI check, enhanced release pipeline with checksums, created GitHub Wiki, Dev_Notes.md (Issues #32-#39) |
-| 2026-03-04 | **M0 Complete** — Archived Python, created Cargo workspace, scaffolded all platforms, set up CI/CD, GitHub Projects v2 (Issues #19-#31) |
+| 2026-03-04 | **M0 Complete** (`v0.1.0`) — Archived Python, created Cargo workspace, scaffolded all platforms, set up CI/CD, GitHub Projects v2 (Issues #19-#31) |
 | 2026-03-04 | **v1.x archived** — Tagged `v1.5-M6-python-final` (1007 tests, 6 milestones, 19 providers) |
 
 ---
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-03-05 (M3 complete)*
+> *Last updated: 2026-03-05 (M4 complete, M5 in progress, version scheme updated to v0.x.y)*
