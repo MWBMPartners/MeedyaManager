@@ -1,0 +1,23 @@
+Package: meedyamanager
+Version: 0.9.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libgtk-4-1 (>= 4.12), libadwaita-1-0 (>= 1.4), libglib2.0-0 (>= 2.76)
+Installed-Size: 12288
+Maintainer: MWBM Partners Ltd <packaging@mwbm.co.uk>
+Homepage: https://github.com/MWBMPartners/MeedyaManager
+Description: Smart cross-platform media file manager and auto-organizer
+ MeedyaManager monitors your media folders and automatically renames and
+ organizes audio and video files according to user-defined rules — similar
+ to MusicBee's auto-organize feature, but available on Windows, macOS,
+ and Linux.
+ .
+ Features:
+  - Real-time folder monitoring with file-lock awareness
+  - 4-level media classification (group/format/class/quality)
+  - Metadata lookup from 19 providers (MusicBrainz, Discogs, TMDB, etc.)
+  - Cloud storage monitoring (OneDrive, Google Drive, Dropbox)
+  - MusicBee-inspired rename template engine
+  - Cover art display and tag editing
+  - Dry-run preview before executing renames

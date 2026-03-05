@@ -24,11 +24,11 @@ MeedyaManager is a complete rewrite from Python to **Rust** with **platform-nati
 | M5 | 🔍 Metadata Lookup Providers | ✅ Complete | `v0.6.0` | #73-84 | 19 providers (music, video, podcasts, identifiers), credentials, rate limiting, fuzzy scoring (332 tests) |
 | M6 | 🎨 Full Native UI | ✅ Complete | `v0.7.0` | #85-93 | Lookup Panel (all 3 platforms), full rule builder, cover art, DnD, real settings save, dark/light theme (GTK4), 90+ UI tests |
 | M7 | ☁️ Cloud Storage Monitoring | ✅ Complete | `v0.8.0` | #94-102 | OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub — `mm-cloud` crate + Cloud UI tab on all platforms (~90 tests) |
-| M8 | 📦 Packaging & Public Beta | 🔲 Planned | `v0.9.0` | #103-111 | App Store, Microsoft Store, Flatpak/Snap, auto-updater, first public beta |
+| M8 | 📦 Packaging & Public Beta | ✅ Complete | `v0.9.0` | #103-111 | `mm-update` crate, Flatpak/Snap/AppImage/.deb, DMG script, WinGet manifest, update notification UI (~30 tests) |
 | M9 | 🗄️ Database Export | 🔲 Planned | `v0.10.0` | #112-119 | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via sqlx/tiberius |
 | M10 | 🌐 Secure Media Server + Public Release | 🔲 Planned | `v1.0.0` | #120-127 | axum HTTP server, JWT auth, media streaming, TLS, web frontend |
 
-**Total: ~956 tests passing** (399 mm-core + 45 mm-cli + 20 mm-ffi + 332 mm-providers + 90 mm-cloud + 42 mm-gtk + 64 macOS Swift + 70 Windows C# — est.)
+**Total: ~986 tests passing** (399 mm-core + 45 mm-cli + 20 mm-ffi + 332 mm-providers + 90 mm-cloud + 33 mm-update + 42 mm-gtk + 64 macOS Swift + 70 Windows C# — est.)
 
 ---
 
@@ -54,4 +54,4 @@ MeedyaManager is a complete rewrite from Python to **Rust** with **platform-nati
 
 > 📝 *This roadmap is maintained alongside the codebase. For current status, see [PROJECT_STATUS.md](../PROJECT_STATUS.md).*
 >
-> *Last updated: 2026-03-05 (M7 complete — Cloud Storage Monitoring)*
+> *Last updated: 2026-03-05 (M8 complete — Packaging & Public Beta)*

@@ -1,0 +1,16 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# MeedyaManager — Freedesktop .desktop entry
+
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MeedyaManager
+GenericName=Media Organizer
+Comment=Smart cross-platform media file manager and auto-organizer
+Icon=com.mwbm.MeedyaManager
+Exec=mm-gtk
+Terminal=false
+Categories=AudioVideo;Audio;Video;FileManager;GTK;
+Keywords=media;music;video;organizer;rename;metadata;tags;
+StartupNotify=true
+StartupWMClass=MeedyaManager

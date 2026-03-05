@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M8 — Packaging & Public Beta — **Up Next** |
-| **Overall Progress** | **73%** (8 of 11 milestones complete) |
-| **Latest Version** | `v0.8.0` |
+| **Current Milestone** | M9 — Database Export — **Up Next** |
+| **Overall Progress** | **82%** (9 of 11 milestones complete) |
+| **Latest Version** | `v0.9.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -225,11 +225,32 @@
 
 ---
 
-### M8 — Packaging & Public Release *(Planned)*
+### M8 — Packaging & Public Beta *(Complete)*
 
-> Target: `v0.9.0`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.9.0`
 
-App Store (macOS), Microsoft Store (Windows), Flatpak/Snap (Linux). Code signing, notarization.
+**Progress: 100%** | Issues: #103-111 | **~30 tests**
+
+| Deliverable | Status | Notes |
+| ----------- | ------ | ----- |
+| `mm-update` crate — `UpdateChecker` + `ReleaseInfo` + `UpdateError` | Done | semver comparison, GitHub Releases API |
+| `mm-update/release.rs` — `GitHubRelease`, `ReleaseInfo` | Done | 9 unit tests |
+| `mm-update/checker.rs` — `UpdateChecker`, async `check()` | Done | 14 unit tests |
+| `mm-update/lib.rs` — `UpdateError`, integration tests | Done | 10 integration tests |
+| Flatpak manifest (`com.mwbm.MeedyaManager.yaml`) | Done | GNOME 47 runtime, cargo vendor offline build |
+| `.desktop` entry (`com.mwbm.MeedyaManager.desktop`) | Done | Freedesktop standard |
+| AppStream MetaInfo (`com.mwbm.MeedyaManager.metainfo.xml`) | Done | OARS 1.1, categories, release history |
+| Snap manifest (`snapcraft.yaml`) | Done | core22 base, GNOME 42 extension, strict confinement |
+| AppImage build script (`build-appimage.sh`) | Done | AppDir assembly + appimagetool |
+| Debian package script (`build-deb.sh` + `control`) | Done | dpkg-deb, Depends: libgtk-4-1 + libadwaita-1-0 |
+| macOS entitlements (`MeedyaManager.entitlements`) | Done | App Sandbox, hardened runtime |
+| macOS DMG creation script (`create-dmg.sh`) | Done | codesign + notarytool + create-dmg/hdiutil |
+| WinGet manifest (`MWBM.MeedyaManager.yaml`) | Done | v1.6.0 schema, x64 + arm64 MSIX |
+| GTK4 `AdwBanner` update notification | Done | Above tab bar, hidden until update found |
+| macOS "Updates" section in SettingsView | Done | Check button, status text, Download link |
+| Windows `InfoBar` + `CheckForUpdatesAsync()` | Done | Background Task.Delay stub, DispatcherQueue |
+| `release.yml` updated | Done | DMG creation + deb/AppImage build + upload steps |
+| Version bumped `0.8.0` → `0.9.0` | Done | Cargo.toml, Info.plist, Package.appxmanifest |
 
 ---
 
@@ -256,13 +277,14 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 | `mm-core` | `crates/mm-core/` | **M2 Complete** (399 tests) |
 | `mm-providers` | `crates/mm-providers/` | **M5 Complete** (332 tests, 19 providers) |
 | `mm-cloud` | `crates/mm-cloud/` | **M7 Complete** (~90 tests — `CloudProvider` trait, OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub, `SyncManager`) |
+| `mm-update` | `crates/mm-update/` | **M8 Complete** (~33 tests — `UpdateChecker`, `ReleaseInfo`, `UpdateError`, semver comparison) |
 | `mm-export` | `crates/mm-export/` | Scaffold (stubs) |
 | `mm-server` | `crates/mm-server/` | Scaffold (stubs) |
 | `mm-cli` | `crates/mm-cli/` | **M3 Complete** (45 tests) |
 | `mm-ffi` | `crates/mm-ffi/` | **M4 Complete** (20 tests) |
-| `mm-gtk` | `crates/mm-gtk/` | **M7 Complete** (6 tabs incl. Cloud panel, 42 tests) |
-| macOS SwiftUI app | `macos/` | **M7 Complete** (6 tabs incl. CloudView, 64 tests) |
-| Windows WinUI 3 app | `windows/` | **M7 Complete** (6 pages incl. CloudPage, 70 tests) |
+| `mm-gtk` | `crates/mm-gtk/` | **M8 Complete** (6 tabs + AdwBanner update notification, 42 tests) |
+| macOS SwiftUI app | `macos/` | **M8 Complete** (6 tabs + Updates section in Settings, 64 tests) |
+| Windows WinUI 3 app | `windows/` | **M8 Complete** (6 pages + InfoBar update notification, 70 tests) |
 
 ---
 
@@ -297,6 +319,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-05 | **M8 Complete** (`v0.9.0`) — Packaging & Public Beta: `mm-update` crate (UpdateChecker, semver), Flatpak/Snap/AppImage/.deb manifests, macOS entitlements + DMG script, WinGet manifest, update notification UI (GTK4 AdwBanner, macOS Updates section, Windows InfoBar); ~30 new tests (~956 → ~986 total) |
 | 2026-03-05 | **M7 Complete** (`v0.8.0`) — Cloud Storage Monitoring: `mm-cloud` crate (`CloudProvider` trait, OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub, `SyncManager`), Cloud UI tab on all platforms; ~90 new tests (~866 → ~956 total) |
 | 2026-03-05 | **M6 Complete** (`v0.7.0`) — Full Native UI: Lookup panel (all 3 platforms), rule builder, cover art, DnD, real settings save, dark/light theme (GTK4), error dialogs; ~90 UI tests (776 → ~866 total) |
 | 2026-03-05 | **M5 Complete** (`v0.6.0`) — Metadata Lookup Providers: 19 providers, credentials, rate limiting, fuzzy scoring, cover art; 332 new tests (776 total) |
@@ -312,4 +335,4 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-03-05 (M7 complete — Cloud Storage Monitoring)*
+> *Last updated: 2026-03-05 (M8 complete — Packaging & Public Beta)*

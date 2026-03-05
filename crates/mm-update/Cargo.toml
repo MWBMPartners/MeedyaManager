@@ -1,0 +1,32 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# mm-update — Auto-update version checker for MeedyaManager
+
+[package]
+name        = "mm-update"
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+description = "Auto-update version checker — queries GitHub Releases API for new MeedyaManager versions"
+rust-version.workspace = true
+
+[dependencies]
+# Async HTTP client — queries the GitHub Releases API
+reqwest  = { workspace = true }
+# JSON deserialization for the GitHub API response
+serde    = { workspace = true }
+serde_json = { workspace = true }
+# Async runtime
+tokio    = { workspace = true }
+# Error handling
+thiserror = { workspace = true }
+# Logging
+tracing  = { workspace = true }
+# Semantic version comparison
+semver   = { workspace = true }
+
+[dev-dependencies]
+# HTTP mocking for deterministic API tests
+wiremock = { workspace = true }
+tokio    = { workspace = true }

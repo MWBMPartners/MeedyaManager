@@ -35,6 +35,10 @@ struct SettingsView: View {
     // True between save start and completion for the progress indicator
     @State private var isSaving: Bool = false
 
+    // ── Update checker state ──────────────────────────────────────────────────
+    // "idle" | "checking" | "up-to-date" | "available:<version>"
+    @State private var updateStatus: String = "idle"
+
     // Config file path reported by the core
     private let configFilePath = MmCore.shared.configPath()
 
@@ -150,6 +154,62 @@ struct SettingsView: View {
                     .padding(.vertical, 10)
                 }
 
+                // ── Updates ──────────────────────────────────────────────────
+                SettingsGroup(title: "Updates") {
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            // Show current installed version
+                            Text("Current version: \(appState.coreVersion)")
+                                .font(.subheadline)
+
+                            // Dynamic status line driven by updateStatus state
+                            Group {
+                                switch updateStatus {
+                                case "idle":
+                                    Text("Tap "Check" to look for a newer release.")
+                                        .foregroundStyle(.secondary)
+                                case "checking":
+                                    Label("Checking for updates…", systemImage: "arrow.clockwise")
+                                        .foregroundStyle(.secondary)
+                                case "up-to-date":
+                                    Label("You're up to date.", systemImage: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                case let s where s.hasPrefix("available:"):
+                                    let ver = s.dropFirst("available:".count)
+                                    Label("Version \(ver) is available!", systemImage: "arrow.down.circle.fill")
+                                        .foregroundStyle(.blue)
+                                default:
+                                    Text("Unknown status.")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .font(.caption)
+                        }
+
+                        Spacer()
+
+                        VStack(spacing: 6) {
+                            // Check for updates button — simulates a network call
+                            Button("Check") {
+                                checkForUpdates()
+                            }
+                            .controlSize(.regular)
+                            .buttonStyle(.bordered)
+                            .disabled(updateStatus == "checking")
+
+                            // "Download" link — only shown when an update is found
+                            if updateStatus.hasPrefix("available:") {
+                                Link("Download", destination: URL(
+                                    string: "https://github.com/MWBMPartners/MeedyaManager/releases/latest"
+                                )!)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+
                 // ── Save Button ───────────────────────────────────────────────
                 HStack {
                     if isSaving {
@@ -251,6 +311,25 @@ struct SettingsView: View {
         }
 
         isSaving = false
+    }
+
+    /// Simulate an update check against the GitHub Releases API.
+    ///
+    /// In production this will call `mm-update`'s `UpdateChecker` via FFI.
+    /// For M8 the check is simulated with a 1.5 s delay to exercise the UI states.
+    private func checkForUpdates() {
+        updateStatus = "checking"
+        // Dispatch the simulated network call off the main thread
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+            // Parse the current version from the bundle for comparison
+            let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+            // M8 stub: always report up-to-date (real check wired in M9+)
+            let result: String = "up-to-date"
+            _ = current // suppress unused warning until real check is wired
+            DispatchQueue.main.async {
+                self.updateStatus = result
+            }
+        }
     }
 
     /// Reveal the given path in Finder (opens the parent directory and selects the file).

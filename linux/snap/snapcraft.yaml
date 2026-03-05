@@ -1,0 +1,92 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+#
+# MeedyaManager — Snapcraft manifest
+#
+# Build with:
+#   snapcraft  (produces MeedyaManager_0.9.0_amd64.snap)
+#
+# Publish with:
+#   snapcraft upload --release=stable MeedyaManager_0.9.0_amd64.snap
+#
+# Runtime: core22 (Ubuntu 22.04 LTS base) with GNOME 42 extension
+
+name: meedyamanager
+version: "0.9.0"
+summary: Smart cross-platform media file manager and auto-organizer
+description: |
+  MeedyaManager monitors your media folders and automatically renames and
+  organizes audio and video files according to user-defined rules, similar
+  to MusicBee's auto-organize feature.
+
+  Features:
+  - Real-time folder monitoring
+  - Metadata lookup from 19 providers (MusicBrainz, Discogs, TMDB, and more)
+  - Cloud storage monitoring (OneDrive, Google Drive, Dropbox)
+  - MusicBee-inspired template engine
+  - Cover art display and tag editing
+  - Dry-run preview before executing renames
+
+license: GPL-2.0-or-later
+contact: support@mwbm.co.uk
+website: https://github.com/MWBMPartners/MeedyaManager
+issues: https://github.com/MWBMPartners/MeedyaManager/issues
+source-code: https://github.com/MWBMPartners/MeedyaManager
+
+# Ubuntu 22.04 LTS base for maximum compatibility
+base: core22
+confinement: strict
+grade: stable
+
+# GNOME extension provides GTK4 and libadwaita runtime libraries
+extensions:
+  # gnome extension brings GTK4, libadwaita, and GLib without bundling them
+  - name: gnome
+    version: "42"
+
+apps:
+  meedyamanager:
+    command: bin/mm-gtk
+    desktop: usr/share/applications/com.mwbm.MeedyaManager.desktop
+    extensions: [gnome]
+    plugs:
+      # Access user home directory for media file monitoring
+      - home
+      # Outbound network for metadata lookup and update check
+      - network
+      # GPU access for hardware-accelerated rendering
+      - opengl
+      # Secret service for API key storage
+      - password-manager-service
+
+  # CLI companion binary
+  meedya-cli:
+    command: bin/mm-cli
+    plugs:
+      - home
+      - network
+
+parts:
+  mm-gtk:
+    plugin: rust
+    source: .
+    # Build only the GTK4 frontend in release mode
+    rust-features: []
+    build-environment:
+      - CARGO_PROFILE_RELEASE_LTO: "true"
+      - CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+    override-build: |
+      # Install GTK4 dev headers needed by the gtk4-rs build script
+      apt-get install -y libgtk-4-dev libadwaita-1-dev
+      craftctl default
+      # Build and install the GTK4 binary
+      cargo build --release -p mm-gtk
+      install -Dm755 target/release/mm-gtk ${CRAFT_PART_INSTALL}/bin/mm-gtk
+      cargo build --release -p mm-cli
+      install -Dm755 target/release/mm-cli ${CRAFT_PART_INSTALL}/bin/mm-cli
+
+  desktop-files:
+    plugin: dump
+    source: linux/flatpak
+    organize:
+      com.mwbm.MeedyaManager.desktop: usr/share/applications/com.mwbm.MeedyaManager.desktop
+      com.mwbm.MeedyaManager.metainfo.xml: usr/share/metainfo/com.mwbm.MeedyaManager.metainfo.xml

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
+<!-- MeedyaManager — AppStream MetaInfo for Flathub -->
+<component type="desktop-application">
+    <id>com.mwbm.MeedyaManager</id>
+
+    <name>MeedyaManager</name>
+    <summary>Smart cross-platform media file manager and auto-organizer</summary>
+
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-2.0-or-later</project_license>
+
+    <description>
+        <p>
+            MeedyaManager is a cross-platform media file management application that
+            automatically monitors folders, reads metadata from audio and video files,
+            and renames or organizes them according to user-defined rules — similar to
+            MusicBee's auto-organize feature, but available on Windows, macOS, and Linux.
+        </p>
+        <p>Features:</p>
+        <ul>
+            <li>Real-time folder monitoring with file-lock awareness</li>
+            <li>4-level media classification (group / format / class / quality)</li>
+            <li>MusicBee-inspired template engine with nested conditions</li>
+            <li>Metadata lookup from 19 providers (MusicBrainz, Discogs, TMDB, and more)</li>
+            <li>Cloud storage monitoring (OneDrive, Google Drive, Dropbox)</li>
+            <li>Cover art display and tag editing</li>
+            <li>Dry-run preview before executing any renames</li>
+        </ul>
+    </description>
+
+    <launchable type="desktop-id">com.mwbm.MeedyaManager.desktop</launchable>
+
+    <url type="homepage">https://github.com/MWBMPartners/MeedyaManager</url>
+    <url type="bugtracker">https://github.com/MWBMPartners/MeedyaManager/issues</url>
+    <url type="vcs-browser">https://github.com/MWBMPartners/MeedyaManager</url>
+
+    <developer id="com.mwbm">
+        <name>MWBM Partners Ltd (d/b/a MW Services)</name>
+    </developer>
+
+    <content_rating type="oars-1.1" />
+
+    <releases>
+        <release version="0.9.0" date="2026-03-05">
+            <description>
+                <p>Milestone 8 — Packaging and Public Beta.</p>
+                <ul>
+                    <li>Flatpak, Snap, AppImage, and .deb packaging</li>
+                    <li>Auto-update version checker</li>
+                    <li>Update notifications in all platform UIs</li>
+                </ul>
+            </description>
+        </release>
+        <release version="0.8.0" date="2026-03-05">
+            <description>
+                <p>Milestone 7 — Cloud Storage Monitoring (OneDrive, Google Drive, Dropbox).</p>
+            </description>
+        </release>
+    </releases>
+
+    <screenshots>
+        <screenshot type="default">
+            <caption>Library / Scan panel with rename preview</caption>
+            <image>https://raw.githubusercontent.com/MWBMPartners/MeedyaManager/main/docs/screenshots/library.png</image>
+        </screenshot>
+    </screenshots>
+
+    <categories>
+        <category>AudioVideo</category>
+        <category>Audio</category>
+        <category>Video</category>
+        <category>FileManager</category>
+    </categories>
+</component>

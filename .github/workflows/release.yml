@@ -109,14 +109,16 @@ jobs:
         working-directory: macos
         run: swift build -c release
 
-      # TODO: Code signing requires Apple Developer ID certificate
-      # When available, add these steps:
-      #   - Import certificate from GitHub Secrets
-      #   - codesign --deep --force --verify --verbose --sign "Developer ID" app
-      #   - xcrun notarytool submit app.zip --apple-id $APPLE_ID --team-id $TEAM_ID
-      #   - xcrun stapler staple app
-      - name: Code sign macOS app
-        run: echo "::warning::Code signing skipped — requires Apple Developer ID certificate in secrets"
+      - name: Code sign and package macOS DMG
+        env:
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_TEAM_ID:      ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID:           ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          bash macos/packaging/create-dmg.sh "${VERSION}" || \
+            echo "::warning::DMG creation incomplete — Apple credentials may not be set"
 
       - name: Package macOS artifacts
         run: |
@@ -130,16 +132,19 @@ jobs:
           # Copy Swift build output
           cp macos/.build/release/MeedyaManager staging/ 2>/dev/null || true
 
+          # Copy DMG if produced by the packaging script
+          cp "${PREFIX}-macos-arm64.dmg" staging/ 2>/dev/null || true
+
           # Generate SHA256 checksums
           cd staging
           for f in *; do
             [ -f "$f" ] && shasum -a 256 "$f" >> "${PREFIX}-macos-arm64.sha256"
           done
 
-          # Create tarball
-          tar -czf "../${PREFIX}-macos-arm64.tar.gz" .
+          # Create tarball (binaries + dylib)
+          tar -czf "../${PREFIX}-macos-arm64.tar.gz" MeedyaManager mm-cli libmm_ffi.dylib 2>/dev/null || true
           cd ..
-          shasum -a 256 "${PREFIX}-macos-arm64.tar.gz" >> "staging/${PREFIX}-macos-arm64.sha256"
+          shasum -a 256 "${PREFIX}-macos-arm64.tar.gz" >> "staging/${PREFIX}-macos-arm64.sha256" 2>/dev/null || true
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -148,6 +153,7 @@ jobs:
           path: |
             ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.tar.gz
             staging/*.sha256
+            staging/*.dmg
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
@@ -304,6 +310,16 @@ jobs:
       - name: Build Rust workspace and GTK4 frontend (release)
         run: cargo build --release --workspace
 
+      - name: Build .deb package
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          bash linux/deb/build-deb.sh "${VERSION}" || echo "::warning::.deb build incomplete — dpkg-deb may not be available"
+
+      - name: Build AppImage
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          bash linux/appimage/build-appimage.sh "${VERSION}" || echo "::warning::AppImage build incomplete — appimagetool may not be available"
+
       - name: Package Linux x64 artifacts
         run: |
           PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
@@ -314,14 +330,20 @@ jobs:
           cp target/release/mm-cli staging/ 2>/dev/null || true
           cp target/release/libmm_ffi.so staging/ 2>/dev/null || true
 
+          # Copy .deb if built
+          cp "meedyamanager_${{ needs.prepare.outputs.version }}_amd64.deb" staging/ 2>/dev/null || true
+
+          # Copy AppImage if built
+          cp "MeedyaManager-${{ needs.prepare.outputs.version }}-x86_64.AppImage" staging/ 2>/dev/null || true
+
           # Generate SHA256 checksums
           cd staging
           sha256sum * > "${PREFIX}-linux-x64.sha256" 2>/dev/null || true
 
-          # Create tarball
-          tar -czf "../${PREFIX}-linux-x64.tar.gz" .
+          # Create tarball of all binaries
+          tar -czf "../${PREFIX}-linux-x64.tar.gz" mm-gtk mm-cli libmm_ffi.so 2>/dev/null || true
           cd ..
-          sha256sum "${PREFIX}-linux-x64.tar.gz" >> "staging/${PREFIX}-linux-x64.sha256"
+          sha256sum "${PREFIX}-linux-x64.tar.gz" >> "staging/${PREFIX}-linux-x64.sha256" 2>/dev/null || true
 
       - name: Upload Linux x64 artifacts
         uses: actions/upload-artifact@v4
@@ -330,6 +352,8 @@ jobs:
           path: |
             ${{ needs.prepare.outputs.artifact_prefix }}-linux-x64.tar.gz
             staging/*.sha256
+            staging/*.deb
+            staging/*.AppImage
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------

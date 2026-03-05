@@ -9,6 +9,7 @@ members = [
     "crates/mm-core",
     "crates/mm-providers",
     "crates/mm-cloud",
+    "crates/mm-update",
     "crates/mm-export",
     "crates/mm-server",
     "crates/mm-cli",
@@ -22,6 +23,7 @@ default-members = [
     "crates/mm-core",
     "crates/mm-providers",
     "crates/mm-cloud",
+    "crates/mm-update",
     "crates/mm-export",
     "crates/mm-server",
     "crates/mm-cli",
@@ -30,7 +32,7 @@ default-members = [
 
 # Shared dependency versions — all crates inherit these
 [workspace.package]
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 authors = ["MWBM Partners Ltd <dev@mwbm.co.uk>"]
 license = "GPL-2.0-or-later"
@@ -103,6 +105,9 @@ uuid = { version = "1", features = ["v4"] }
 
 # Unix process checking (for lock file PID verification)
 libc = "0.2"
+
+# Semantic version comparison (mm-update)
+semver = { version = "1", features = ["serde"] }
 
 # Testing
 wiremock = "0.6"

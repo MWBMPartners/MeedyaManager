@@ -1,11 +1,12 @@
 // (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 //
-// MeedyaManager — Main Application Window (M6)
+// MeedyaManager — Main Application Window (M8)
 //
 // Constructs the top-level AdwApplicationWindow with:
 //   - AdwHeaderBar (title + dark/light toggle + about button)
-//   - AdwTabBar (tab navigation)
-//   - AdwTabView (hosts five panel tabs)
+//   - AdwBanner   (update notification — shown when a newer version is available)
+//   - AdwTabBar   (tab navigation)
+//   - AdwTabView  (hosts six panel tabs)
 //   - AdwToastOverlay (notification toasts over the tab content)
 //
 // Tab layout (M7):
@@ -109,6 +110,26 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     header_bar.pack_end(&about_btn);
 
     // -----------------------------------------------------------------------
+    // AdwBanner — update notification (hidden by default; shown when a newer
+    // version is detected by the background update checker in mm-update)
+    // -----------------------------------------------------------------------
+    let update_banner = adw::Banner::new(
+        "A new version of MeedyaManager is available."
+    );
+    // "Download" button opens the GitHub releases page in the default browser
+    update_banner.set_button_label(Some("Download"));
+    update_banner.connect_button_clicked(|_| {
+        // Open the releases page using the GIO app launcher
+        let _ = gtk::gio::AppInfo::launch_default_for_uri(
+            "https://github.com/MWBMPartners/MeedyaManager/releases/latest",
+            gtk::gio::AppLaunchContext::NONE,
+        );
+    });
+    // Banner starts hidden; set to `true` once update_checker confirms a newer
+    // release is available (wired in mm-update integration, M9+).
+    update_banner.set_revealed(false);
+
+    // -----------------------------------------------------------------------
     // AdwToastOverlay + AdwToolbarView + AdwApplicationWindow
     // -----------------------------------------------------------------------
     let toast_overlay = adw::ToastOverlay::new();
@@ -116,6 +137,9 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header_bar);
+    // The update banner sits between the header bar and the tab strip so it
+    // draws attention without obscuring navigation
+    toolbar_view.add_top_bar(&update_banner);
     toolbar_view.add_top_bar(&tab_bar);
     toolbar_view.set_content(Some(&toast_overlay));
 

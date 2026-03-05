@@ -8,6 +8,49 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v0.9.0] — 2026-03-05 — Packaging & Public Beta (M8)
+
+> **Milestone 8** — Packaging & Public Beta. Adds the `mm-update` auto-update crate, Linux packaging manifests (Flatpak, Snap, AppImage, .deb), macOS packaging (entitlements, DMG creation script), Windows WinGet manifest, update notification UI on all three platforms, and updated release.yml with full platform packaging steps. ~30 new tests.
+
+### Added
+
+**Rust (`mm-update` crate):**
+- `release.rs` — `GitHubRelease` (Deserialize from GitHub API), `ReleaseInfo` (Serialize+Deserialize, `from_github()` strips `v` prefix, truncates changelog to 500 chars). 9 unit tests.
+- `checker.rs` — `UpdateChecker` with `current_version` (semver::Version), `owner/repo/include_prerelease/api_base`. `is_newer()`, `latest_release_url()`, `releases_list_url()`, async `check()`. 14 unit tests.
+- `lib.rs` — `UpdateError` enum (VersionParse, Network, Parse, NoReleasesFound, RateLimited{retry_after_secs}), `is_retryable()`. 10 integration tests.
+- `Cargo.toml` — Dependencies: reqwest, serde, serde_json, tokio, thiserror, tracing, semver (all workspace).
+
+**Linux Packaging:**
+- `linux/flatpak/com.mwbm.MeedyaManager.yaml` — Flatpak manifest: GNOME 47 runtime, rust-stable SDK extension, finish-args (home, wayland/x11, dri, network, secrets), cargo vendor offline build.
+- `linux/flatpak/com.mwbm.MeedyaManager.desktop` — Freedesktop .desktop entry (AudioVideo category, Exec=mm-gtk, StartupWMClass).
+- `linux/flatpak/com.mwbm.MeedyaManager.metainfo.xml` — AppStream MetaInfo: description, release history, categories, screenshot, OARS content rating.
+- `linux/snap/snapcraft.yaml` — Snapcraft manifest: `core22` base, GNOME 42 extension, strict confinement, two apps (meedyamanager + meedya-cli), rust plugin.
+- `linux/appimage/build-appimage.sh` — AppImage build script: cargo build, AppDir skeleton (AppRun, .desktop, metainfo), appimagetool invocation, sha256sum.
+- `linux/deb/build-deb.sh` — Debian package build script: cargo build, dpkg-deb tree assembly, dpkg-deb --build.
+- `linux/deb/control` — Debian control file: `Depends: libgtk-4-1 (>= 4.12), libadwaita-1-0 (>= 1.4), libglib2.0-0 (>= 2.76)`.
+
+**macOS Packaging:**
+- `macos/MeedyaManager.entitlements` — App Sandbox plist: user-selected files r/w, music/movies/pictures r/w, network client, keychain, hardened runtime.
+- `macos/packaging/create-dmg.sh` — DMG creation script: cargo build mm-ffi, swift build, .app bundle assembly, install_name_tool rpath fix, codesign with entitlements + hardened runtime, create-dmg or hdiutil fallback, xcrun notarytool submit + stapler.
+
+**Windows Packaging:**
+- `windows/winget/manifests/m/MWBM/MeedyaManager/0.9.0/MWBM.MeedyaManager.yaml` — WinGet singleton manifest (v1.6.0 schema): x64 + arm64 MSIX installers, MinimumOSVersion 10.0.19041.0.
+
+**Update Notification UI:**
+- GTK4: `AdwBanner` in `main_window.rs` above the tab bar — hidden by default; "Download" button opens GitHub releases in the default browser.
+- macOS: "Updates" section in `SettingsView.swift` — Check button, status text (idle/checking/up-to-date/available), Download `Link` when update found.
+- Windows: `InfoBar` in `MainWindow.xaml` content area + `CheckForUpdatesAsync()` in `MainWindow.xaml.cs` — 2 s simulated background check, `HyperlinkButton` to releases page.
+
+**CI/CD:**
+- `.github/workflows/release.yml` — Added macOS DMG creation step (`create-dmg.sh`) + upload of `staging/*.dmg`; Linux `.deb` build step + AppImage build step; uploads include `staging/*.deb` + `staging/*.AppImage`.
+
+### Changed
+
+- Version bumped `0.8.0` → `0.9.0` across `Cargo.toml`, `Info.plist`, `Package.appxmanifest`.
+- `Cargo.toml` — Added `semver = { version = "1", features = ["serde"] }` to workspace dependencies; `crates/mm-update` added to members and default-members.
+
+---
+
 ## [v0.8.0] — 2026-03-05 — Cloud Storage Monitoring (M7)
 
 > **Milestone 7** — Cloud Storage Monitoring. Adds the `mm-cloud` crate with `CloudProvider` trait, `OneDriveProvider`, `GoogleDriveProvider`, `DropboxProvider`, `SyncManager`, and stubs for MEGA and iCloud. Cloud tab added on all three platforms (GTK4, macOS SwiftUI, WinUI 3). ~90 new tests.

@@ -61,8 +61,36 @@
             </NavigationViewItem>
         </NavigationView.FooterMenuItems>
 
-        <!-- Content area — hosts the currently selected page -->
-        <Frame x:Name="ContentFrame" />
+        <!-- Content area — update InfoBar + page frame stacked vertically -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <!-- Update notification bar (auto-height; collapses when not visible) -->
+                <RowDefinition Height="Auto" />
+                <!-- Main page content -->
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Update notification InfoBar (M8) — shown when a newer version
+                 is detected by the UpdateChecker background task.
+                 IsOpen is toggled from MainWindow.xaml.cs after the check. -->
+            <InfoBar
+                x:Name="UpdateInfoBar"
+                Grid.Row="0"
+                IsOpen="False"
+                Severity="Informational"
+                Title="Update available"
+                Message="A new version of MeedyaManager is available. Download it from GitHub."
+                IsClosable="True">
+                <InfoBar.ActionButton>
+                    <HyperlinkButton
+                        Content="Download"
+                        NavigateUri="https://github.com/MWBMPartners/MeedyaManager/releases/latest" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <!-- Page content frame — navigates between Library, Rules, etc. -->
+            <Frame x:Name="ContentFrame" Grid.Row="1" />
+        </Grid>
 
     </NavigationView>
 

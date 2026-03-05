@@ -5,8 +5,11 @@
 // Configures the NavigationView and routes selection changes to the
 // correct page via ContentFrame.Navigate().
 // Applies Mica backdrop for the translucent Windows 11 material effect.
+// Runs a background update check on startup (M8) and shows UpdateInfoBar
+// when a newer release is available on GitHub.
 
 using System;
+using System.Threading.Tasks;
 using MeedyaManager.Views;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
@@ -38,6 +41,38 @@ public sealed partial class MainWindow : Window
 
         // Select the first navigation item (Library/Scan) by default
         NavView.SelectedItem = NavView.MenuItems[0];
+
+        // Kick off a background update check (M8).
+        // Uses Task.Run so the UI is never blocked. The InfoBar is made visible
+        // on the UI thread via DispatcherQueue when an update is found.
+        _ = CheckForUpdatesAsync();
+    }
+
+    /// <summary>
+    /// Performs an asynchronous update check against the GitHub Releases API
+    /// (via mm-update P/Invoke, wired in M9+). For M8 this is a stub that
+    /// always reports no update — it exercises the UI path without a network call.
+    /// </summary>
+    private async Task CheckForUpdatesAsync()
+    {
+        // Simulate the latency of a network call so the UI stays responsive
+        await Task.Delay(millisecondsDelay: 2000).ConfigureAwait(false);
+
+        // M8 stub: production code will call mm_update_check() via P/Invoke
+        // and compare the returned version to the assembly's own version string.
+        bool updateAvailable = false;   // always false until M9 wires the FFI
+        string latestVersion  = string.Empty;
+
+        if (updateAvailable)
+        {
+            // Marshal back to the UI thread before touching XAML elements
+            this.DispatcherQueue.TryEnqueue(() =>
+            {
+                UpdateInfoBar.Message =
+                    $"MeedyaManager {latestVersion} is available. Download it from GitHub.";
+                UpdateInfoBar.IsOpen = true;
+            });
+        }
     }
 
     /// <summary>

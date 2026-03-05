@@ -1,0 +1,69 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+#
+# MeedyaManager — WinGet Package Manifest (Singleton)
+#
+# Submit to WinGet community repository:
+#   https://github.com/microsoft/winget-pkgs
+#
+# Validation:
+#   winget validate --manifest windows/winget/manifests/m/MWBM/MeedyaManager/0.9.0/
+#
+# Installation (after submission):
+#   winget install MWBM.MeedyaManager
+
+PackageIdentifier: MWBM.MeedyaManager
+PackageVersion: 0.9.0
+PackageName: MeedyaManager
+Publisher: MWBM Partners Ltd
+PublisherUrl: https://github.com/MWBMPartners/MeedyaManager
+PublisherSupportUrl: https://github.com/MWBMPartners/MeedyaManager/issues
+Author: MWBM Partners Ltd (d/b/a MW Services)
+License: GPL-2.0-or-later
+LicenseUrl: https://github.com/MWBMPartners/MeedyaManager/blob/main/LICENSE
+Copyright: (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+ShortDescription: Smart cross-platform media file manager and auto-organizer
+Description: >
+  MeedyaManager monitors your media folders and automatically renames and
+  organizes audio and video files according to user-defined rules, similar
+  to MusicBee's auto-organize feature.
+
+  Features:
+  - Real-time folder monitoring with file-lock awareness
+  - Metadata lookup from 19 providers (MusicBrainz, Discogs, TMDB, and more)
+  - Cloud storage monitoring (OneDrive, Google Drive, Dropbox)
+  - MusicBee-inspired template engine with nested conditions
+  - Cover art display and tag editing
+  - Dry-run preview before executing renames
+Moniker: meedyamanager
+Tags:
+  - media
+  - music
+  - video
+  - organizer
+  - metadata
+  - tags
+  - rename
+  - audio
+PackageUrl: https://github.com/MWBMPartners/MeedyaManager
+ReleaseNotes: See https://github.com/MWBMPartners/MeedyaManager/releases/tag/v0.9.0
+ReleaseNotesUrl: https://github.com/MWBMPartners/MeedyaManager/releases/tag/v0.9.0
+
+Installers:
+  # Windows x64 MSIX package
+  - Architecture: x64
+    InstallerType: msix
+    InstallerUrl: https://github.com/MWBMPartners/MeedyaManager/releases/download/v0.9.0/MeedyaManager-0.9.0-windows-x64.msix
+    InstallerSha256: placeholder-sha256-update-before-submission
+    MinimumOSVersion: "10.0.19041.0"
+    Scope: user
+
+  # Windows arm64 MSIX package
+  - Architecture: arm64
+    InstallerType: msix
+    InstallerUrl: https://github.com/MWBMPartners/MeedyaManager/releases/download/v0.9.0/MeedyaManager-0.9.0-windows-arm64.msix
+    InstallerSha256: placeholder-sha256-update-before-submission
+    MinimumOSVersion: "10.0.19041.0"
+    Scope: user
+
+ManifestType: singleton
+ManifestVersion: 1.6.0
