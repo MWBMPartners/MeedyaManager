@@ -163,6 +163,11 @@ jobs:
     name: Windows x64
     runs-on: windows-latest
     needs: prepare
+    # Expose signing secret as env var so it can be checked in `if:` conditions
+    # (the `secrets` context is not available directly in `if:` expressions)
+    env:
+      WINDOWS_CERT_PFX:      ${{ secrets.WINDOWS_CERT_PFX }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -189,12 +194,43 @@ jobs:
         working-directory: windows
         run: dotnet publish -c Release -r win-x64 --self-contained
 
-      # TODO: Code signing requires a Windows code signing certificate
-      # When available, add these steps:
-      #   - Import PFX certificate from GitHub Secrets
-      #   - signtool sign /fd SHA256 /f cert.pfx /p $PASSWORD app.exe
-      - name: Code sign Windows binaries
-        run: echo "::warning::Code signing skipped — requires code signing certificate in secrets"
+      # Windows Authenticode signing via signtool.exe.
+      # Requires WINDOWS_CERT_PFX (Base64-encoded PFX) and
+      # WINDOWS_CERT_PASSWORD in GitHub repository secrets.
+      # See docs/Dev_Notes.md — "GitHub Secrets Configuration" for setup.
+      - name: Code sign Windows binaries (x64)
+        if: env.WINDOWS_CERT_PFX != ''
+        shell: pwsh
+        run: |
+          # Decode the Base64-encoded PFX file from the secret
+          $pfxBytes = [Convert]::FromBase64String($env:WINDOWS_CERT_PFX)
+          $pfxPath  = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+
+          # Sign all Windows executables and DLLs in the publish output
+          $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
+          $targets  = Get-ChildItem -Recurse -Include "*.exe","*.dll" `
+                        -Path "windows/MeedyaManager/bin/Release","target/release" `
+                        -ErrorAction SilentlyContinue
+
+          foreach ($target in $targets) {
+            & $signtool sign `
+              /fd SHA256 `
+              /td SHA256 `
+              /tr "http://timestamp.digicert.com" `
+              /f $pfxPath `
+              /p $env:WINDOWS_CERT_PASSWORD `
+              $target.FullName
+            Write-Output "Signed: $($target.Name)"
+          }
+
+          # Clean up PFX from temp dir
+          Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          Write-Output "Code signing complete"
+
+      - name: Code sign Windows binaries (x64, skipped)
+        if: env.WINDOWS_CERT_PFX == ''
+        run: echo "::warning::WINDOWS_CERT_PFX not set — code signing skipped (see docs/Dev_Notes.md)"
 
       - name: Package Windows x64 artifacts
         shell: bash
@@ -228,6 +264,9 @@ jobs:
     name: Windows arm64
     runs-on: windows-latest
     needs: prepare
+    env:
+      WINDOWS_CERT_PFX:      ${{ secrets.WINDOWS_CERT_PFX }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -256,8 +295,27 @@ jobs:
         working-directory: windows
         run: dotnet publish -c Release -r win-arm64 --self-contained
 
-      - name: Code sign Windows binaries
-        run: echo "::warning::Code signing skipped — requires code signing certificate in secrets"
+      - name: Code sign Windows binaries (arm64)
+        if: env.WINDOWS_CERT_PFX != ''
+        shell: pwsh
+        run: |
+          $pfxBytes = [Convert]::FromBase64String($env:WINDOWS_CERT_PFX)
+          $pfxPath  = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+          $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
+          $targets  = Get-ChildItem -Recurse -Include "*.exe","*.dll" `
+                        -Path "windows/MeedyaManager/bin/Release","target/aarch64-pc-windows-msvc/release" `
+                        -ErrorAction SilentlyContinue
+          foreach ($target in $targets) {
+            & $signtool sign /fd SHA256 /td SHA256 `
+              /tr "http://timestamp.digicert.com" `
+              /f $pfxPath /p $env:WINDOWS_CERT_PASSWORD $target.FullName
+          }
+          Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+
+      - name: Code sign Windows binaries (arm64, skipped)
+        if: env.WINDOWS_CERT_PFX == ''
+        run: echo "::warning::WINDOWS_CERT_PFX not set — code signing skipped (see docs/Dev_Notes.md)"
 
       - name: Package Windows arm64 artifacts
         shell: bash

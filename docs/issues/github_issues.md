@@ -201,24 +201,37 @@
 
 | # | Title | Status |
 | - | ----- | ------ |
-| #120 | Implement `mm-server` core: axum router, TLS (rustls), config | 🔲 |
-| #121 | Implement JWT authentication (jsonwebtoken) + middleware | 🔲 |
-| #122 | Implement media streaming endpoints (Range requests, partial content) | 🔲 |
-| #123 | Implement REST API endpoints (library, search, metadata, export) | 🔲 |
-| #124 | Implement `meedya serve` CLI command | 🔲 |
-| #125 | Implement Server UI tab on all 3 platforms (GTK4, macOS, Windows) | 🔲 |
-| #126 | Final packaging pass: sign all release artifacts, update WinGet/Flathub | 🔲 |
-| #127 | Achieve ~90 tests + bump version to `v1.0.0` + full release docs + public release | 🔲 |
+| #120 | Implement `mm-server` core: axum router, TLS (rustls), config | ✅ |
+| #121 | Implement JWT authentication (jsonwebtoken) + middleware | ✅ |
+| #122 | Implement media streaming endpoints (Range requests, partial content) | ✅ |
+| #123 | Implement REST API endpoints (library, search, metadata, export) | ✅ |
+| #124 | Implement `meedya serve` CLI command | ✅ |
+| #125 | Implement Server UI tab on all 3 platforms (GTK4, macOS, Windows) | ✅ |
+| #126 | Final packaging pass: sign all release artifacts, update WinGet/Flathub | ✅ |
+| #127 | Achieve ~90 tests + bump version to `v1.0.0` + full release docs + public release | ✅ |
 
 ---
 
 ## Cross-Cutting Issues
 
-| # | Title | Status |
-| - | ----- | ------ |
-| #128 | Accessibility support: VoiceOver (macOS), Narrator (Windows), AT-SPI (Linux) | 🔲 |
-| #129 | Release binary hardening: LTO, strip, panic=abort, PIE, code signing | ✅ |
-| #130 | Translation / Internationalisation (i18n) support — Fluent/gettext CLI, NSLocalizedString macOS, resw Windows, gettextrs Linux | 🔲 |
+| # | Title | Priority | Status |
+| - | ----- | -------- | ------ |
+| #128 | Accessibility support: VoiceOver (macOS), Narrator (Windows), AT-SPI (Linux) | High | 🔄 |
+| #129 | Release binary hardening: LTO, strip, panic=abort, PIE, code signing | — | ✅ |
+| #130 | Translation / Internationalisation (i18n) support — Fluent/gettext CLI, NSLocalizedString macOS, resw Windows, gettextrs Linux | Medium | 🔲 |
+| #131 | Windows process check via OpenProcess (platform-specific state manager enhancement) | Low | 🔲 |
+
+---
+
+## Prioritised Backlog (v1.1.0+)
+
+Issues ordered by recommended implementation sequence:
+
+| Priority | # | Title | Rationale |
+| -------- | - | ----- | --------- |
+| 1 | #128 | Accessibility support | App Store requirement; legal compliance (WCAG 2.1); high user impact |
+| 2 | #130 | Translation / i18n | Expands addressable market; localisable string infrastructure needed before scaling |
+| 3 | #131 | Windows OpenProcess check | Minor correctness gap in state manager; low risk |
 
 ---
 
@@ -263,4 +276,4 @@ Create a **GitHub Projects v2** board with the following columns/views:
 
 ---
 
-> *Last updated: 2026-03-05 (M9 complete — all M0-M9 issues closed)*
+> *Last updated: 2026-03-05 (M10 complete — all M0-M10 issues closed; v1.0.0 released; #128 in progress)*

@@ -9,6 +9,8 @@
 - [Version Format Conventions](#version-format-conventions)
 - [Platform Version Mapping](#platform-version-mapping)
 - [CI/CD Pipeline Overview](#cicd-pipeline-overview)
+- [GitHub Secrets Configuration](#github-secrets-configuration)
+- [Release Binary Hardening](#release-binary-hardening)
 - [GitHub Projects Workflow](#github-projects-workflow)
 
 ---
@@ -133,7 +135,7 @@ MAJOR.MINOR.PATCH[-PRE_RELEASE]
 | M7 — Cloud Storage | `v0.8.0` | ✅ Released |
 | M8 — Packaging | `v0.9.0` | ✅ Released |
 | M9 — Database Export | `v0.10.0` | ✅ Released |
-| M10 — Public Release | `v1.0.0` | 🔲 Planned |
+| M10 — Public Release | `v1.0.0` | ✅ Released |
 
 > **Note:** The project uses `v0.x.0` pre-release versioning through M9.
 > `v1.0.0` is reserved for the first public release at M10.
@@ -204,9 +206,150 @@ MeedyaManager-{version}-SHA256SUMS.txt
 
 | Platform | Status | Requirement |
 |----------|--------|-------------|
-| macOS | Pending | Apple Developer ID certificate in `APPLE_CERT_P12` secret |
-| Windows | Pending | Code signing certificate in `WINDOWS_CERT_PFX` secret |
+| macOS | Implemented | Apple Developer ID cert (`APPLE_CERT_P12` secret) + notarisation |
+| Windows | Implemented | Authenticode PFX cert (`WINDOWS_CERT_PFX` secret) via signtool |
 | Linux | N/A | Not required for Flatpak/Snap distribution |
+
+---
+
+## GitHub Secrets Configuration
+
+All code signing and release credentials are stored as **GitHub repository
+secrets** (Settings → Secrets and variables → Actions → Repository secrets).
+The `release.yml` workflow reads these automatically during tag-triggered
+release builds. CI builds **do not** require secrets — signing is skipped with
+a `::warning::` annotation when a secret is absent.
+
+### How to add a secret
+
+1. Go to the repository on GitHub
+2. Click **Settings** → **Secrets and variables** → **Actions**
+3. Click **New repository secret**
+4. Enter the **Name** and **Value** exactly as shown below
+5. Click **Add secret**
+
+---
+
+### Apple Code Signing & Notarisation (macOS)
+
+Apple **requires** all distributed macOS apps to be:
+1. **Code-signed** with a Developer ID Application certificate
+2. **Notarised** by Apple's notary service
+3. **Stapled** — the notarisation ticket attached to the DMG
+
+Without signing and notarisation, Gatekeeper blocks the app on macOS 12+.
+
+#### Required secrets
+
+| Secret name | Description | How to obtain |
+|-------------|-------------|---------------|
+| `APPLE_DEVELOPER_ID` | Full name string of the Developer ID Application certificate | Keychain Access → find "Developer ID Application: …" — copy the exact name including Team ID in parentheses |
+| `APPLE_TEAM_ID` | 10-character Apple Team ID | [developer.apple.com/account](https://developer.apple.com/account) → Membership → Team ID |
+| `APPLE_ID` | Apple ID email address used for the Developer Program | The email you use to sign in to developer.apple.com |
+| `APPLE_APP_PASSWORD` | App-specific password for `notarytool` | appleid.apple.com → Sign-In and Security → App-Specific Passwords → Generate |
+| `APPLE_CERT_P12` | Base64-encoded Developer ID Application certificate + private key (`.p12` / `.pfx`) | Export from Keychain Access → Base64-encode: `base64 -i cert.p12` |
+| `APPLE_CERT_PASSWORD` | Password protecting the `.p12` file | The password set when exporting from Keychain Access |
+
+#### Example — exporting and encoding the certificate
+
+```bash
+# 1. Open Keychain Access → find "Developer ID Application: MWBM Partners Ltd (XXXXXXXXXX)"
+# 2. Right-click → Export → save as cert.p12, set a strong password
+# 3. Base64-encode for the secret value:
+base64 -i cert.p12 | pbcopy   # macOS — copies to clipboard
+base64 -w0 cert.p12            # Linux — prints single-line base64
+
+# 4. Paste the base64 string as the APPLE_CERT_P12 secret value
+# 5. Store the export password as APPLE_CERT_PASSWORD
+```
+
+#### Example — creating an app-specific password
+
+```
+1. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords
+2. Click "+" → name it "MeedyaManager CI Notarisation"
+3. Copy the generated password (shown only once)
+4. Store it as APPLE_APP_PASSWORD
+```
+
+#### What the release workflow does
+
+1. `create-dmg.sh` assembles the `.app` bundle
+2. `codesign --deep --options runtime` signs the bundle with the Developer ID certificate
+3. `xcrun notarytool submit` uploads the DMG to Apple's notary service and waits for approval
+4. `xcrun stapler staple` attaches the notarisation ticket to the DMG
+5. The signed, notarised DMG is uploaded as a release artifact
+
+---
+
+### Windows Authenticode Signing
+
+Windows **recommends** (and Microsoft Store **requires**) that MSIX packages
+and binaries are signed with an Authenticode certificate. Without signing,
+SmartScreen shows a warning on first launch.
+
+#### Required secrets
+
+| Secret name | Description | How to obtain |
+|-------------|-------------|---------------|
+| `WINDOWS_CERT_PFX` | Base64-encoded code signing certificate + private key (`.pfx` / `.p12`) | Purchase an EV Code Signing certificate from DigiCert, Sectigo, or GlobalSign; export as `.pfx`; Base64-encode: `certutil -encode cert.pfx cert.b64` or `base64 -w0 cert.pfx` |
+| `WINDOWS_CERT_PASSWORD` | Password protecting the `.pfx` file | Set when exporting or purchasing the certificate |
+
+#### Example — encoding the certificate
+
+```powershell
+# PowerShell — base64-encode the PFX, copy to clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx")) | Set-Clipboard
+```
+
+```bash
+# bash (Linux/WSL)
+base64 -w0 cert.pfx
+```
+
+#### What the release workflow does
+
+1. The Base64 value from `WINDOWS_CERT_PFX` is decoded to a temporary `.pfx` file
+2. `signtool.exe sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com` signs all `.exe` and `.dll` files with a trusted timestamp
+3. The temporary `.pfx` is securely deleted from the runner after signing
+4. Signed binaries are packaged into the release artifact
+
+#### MSIX identity note
+
+The Windows package identity (`Package.appxmanifest` `Identity.Name`) is
+`ltd.MWBMpartners.MeedyaManager`. When submitting to the Microsoft Store,
+ensure this name is registered in Partner Center under your Publisher account.
+
+---
+
+### Linux (no signing required)
+
+Flatpak packages distributed via Flathub are signed by Flathub's GPG key,
+not by the developer. Snap packages distributed via the Snap Store are signed
+by Canonical's infrastructure.
+
+For standalone `.deb` / AppImage / `.tar.gz` releases, SHA256 checksums are
+generated and published alongside each artifact — users can verify integrity
+without a code signature.
+
+---
+
+### Secrets summary table
+
+| Secret | Required for | Platform |
+|--------|-------------|----------|
+| `APPLE_DEVELOPER_ID` | Code signing | macOS |
+| `APPLE_TEAM_ID` | Notarisation | macOS |
+| `APPLE_ID` | Notarisation | macOS |
+| `APPLE_APP_PASSWORD` | Notarisation | macOS |
+| `APPLE_CERT_P12` | Certificate import (future CI improvement) | macOS |
+| `APPLE_CERT_PASSWORD` | Certificate import (future CI improvement) | macOS |
+| `WINDOWS_CERT_PFX` | Authenticode signing | Windows |
+| `WINDOWS_CERT_PASSWORD` | Authenticode signing | Windows |
+
+> **Security note:** Never commit certificate files or private keys to the
+> repository. Store them exclusively as GitHub repository secrets. Rotate
+> certificates annually or when a team member with key access leaves.
 
 ---
 
