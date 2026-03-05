@@ -17,7 +17,12 @@
       "Bash(cargo fix --lib -p mm-core --allow-dirty)",
       "Bash(cargo test -p mm-core)",
       "Bash(gh issue list --label \"milestone:M1\" --state open --json number,title --jq '.[] | \"\"\\\\\\(.number\\): \\\\\\(.title\\)\"\"')",
-      "Bash(cargo test --package mm-core)"
+      "Bash(cargo test --package mm-core)",
+      "WebFetch(domain:getmusicbee.com)",
+      "WebFetch(domain:marketplace.visualstudio.com)",
+      "Bash(cargo test --package mm-core --lib rule_engine)",
+      "Bash(cargo clippy --package mm-core)",
+      "Bash(cargo fmt --package mm-core -- --check)"
     ],
     "additionalDirectories": [
       "/dev"
