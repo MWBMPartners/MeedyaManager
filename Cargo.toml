@@ -3,6 +3,7 @@
 # License: GPL-2.0-or-later
 
 [workspace]
+resolver = "3"
 # All Rust crates in the monorepo
 members = [
     "crates/mm-core",
@@ -87,6 +88,21 @@ governor = "0.7"
 
 # Fuzzy matching
 fuzzy-matcher = "0.3"
+
+# Platform directories
+dirs = "6"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Hashing (for PII redaction)
+sha2 = "0.10"
+
+# UUID generation (for state management)
+uuid = { version = "1", features = ["v4"] }
+
+# Unix process checking (for lock file PID verification)
+libc = "0.2"
 
 # Testing
 wiremock = "0.6"

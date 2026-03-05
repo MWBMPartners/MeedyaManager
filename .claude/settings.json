@@ -10,7 +10,14 @@
       "Bash(gh issue close 36 --comment \"Completed: release.yml enhanced with version extraction, SHA256 checksums, release notes from CHANGELOG, consistent artifact naming, and pre-release detection\")",
       "Bash(gh issue close 37 --comment \"Completed: version and release-local commands added to justfile\")",
       "Bash(gh issue close 38 --comment \"Completed: docs/Dev_Notes.md created with version management, release process, CI/CD overview, and GitHub Projects workflow documentation\")",
-      "Bash(gh issue close 39 --comment \"Completed: GitHub Wiki pages created — Home, Version Management, Release Process, CI/CD Pipelines\")"
+      "Bash(gh issue close 39 --comment \"Completed: GitHub Wiki pages created — Home, Version Management, Release Process, CI/CD Pipelines\")",
+      "Bash(cargo check -p mm-core)",
+      "Bash(cargo doc -p lofty --no-deps)",
+      "Read(//Users/lance.manasse/.cargo/registry/src/**)",
+      "Bash(cargo fix --lib -p mm-core --allow-dirty)",
+      "Bash(cargo test -p mm-core)",
+      "Bash(gh issue list --label \"milestone:M1\" --state open --json number,title --jq '.[] | \"\"\\\\\\(.number\\): \\\\\\(.title\\)\"\"')",
+      "Bash(cargo test --package mm-core)"
     ],
     "additionalDirectories": [
       "/dev"

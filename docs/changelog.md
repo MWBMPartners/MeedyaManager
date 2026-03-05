@@ -8,6 +8,30 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v2.0.0-alpha.2] — 2026-03-05 — Core Engine (M1)
+
+> **Milestone 1** — Full implementation of `mm-core` crate with 217 tests (214 unit + 3 doc-tests).
+
+### Added
+
+- **Config module** — JSON5 config loading (`settings.json5`), `.env` fallback, `MM_*` environment variable overrides, nested config sections (watch, rename, logging, providers). 22 tests.
+- **Media classification** — 4-level hierarchy: MediaGroup (6), MediaFormat (100+), MediaClass (12), MediaQuality (9). Extension-based and path-based classification, quality detection. 38 tests.
+- **Metadata extraction/writing** — Tag reading/writing via `lofty` (ID3v2, Vorbis, MP4, APE). Cover art embed/remove, multi-value field support, 19 canonical tag keys. 36 tests.
+- **File watcher** — `notify` crate v7 with debouncing, extension filtering, ignore patterns (hidden files, temp files, system files). Initial directory scan. 15 tests.
+- **Rename simulator** — Template-based rename preview, conflict detection, filename sanitization (Windows-compatible), custom character replacements. 16 tests.
+- **Companion file detector** — 9 companion types (subtitles, lyrics, cue sheets, cover art, disc images, NFO, playlists, chapters, booklets). Grouping by stem. 16 tests.
+- **State manager** — JSON state persistence (scan times, counters), atomic writes, single-instance lock file with PID validation (Unix `kill(0)` + stale lock cleanup). 13 tests.
+- **Structured logging** — `tracing` + `tracing-subscriber` with console + JSON file layers, PII redaction (path masking, username redaction, SHA-256 hashing). 13 tests.
+- **Health checks** — Startup verification (config file, watch folders, config dir writable, disk space). Consolidated health report with pass/warn/fail status. 14 tests.
+- **Error types** — `thiserror` with 13 variants, `From` conversions for `std::io::Error`, `serde_json::Error`, `notify::Error`, `lofty::LoftyError`. 5 tests.
+
+### Changed
+
+- Added `resolver = "3"` to workspace `Cargo.toml` (required by edition 2024)
+- Added workspace dependencies: `dirs`, `chrono`, `sha2`, `uuid`, `libc`
+
+---
+
 ## [v2.0.0-alpha.1] — 2026-03-04 — Rust Rewrite (M0: Repository Setup)
 
 > 🏷️ **Milestone 0** — Complete architecture change from Python to Rust core with platform-native UIs. The Python v1.x codebase (M1–M6) is archived at tag `v1.5-M6-python-final`.

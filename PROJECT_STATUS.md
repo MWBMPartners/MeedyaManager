@@ -10,8 +10,8 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M1 — Core Engine (Rust) |
-| **Overall Progress** | **9%** (1 of 11 milestones complete) |
+| **Current Milestone** | M1 — Core Engine (Rust) — **Complete** |
+| **Overall Progress** | **18%** (2 of 11 milestones complete) |
 | **Latest Version** | `v2.0.0-alpha.1` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
@@ -44,13 +44,25 @@
 
 ---
 
-### M1 — Core Engine *(Next)*
+### M1 — Core Engine *(Complete)*
 
-> Target: `v2.0.0-alpha.2`
+> Started: 2026-03-04 | Completed: 2026-03-05 | Version: `v2.0.0-alpha.2`
 
-Rust implementation of core business logic in `mm-core` crate: config loading, media classification, metadata extraction/writing, file watcher, rename simulator, companion tracker, state management, logging, health checks.
+**Progress: 100%** | Issues: #40-#51 | **217 tests** (214 unit + 3 doc-tests)
 
-Target: 200+ unit tests.
+| Deliverable | Status | Tests |
+| ----------- | ------ | ----- |
+| Error types (`thiserror`) | Done | 5 |
+| Config module (JSON5 + .env + env overrides) | Done | 22 |
+| Media classification (4-level: Group/Format/Class/Quality) | Done | 38 |
+| Metadata extraction & writing (`lofty`) | Done | 36 |
+| File watcher (`notify` + debounce + filtering) | Done | 15 |
+| Rename simulator + filename sanitizer | Done | 16 |
+| Companion file detector (subtitles, lyrics, art, cue) | Done | 16 |
+| State manager + single-instance lock file | Done | 13 |
+| Structured logging (tracing + PII redaction) | Done | 13 |
+| Health checks (config, folders, disk, writable) | Done | 14 |
+| Rule engine (stub — deferred to M2) | Stub | 0 |
 
 ---
 
@@ -130,7 +142,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Crate / Component | Path | Status |
 | ----------------- | ---- | ------ |
-| `mm-core` | `crates/mm-core/` | Scaffold (stubs) |
+| `mm-core` | `crates/mm-core/` | **M1 Complete** (217 tests) |
 | `mm-providers` | `crates/mm-providers/` | Scaffold (stubs) |
 | `mm-cloud` | `crates/mm-cloud/` | Scaffold (stubs) |
 | `mm-export` | `crates/mm-export/` | Scaffold (stubs) |
@@ -174,6 +186,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-05 | **M1 Complete** — All mm-core modules implemented: config, classify, metadata, watcher, renamer, companion, state, logging, health. 217 tests passing (Issues #40-#51) |
 | 2026-03-04 | **Version/Release Infrastructure** — Added version-bump workflow, version-sync CI check, enhanced release pipeline with checksums, created GitHub Wiki, Dev_Notes.md (Issues #32-#39) |
 | 2026-03-04 | **M0 Complete** — Archived Python, created Cargo workspace, scaffolded all platforms, set up CI/CD, GitHub Projects v2 (Issues #19-#31) |
 | 2026-03-04 | **v1.x archived** — Tagged `v1.5-M6-python-final` (1007 tests, 6 milestones, 19 providers) |
@@ -182,4 +195,4 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-03-04*
+> *Last updated: 2026-03-05*
