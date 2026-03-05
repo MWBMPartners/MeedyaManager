@@ -40,6 +40,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     case metadata = "Metadata"
     case lookup   = "Lookup"
     case rules    = "Rules"
+    case cloud    = "Cloud"    // M7 — Cloud Storage Monitor
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -51,6 +52,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .metadata: "tag.fill"
         case .lookup:   "magnifyingglass"
         case .rules:    "list.bullet.rectangle.fill"
+        case .cloud:    "cloud.fill"
         case .settings: "gearshape.fill"
         }
     }

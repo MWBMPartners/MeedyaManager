@@ -48,6 +48,12 @@ struct ContentView: View {
                     .applyContentBackground()
             }
 
+            // ── Cloud Storage Monitor tab (M7) ────────────────────────────
+            Tab("Cloud", systemImage: "cloud.fill", value: AppTab.cloud) {
+                CloudView()
+                    .applyContentBackground()
+            }
+
             // ── Settings tab ───────────────────────────────────────────────
             Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
                 SettingsView()
@@ -55,8 +61,8 @@ struct ContentView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        // Increased minimum width to 880 to accommodate the 5-tab sidebar
-        .frame(minWidth: 880, minHeight: 560)
+        // Increased minimum width to 920 to accommodate the 6-tab sidebar
+        .frame(minWidth: 920, minHeight: 560)
     }
 }
 

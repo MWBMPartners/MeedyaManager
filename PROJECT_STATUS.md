@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M7 — Cloud Storage Monitoring — **Up Next** |
-| **Overall Progress** | **64%** (7 of 11 milestones complete) |
-| **Latest Version** | `v0.7.0` |
+| **Current Milestone** | M8 — Packaging & Public Beta — **Up Next** |
+| **Overall Progress** | **73%** (8 of 11 milestones complete) |
+| **Latest Version** | `v0.8.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -202,11 +202,26 @@
 
 ---
 
-### M7 — Cloud Storage Monitoring *(Planned)*
+### M7 — Cloud Storage Monitoring *(Complete)*
 
-> Target: `v0.8.0`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.8.0`
 
-OneDrive, Google Drive, Dropbox, MEGA, iCloud.
+**Progress: 100%** | Issues: #94-102 | **~90 tests**
+
+| Deliverable | Status | Tests |
+| ----------- | ------ | ----- |
+| `traits.rs` — `CloudProvider` trait, `CloudError`, `CloudFile`, `ChangeSet`, `CloudCapabilities`, `SyncStatus`, `SyncState`, `ConflictResolution`, `SyncConfig` | Done | 40 |
+| `sync_manager.rs` — `SyncManager` with `SyncEvent`, polling, conflict resolution, delta cursor | Done | 15 |
+| `onedrive.rs` — `OneDriveProvider` (Microsoft Graph API, delta queries) | Done | 14 |
+| `google_drive.rs` — `GoogleDriveProvider` (Drive API v3, `changes.list`) | Done | 13 |
+| `dropbox.rs` — `DropboxProvider` (Dropbox API v2, cursor-based delta) | Done | 14 |
+| `mega.rs` — `MegaProvider` (stub — no official API) | Done | 6 |
+| `icloud.rs` — `ICloudProvider` (stub — macOS FileProvider native only) | Done | 7 |
+| `lib.rs` — Re-exports + integration tests | Done | 15 |
+| GTK4 `cloud_panel.rs` — Cloud tab (6 tabs total), provider rows, event log | Done | 7 |
+| macOS `CloudView.swift` — Cloud tab (6 tabs total), `CloudModel`, event log | Done | 11 |
+| macOS `AppState.swift` — `.cloud` case added to `AppTab` (6 cases) | Done | 2 |
+| Windows `CloudPage.xaml(.cs)` — Cloud page, provider rows, simulated async sync | Done | 12 |
 
 ---
 
@@ -240,14 +255,14 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 | ----------------- | ---- | ------ |
 | `mm-core` | `crates/mm-core/` | **M2 Complete** (399 tests) |
 | `mm-providers` | `crates/mm-providers/` | **M5 Complete** (332 tests, 19 providers) |
-| `mm-cloud` | `crates/mm-cloud/` | Scaffold (stubs) |
+| `mm-cloud` | `crates/mm-cloud/` | **M7 Complete** (~90 tests — `CloudProvider` trait, OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub, `SyncManager`) |
 | `mm-export` | `crates/mm-export/` | Scaffold (stubs) |
 | `mm-server` | `crates/mm-server/` | Scaffold (stubs) |
 | `mm-cli` | `crates/mm-cli/` | **M3 Complete** (45 tests) |
 | `mm-ffi` | `crates/mm-ffi/` | **M4 Complete** (20 tests) |
-| `mm-gtk` | `crates/mm-gtk/` | **M6 Complete** (5 tabs, Lookup panel, cover art, DnD, real save, dark/light theme, 35 tests) |
-| macOS SwiftUI app | `macos/` | **M6 Complete** (5 tabs, Lookup+Rules builder, cover art, DnD, real settings save, 53 tests) |
-| Windows WinUI 3 app | `windows/` | **M6 Complete** (5 pages, LookupPage, cover art, DnD, real settings save, 58 tests) |
+| `mm-gtk` | `crates/mm-gtk/` | **M7 Complete** (6 tabs incl. Cloud panel, 42 tests) |
+| macOS SwiftUI app | `macos/` | **M7 Complete** (6 tabs incl. CloudView, 64 tests) |
+| Windows WinUI 3 app | `windows/` | **M7 Complete** (6 pages incl. CloudPage, 70 tests) |
 
 ---
 
@@ -282,6 +297,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-05 | **M7 Complete** (`v0.8.0`) — Cloud Storage Monitoring: `mm-cloud` crate (`CloudProvider` trait, OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub, `SyncManager`), Cloud UI tab on all platforms; ~90 new tests (~866 → ~956 total) |
 | 2026-03-05 | **M6 Complete** (`v0.7.0`) — Full Native UI: Lookup panel (all 3 platforms), rule builder, cover art, DnD, real settings save, dark/light theme (GTK4), error dialogs; ~90 UI tests (776 → ~866 total) |
 | 2026-03-05 | **M5 Complete** (`v0.6.0`) — Metadata Lookup Providers: 19 providers, credentials, rate limiting, fuzzy scoring, cover art; 332 new tests (776 total) |
 | 2026-03-05 | **M4 Complete** (`v0.5.0`) — FFI Layer & Native UI Shells: mm-ffi (UniFFI + cbindgen), mm-gtk (GTK4/Adwaita Linux shell), macOS SwiftUI shell (4 views), Windows WinUI 3 shell (4 pages), 20 new tests (464 total) |
@@ -296,4 +312,4 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-03-05 (M4 complete, M5 in progress, version scheme updated to v0.x.y)*
+> *Last updated: 2026-03-05 (M7 complete — Cloud Storage Monitoring)*

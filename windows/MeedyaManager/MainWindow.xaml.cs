@@ -56,6 +56,7 @@ public sealed partial class MainWindow : Window
             NavigationViewItem { Tag: "Rules"    } => typeof(RulesPage),
             NavigationViewItem { Tag: "Metadata" } => typeof(MetadataPage),
             NavigationViewItem { Tag: "Lookup"   } => typeof(LookupPage),
+            NavigationViewItem { Tag: "Cloud"    } => typeof(CloudPage),
             NavigationViewItem { Tag: "Settings" } => typeof(SettingsPage),
             _ => null,
         };

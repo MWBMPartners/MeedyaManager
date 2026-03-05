@@ -8,6 +8,46 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v0.8.0] — 2026-03-05 — Cloud Storage Monitoring (M7)
+
+> **Milestone 7** — Cloud Storage Monitoring. Adds the `mm-cloud` crate with `CloudProvider` trait, `OneDriveProvider`, `GoogleDriveProvider`, `DropboxProvider`, `SyncManager`, and stubs for MEGA and iCloud. Cloud tab added on all three platforms (GTK4, macOS SwiftUI, WinUI 3). ~90 new tests.
+
+### Added
+
+**Rust (`mm-cloud` crate):**
+- `traits.rs` — `CloudProvider` trait (RPITIT async), `CloudError` (9 variants, `is_retryable()`, `retry_after_secs()`), `CloudFile`, `ChangeSet`, `CloudCapabilities`, `SyncStatus`, `SyncState`, `ConflictResolution`, `SyncConfig`. 40 unit tests.
+- `sync_manager.rs` — `SyncManager`: registers providers, processes `ChangeSet` deltas, applies conflict strategy, maintains per-provider `SyncState`, emits `SyncEvent`s, shared event log. 15 unit tests.
+- `onedrive.rs` — `OneDriveProvider`: Microsoft Graph API, delta queries, OAuth device-code flow (stubbed pending UI callback), token injection for tests. 14 unit tests.
+- `google_drive.rs` — `GoogleDriveProvider`: Drive API v3, `changes.list` incremental sync, PKCE flow (stubbed). 13 unit tests.
+- `dropbox.rs` — `DropboxProvider`: Dropbox API v2, `list_folder/continue` delta cursor. 14 unit tests.
+- `mega.rs` — `MegaProvider`: stub (no official API); returns `Unsupported` for all operations. 6 unit tests.
+- `icloud.rs` — `ICloudProvider`: stub (macOS FileProvider native layer only); returns `Unsupported` on non-macOS. 7 unit tests.
+- `lib.rs` — Re-exports, 15 integration tests covering all five providers + `SyncManager` round-trip.
+
+**GTK4 / Linux (`mm-gtk`):**
+- `cloud_panel.rs` — Cloud tab: `AdwPreferencesGroup` with one `AdwActionRow` per provider, connect/disconnect toggle, shared event log `GtkTextView`, Clear button. 7 unit tests.
+- `main_window.rs` — Added Cloud tab (6 tabs total; ☁️ `network-wireless-symbolic`).
+- `ui/mod.rs` — Registered `cloud_panel` module.
+
+**macOS / SwiftUI:**
+- `CloudView.swift` — Cloud tab: provider rows with connect/disconnect, sync status indicator, event log `ScrollView` with monospaced entries, Clear button. `CloudModel` (`@Observable`), `CloudProviderEntry`.
+- `ContentView.swift` — Added Cloud tab (6 tabs total); minimum width bumped to 920.
+- `AppState.swift` — Added `.cloud` case to `AppTab` enum with `"cloud.fill"` SF Symbol.
+- `MeedyaManagerTests/CloudModelTests.swift` — 11 Swift Testing tests for `CloudModel` connect/disconnect/event-log logic.
+- `MeedyaManagerTests/AppTabTests.swift` — Updated to 6-tab count; added `cloud` raw value + icon tests (now 14 tests).
+
+**Windows / WinUI 3:**
+- `CloudPage.xaml` + `CloudPage.xaml.cs` — Cloud page: provider `ListView`, connect/disconnect buttons, simulated async sync, event log `TextBox`, Clear button.
+- `MainWindow.xaml` — Added Cloud `NavigationViewItem` (Cloud symbol).
+- `MainWindow.xaml.cs` — Routed `Tag: "Cloud"` → `typeof(CloudPage)`.
+- `MeedyaManager.Tests/CloudProviderRowTests.cs` — 12 xUnit tests for provider list + toggle logic.
+
+### Changed
+
+- Version bumped `0.7.0` → `0.8.0` across `Cargo.toml`, `Info.plist`, `Package.appxmanifest`.
+
+---
+
 ## [v0.7.0] — 2026-03-05 — Full Native UI (M6)
 
 > **Milestone 6** — Full native UI across all three platforms (GTK4/Rust, SwiftUI/macOS, WinUI 3/Windows). Adds the Lookup panel on all platforms, full rule builder (template + live preview), cover art display, drag-and-drop folder import, real settings save to JSON, dark/light theme toggle (GTK4), and 90+ platform UI tests.

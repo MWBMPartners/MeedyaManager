@@ -19,6 +19,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     case metadata = "Metadata"
     case lookup   = "Lookup"
     case rules    = "Rules"
+    case cloud    = "Cloud"    // M7 — Cloud Storage Monitor
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -29,6 +30,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .metadata: "tag.fill"
         case .lookup:   "magnifyingglass"
         case .rules:    "list.bullet.rectangle.fill"
+        case .cloud:    "cloud.fill"
         case .settings: "gearshape.fill"
         }
     }
@@ -39,9 +41,9 @@ enum AppTab: String, CaseIterable, Identifiable {
 @Suite("AppTab")
 struct AppTabTests {
 
-    @Test("CaseIterable provides 5 cases")
-    func allCases_has_five_cases() {
-        #expect(AppTab.allCases.count == 5)
+    @Test("CaseIterable provides 6 cases")
+    func allCases_has_six_cases() {
+        #expect(AppTab.allCases.count == 6)
     }
 
     @Test("library raw value")
@@ -99,5 +101,15 @@ struct AppTabTests {
     @Test("settings icon is gearshape.fill")
     func settings_icon() {
         #expect(AppTab.settings.icon == "gearshape.fill")
+    }
+
+    @Test("cloud raw value")
+    func cloud_rawValue() {
+        #expect(AppTab.cloud.rawValue == "Cloud")
+    }
+
+    @Test("cloud icon is cloud.fill")
+    func cloud_icon() {
+        #expect(AppTab.cloud.icon == "cloud.fill")
     }
 }

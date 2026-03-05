@@ -23,12 +23,12 @@ MeedyaManager is a complete rewrite from Python to **Rust** with **platform-nati
 | M4 | 🖥️ FFI Layer & Native UI Shells | ✅ Complete | `v0.5.0` | #63-72 | UniFFI (Swift), cbindgen (C#), async callbacks, SwiftUI/WinUI 3/GTK4 shells (20 tests) |
 | M5 | 🔍 Metadata Lookup Providers | ✅ Complete | `v0.6.0` | #73-84 | 19 providers (music, video, podcasts, identifiers), credentials, rate limiting, fuzzy scoring (332 tests) |
 | M6 | 🎨 Full Native UI | ✅ Complete | `v0.7.0` | #85-93 | Lookup Panel (all 3 platforms), full rule builder, cover art, DnD, real settings save, dark/light theme (GTK4), 90+ UI tests |
-| M7 | ☁️ Cloud Storage Monitoring | 🔲 Planned | `v0.8.0` | #94-102 | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
+| M7 | ☁️ Cloud Storage Monitoring | ✅ Complete | `v0.8.0` | #94-102 | OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub — `mm-cloud` crate + Cloud UI tab on all platforms (~90 tests) |
 | M8 | 📦 Packaging & Public Beta | 🔲 Planned | `v0.9.0` | #103-111 | App Store, Microsoft Store, Flatpak/Snap, auto-updater, first public beta |
 | M9 | 🗄️ Database Export | 🔲 Planned | `v0.10.0` | #112-119 | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via sqlx/tiberius |
 | M10 | 🌐 Secure Media Server + Public Release | 🔲 Planned | `v1.0.0` | #120-127 | axum HTTP server, JWT auth, media streaming, TLS, web frontend |
 
-**Total: ~866 tests passing** (399 mm-core + 45 mm-cli + 20 mm-ffi + 332 mm-providers + 35 mm-gtk + 53 macOS Swift + 58 Windows C# — est.)
+**Total: ~956 tests passing** (399 mm-core + 45 mm-cli + 20 mm-ffi + 332 mm-providers + 90 mm-cloud + 42 mm-gtk + 64 macOS Swift + 70 Windows C# — est.)
 
 ---
 
@@ -54,4 +54,4 @@ MeedyaManager is a complete rewrite from Python to **Rust** with **platform-nati
 
 > 📝 *This roadmap is maintained alongside the codebase. For current status, see [PROJECT_STATUS.md](../PROJECT_STATUS.md).*
 >
-> *Last updated: 2026-03-05 (M3 complete, all milestone issues created)*
+> *Last updated: 2026-03-05 (M7 complete — Cloud Storage Monitoring)*

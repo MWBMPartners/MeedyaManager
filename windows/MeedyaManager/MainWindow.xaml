@@ -43,6 +43,13 @@
                     <SymbolIcon Symbol="Find" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+
+            <!-- Cloud — cloud storage monitor (M7) -->
+            <NavigationViewItem Content="Cloud" Tag="Cloud">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Cloud" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <!-- Settings item in the footer area -->

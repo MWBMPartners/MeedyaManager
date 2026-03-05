@@ -25,3 +25,6 @@ pub mod settings_panel;
 
 /// Error and confirmation dialog helpers (M6)
 pub mod error_dialog;
+
+/// Cloud Storage Monitor panel — provider connections + event log (M7)
+pub mod cloud_panel;

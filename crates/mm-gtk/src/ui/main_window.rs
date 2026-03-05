@@ -8,11 +8,12 @@
 //   - AdwTabView (hosts five panel tabs)
 //   - AdwToastOverlay (notification toasts over the tab content)
 //
-// Tab layout (M6):
+// Tab layout (M7):
 //   📁 Library  — scan a folder and preview renames
 //   🏷️ Metadata  — view and edit file tags (with cover art)
 //   🔍 Lookup    — search metadata providers
 //   ⚙️ Rules     — full template/rule builder
+//   ☁️ Cloud     — cloud storage monitor (OneDrive, Google Drive, Dropbox)
 //   🔧 Settings  — application configuration (with save)
 
 use gtk4 as gtk;
@@ -20,7 +21,7 @@ use gtk::prelude::*;
 use libadwaita as adw;
 use adw::prelude::*;
 
-use super::{lookup_panel, metadata_panel, rules_panel, scan_panel, settings_panel};
+use super::{cloud_panel, lookup_panel, metadata_panel, rules_panel, scan_panel, settings_panel};
 
 /// Build and return the fully constructed main application window.
 ///
@@ -33,6 +34,7 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     let metadata = metadata_panel::MetadataPanel::new();
     let lookup   = lookup_panel::LookupPanel::new();
     let rules    = rules_panel::RulesPanel::new();
+    let cloud    = cloud_panel::CloudPanel::new();
     let settings = settings_panel::SettingsPanel::new();
 
     // -----------------------------------------------------------------------
@@ -55,6 +57,7 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     add_tab(&tab_view, metadata.widget(), "Metadata", "tag-symbolic");
     add_tab(&tab_view, lookup.widget(),   "Lookup",   "system-search-symbolic");
     add_tab(&tab_view, rules.widget(),    "Rules",    "preferences-system-symbolic");
+    add_tab(&tab_view, cloud.widget(),    "Cloud",    "network-wireless-symbolic");
     add_tab(&tab_view, settings.widget(), "Settings", "emblem-system-symbolic");
 
     // -----------------------------------------------------------------------
