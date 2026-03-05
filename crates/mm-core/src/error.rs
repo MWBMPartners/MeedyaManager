@@ -1,4 +1,4 @@
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 //
 // Unified error types for the mm-core crate.
 // Uses thiserror for ergonomic error definition with automatic

@@ -1,4 +1,4 @@
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 //
 // MeedyaManager — Database Export: Shared Traits & Types (M9)
 //
@@ -176,9 +176,29 @@ impl ExportConfig {
         format!("{}{}", self.table_prefix, suffix)
     }
 
-    /// Returns `true` if the config has a non-empty connection string.
+    /// Returns `true` if the config has a non-empty connection string and a
+    /// safe table prefix.
     pub fn is_valid(&self) -> bool {
-        !self.connection_string.is_empty()
+        !self.connection_string.is_empty() && Self::is_safe_identifier_prefix(&self.table_prefix)
+    }
+
+    /// Validates that `prefix` contains only ASCII alphanumerics and underscores,
+    /// and does not start with a digit — preventing SQL identifier injection when
+    /// the prefix is interpolated into DDL/DML statements.
+    ///
+    /// An empty prefix is **allowed** (callers may legitimately use no prefix).
+    pub fn is_safe_identifier_prefix(prefix: &str) -> bool {
+        if prefix.is_empty() {
+            return true;
+        }
+        // First character must be a letter or underscore (not a digit)
+        let mut chars = prefix.chars();
+        let first = chars.next().unwrap(); // safe: prefix is non-empty
+        if !first.is_ascii_alphabetic() && first != '_' {
+            return false;
+        }
+        // Remaining characters: alphanumeric or underscore only
+        chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
     }
 }
 
@@ -398,6 +418,53 @@ mod tests {
         let mut cfg = ExportConfig::with_dsn("postgres://localhost/test");
         cfg.table_prefix = "meedya_".into();
         assert_eq!(cfg.table_name("files"), "meedya_files");
+    }
+
+    // --- ExportConfig prefix security validation ---
+
+    #[test]
+    fn prefix_safe_default() {
+        assert!(ExportConfig::is_safe_identifier_prefix("mm_"));
+    }
+
+    #[test]
+    fn prefix_safe_empty_is_allowed() {
+        assert!(ExportConfig::is_safe_identifier_prefix(""));
+    }
+
+    #[test]
+    fn prefix_safe_alphanumeric_underscore() {
+        assert!(ExportConfig::is_safe_identifier_prefix("meedya_v2_"));
+        assert!(ExportConfig::is_safe_identifier_prefix("_private_"));
+        assert!(ExportConfig::is_safe_identifier_prefix("A1B2C3_"));
+    }
+
+    #[test]
+    fn prefix_unsafe_starts_with_digit() {
+        assert!(!ExportConfig::is_safe_identifier_prefix("1mm_"));
+        assert!(!ExportConfig::is_safe_identifier_prefix("2tables_"));
+    }
+
+    #[test]
+    fn prefix_unsafe_contains_semicolon() {
+        assert!(!ExportConfig::is_safe_identifier_prefix("mm_; DROP TABLE"));
+    }
+
+    #[test]
+    fn prefix_unsafe_contains_dash() {
+        assert!(!ExportConfig::is_safe_identifier_prefix("mm-tables-"));
+    }
+
+    #[test]
+    fn prefix_unsafe_contains_space() {
+        assert!(!ExportConfig::is_safe_identifier_prefix("mm tables_"));
+    }
+
+    #[test]
+    fn is_valid_rejects_unsafe_prefix() {
+        let mut cfg = ExportConfig::with_dsn("sqlite://:memory:");
+        cfg.table_prefix = "bad; DROP TABLE mm_files; --".into();
+        assert!(!cfg.is_valid(), "unsafe prefix must make config invalid");
     }
 
     // --- ExportStats ---

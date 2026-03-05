@@ -1,4 +1,4 @@
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 #
 # MeedyaManager — Snapcraft manifest
 #
@@ -13,6 +13,7 @@
 name: meedyamanager
 version: "0.9.0"
 summary: Smart cross-platform media file manager and auto-organizer
+icon: linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-512.png
 description: |
   MeedyaManager monitors your media folders and automatically renames and
   organizes audio and video files according to user-defined rules, similar
@@ -46,7 +47,7 @@ extensions:
 apps:
   meedyamanager:
     command: bin/mm-gtk
-    desktop: usr/share/applications/com.mwbm.MeedyaManager.desktop
+    desktop: usr/share/applications/ltd.MWBMpartners.MeedyaManager.desktop
     extensions: [gnome]
     plugs:
       # Access user home directory for media file monitoring
@@ -88,5 +89,7 @@ parts:
     plugin: dump
     source: linux/flatpak
     organize:
-      com.mwbm.MeedyaManager.desktop: usr/share/applications/com.mwbm.MeedyaManager.desktop
-      com.mwbm.MeedyaManager.metainfo.xml: usr/share/metainfo/com.mwbm.MeedyaManager.metainfo.xml
+      ltd.MWBMpartners.MeedyaManager.desktop: usr/share/applications/ltd.MWBMpartners.MeedyaManager.desktop
+      ltd.MWBMpartners.MeedyaManager.metainfo.xml: usr/share/metainfo/ltd.MWBMpartners.MeedyaManager.metainfo.xml
+      icons/ltd.MWBMpartners.MeedyaManager.svg: usr/share/icons/hicolor/scalable/apps/ltd.MWBMpartners.MeedyaManager.svg
+      icons/ltd.MWBMpartners.MeedyaManager-256.png: usr/share/icons/hicolor/256x256/apps/ltd.MWBMpartners.MeedyaManager.png

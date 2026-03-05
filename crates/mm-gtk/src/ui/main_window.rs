@@ -1,4 +1,4 @@
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 //
 // MeedyaManager — Main Application Window (M8)
 //
@@ -164,7 +164,7 @@ fn show_about_dialog(app: &adw::Application) {
     about.set_application_name("MeedyaManager");
     about.set_application_icon("multimedia-player");
     about.set_version(env!("CARGO_PKG_VERSION"));
-    about.set_developer_name("MWBM Partners Ltd (d/b/a MW Services)");
+    about.set_developer_name("MWBM Partners Ltd");
     about.set_copyright("© 2025-2026 MWBM Partners Ltd");
     about.set_license_type(gtk::License::Gpl20Only);
     about.set_website("https://github.com/MWBMPartners/MeedyaManager");

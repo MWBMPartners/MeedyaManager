@@ -1,6 +1,6 @@
 # CI/CD Pipelines
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 >
 > Overview of all 8 GitHub Actions workflows in MeedyaManager.
 

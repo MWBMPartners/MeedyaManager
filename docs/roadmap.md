@@ -1,6 +1,6 @@
 # 📍 ROADMAP — MeedyaManager
 
-> **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025–2026 MWBM Partners Ltd**
 >
 > 🎧📁 Cross-platform media manager and auto-organizer — Rust core + native UIs
 

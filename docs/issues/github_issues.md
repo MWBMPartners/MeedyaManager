@@ -1,6 +1,6 @@
 # MeedyaManager — GitHub Issues Register
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 >
 > This file is the authoritative local record of all GitHub Issues for the
 > MeedyaManager project. All issues are created on GitHub before work begins
@@ -218,6 +218,7 @@
 | - | ----- | ------ |
 | #128 | Accessibility support: VoiceOver (macOS), Narrator (Windows), AT-SPI (Linux) | 🔲 |
 | #129 | Release binary hardening: LTO, strip, panic=abort, PIE, code signing | ✅ |
+| #130 | Translation / Internationalisation (i18n) support — Fluent/gettext CLI, NSLocalizedString macOS, resw Windows, gettextrs Linux | 🔲 |
 
 ---
 

@@ -12,7 +12,7 @@
 
     <!-- Unique bundle identifier -->
     <key>CFBundleIdentifier</key>
-    <string>com.mwbm.MeedyaManager</string>
+    <string>ltd.MWBMpartners.MeedyaManager</string>
 
     <!-- Bundle version (build number — incremented each build) -->
     <key>CFBundleVersion</key>
@@ -52,7 +52,7 @@
 
     <!-- Copyright notice -->
     <key>NSHumanReadableCopyright</key>
-    <string>(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services). Licensed under GPL-2.0-or-later.</string>
+    <string>(C) 2025-2026 MWBM Partners Ltd. Licensed under GPL-2.0-or-later.</string>
 
     <!-- Principal class for SwiftUI app lifecycle -->
     <key>NSPrincipalClass</key>

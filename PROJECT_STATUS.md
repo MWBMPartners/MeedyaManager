@@ -1,6 +1,6 @@
 # MeedyaManager — Project Status
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 >
 > Cross-platform media manager and auto-organizer — Rust core + native UIs
 
@@ -237,9 +237,9 @@
 | `mm-update/release.rs` — `GitHubRelease`, `ReleaseInfo` | Done | 9 unit tests |
 | `mm-update/checker.rs` — `UpdateChecker`, async `check()` | Done | 14 unit tests |
 | `mm-update/lib.rs` — `UpdateError`, integration tests | Done | 10 integration tests |
-| Flatpak manifest (`com.mwbm.MeedyaManager.yaml`) | Done | GNOME 47 runtime, cargo vendor offline build |
-| `.desktop` entry (`com.mwbm.MeedyaManager.desktop`) | Done | Freedesktop standard |
-| AppStream MetaInfo (`com.mwbm.MeedyaManager.metainfo.xml`) | Done | OARS 1.1, categories, release history |
+| Flatpak manifest (`ltd.MWBMpartners.MeedyaManager.yaml`) | Done | GNOME 47 runtime, cargo vendor offline build |
+| `.desktop` entry (`ltd.MWBMpartners.MeedyaManager.desktop`) | Done | Freedesktop standard |
+| AppStream MetaInfo (`ltd.MWBMpartners.MeedyaManager.metainfo.xml`) | Done | OARS 1.1, categories, release history |
 | Snap manifest (`snapcraft.yaml`) | Done | core22 base, GNOME 42 extension, strict confinement |
 | AppImage build script (`build-appimage.sh`) | Done | AppDir assembly + appimagetool |
 | Debian package script (`build-deb.sh` + `control`) | Done | dpkg-deb, Depends: libgtk-4-1 + libadwaita-1-0 |

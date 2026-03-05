@@ -1,6 +1,6 @@
 # ❤️ iHeart Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers setting up the **iHeart** (iHeartRadio) metadata provider in MeedyaManager. iHeart uses undocumented public API endpoints that require no authentication, making it a zero-configuration provider — though with the caveat that these endpoints may change without notice.
 

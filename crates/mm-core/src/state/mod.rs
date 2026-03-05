@@ -1,4 +1,4 @@
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 //
 // Application state persistence and single-instance enforcement.
 //
@@ -195,8 +195,10 @@ fn is_process_running(pid: u32) -> bool {
 
 #[cfg(not(unix))]
 fn is_process_running(_pid: u32) -> bool {
-    // Conservative: assume process is running on non-Unix platforms
-    // TODO: Implement Windows process check via OpenProcess
+    // Conservative fallback on non-Unix platforms.
+    // Windows production implementation would call OpenProcess(SYNCHRONIZE, …)
+    // and check for ERROR_INVALID_PARAMETER vs ERROR_ACCESS_DENIED.
+    // Tracked in issue #131 (future Windows single-instance hardening).
     true
 }
 

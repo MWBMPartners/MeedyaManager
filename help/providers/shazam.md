@@ -1,6 +1,6 @@
 # 🔊 Shazam Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers setting up the **Shazam** metadata provider in MeedyaManager. Shazam is unique among providers because it supports **audio fingerprinting** — the ability to identify tracks by analysing the audio content itself, not just metadata tags.
 

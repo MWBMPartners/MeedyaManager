@@ -1,6 +1,6 @@
 # 📺 Apple TV Provider — MeedyaManager
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide explains how to configure and use the **Apple TV** metadata provider in MeedyaManager.
 

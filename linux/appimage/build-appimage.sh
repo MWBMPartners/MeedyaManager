@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 #
 # MeedyaManager — AppImage Build Script
 #
@@ -22,7 +22,7 @@ set -euo pipefail
 
 VERSION="${1:-$(grep -A20 '\[workspace\.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')}"
 APP_NAME="MeedyaManager"
-APP_ID="com.mwbm.MeedyaManager"
+APP_ID="ltd.MWBMpartners.MeedyaManager"
 APPDIR="AppDir"
 OUTPUT="${APP_NAME}-${VERSION}-x86_64.AppImage"
 
@@ -45,14 +45,22 @@ install -Dm755 target/release/mm-gtk             "${APPDIR}/usr/bin/mm-gtk"
 install -Dm755 target/release/mm-cli             "${APPDIR}/usr/bin/mm-cli"
 
 # Desktop entry
-install -Dm644 linux/flatpak/com.mwbm.MeedyaManager.desktop \
+install -Dm644 linux/flatpak/ltd.MWBMpartners.MeedyaManager.desktop \
     "${APPDIR}/${APP_ID}.desktop"
-install -Dm644 linux/flatpak/com.mwbm.MeedyaManager.desktop \
+install -Dm644 linux/flatpak/ltd.MWBMpartners.MeedyaManager.desktop \
     "${APPDIR}/usr/share/applications/${APP_ID}.desktop"
 
 # AppStream metadata
-install -Dm644 linux/flatpak/com.mwbm.MeedyaManager.metainfo.xml \
+install -Dm644 linux/flatpak/ltd.MWBMpartners.MeedyaManager.metainfo.xml \
     "${APPDIR}/usr/share/metainfo/${APP_ID}.metainfo.xml"
+
+# Icons (for desktop integration and appimagetool metadata)
+install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager.svg \
+    "${APPDIR}/usr/share/icons/hicolor/scalable/apps/${APP_ID}.svg"
+install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-256.png \
+    "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_ID}.png"
+install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-256.png \
+    "${APPDIR}/${APP_ID}.png"
 
 # Symlink for appimagetool (requires AppRun or a symlink to the binary)
 cat > "${APPDIR}/AppRun" <<'APPRUN'

@@ -1,4 +1,4 @@
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 # MeedyaManager — Foreign function interface crate
 # Exposes core functionality to Swift (UniFFI) and C#/C (cbindgen extern "C").
 

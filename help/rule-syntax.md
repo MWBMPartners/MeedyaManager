@@ -1,6 +1,6 @@
 # 📐 Rule & Template Syntax Guide — MeedyaManager
 
-> **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025–2026 MWBM Partners Ltd**
 
 MeedyaManager's rule engine uses a template syntax inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates), extended with unlimited custom tags, video support, and audio characteristic detection.
 

@@ -1,6 +1,6 @@
 # MeedyaManager — Claude Code Project Instructions
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 ## Project Identity
 
@@ -8,7 +8,7 @@
 - **Type:** Cross-platform media file manager and auto-organizer
 - **Languages:** Rust (core engine + CLI + Linux GTK4 UI) + Swift (macOS UI) + C# (Windows UI)
 - **Licence:** GPL-2.0-or-later
-- **Copyright:** MWBM Partners Ltd (d/b/a MW Services)
+- **Copyright:** MWBM Partners Ltd
 - **Platforms:** Windows (x64/ARM), macOS (Apple Silicon only), Linux (x64/ARM)
 
 ## Key Architecture Decisions
@@ -40,15 +40,15 @@
 - **Copyright header** in every source file:
 
   ```rust
-  // (C) 2025-{current_year} MWBM Partners Ltd (d/b/a MW Services)
+  // (C) 2025-{current_year} MWBM Partners Ltd
   ```
 
   ```swift
-  // (C) 2025-{current_year} MWBM Partners Ltd (d/b/a MW Services)
+  // (C) 2025-{current_year} MWBM Partners Ltd
   ```
 
   ```csharp
-  // (C) 2025-{current_year} MWBM Partners Ltd (d/b/a MW Services)
+  // (C) 2025-{current_year} MWBM Partners Ltd
   ```
 
 - **Copyright year** must be automated (start 2025, end current year)

@@ -1,4 +1,4 @@
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 //
 // MeedyaManager — Rules / Template Builder View (macOS, M6)
 //

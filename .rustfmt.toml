@@ -1,4 +1,4 @@
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 # Rust formatting rules — enforced by `cargo fmt`
 
 # Maximum line width before wrapping

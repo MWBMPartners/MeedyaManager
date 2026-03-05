@@ -1,6 +1,6 @@
 # 🎵 MusicBrainz Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers setting up the **MusicBrainz** metadata provider in MeedyaManager. MusicBrainz is a free, community-maintained music database that requires no API key — making it the easiest provider to get started with.
 

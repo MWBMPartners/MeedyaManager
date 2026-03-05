@@ -1,4 +1,4 @@
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 # MeedyaManager — Automated Version Bump
 # Triggered manually via GitHub Actions UI or CLI:
 #   gh workflow run version-bump.yml -f version=2.0.0-alpha.2

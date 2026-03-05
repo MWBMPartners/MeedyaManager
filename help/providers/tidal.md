@@ -1,6 +1,6 @@
 # 🌊 TIDAL Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers setting up the **TIDAL** metadata provider in MeedyaManager, including obtaining API credentials, configuring environment variables, and understanding TIDAL's unique audio quality and spatial audio metadata.
 

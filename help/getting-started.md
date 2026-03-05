@@ -1,6 +1,6 @@
 # 🚀 Getting Started with MeedyaManager
 
-> **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025–2026 MWBM Partners Ltd**
 
 Welcome to MeedyaManager! This guide will help you install, configure, and run the application for the first time.
 

@@ -18,7 +18,7 @@
 
 ---
 
-**(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+**(C) 2025–2026 MWBM Partners Ltd**
 
 ---
 
@@ -269,4 +269,4 @@ This project is licensed under the **GPL-2.0-or-later** — see the [LICENSE](LI
 
 ---
 
-**(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+**(C) 2025–2026 MWBM Partners Ltd**

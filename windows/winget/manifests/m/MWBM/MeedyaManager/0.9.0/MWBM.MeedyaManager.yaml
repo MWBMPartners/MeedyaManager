@@ -1,4 +1,4 @@
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 #
 # MeedyaManager — WinGet Package Manifest (Singleton)
 #
@@ -17,10 +17,10 @@ PackageName: MeedyaManager
 Publisher: MWBM Partners Ltd
 PublisherUrl: https://github.com/MWBMPartners/MeedyaManager
 PublisherSupportUrl: https://github.com/MWBMPartners/MeedyaManager/issues
-Author: MWBM Partners Ltd (d/b/a MW Services)
+Author: MWBM Partners Ltd
 License: GPL-2.0-or-later
 LicenseUrl: https://github.com/MWBMPartners/MeedyaManager/blob/main/LICENSE
-Copyright: (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+Copyright: (C) 2025-2026 MWBM Partners Ltd
 ShortDescription: Smart cross-platform media file manager and auto-organizer
 Description: >
   MeedyaManager monitors your media folders and automatically renames and

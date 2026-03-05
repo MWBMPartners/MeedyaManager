@@ -1,6 +1,6 @@
 # ⚙️ Configuration Reference — MeedyaManager
 
-> **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025–2026 MWBM Partners Ltd**
 
 MeedyaManager is configured through two primary mechanisms: a **JSON5 settings file** and **environment variables**.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 #
 # MeedyaManager — macOS DMG Creation Script
 #

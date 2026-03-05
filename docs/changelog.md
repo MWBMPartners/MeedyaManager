@@ -1,6 +1,6 @@
 # 📦 CHANGELOG — MeedyaManager
 
-> **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025–2026 MWBM Partners Ltd**
 
 All notable changes to this project are documented here. This changelog follows [Keep a Changelog](https://keepachangelog.com/) conventions.
 
@@ -119,9 +119,9 @@ Format: `## [Version] — YYYY-MM-DD`
 - `Cargo.toml` — Dependencies: reqwest, serde, serde_json, tokio, thiserror, tracing, semver (all workspace).
 
 **Linux Packaging:**
-- `linux/flatpak/com.mwbm.MeedyaManager.yaml` — Flatpak manifest: GNOME 47 runtime, rust-stable SDK extension, finish-args (home, wayland/x11, dri, network, secrets), cargo vendor offline build.
-- `linux/flatpak/com.mwbm.MeedyaManager.desktop` — Freedesktop .desktop entry (AudioVideo category, Exec=mm-gtk, StartupWMClass).
-- `linux/flatpak/com.mwbm.MeedyaManager.metainfo.xml` — AppStream MetaInfo: description, release history, categories, screenshot, OARS content rating.
+- `linux/flatpak/ltd.MWBMpartners.MeedyaManager.yaml` — Flatpak manifest: GNOME 47 runtime, rust-stable SDK extension, finish-args (home, wayland/x11, dri, network, secrets), cargo vendor offline build.
+- `linux/flatpak/ltd.MWBMpartners.MeedyaManager.desktop` — Freedesktop .desktop entry (AudioVideo category, Exec=mm-gtk, StartupWMClass).
+- `linux/flatpak/ltd.MWBMpartners.MeedyaManager.metainfo.xml` — AppStream MetaInfo: description, release history, categories, screenshot, OARS content rating.
 - `linux/snap/snapcraft.yaml` — Snapcraft manifest: `core22` base, GNOME 42 extension, strict confinement, two apps (meedyamanager + meedya-cli), rust plugin.
 - `linux/appimage/build-appimage.sh` — AppImage build script: cargo build, AppDir skeleton (AppRun, .desktop, metainfo), appimagetool invocation, sha256sum.
 - `linux/deb/build-deb.sh` — Debian package build script: cargo build, dpkg-deb tree assembly, dpkg-deb --build.

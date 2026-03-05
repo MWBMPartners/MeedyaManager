@@ -1,6 +1,6 @@
 # 📦 Amazon Music Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers the **Amazon Music** metadata provider in MeedyaManager. Amazon Music currently operates as a **stub provider** due to the absence of a public API — this guide explains the current status, what to expect, and how to enable it if API access becomes available.
 

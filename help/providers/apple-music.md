@@ -1,6 +1,6 @@
 # 🍎 Apple Music Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers setting up the **Apple Music** metadata provider in MeedyaManager, including obtaining API credentials, configuring environment variables, and understanding the data returned.
 

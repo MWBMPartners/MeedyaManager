@@ -1,6 +1,6 @@
 # Version Management
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 >
 > This page covers how versions are managed across the MeedyaManager
 > multi-platform codebase.

@@ -8,7 +8,7 @@
 
   <!-- Package identity — used by MSIX installer and Windows Store -->
   <Identity
-    Name="MWBMPartnersLtd.MeedyaManager"
+    Name="ltd.MWBMpartners.MeedyaManager"
     Publisher="CN=MWBM Partners Ltd"
     Version="1.0.0.0"
     ProcessorArchitecture="x64" />

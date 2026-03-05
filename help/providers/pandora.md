@@ -1,6 +1,6 @@
 # 🎧 Pandora Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers the **Pandora** metadata provider in MeedyaManager. Pandora currently operates as a **stub provider** because Pandora does not offer a public metadata API.
 

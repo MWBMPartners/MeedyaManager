@@ -1,6 +1,6 @@
 # MeedyaManager — Developer Notes
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 ## Table of Contents
 

@@ -1,6 +1,6 @@
 # 🎶 Deezer Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers setting up the **Deezer** metadata provider in MeedyaManager. Deezer's public API requires no authentication, making it one of the simplest providers to use.
 

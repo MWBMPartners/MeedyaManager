@@ -1,6 +1,6 @@
 # 🎵 Supported Formats — MeedyaManager
 
-> **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025–2026 MWBM Partners Ltd**
 
 MeedyaManager supports a wide range of audio, video, and companion file formats.
 

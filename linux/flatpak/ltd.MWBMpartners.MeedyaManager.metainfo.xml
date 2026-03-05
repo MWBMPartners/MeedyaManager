@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
+<!-- (C) 2025-2026 MWBM Partners Ltd -->
 <!-- MeedyaManager — AppStream MetaInfo for Flathub -->
 <component type="desktop-application">
-    <id>com.mwbm.MeedyaManager</id>
+    <id>ltd.MWBMpartners.MeedyaManager</id>
 
     <name>MeedyaManager</name>
     <summary>Smart cross-platform media file manager and auto-organizer</summary>
@@ -29,14 +29,14 @@
         </ul>
     </description>
 
-    <launchable type="desktop-id">com.mwbm.MeedyaManager.desktop</launchable>
+    <launchable type="desktop-id">ltd.MWBMpartners.MeedyaManager.desktop</launchable>
 
     <url type="homepage">https://github.com/MWBMPartners/MeedyaManager</url>
     <url type="bugtracker">https://github.com/MWBMPartners/MeedyaManager/issues</url>
     <url type="vcs-browser">https://github.com/MWBMPartners/MeedyaManager</url>
 
-    <developer id="com.mwbm">
-        <name>MWBM Partners Ltd (d/b/a MW Services)</name>
+    <developer id="ltd.MWBMpartners">
+        <name>MWBM Partners Ltd</name>
     </developer>
 
     <content_rating type="oars-1.1" />

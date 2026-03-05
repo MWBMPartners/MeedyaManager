@@ -1,5 +1,5 @@
 // swift-tools-version: 6.0
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 //
 // MeedyaManager — Swift Package Manifest
 //
@@ -40,6 +40,10 @@ let package = Package(
         .executableTarget(
             name: "MeedyaManager",
             path: "MeedyaManager",
+            resources: [
+                .copy("Resources/AppIcon.icns"),
+                .copy("Resources/AppIcon.svg"),
+            ],
             // The FFI framework is linked when available (set by CI)
             // In development without the XCFramework, the app uses stub implementations
             swiftSettings: [

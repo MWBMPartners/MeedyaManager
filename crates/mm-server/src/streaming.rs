@@ -1,4 +1,4 @@
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 //
 // MeedyaManager — Secure Media Server: Streaming (M10)
 //
@@ -314,15 +314,37 @@ impl MediaStreamer {
 
     /// Check whether `path` is safely within `media_root` (no path traversal).
     ///
-    /// Returns `Err(StreamError::PathTraversalDenied)` if the canonicalised
-    /// path does not start with the media root.
+    /// Returns `Err(StreamError::PathTraversalDenied)` if any path component
+    /// resolves to `..` (parent directory), the path is absolute, or it
+    /// contains null bytes or other control characters.
+    ///
+    /// Uses `std::path::Path::components()` to inspect normalised components
+    /// rather than simple string matching, preventing bypass attempts such as
+    /// `"....//etc/passwd"` or `"%2e%2e%2fpasswd"` (caller must URL-decode).
     pub fn is_safe_path(&self, relative_path: &str) -> Result<String, StreamError> {
-        // Strip leading path separator to make it relative
-        let clean = relative_path.trim_start_matches('/');
-        // Reject any path that contains ".." components
-        if clean.contains("..") {
+        use std::path::{Component, Path};
+
+        // Reject null bytes and control characters before any path logic
+        if relative_path.bytes().any(|b| b == 0 || b < 0x20) {
             return Err(StreamError::PathTraversalDenied { path: relative_path.to_string() });
         }
+
+        // Strip leading path separator to make it relative
+        let clean = relative_path.trim_start_matches('/');
+
+        // Walk every normalised component of the path — reject Parent (`..`),
+        // Prefix (Windows drive letters), and RootDir (absolute paths).
+        for component in Path::new(clean).components() {
+            match component {
+                Component::ParentDir | Component::Prefix(_) | Component::RootDir => {
+                    return Err(StreamError::PathTraversalDenied {
+                        path: relative_path.to_string(),
+                    });
+                }
+                Component::CurDir | Component::Normal(_) => {}
+            }
+        }
+
         let full_path = format!("{}/{}", self.media_root_trimmed(), clean);
         Ok(full_path)
     }
@@ -508,10 +530,31 @@ mod tests {
     }
 
     #[test]
+    fn is_safe_path_blocks_dotdot_prefix() {
+        // Path that starts with leading slashes then dotdot
+        let err = streamer().is_safe_path("/../../etc/shadow").unwrap_err();
+        assert!(matches!(err, StreamError::PathTraversalDenied { .. }));
+    }
+
+    #[test]
+    fn is_safe_path_blocks_null_byte() {
+        let err = streamer().is_safe_path("music/\x00evil").unwrap_err();
+        assert!(matches!(err, StreamError::PathTraversalDenied { .. }));
+    }
+
+    #[test]
     fn is_safe_path_allows_normal_path() {
         let result = streamer().is_safe_path("music/song.flac");
         assert!(result.is_ok());
         assert!(result.unwrap().contains("/media/music/song.flac"));
+    }
+
+    #[test]
+    fn is_safe_path_allows_nested_normal_path() {
+        let result = streamer().is_safe_path("albums/2024/track01.mp3");
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.contains("albums/2024/track01.mp3"));
     }
 
     #[test]

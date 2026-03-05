@@ -1,6 +1,6 @@
 # 📋 MeedyaManager — Project Plan
 
-> **(C) 2025–2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025–2026 MWBM Partners Ltd**
 >
 > 🎧📁 A smart, cross-platform media manager and auto-organizer — Rust core + native UIs, inspired by MusicBee's flexibility.
 
@@ -557,24 +557,24 @@ All source files include a copyright header:
 **Rust files:**
 
 ```rust
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 ```
 
 **Swift files:**
 
 ```swift
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 ```
 
 **C# files:**
 
 ```csharp
-// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+// (C) 2025-2026 MWBM Partners Ltd
 ```
 
 - **Start year**: 2025 (project inception)
 - **End year**: Automatically set to the current year at build time
-- **Holder**: MWBM Partners Ltd (d/b/a MW Services)
+- **Holder**: MWBM Partners Ltd
 
 ---
 

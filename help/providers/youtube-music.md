@@ -1,6 +1,6 @@
 # ▶️ YouTube Music Provider — Setup Guide
 
-> **(C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers setting up the **YouTube Music** metadata provider in MeedyaManager, including generating the authentication file, configuring environment variables, and understanding the limitations of this unofficial API integration.
 

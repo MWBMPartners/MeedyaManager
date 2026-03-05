@@ -1,4 +1,4 @@
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 #
 # MeedyaManager — Flatpak Manifest
 #
@@ -7,11 +7,11 @@
 # Prerequisites on the build host:
 #   flatpak install flathub org.gnome.Platform//47 org.gnome.Sdk//47
 #   flatpak install flathub org.freedesktop.Sdk.Extension.rust-stable//24.08
-#   flatpak-builder build-dir com.mwbm.MeedyaManager.yaml --install --user
+#   flatpak-builder build-dir ltd.MWBMpartners.MeedyaManager.yaml --install --user
 #
 # Runtime: GNOME 47 (includes GTK4 + libadwaita 1.5)
 
-app-id: com.mwbm.MeedyaManager
+app-id: ltd.MWBMpartners.MeedyaManager
 runtime: org.gnome.Platform
 runtime-version: "47"
 sdk: org.gnome.Sdk
@@ -96,14 +96,20 @@ modules:
     buildsystem: simple
     build-commands:
       # Install .desktop file for application launchers
-      - install -Dm644 linux/flatpak/com.mwbm.MeedyaManager.desktop
-          ${FLATPAK_DEST}/share/applications/com.mwbm.MeedyaManager.desktop
+      - install -Dm644 linux/flatpak/ltd.MWBMpartners.MeedyaManager.desktop ${FLATPAK_DEST}/share/applications/ltd.MWBMpartners.MeedyaManager.desktop
       # Install AppStream metadata for Flathub listing
-      - install -Dm644 linux/flatpak/com.mwbm.MeedyaManager.metainfo.xml
-          ${FLATPAK_DEST}/share/metainfo/com.mwbm.MeedyaManager.metainfo.xml
-      # Install application icon (SVG preferred; also install PNG sizes)
-      - install -Dm644 linux/flatpak/icons/com.mwbm.MeedyaManager.svg
-          ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/com.mwbm.MeedyaManager.svg
+      - install -Dm644 linux/flatpak/ltd.MWBMpartners.MeedyaManager.metainfo.xml ${FLATPAK_DEST}/share/metainfo/ltd.MWBMpartners.MeedyaManager.metainfo.xml
+      # Install application icon set (SVG + PNG sizes)
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/ltd.MWBMpartners.MeedyaManager.svg
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-16.png ${FLATPAK_DEST}/share/icons/hicolor/16x16/apps/ltd.MWBMpartners.MeedyaManager.png
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-24.png ${FLATPAK_DEST}/share/icons/hicolor/24x24/apps/ltd.MWBMpartners.MeedyaManager.png
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-32.png ${FLATPAK_DEST}/share/icons/hicolor/32x32/apps/ltd.MWBMpartners.MeedyaManager.png
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-48.png ${FLATPAK_DEST}/share/icons/hicolor/48x48/apps/ltd.MWBMpartners.MeedyaManager.png
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-64.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/ltd.MWBMpartners.MeedyaManager.png
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-96.png ${FLATPAK_DEST}/share/icons/hicolor/96x96/apps/ltd.MWBMpartners.MeedyaManager.png
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/ltd.MWBMpartners.MeedyaManager.png
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/ltd.MWBMpartners.MeedyaManager.png
+      - install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/ltd.MWBMpartners.MeedyaManager.png
     sources:
       - type: git
         url: https://github.com/MWBMPartners/MeedyaManager.git

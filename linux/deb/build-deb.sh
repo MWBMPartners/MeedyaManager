@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# (C) 2025-2026 MWBM Partners Ltd
 #
 # MeedyaManager — Debian Package Build Script
 #
@@ -46,10 +46,14 @@ install -Dm755 target/release/mm-gtk "${PKGDIR}/usr/bin/mm-gtk"
 install -Dm755 target/release/mm-cli "${PKGDIR}/usr/bin/mm-cli"
 
 # Desktop integration
-install -Dm644 linux/flatpak/com.mwbm.MeedyaManager.desktop \
-    "${PKGDIR}/usr/share/applications/com.mwbm.MeedyaManager.desktop"
-install -Dm644 linux/flatpak/com.mwbm.MeedyaManager.metainfo.xml \
-    "${PKGDIR}/usr/share/metainfo/com.mwbm.MeedyaManager.metainfo.xml"
+install -Dm644 linux/flatpak/ltd.MWBMpartners.MeedyaManager.desktop \
+    "${PKGDIR}/usr/share/applications/ltd.MWBMpartners.MeedyaManager.desktop"
+install -Dm644 linux/flatpak/ltd.MWBMpartners.MeedyaManager.metainfo.xml \
+    "${PKGDIR}/usr/share/metainfo/ltd.MWBMpartners.MeedyaManager.metainfo.xml"
+install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager.svg \
+    "${PKGDIR}/usr/share/icons/hicolor/scalable/apps/ltd.MWBMpartners.MeedyaManager.svg"
+install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-256.png \
+    "${PKGDIR}/usr/share/icons/hicolor/256x256/apps/ltd.MWBMpartners.MeedyaManager.png"
 
 # Man page placeholder
 install -Dm644 /dev/null "${PKGDIR}/usr/share/man/man1/meedyamanager.1"
