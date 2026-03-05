@@ -1,0 +1,84 @@
+# (C) 2025-2026 MWBM Partners Ltd
+#
+# MeedyaManager — WinGet Package Manifest (Singleton)
+#
+# Submit to WinGet community repository:
+#   https://github.com/microsoft/winget-pkgs
+#
+# Validation:
+#   winget validate --manifest windows/winget/manifests/m/MWBM/MeedyaManager/1.0.0/
+#
+# Installation (after submission):
+#   winget install MWBM.MeedyaManager
+
+PackageIdentifier: MWBM.MeedyaManager
+PackageVersion: 1.0.0
+PackageName: MeedyaManager
+Publisher: MWBM Partners Ltd
+PublisherUrl: https://github.com/MWBMPartners/MeedyaManager
+PublisherSupportUrl: https://github.com/MWBMPartners/MeedyaManager/issues
+Author: MWBM Partners Ltd
+License: GPL-2.0-or-later
+LicenseUrl: https://github.com/MWBMPartners/MeedyaManager/blob/main/LICENSE
+Copyright: (C) 2025-2026 MWBM Partners Ltd
+ShortDescription: Smart cross-platform media file manager and auto-organizer
+Description: >
+  MeedyaManager monitors your media folders and automatically renames and
+  organizes audio and video files according to user-defined rules, similar
+  to MusicBee's auto-organize feature.
+
+  Features:
+  - Real-time folder monitoring with file-lock awareness
+  - Metadata lookup from 19 providers (MusicBrainz, Discogs, TMDB, and more)
+  - Cloud storage monitoring (OneDrive, Google Drive, Dropbox)
+  - MusicBee-inspired template engine with nested conditions
+  - Cover art display and tag editing
+  - Dry-run preview before executing renames
+  - Secure HTTPS media server with JWT authentication
+  - Database export to SQLite, MySQL, PostgreSQL, MariaDB, and SQL Server
+Moniker: meedyamanager
+Tags:
+  - media
+  - music
+  - video
+  - organizer
+  - metadata
+  - tags
+  - rename
+  - audio
+  - server
+  - streaming
+PackageUrl: https://github.com/MWBMPartners/MeedyaManager
+ReleaseNotes: >
+  v1.0.0 — First public stable release.
+
+  Highlights:
+  - Secure HTTPS media server (mm-server) with JWT authentication and
+    RFC 7233 Range-request streaming
+  - REST API: library listing, search, metadata, and export status endpoints
+  - Server UI tab on GTK4 (Linux), SwiftUI (macOS), and WinUI 3 (Windows)
+  - Release artifact code signing (Authenticode for Windows, notarisation for macOS)
+  - All M0-M10 milestones complete; ~1166 tests passing
+
+  Full changelog: https://github.com/MWBMPartners/MeedyaManager/blob/main/docs/CHANGELOG.md
+ReleaseNotesUrl: https://github.com/MWBMPartners/MeedyaManager/releases/tag/v1.0.0
+
+Installers:
+  # Windows x64 MSIX package
+  - Architecture: x64
+    InstallerType: msix
+    InstallerUrl: https://github.com/MWBMPartners/MeedyaManager/releases/download/v1.0.0/MeedyaManager-1.0.0-windows-x64.msix
+    InstallerSha256: placeholder-sha256-update-before-submission
+    MinimumOSVersion: "10.0.19041.0"
+    Scope: user
+
+  # Windows arm64 MSIX package
+  - Architecture: arm64
+    InstallerType: msix
+    InstallerUrl: https://github.com/MWBMPartners/MeedyaManager/releases/download/v1.0.0/MeedyaManager-1.0.0-windows-arm64.msix
+    InstallerSha256: placeholder-sha256-update-before-submission
+    MinimumOSVersion: "10.0.19041.0"
+    Scope: user
+
+ManifestType: singleton
+ManifestVersion: 1.6.0
