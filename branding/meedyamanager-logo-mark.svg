@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <linearGradient id="mm-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#204A7A" stop-opacity="0.94"/>
+      <stop offset="100%" stop-color="#141840" stop-opacity="0.94"/>
+    </linearGradient>
+    <filter id="mm-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#mm-bg)"/>
+  <circle cx="512.0" cy="512.0" r="358.4" stroke="#78CDFF" stroke-opacity="0.85" stroke-width="38.912"/>
+  <path d="M 204.8 737.28 L 358.4 307.2 L 512.0 634.88 L 665.6 307.2 L 819.2 737.28" stroke="#F2F8FF" stroke-width="76.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 655.36 460.8 L 778.24 532.48 L 655.36 604.16 Z" fill="#60F5E4" filter="url(#mm-glow)"/>
+  <rect x="163.84" y="716.8" width="174.08" height="102.4" rx="18.432" fill="#FFC25E"/>
+  <line x1="253.952" y1="722.944" x2="253.952" y2="811.008" stroke="#7A5816" stroke-opacity="0.82" stroke-width="6.144"/>
+</svg>
