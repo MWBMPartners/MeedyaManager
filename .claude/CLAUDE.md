@@ -72,16 +72,16 @@
 ## Milestone Order
 
 1. M0 — Repository Setup & Scaffolding (Complete)
-2. M1 — Core Engine (config, classify, metadata, watcher, renamer, companion, state, logging, health)
-3. M2 — Rule Engine (lexer, parser, evaluator, 20+ template functions)
-4. M3 — CLI (clap-based: scan, debug, watch, rule, edit, lookup, config, report-bug)
-5. M4 — FFI Layer & Native UI Shells (UniFFI, cbindgen, SwiftUI/WinUI/GTK shells)
-6. M5 — Metadata Lookup Providers (19 providers: music, video, podcasts, identifiers)
-7. M6 — Full Native UI (Rule Builder, Metadata Editor, Lookup Panel, accessibility)
-8. M7 — Cloud Storage Monitoring (OneDrive, Google Drive, Dropbox, MEGA, iCloud)
-9. M8 — Packaging & Public Release (App Store, Microsoft Store, Flatpak/Snap)
-10. M9 — Database Export (MySQL, MariaDB, SQL Server, SQLite, PostgreSQL)
-11. M10 — Secure Media Server (axum, REST API, JWT auth, media streaming)
+2. M1 — Core Engine (Complete — 217 tests)
+3. M2 — Rule Engine (Complete — 182 tests, 399 total)
+4. M3 — CLI (Complete — 45 tests, 444 total)
+5. M4 — FFI Layer & Native UI Shells (Issues #63-72)
+6. M5 — Metadata Lookup Providers (Issues #73-84)
+7. M6 — Full Native UI (Issues #85-93)
+8. M7 — Cloud Storage Monitoring (Issues #94-102)
+9. M8 — Packaging & Public Release (Issues #103-111)
+10. M9 — Database Export (Issues #112-119)
+11. M10 — Secure Media Server (Issues #120-127)
 
 ## Version Management
 

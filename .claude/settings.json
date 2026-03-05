@@ -22,7 +22,26 @@
       "WebFetch(domain:marketplace.visualstudio.com)",
       "Bash(cargo test --package mm-core --lib rule_engine)",
       "Bash(cargo clippy --package mm-core)",
-      "Bash(cargo fmt --package mm-core -- --check)"
+      "Bash(cargo fmt --package mm-core -- --check)",
+      "Bash(cargo clean)",
+      "Bash(gh issue list --milestone \"M3 — CLI\" --state all)",
+      "Bash(gh milestone list --state all)",
+      "Bash(gh api repos/MWBMPartners/MeedyaManager/milestones --jq '.[] | \"\"\\\\\\(.number\\) \\\\\\(.title\\)\"\"')",
+      "Bash(gh issue list --milestone \"M3 — CLI\" --state all --json number,title --jq '.[] | \"\"#\\\\\\(.number\\) \\\\\\(.title\\)\"\"')",
+      "Bash(gh issue list --state all --json number --jq '.[0].number' --limit 1)",
+      "Bash(cargo build --package mm-cli)",
+      "Bash(cargo test --package mm-cli)",
+      "Bash(cargo clippy --package mm-cli)",
+      "Bash(cargo fmt --package mm-cli -- --check)",
+      "Bash(cargo fmt --package mm-cli)",
+      "Bash(gh issue list --milestone \"M3 — CLI\" --state open --json number,title --limit 20)",
+      "Bash(gh issue list --milestone \"M3 — CLI\" --state all --json number,title,state --limit 20)",
+      "Bash(gh issue list --state open --json number,title,milestone --limit 30)",
+      "Bash(for i in 52 53 54 55 56 57 58 59 60 61)",
+      "Bash(do gh issue close $i --comment \"Implemented and verified — 45 mm-cli tests passing, clippy clean, formatted.\")",
+      "Bash(gh issue close 62 --comment \"Documentation updated: PROJECT_STATUS.md \\(M3 complete, 36% overall, 444 tests\\), docs/CHANGELOG.md \\(v2.0.0-alpha.4 entry\\), MEMORY.md.\")",
+      "Bash(gh issue list --milestone \"M1 — Core Engine \\(Rust\\)\" --state open --json number,title --limit 20)",
+      "Bash(gh issue list --state open --json number,title,milestone --limit 5)"
     ],
     "additionalDirectories": [
       "/dev"

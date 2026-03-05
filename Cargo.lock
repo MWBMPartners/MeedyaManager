@@ -2082,11 +2082,15 @@ name = "mm-cli"
 version = "2.0.0-alpha.1"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "colored",
+ "dirs",
  "mm-core",
  "mm-providers",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

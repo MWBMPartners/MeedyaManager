@@ -17,7 +17,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 use crate::error::{MmError, MmResult};
@@ -31,7 +31,7 @@ use crate::error::{MmError, MmResult};
 /// Each nested section maps to a logical subsystem (watching, renaming,
 /// logging, metadata providers). All fields carry defaults so a completely
 /// empty JSON5 file (or no file at all) still yields a usable config.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct AppConfig {
     /// Human-readable application name (informational only)
@@ -75,7 +75,7 @@ impl Default for AppConfig {
 /// `folders` lists the directories to monitor. `poll_interval_secs` controls
 /// the fallback polling frequency when native events are unavailable.
 /// `recursive` determines whether subdirectories are included.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct WatchConfig {
     /// Directories to watch for new/changed media files
@@ -124,7 +124,7 @@ impl Default for WatchConfig {
 ///
 /// Controls the template pattern used to build destination paths, conflict
 /// resolution strategy, and whether dry-run mode is active for renames.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct RenameConfig {
     /// MusicBee-style template for building the destination file path.
@@ -189,7 +189,7 @@ impl Default for RenameConfig {
 /// Configuration for structured logging and diagnostics.
 ///
 /// Supports console output, file output, and configurable verbosity levels.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct LoggingConfig {
     /// Minimum log level: "trace", "debug", "info", "warn", "error"
@@ -239,7 +239,7 @@ impl Default for LoggingConfig {
 /// Controls which providers are enabled and stores API keys. Keys can be
 /// set in the JSON5 file or overridden via environment variables (preferred
 /// for secrets).
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ProviderConfig {
     /// Enable MusicBrainz lookups

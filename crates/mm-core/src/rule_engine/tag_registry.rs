@@ -225,6 +225,22 @@ pub fn registry_size() -> usize {
     registry().len()
 }
 
+/// Return all entries in the static registry as `(display_name, TagKind)` pairs.
+///
+/// The results are sorted alphabetically by display name for consistent output.
+/// Dynamic custom tags (Custom1–16, MeedyaMeta.*) are not included — only the
+/// statically registered tags and their aliases.
+pub fn all_tags() -> Vec<(String, TagKind)> {
+    let reg = registry();
+    let mut entries: Vec<(String, TagKind)> = reg
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    // Sort alphabetically by display name for deterministic output
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Tests
 // ───────────────────────────────────────────────────────────────────────────

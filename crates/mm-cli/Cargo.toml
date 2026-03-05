@@ -41,3 +41,16 @@ anyhow = { workspace = true }
 
 # Coloured terminal output for user-facing messages
 colored = "3"
+
+# Serialization for JSON output and config export
+serde = { workspace = true }
+
+# Platform directories for report-bug system info
+dirs = { workspace = true }
+
+# Timestamp formatting for watcher events and reports
+chrono = { workspace = true }
+
+[dev-dependencies]
+# Temporary directories/files for integration tests
+tempfile = { workspace = true }

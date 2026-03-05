@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M2 — Rule Engine — **Complete** |
-| **Overall Progress** | **27%** (3 of 11 milestones complete) |
-| **Latest Version** | `v2.0.0-alpha.2` |
+| **Current Milestone** | M3 — CLI — **Complete** |
+| **Overall Progress** | **36%** (4 of 11 milestones complete) |
+| **Latest Version** | `v2.0.0-alpha.4` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -85,11 +85,26 @@
 
 ---
 
-### M3 — CLI *(Planned)*
+### M3 — CLI *(Complete)*
 
-> Target: `v2.0.0-alpha.4`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v2.0.0-alpha.4`
 
-`clap`-based CLI: scan, debug, watch, rule, edit, lookup, config, report-bug commands.
+**Progress: 100%** | Issues: #52-#62 (all closed) | **45 tests**
+
+| Deliverable | Status | Tests |
+| ----------- | ------ | ----- |
+| Output infrastructure (`output.rs`) | Done | 4 |
+| CLI context (`context.rs`) | Done | 3 |
+| `main.rs` restructure (Commands enum, global flags, dispatch) | Done | — |
+| `meedya debug` — single-file metadata inspector | Done | 5 |
+| `meedya rule` — template validation, tag listing, test, legacy detection | Done | 6 |
+| `meedya config` — show, path, init, export, import | Done | 5 |
+| `meedya scan` — directory scan + rename preview + execute | Done | 7 |
+| `meedya edit` — metadata write (--set, --remove, --cover) | Done | 6 |
+| `meedya watch` — foreground watcher with event logging | Done | 4 |
+| `meedya lookup` — provider search (stub for M5) | Done | 2 |
+| `meedya report-bug` — system info + log collection | Done | 3 |
+| Documentation updates | Done | — |
 
 ---
 
@@ -158,7 +173,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 | `mm-cloud` | `crates/mm-cloud/` | Scaffold (stubs) |
 | `mm-export` | `crates/mm-export/` | Scaffold (stubs) |
 | `mm-server` | `crates/mm-server/` | Scaffold (stubs) |
-| `mm-cli` | `crates/mm-cli/` | Scaffold (stubs) |
+| `mm-cli` | `crates/mm-cli/` | **M3 Complete** (45 tests) |
 | `mm-ffi` | `crates/mm-ffi/` | Scaffold (stubs) |
 | `mm-gtk` | `crates/mm-gtk/` | Scaffold (Linux only) |
 | macOS SwiftUI app | `macos/` | Shell (tabs, empty views) |
@@ -197,6 +212,7 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-05 | **M3 Complete** — CLI: 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), shared output infrastructure, CLI context, dual output modes (Human/JSON), 45 new tests (444 total) |
 | 2026-03-05 | **M2 Complete** — Rule engine: lexer, recursive descent parser, 40+ tag registry, 24 template functions, evaluator with EvalContext, declarative rule system, renamer integration, config extension. 182 new tests (399 total) |
 | 2026-03-05 | **M1 Complete** — All mm-core modules implemented: config, classify, metadata, watcher, renamer, companion, state, logging, health. 217 tests passing (Issues #40-#51) |
 | 2026-03-04 | **Version/Release Infrastructure** — Added version-bump workflow, version-sync CI check, enhanced release pipeline with checksums, created GitHub Wiki, Dev_Notes.md (Issues #32-#39) |
@@ -207,4 +223,4 @@ MySQL, MariaDB, SQL Server, SQLite, PostgreSQL via `sqlx`/`tiberius`.
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
 >
-> *Last updated: 2026-03-05 (M2 complete)*
+> *Last updated: 2026-03-05 (M3 complete)*

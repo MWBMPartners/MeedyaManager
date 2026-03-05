@@ -8,6 +8,43 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v2.0.0-alpha.4] — 2026-03-05 — CLI (M3)
+
+> **Milestone 3** — Full `clap`-based CLI (`meedya` binary) with 8 commands, shared output infrastructure, dual output modes (Human/JSON), and 45 new tests.
+
+### Added
+
+- **Output infrastructure** (`output.rs`) — `OutputFormat` enum (Human/Json), `ExitCode` constants (0/1/2), `print_table()` (colored column-aligned), `print_key_value()`, `print_json()` (pretty-printed), `print_success/warning/error()` (colored status), `print_header()` (section separator), `print_progress()` (carriage-return overwrite). 4 tests.
+- **CLI context** (`context.rs`) — `CliContext` struct holding loaded `AppConfig`, `OutputFormat`, verbosity level, dry-run flag. `CliContext::build()` loads config from custom path or platform default with fallback to defaults. 3 tests.
+- **Main entry point** (`main.rs`) — Restructured with `Commands` enum (8 commands + Export stub), global flags (`--verbose`, `--config`, `--json`, `--dry-run`), `tokio::main` async runtime, tracing subscriber initialization.
+- **`meedya debug`** (`commands/debug.rs`) — Single-file metadata inspector showing classification, all tags, audio properties, cover art info, companion files. `--raw` flag for lofty tag names. `--cover <path>` extracts embedded cover art. Human (colored tables) and JSON output. 5 tests.
+- **`meedya rule`** (`commands/rule.rs`) — 4 subcommands:
+  - `validate <template>` — Parse template into AST, show validity and AST dump
+  - `tags` — List all 40+ known tag names with their types (Metadata/Virtual/Custom)
+  - `test <template> <file>` — Evaluate template against a real media file's metadata
+  - `legacy <template>` — Detect legacy MusicBee `{key}` syntax with migration hints
+  - 6 tests.
+- **`meedya config`** (`commands/config_cmd.rs`) — 5 subcommands:
+  - `show` — Display loaded configuration as pretty-printed JSON
+  - `path` — Print platform-default config file path
+  - `init [path]` — Write default config to config directory or specified path
+  - `export <output>` — Bundle config as `.mmprofile` JSON wrapper
+  - `import <profile>` — Load `.mmprofile` and write to config directory
+  - 5 tests.
+- **`meedya scan`** (`commands/scan.rs`) — Directory scan with media classification summary and optional rename preview. `--recursive` (default true), `--template` override, `--output-dir`, `--execute` (perform renames), `--dry-run` safety guard. Classification summary table, rename preview with conflict detection, execute mode. 7 tests.
+- **`meedya edit`** (`commands/edit.rs`) — Metadata tag editor. `--set key=value` (repeatable), `--remove key` (repeatable), `--cover <image>` (embed cover art), `--remove-cover`, `--dry-run` preview. Parses key=value format, reports per-action success/error. 6 tests.
+- **`meedya watch`** (`commands/watch.rs`) — Foreground file watcher with color-coded event logging. `--no-recursive`, `--organize` (auto-rename on events). Uses `tokio::task::spawn_blocking` to bridge `std::sync::mpsc` → async. Graceful shutdown via `Ctrl+C`. 4 tests.
+- **`meedya lookup`** (`commands/lookup.rs`) — Stub command for M5 metadata providers. Lists 19 planned providers across 4 categories. 2 tests.
+- **`meedya report-bug`** (`commands/report_bug.rs`) — System info collector: OS, arch, version, config path, watch folders, health check results. `--include-logs` (last 200 log lines), `--output <path>` (save report to file). Markdown (human) or JSON output. 3 tests.
+
+### Changed
+
+- **`mm-core` config structs** (`config/mod.rs`) — Added `Serialize` derive to `AppConfig`, `WatchConfig`, `RenameConfig`, `LoggingConfig`, `ProviderConfig` for JSON serialization from CLI.
+- **Tag registry** (`rule_engine/tag_registry.rs`) — Added `pub fn all_tags()` returning sorted registry entries for the `rule tags` command.
+- **`mm-cli` Cargo.toml** — Added `serde`, `dirs`, `chrono` runtime deps; `tempfile` dev-dep.
+
+---
+
 ## [v2.0.0-alpha.3] — 2026-03-05 — Rule Engine (M2)
 
 > **Milestone 2** — MusicBee-inspired template language with lexer, recursive descent parser, evaluator, 24 template functions, 40+ tag mappings, and declarative rule/condition system. 182 new tests (181 unit + 1 doc-test).
@@ -591,6 +628,9 @@ Format: `## [Version] — YYYY-MM-DD`
 
 | Version | Milestone | Description |
 |---------|-----------|-------------|
+| `v2.0.0-alpha.4` | ✅ M3: CLI | 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), 45 tests |
+| `v2.0.0-alpha.3` | ✅ M2: Rule Engine | Lexer, parser, evaluator, 24 template functions, 182 tests |
+| `v2.0.0-alpha.2` | ✅ M1: Core Engine | Config, classify, metadata, watcher, renamer, companion, 217 tests |
 | `v2.0.0-alpha.1` | 🔧 M0: Repository Setup | Rust rewrite, Cargo workspace, native scaffolds, CI/CD |
 | `v1.5-M6` | ✅ Packaging & Error Handling | Centralized logging, crash protection, config profiles, native installers |
 | `v1.4-M5` | ✅ Metadata Lookup | 19 providers (music, video, podcasts, identifiers), framework, CLI, GUI |
