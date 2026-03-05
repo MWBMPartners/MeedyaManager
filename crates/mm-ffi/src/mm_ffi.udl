@@ -1,0 +1,207 @@
+// (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+//
+// MeedyaManager — UniFFI Definition Language (UDL) interface
+//
+// This file describes the public API surface that UniFFI exposes to Swift
+// (macOS) and Kotlin (Android). It is parsed at build time by the UniFFI
+// build support crate to generate:
+//   - Rust scaffolding (type conversion glue)
+//   - Swift bindings (MeedyaManager.swift + MeedyaManagerFFI.h)
+//
+// Design rules:
+//   - All types must be UniFFI-compatible (primitives, Records, Enums, Objects)
+//   - HashMap is not directly supported — use sequence<TagEntry> instead
+//   - Errors use [Error] enum pattern so Swift sees them as Swift errors
+//   - Async functions use the tokio dispatcher for non-blocking UI calls
+//
+// UniFFI version: 0.29
+
+namespace mm_ffi {
+
+    // -----------------------------------------------------------------------
+    // Version
+    // -----------------------------------------------------------------------
+
+    /// Return the MeedyaManager core version string (e.g. "2.0.0-alpha.5")
+    string mm_version();
+
+    // -----------------------------------------------------------------------
+    // Configuration
+    // -----------------------------------------------------------------------
+
+    /// Load (or create) the config from the default platform path.
+    /// Returns the active configuration as a JSON5 string.
+    [Throws=MmFfiError]
+    string config_load();
+
+    /// Return the platform-specific path to settings.json5
+    string config_path();
+
+    // -----------------------------------------------------------------------
+    // Media scanning & rename preview
+    // -----------------------------------------------------------------------
+
+    /// Scan a directory and compute rename previews for all media files.
+    ///
+    /// - `directory`:  absolute path to scan (non-recursive by default)
+    /// - `template`:   MusicBee-style rename template, e.g. "<Artist> - <Title>"
+    /// - `recursive`:  whether to descend into sub-directories
+    ///
+    /// Returns a list of rename previews sorted by source path.
+    [Throws=MmFfiError]
+    sequence<RenamePreviewFfi> scan_directory(string directory, string template, boolean recursive);
+
+    /// Execute renames for the given previews (non-conflicting only).
+    /// Returns the number of files successfully renamed.
+    [Throws=MmFfiError]
+    u32 execute_renames(sequence<RenamePreviewFfi> previews);
+
+    // -----------------------------------------------------------------------
+    // Metadata
+    // -----------------------------------------------------------------------
+
+    /// Read all metadata tags from a single media file.
+    [Throws=MmFfiError]
+    sequence<TagEntry> get_metadata(string path);
+
+    /// Write/update metadata tags on a media file.
+    /// Only the tags present in `tags` are modified; others are left intact.
+    [Throws=MmFfiError]
+    void write_metadata(string path, sequence<TagEntry> tags);
+
+    /// Remove a single tag field from a media file.
+    [Throws=MmFfiError]
+    void remove_tag(string path, string tag_key);
+
+    /// Read audio technical properties (duration, bitrate, sample rate, etc.)
+    [Throws=MmFfiError]
+    AudioPropertiesFfi get_audio_properties(string path);
+
+    // -----------------------------------------------------------------------
+    // Rule / template engine
+    // -----------------------------------------------------------------------
+
+    /// Validate a rename template string.
+    /// Returns a ValidationResult indicating whether the template is valid
+    /// and listing any errors or warnings found.
+    ValidationResult validate_template(string template);
+
+    /// Apply a template to a set of tags and return the computed filename.
+    [Throws=MmFfiError]
+    string apply_template(string template, sequence<TagEntry> tags);
+
+    /// List all known tag names (e.g. "Artist", "Album", "Year")
+    sequence<string> list_known_tags();
+
+    // -----------------------------------------------------------------------
+    // File watcher
+    // -----------------------------------------------------------------------
+
+    /// Start watching a directory. Events are delivered via the WatchCallback.
+    /// Returns a watcher handle ID (use stop_watch to stop).
+    [Throws=MmFfiError]
+    u64 start_watch(string directory, WatchCallback callback);
+
+    /// Stop a previously started directory watcher.
+    void stop_watch(u64 handle_id);
+
+};
+
+// ---------------------------------------------------------------------------
+// Shared record types
+// ---------------------------------------------------------------------------
+
+/// A single metadata tag key/value pair
+dictionary TagEntry {
+    /// Canonical tag key (e.g. "title", "artist", "album")
+    string key;
+    /// Tag value (always a string; numeric tags are string-encoded)
+    string value;
+};
+
+/// The result of simulating a single file rename
+dictionary RenamePreviewFfi {
+    /// Absolute source file path
+    string source;
+    /// Computed absolute destination path
+    string destination;
+    /// True if the destination already exists (conflict)
+    boolean conflict;
+    /// True if source == destination (no rename needed)
+    boolean unchanged;
+};
+
+/// Audio technical properties (codec-independent)
+dictionary AudioPropertiesFfi {
+    /// Duration in seconds (may be 0 if unknown)
+    u32 duration_secs;
+    /// Bitrate in kbps (may be 0 if unknown)
+    u32 bitrate_kbps;
+    /// Sample rate in Hz (may be 0 if unknown)
+    u32 sample_rate_hz;
+    /// Number of channels (1 = mono, 2 = stereo, etc.)
+    u8 channels;
+    /// Bit depth (e.g. 16, 24) — 0 if not applicable
+    u8 bit_depth;
+    /// Lossless codec flag
+    boolean is_lossless;
+    /// Human-readable codec name (e.g. "FLAC", "MP3", "AAC")
+    string codec;
+};
+
+/// Result of validating a rename template
+dictionary ValidationResult {
+    /// True if the template is syntactically valid
+    boolean is_valid;
+    /// Human-readable error message (empty string if valid)
+    string error_message;
+    /// Non-fatal warnings (e.g. unknown tag names used)
+    sequence<string> warnings;
+};
+
+/// A watcher event delivered via the callback interface
+dictionary WatchEventFfi {
+    /// Event kind: "created" | "modified" | "deleted" | "renamed" | "error"
+    string kind;
+    /// Affected file path (absolute)
+    string path;
+    /// For "renamed" events: the new path (empty for other kinds)
+    string new_path;
+};
+
+// ---------------------------------------------------------------------------
+// Error type
+// ---------------------------------------------------------------------------
+
+/// Error variants returned by FFI functions
+[Error]
+enum MmFfiError {
+    /// Configuration error
+    "Config",
+    /// File I/O error
+    "Io",
+    /// Metadata read/write error
+    "Metadata",
+    /// Rename operation error
+    "Rename",
+    /// Rule engine / template error
+    "RuleEngine",
+    /// Watcher error
+    "Watcher",
+    /// Unknown / unexpected error
+    "Unknown",
+};
+
+// ---------------------------------------------------------------------------
+// Callback interfaces (async event delivery from Rust to Swift)
+// ---------------------------------------------------------------------------
+
+/// Callback interface for file watcher events.
+/// Implement this in Swift/Kotlin to receive real-time file system events.
+callback interface WatchCallback {
+    /// Called when a file system event occurs in the watched directory.
+    void on_event(WatchEventFfi event);
+
+    /// Called when the watcher encounters an unrecoverable error.
+    void on_error(string message);
+};

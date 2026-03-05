@@ -12,8 +12,9 @@ public partial class App : Application
 {
     /// <summary>
     /// Reference to the main application window.
+    /// Exposed publicly so that file/folder pickers can retrieve the HWND.
     /// </summary>
-    private Window? _mainWindow;
+    public static Window? MainWindow { get; private set; }
 
     /// <summary>
     /// Initializes the application and its XAML components.
@@ -31,10 +32,10 @@ public partial class App : Application
     /// <param name="args">Launch activation arguments.</param>
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        // Create the main application window
-        _mainWindow = new MainWindow();
+        // Create the main application window and store for cross-class HWND access
+        MainWindow = new MainWindow();
 
         // Activate (show) the window
-        _mainWindow.Activate();
+        MainWindow.Activate();
     }
 }

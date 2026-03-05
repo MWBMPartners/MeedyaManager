@@ -1,5 +1,13 @@
 // (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+//
+// MeedyaManager — Main Window code-behind (WinUI 3)
+//
+// Configures the NavigationView and routes selection changes to the
+// correct page via ContentFrame.Navigate().
+// Applies Mica backdrop for the translucent Windows 11 material effect.
 
+using System;
+using MeedyaManager.Views;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,8 +15,9 @@ using Microsoft.UI.Xaml.Controls;
 namespace MeedyaManager;
 
 /// <summary>
-/// Main application window with NavigationView and Mica backdrop.
-/// Hosts the top-level navigation between Library, Rules, Metadata, Lookup, and Settings.
+/// Main application window.
+/// Hosts a NavigationView with Mica backdrop and navigates between the
+/// Library (Scan), Rules, Metadata, and Settings pages.
 /// </summary>
 public sealed partial class MainWindow : Window
 {
@@ -20,34 +29,41 @@ public sealed partial class MainWindow : Window
         // Initialize XAML component tree defined in MainWindow.xaml
         this.InitializeComponent();
 
-        // Set the window title
+        // Human-readable window title shown in the title bar and taskbar
         this.Title = "MeedyaManager";
 
-        // Apply Mica backdrop for the Windows 11 translucent material effect.
-        // Falls back gracefully on unsupported systems.
+        // Apply Mica backdrop: translucent Windows 11 material effect.
+        // Silently degrades on systems that do not support it (Windows 10, VM).
         this.SystemBackdrop = new MicaBackdrop();
 
-        // Select the first navigation item (Library) by default
+        // Select the first navigation item (Library/Scan) by default
         NavView.SelectedItem = NavView.MenuItems[0];
     }
 
     /// <summary>
     /// Handles NavigationView selection changes.
-    /// Routes navigation to the appropriate page based on the selected item's Tag.
+    /// Routes navigation to the appropriate Page subclass based on the Tag.
     /// </summary>
     /// <param name="sender">The NavigationView that raised the event.</param>
     /// <param name="args">Event data including the selected item.</param>
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        // Get the selected NavigationViewItem
-        if (args.SelectedItem is NavigationViewItem selectedItem)
+        // Determine which page type to navigate to based on the Tag
+        Type? pageType = args.SelectedItem switch
         {
-            // Read the Tag property to determine which section was selected
-            string? tag = selectedItem.Tag as string;
+            // NavigationViewItem with Tag set in XAML
+            NavigationViewItem { Tag: "Library"  } => typeof(ScanPage),
+            NavigationViewItem { Tag: "Rules"    } => typeof(RulesPage),
+            NavigationViewItem { Tag: "Metadata" } => typeof(MetadataPage),
+            NavigationViewItem { Tag: "Settings" } => typeof(SettingsPage),
+            _ => null,
+        };
 
-            // TODO: Navigate ContentFrame to the corresponding page once view pages are implemented.
-            // Example: ContentFrame.Navigate(typeof(Views.LibraryPage));
-            System.Diagnostics.Debug.WriteLine($"Navigation selected: {tag}");
+        // Navigate only if a valid page type was matched
+        if (pageType is not null && ContentFrame.CurrentSourcePageType != pageType)
+        {
+            // Navigate with a default entrance animation (slide from right)
+            ContentFrame.Navigate(pageType, null, new Microsoft.UI.Xaml.Media.Animation.EntranceNavigationTransitionInfo());
         }
     }
 }

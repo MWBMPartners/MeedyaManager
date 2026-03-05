@@ -1,0 +1,95 @@
+<!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
+<!--
+    MeedyaManager — Rules Page (WinUI 3) — M4 stub
+
+    Provides:
+      - A live template validator with per-keystroke feedback
+      - A tag reference grid whose pill buttons insert tags into the template entry
+
+    The full visual rule builder (condition editor, priority ordering, etc.)
+    is planned for M6 (v2.0.0-beta.1).
+-->
+<Page
+    x:Class="MeedyaManager.Views.RulesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    Background="Transparent">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Padding="24" MaxWidth="800">
+
+            <!-- ── Template Validator ────────────────────────────────────── -->
+            <TextBlock
+                Text="Template Validator"
+                Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <TextBox
+                x:Name="TemplateEntry"
+                Header="Rename Template"
+                PlaceholderText="e.g. &lt;Artist&gt; - &lt;Title&gt;"
+                FontFamily="Cascadia Mono, Consolas, monospace"
+                TextChanged="TemplateEntry_TextChanged" />
+
+            <!-- Validation feedback InfoBar -->
+            <InfoBar
+                x:Name="ValidationBar"
+                IsOpen="False"
+                IsClosable="False" />
+
+            <!-- ── Live Preview ───────────────────────────────────────────── -->
+            <TextBlock
+                Text="Live Preview"
+                Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <Border
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="4"
+                Padding="12">
+                <TextBlock
+                    x:Name="PreviewText"
+                    Text="Enter a template above"
+                    FontFamily="Cascadia Mono, Consolas, monospace"
+                    TextWrapping="Wrap"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Border>
+
+            <!-- ── Available Tags ─────────────────────────────────────────── -->
+            <TextBlock
+                Text="Available Tags"
+                Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <TextBlock
+                Text="Click a tag to insert it at the current cursor position."
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <!-- Tag pills generated in code-behind -->
+            <ItemsControl x:Name="TagPills">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <muxc:WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button
+                            Content="{Binding}"
+                            Margin="4"
+                            FontFamily="Cascadia Mono, Consolas, monospace"
+                            FontSize="12"
+                            Click="TagPill_Click" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- ── M6 Notice ──────────────────────────────────────────────── -->
+            <InfoBar
+                IsOpen="True"
+                IsClosable="False"
+                Severity="Informational"
+                Title="Coming in M6"
+                Message="Full visual rule builder (condition editor, priority ordering, dry-run toggle) is planned for v2.0.0-beta.1." />
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -8,6 +8,61 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v2.0.0-alpha.5] — 2026-03-05 — FFI Layer & Native UI Shells (M4)
+
+> **Milestone 4** — UniFFI Swift bridge, cbindgen C API, GTK4/Adwaita Linux shell, macOS SwiftUI shell, Windows WinUI 3 shell. All three platforms now have functional UI stubs wired to mm-core via the FFI layer.
+
+### Added
+
+**`mm-ffi` crate:**
+- `types.rs` — FFI-safe types: `TagEntry`, `RenamePreviewFfi`, `AudioPropertiesFfi`, `ValidationResult` (with warnings), `WatchEventFfi`, `MmFfiError` (7 variants). `#[derive(uniffi::Record)]` / `#[derive(uniffi::Error)]`; `From<MmError>` conversions.
+- `callbacks.rs` — `WatchCallback` and `ScanProgressCallback` UniFFI callback interface traits for async event delivery.
+- `uniffi_api.rs` — 8 `#[uniffi::export]` functions: `mm_version`, `config_path`, `scan_directory`, `get_metadata`, `write_metadata`, `get_audio_properties`, `validate_template`, `list_known_tags`, `start_watch`, `stop_watch`. Channel-based watcher wrapped with `ActiveWatcher` struct + background thread.
+- `capi.rs` — 9 `#[no_mangle] pub extern "C"` functions for Windows P/Invoke: version, config path, scan, metadata read/write, tag removal, template validate/apply, known tags, free-string. All transport via JSON strings.
+- `build.rs` — cbindgen 0.27 build script generates `include/mm_ffi.h`.
+- `cbindgen.toml` — cbindgen config targeting C language, `include_modules = ["capi"]`.
+- `mm_ffi.udl` — UniFFI Definition Language file kept as reference documentation.
+- 20 unit tests in `lib.rs` covering: all error variants/Display, `From<MmError>`, TagEntry clone/eq, RenamePreview fields, ValidationResult, AudioProperties, WatchEvent, `mm_version()`, `validate_template()`, `list_known_tags()`, C API (version, validate_template valid/empty/null, free_string null-safe, list_known_tags, config_path).
+
+**`mm-gtk` crate (Linux GTK4/Adwaita):**
+- `lib.rs` / `main.rs` — `run_app()` entry point calling `adw::Application`.
+- `state.rs` — `ScanState` and `MetadataState` structs with `preview_summary()`, `executable_previews()`, `commit_edits()`, etc. 10 unit tests.
+- `ui/main_window.rs` — `AdwApplicationWindow` with `AdwTabView` (4 tabs), `AdwHeaderBar`, `AdwToastOverlay`, `AdwToolbarView`, about dialog via `adw::AboutDialog`.
+- `ui/scan_panel.rs` — `ScanPanel` with async folder picker (`gtk::FileDialog`), template entry, recursive toggle, scan button (calls `renamer::simulate_rename`), results list with conflict/unchanged badges, execute button.
+- `ui/metadata_panel.rs` — `MetadataPanel` with file picker, audio properties display, editable tag `gtk::ListBox` (per-row `gtk::Entry`), save (`metadata::write_tags`) and revert.
+- `ui/rules_panel.rs` — M4 stub: live template validator (calls `rule_engine::parse_template` per keystroke), `gtk::FlowBox` of tag pill buttons (insert at cursor). M6 notice.
+- `ui/settings_panel.rs` — `adw::PreferencesGroup` sections for General, Watching, Logging; raw JSON5 config `gtk::TextView`; `adw::Clamp` layout; M6 save notice.
+
+**macOS SwiftUI shell:**
+- `Models/AppState.swift` — `@Observable AppState` with `AppTab` enum (library/metadata/rules/settings), `ScanModel`, `MetadataModel`, `coreVersion`.
+- `Models/ScanModel.swift` — `@Observable ScanModel`: `scan()`, `executeRenames()` async; `RenamePreviewItem` with `sourceName`, `destinationName`, `badgeText`, `isExecutable`.
+- `Models/MetadataModel.swift` — `@Observable MetadataModel`: `loadFile()`, `saveAll()`, `revert()`, `updateTag(key:newValue:)`.
+- `Bindings/MmCore.swift` — Singleton bridge: `#if MM_FFI_AVAILABLE` real implementations + development stubs for all 6 functions. `FfiTagEntry`, `FfiRenamePreview` DTOs.
+- `MeedyaManagerApp.swift` — `@main` App with `WindowGroup`, `Settings` scene, Help and File `CommandGroup` additions.
+- `ContentView.swift` — `TabView(.sidebarAdaptable)`, 4 `Tab` entries, `applyContentBackground()` with `#available(macOS 26.0, *)` Liquid Glass check.
+- `Views/ScanView.swift` — `HSplitView`: OptionsPane (fileImporter, template TextField + `TemplateValidationBadge`, recursive Toggle, Scan/Execute buttons, ProgressView) + ResultsPane (List of `PreviewRow` or `ContentUnavailableView`).
+- `Views/MetadataView.swift` — toolbar with Open button (fileImporter), `TagEditorList` (editable tag rows), status bar with Revert + Save buttons.
+- `Views/RulesView.swift` — M4 stub: `HSplitView` left=Form (template + `ValidationFeedback` + live preview + sample tags), right=`LazyVGrid` of `TagPill` buttons. Simple `<Tag>` substitution for preview.
+- `Views/SettingsView.swift` — `SettingsGroup` cards for General (dry-run), Watching (recursive + debounce Stepper), Logging (log level Picker + PII toggle), Config File (path + Finder/Copy buttons), raw JSON5 preview. M6 notice. Core version footer.
+
+**Windows WinUI 3 shell:**
+- `Interop/MmCore.cs` — P/Invoke declarations for 8 `mm_ffi_*` functions; JSON deserialization via `System.Text.Json`; full stub fallback when DLL absent. `TagEntry`, `RenamePreview`, `ValidationResult`, `AudioProperties` records.
+- `Views/ScanPage.xaml/.cs` — Left: FolderPicker, template TextBox + InfoBar validation, recursive ToggleSwitch, Scan/Execute buttons, ProgressRing. Right: results ListView with `PreviewRow` view-model (SourceName, Arrow, badge). Background `Task.Run` for I/O.
+- `Views/MetadataPage.xaml/.cs` — Left: FileOpenPicker, audio props TextBlock, status. Right: `ObservableCollection<TagRowModel>` (INotifyPropertyChanged) in ListView, Save/Revert buttons.
+- `Views/RulesPage.xaml/.cs` — M4 stub: template TextBox + InfoBar validation + live preview Border + `ItemsControl` of tag pill Buttons (`muxc:WrapPanel`). Sample-tag substitution for preview. M6 InfoBar.
+- `Views/SettingsPage.xaml/.cs` — General/Watching/Logging preferences, config path TextBox + Open Folder + Copy Path buttons, raw JSON5 read-only TextBox, M6 InfoBar. `Launcher.LaunchFolderPathAsync` for Finder-equivalent.
+- `MainWindow.xaml.cs` — `NavView_SelectionChanged` routes to `ScanPage`, `RulesPage`, `MetadataPage`, `SettingsPage` via `ContentFrame.Navigate()` with `EntranceNavigationTransitionInfo`. Mica backdrop.
+- `App.xaml.cs` — `public static Window? MainWindow` exposed for HWND retrieval by pickers.
+
+### Changed
+
+- `Cargo.toml` — workspace version bumped: `2.0.0-alpha.1` → `2.0.0-alpha.5`.
+- `mm-ffi/Cargo.toml` — `crate-type = ["cdylib", "lib"]`; added uniffi 0.29, cbindgen 0.27, tokio 1, serde 1, serde_json 1, thiserror 2.
+- `mm-gtk/Cargo.toml` — added `[lib]` target; added serde_json, dirs 6, anyhow, tracing deps.
+- `windows/MeedyaManager/MeedyaManager.csproj` — retained existing WinAppSDK 1.6 reference.
+
+---
+
 ## [v2.0.0-alpha.4] — 2026-03-05 — CLI (M3)
 
 > **Milestone 3** — Full `clap`-based CLI (`meedya` binary) with 8 commands, shared output infrastructure, dual output modes (Human/JSON), and 45 new tests.

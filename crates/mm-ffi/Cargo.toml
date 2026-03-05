@@ -1,10 +1,10 @@
 # (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 # MeedyaManager — Foreign function interface crate
-# Exposes core and provider functionality to Python, Swift, and Kotlin via UniFFI.
+# Exposes core functionality to Swift (UniFFI) and C#/C (cbindgen extern "C").
 
 [package]
 name = "mm-ffi"
-description = "FFI bindings for MeedyaManager (UniFFI + cbindgen for Python, Swift, Kotlin)"
+description = "FFI bindings for MeedyaManager (UniFFI for Swift, cbindgen for C#)"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,14 +13,30 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lib]
-# cdylib: produces a shared library (.so/.dylib/.dll) for FFI consumers
-# lib:    allows other Rust crates to depend on this crate normally
+# cdylib: produces a shared library (.so/.dylib/.dll) consumed by Swift / C#
+# lib:    allows other Rust crates to depend on this crate in tests
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-# Internal crate dependencies — expose core types and provider APIs via FFI
+# Internal crates — expose core business logic through the FFI boundary
 mm-core = { path = "../mm-core" }
-mm-providers = { path = "../mm-providers" }
 
-# UniFFI — generates language bindings (Python, Swift, Kotlin) from Rust
-uniffi = "0.29"
+# UniFFI runtime — handles type conversion and scaffolding for Swift bindings
+uniffi = { version = "0.29", features = ["tokio"] }
+
+# Async runtime — required for UniFFI async callbacks
+tokio = { version = "1", features = ["full"] }
+
+# Serialization — JSON encoding for C API string returns
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+
+[build-dependencies]
+# UniFFI build support — generates scaffolding from UDL file at build time
+uniffi = { version = "0.29", features = ["build"] }
+
+# cbindgen — generates C headers from #[no_mangle] extern "C" functions
+cbindgen = "0.27"

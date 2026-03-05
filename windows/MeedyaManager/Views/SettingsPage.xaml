@@ -1,0 +1,130 @@
+<!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
+<!--
+    MeedyaManager — Settings Page (WinUI 3) — M4 stub
+
+    Displays preferences read from the mm-core config (or defaults when the
+    config file is absent).  Full save-to-JSON5 support is planned for M6.
+-->
+<Page
+    x:Class="MeedyaManager.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="24" Padding="24" MaxWidth="640">
+
+            <!-- ── General ───────────────────────────────────────────────── -->
+            <TextBlock Text="General" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <ToggleSwitch
+                x:Name="DryRunToggle"
+                Header="Dry-run mode"
+                OffContent="Renames are written to disk"
+                OnContent="Renames are previewed only (no file changes)" />
+
+            <!-- ── Watching ───────────────────────────────────────────────── -->
+            <TextBlock Text="Watching" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <ToggleSwitch
+                x:Name="RecursiveToggle"
+                Header="Recursive scan"
+                OffContent="Top-level files only"
+                OnContent="Include sub-directories"
+                IsOn="True" />
+
+            <NumberBox
+                x:Name="DebounceBox"
+                Header="Debounce interval (ms)"
+                Value="500"
+                Minimum="50"
+                Maximum="5000"
+                SpinButtonPlacementMode="Inline"
+                SmallChange="50" />
+
+            <!-- ── Logging ────────────────────────────────────────────────── -->
+            <TextBlock Text="Logging" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <ComboBox
+                x:Name="LogLevelBox"
+                Header="Log level"
+                HorizontalAlignment="Stretch">
+                <x:String>error</x:String>
+                <x:String>warn</x:String>
+                <x:String>info</x:String>
+                <x:String>debug</x:String>
+                <x:String>trace</x:String>
+            </ComboBox>
+
+            <ToggleSwitch
+                x:Name="RedactPiiToggle"
+                Header="Redact PII in logs"
+                OffContent="File paths and tags are logged as-is"
+                OnContent="File paths and tags replaced with [REDACTED]"
+                IsOn="True" />
+
+            <!-- ── Config File ────────────────────────────────────────────── -->
+            <TextBlock Text="Config File" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox
+                    x:Name="ConfigPathBox"
+                    Grid.Column="0"
+                    IsReadOnly="True"
+                    FontFamily="Cascadia Mono, Consolas, monospace"
+                    FontSize="12" />
+
+                <Button
+                    Grid.Column="1"
+                    Content="Open Folder"
+                    Click="OpenFolderButton_Click" />
+
+                <Button
+                    Grid.Column="2"
+                    Content="Copy Path"
+                    Click="CopyPathButton_Click" />
+            </Grid>
+
+            <!-- Raw config preview -->
+            <TextBlock Text="Raw Config (read-only)" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <Border
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="4"
+                MaxHeight="240">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <TextBox
+                        x:Name="RawConfigBox"
+                        IsReadOnly="True"
+                        AcceptsReturn="True"
+                        FontFamily="Cascadia Mono, Consolas, monospace"
+                        FontSize="12"
+                        BorderThickness="0"
+                        Background="Transparent"
+                        TextWrapping="Wrap" />
+                </ScrollViewer>
+            </Border>
+
+            <!-- ── M6 Notice ──────────────────────────────────────────────── -->
+            <InfoBar
+                IsOpen="True"
+                IsClosable="False"
+                Severity="Informational"
+                Title="Coming in M6"
+                Message="Settings editing (save to settings.json5) is planned for v2.0.0-beta.1." />
+
+            <!-- Core version -->
+            <TextBlock
+                x:Name="VersionText"
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                FontSize="11" />
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

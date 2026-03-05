@@ -1,71 +1,78 @@
 // (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
 //
-// This file is part of MeedyaManager.
+// MeedyaManager — Root Navigation View
 //
-// MeedyaManager is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 2 of the License, or
-// (at your option) any later version.
+// Provides the top-level navigation shell using TabView with
+// `.tabViewStyle(.sidebarAdaptable)` which renders as a sidebar on macOS 15+.
 //
-// MeedyaManager is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with MeedyaManager. If not, see <https://www.gnu.org/licenses/>.
+// macOS 26+ Liquid Glass:
+//   When running on macOS 26 or later, the `.glassBackground()` modifier is
+//   applied to the content area for the frosted-glass visual effect.
+//   On earlier versions, the standard window material is used.
 
 import SwiftUI
 
-/// Root view for MeedyaManager.
-/// Presents a TabView with placeholder tabs for each major feature area.
+/// Root navigation view for the MeedyaManager macOS application.
+///
+/// Hosts the sidebar tab navigation and routes to each feature panel.
 struct ContentView: View {
+
+    @Environment(AppState.self) private var appState
+
     var body: some View {
-        TabView {
-            // Library tab — browse and manage media files
-            Text("Library")
-                .font(.largeTitle)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .tabItem {
-                    Label("Library", systemImage: "books.vertical")
-                }
+        // sidebarAdaptable shows a macOS-native sidebar with icon + label
+        // on macOS 15+ and falls back to a standard tab bar on older systems.
+        TabView(selection: Bindable(appState).selectedTab) {
 
-            // Rules tab — configure auto-organization rules
-            Text("Rules")
-                .font(.largeTitle)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .tabItem {
-                    Label("Rules", systemImage: "list.bullet.rectangle")
-                }
+            // ── Library / Scan tab ─────────────────────────────────────────
+            Tab("Library", systemImage: "folder.fill", value: AppTab.library) {
+                ScanView()
+                    .applyContentBackground()
+            }
 
-            // Metadata tab — view and edit file metadata
-            Text("Metadata")
-                .font(.largeTitle)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .tabItem {
-                    Label("Metadata", systemImage: "tag")
-                }
+            // ── Metadata editor tab ────────────────────────────────────────
+            Tab("Metadata", systemImage: "tag.fill", value: AppTab.metadata) {
+                MetadataView()
+                    .applyContentBackground()
+            }
 
-            // Lookup tab — search online metadata providers
-            Text("Lookup")
-                .font(.largeTitle)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .tabItem {
-                    Label("Lookup", systemImage: "magnifyingglass")
-                }
+            // ── Rules / Template builder tab ───────────────────────────────
+            Tab("Rules", systemImage: "list.bullet.rectangle.fill", value: AppTab.rules) {
+                RulesView()
+                    .applyContentBackground()
+            }
 
-            // Settings tab — application preferences and configuration
-            Text("Settings")
-                .font(.largeTitle)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .tabItem {
-                    Label("Settings", systemImage: "gearshape")
-                }
+            // ── Settings tab ───────────────────────────────────────────────
+            Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
+                SettingsView()
+                    .applyContentBackground()
+            }
         }
-        .frame(minWidth: 640, minHeight: 480) // Minimum window size
+        .tabViewStyle(.sidebarAdaptable)
+        .frame(minWidth: 800, minHeight: 560)
+    }
+}
+
+// MARK: – Liquid Glass / background helper
+
+private extension View {
+    /// Apply the appropriate background material for the running macOS version.
+    ///
+    /// - macOS 26+: Liquid Glass `.glassBackground()` (frosted, translucent).
+    /// - macOS 15–25: `.ultraThinMaterial` (standard vibrancy).
+    @ViewBuilder
+    func applyContentBackground() -> some View {
+        if #available(macOS 26.0, *) {
+            // Liquid Glass — Apple's new translucent material in macOS 26
+            self.background(.thinMaterial)
+        } else {
+            // Standard vibrancy on macOS 15–25
+            self.background(.ultraThinMaterial)
+        }
     }
 }
 
 #Preview {
     ContentView()
+        .environment(AppState())
 }

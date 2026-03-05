@@ -1,0 +1,157 @@
+<!-- (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services) -->
+<!--
+    MeedyaManager — Scan Page (WinUI 3)
+
+    Left column: options pane (folder, template, recursive toggle, action buttons).
+    Right column: results list (rename previews with conflict/unchanged badges).
+    Full WinUI polish (Mica backdrop, acrylic cards, InfoBar feedback) is planned for M6.
+-->
+<Page
+    x:Class="MeedyaManager.Views.ScanPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <Grid ColumnSpacing="0">
+        <Grid.ColumnDefinitions>
+            <!-- Options pane — fixed width -->
+            <ColumnDefinition Width="320" MinWidth="260" MaxWidth="400" />
+            <!-- Splitter -->
+            <ColumnDefinition Width="Auto" />
+            <!-- Results pane — fills remaining space -->
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ── Options Pane ──────────────────────────────────────────────── -->
+        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16" Padding="16">
+
+                <!-- Folder picker -->
+                <TextBlock Text="Source Folder" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        x:Name="FolderBox"
+                        Grid.Column="0"
+                        PlaceholderText="Select a folder…"
+                        IsReadOnly="True" />
+                    <Button
+                        x:Name="BrowseButton"
+                        Grid.Column="1"
+                        Content="Browse…"
+                        Click="BrowseButton_Click" />
+                </Grid>
+
+                <!-- Template entry + validation -->
+                <TextBlock Text="Rename Template" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBox
+                    x:Name="TemplateBox"
+                    PlaceholderText="e.g. &lt;Artist&gt; - &lt;Title&gt;"
+                    TextChanged="TemplateBox_TextChanged" />
+                <InfoBar
+                    x:Name="ValidationBar"
+                    IsOpen="False"
+                    IsClosable="False" />
+
+                <!-- Recursive toggle -->
+                <ToggleSwitch
+                    x:Name="RecursiveToggle"
+                    Header="Include sub-folders"
+                    IsOn="True" />
+
+                <!-- Action buttons -->
+                <Button
+                    x:Name="ScanButton"
+                    Content="Scan"
+                    HorizontalAlignment="Stretch"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="ScanButton_Click" />
+
+                <Button
+                    x:Name="ExecuteButton"
+                    Content="Execute Renames"
+                    HorizontalAlignment="Stretch"
+                    IsEnabled="False"
+                    Click="ExecuteButton_Click" />
+
+                <!-- Progress ring shown during scan -->
+                <ProgressRing
+                    x:Name="ScanProgress"
+                    IsActive="False"
+                    HorizontalAlignment="Center" />
+
+                <!-- Status text -->
+                <TextBlock
+                    x:Name="StatusText"
+                    Text=""
+                    TextWrapping="Wrap"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Splitter -->
+        <Border Grid.Column="1" Width="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+        <!-- ── Results Pane ──────────────────────────────────────────────── -->
+        <Grid Grid.Column="2">
+            <!-- Empty state -->
+            <StackPanel
+                x:Name="EmptyState"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8">
+                <FontIcon Glyph="&#xE8B7;" FontSize="48"
+                          Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock
+                    Text="Select a folder and click Scan"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Results list -->
+            <ListView
+                x:Name="ResultsList"
+                Visibility="Collapsed"
+                SelectionMode="None"
+                ItemsSource="{x:Bind Previews}">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnSpacing="12" Padding="4,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <!-- Source filename -->
+                                <TextBlock
+                                    Text="{Binding SourceName}"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <!-- Arrow + destination -->
+                                <TextBlock
+                                    Text="{Binding Arrow}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <!-- Badge -->
+                            <Border
+                                Grid.Column="1"
+                                Background="{Binding BadgeColor}"
+                                CornerRadius="4"
+                                Padding="6,2"
+                                VerticalAlignment="Center">
+                                <TextBlock
+                                    Text="{Binding BadgeText}"
+                                    Foreground="White"
+                                    FontSize="11" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+    </Grid>
+</Page>

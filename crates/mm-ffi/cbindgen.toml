@@ -1,0 +1,31 @@
+# (C) 2025-2026 MWBM Partners Ltd (d/b/a MW Services)
+# cbindgen configuration for MeedyaManager C API header generation.
+# This header is consumed by the Windows C# project via P/Invoke.
+
+# Language to generate bindings for
+language = "C"
+
+# Only include items from the capi module (not UniFFI internals)
+include_modules = ["capi"]
+
+# Wrap the entire header in an extern "C" block for C++ compatibility
+cpp_compat = true
+
+# Use stdint types (uint32_t, int64_t etc.) for portability
+[export]
+include = []
+exclude = []
+
+[parse]
+# Parse all .rs files to find #[no_mangle] functions
+parse_deps = false
+
+[layout]
+# Use packed structs for ABI stability across compilers
+packed = false
+aligned_n = 0
+
+[documentation]
+# Include doc comments from Rust source in the generated header
+style = "auto"
+length = "full"

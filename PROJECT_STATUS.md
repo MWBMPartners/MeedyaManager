@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M3 — CLI — **Complete** |
-| **Overall Progress** | **36%** (4 of 11 milestones complete) |
-| **Latest Version** | `v2.0.0-alpha.4` |
+| **Current Milestone** | M4 — FFI Layer & Native UI Shells — **Complete** |
+| **Overall Progress** | **45%** (5 of 11 milestones complete) |
+| **Latest Version** | `v2.0.0-alpha.5` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -108,11 +108,43 @@
 
 ---
 
-### M4 — FFI Layer & Native UI Shells *(Planned)*
+### M4 — FFI Layer & Native UI Shells *(Complete)*
 
-> Target: `v2.0.0-alpha.5`
+> Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v2.0.0-alpha.5`
 
-UniFFI (Swift), cbindgen (C#), async callbacks. Basic SwiftUI/WinUI 3/GTK4 shells.
+**Progress: 100%** | Issues: #63-#72 | **20 tests** (mm-ffi unit + mm-gtk state)
+
+| Deliverable | Status | Notes |
+| ----------- | ------ | ----- |
+| `mm-ffi` crate — UniFFI proc-macro scaffolding | Done | `setup_scaffolding!("mm_ffi")` |
+| FFI types (`types.rs`) — TagEntry, RenamePreviewFfi, AudioPropertiesFfi, ValidationResult, WatchEventFfi, MmFfiError | Done | `uniffi::Record` / `uniffi::Error` derives |
+| UniFFI callback interfaces (`callbacks.rs`) — WatchCallback, ScanProgressCallback | Done | `#[uniffi::export(callback_interface)]` |
+| UniFFI API (`uniffi_api.rs`) — 8 exported functions wired to mm-core | Done | scan_directory, get_metadata, write_metadata, get_audio_properties, validate_template, list_known_tags, start_watch, stop_watch |
+| C API (`capi.rs`) — 9 `#[no_mangle]` functions with JSON transport | Done | mm_ffi_version, mm_ffi_config_path, mm_ffi_scan_directory, mm_ffi_get_metadata, mm_ffi_write_metadata, mm_ffi_validate_template, mm_ffi_apply_template, mm_ffi_list_known_tags, mm_ffi_free_string |
+| cbindgen config + build.rs — generates `include/mm_ffi.h` | Done | cbindgen 0.27, language C |
+| UDL reference file (`mm_ffi.udl`) | Done | Documentation only |
+| mm-ffi unit tests (lib.rs) — 20 tests | Done | Error display, TagEntry, RenamePreview, ValidationResult, AudioProperties, WatchEvent, UniFFI API, C API |
+| `mm-gtk` crate — lib.rs + main.rs | Done | `mm_gtk::run_app()` entry point |
+| `mm-gtk` state module (`state.rs`) — ScanState, MetadataState | Done | 10 unit tests |
+| `mm-gtk` main window (`main_window.rs`) — AdwTabView + 4 tabs + AboutDialog | Done | adw::ApplicationWindow |
+| `mm-gtk` scan panel (`scan_panel.rs`) — folder picker, scan, preview, execute | Done | gtk::FileDialog async |
+| `mm-gtk` metadata panel (`metadata_panel.rs`) — file picker, tag editor, save, revert | Done | gtk::ListBox |
+| `mm-gtk` rules panel (`rules_panel.rs`) — template validator + tag pills (M4 stub) | Done | M6 TODO |
+| `mm-gtk` settings panel (`settings_panel.rs`) — AdwPreferencesGroup, raw JSON5 view | Done | adw::Clamp |
+| macOS `AppState.swift` — `@Observable` AppState + AppTab enum | Done | selectedTab, ScanModel, MetadataModel |
+| macOS `ScanModel.swift` + `MetadataModel.swift` — observable models | Done | scan(), executeRenames(), loadFile(), saveAll() |
+| macOS `MmCore.swift` — P/Invoke bridge with `#if MM_FFI_AVAILABLE` guards | Done | All functions stubbed for development |
+| macOS `ContentView.swift` — TabView with .sidebarAdaptable, Liquid Glass | Done | `#available(macOS 26.0, *)` |
+| macOS `ScanView.swift` — HSplitView, fileImporter, TemplateValidationBadge | Done | |
+| macOS `MetadataView.swift` — toolbar, TagEditorList, status bar | Done | |
+| macOS `RulesView.swift` — template validator, live preview, tag pills (M4 stub) | Done | M6 TODO |
+| macOS `SettingsView.swift` — preferences, config path, raw JSON5 view | Done | |
+| Windows `MmCore.cs` — P/Invoke bridge with DLL availability guard + stubs | Done | JSON transport |
+| Windows `ScanPage.xaml/.cs` — folder picker, template validator, rename preview | Done | FolderPicker + async Task |
+| Windows `MetadataPage.xaml/.cs` — file picker, editable tag grid, save/revert | Done | INotifyPropertyChanged |
+| Windows `RulesPage.xaml/.cs` — template validator, live preview, tag pills (M4 stub) | Done | M6 TODO |
+| Windows `SettingsPage.xaml/.cs` — preferences, config path, raw JSON5 view | Done | |
+| Windows `MainWindow.xaml.cs` — NavigationView routing to 4 pages | Done | ContentFrame.Navigate() |
 
 ---
 
