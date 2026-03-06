@@ -36,7 +36,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build mm-gtk crate
-        run: cargo build -p mm-gtk
+        # mm-gtk is excluded from the workspace (gettextrs needs Linux system libs).
+        # Build it via its own manifest path.
+        run: cargo build --manifest-path crates/mm-gtk/Cargo.toml
 
       - name: Run mm-gtk tests under Xvfb
-        run: xvfb-run cargo test -p mm-gtk
+        run: xvfb-run cargo test --manifest-path crates/mm-gtk/Cargo.toml

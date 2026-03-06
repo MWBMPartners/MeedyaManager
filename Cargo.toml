@@ -4,7 +4,12 @@
 
 [workspace]
 resolver = "3"
-# All Rust crates in the monorepo
+# All Rust crates in the monorepo.
+# NOTE: mm-gtk is intentionally EXCLUDED from the workspace because it depends
+# on gettextrs (GNU gettext C bindings) which requires system libraries only
+# available on Linux.  Cargo resolves ALL workspace member dependencies even
+# when building a single crate, so including mm-gtk here breaks macOS/Windows
+# CI.  Build it explicitly with:  cargo build --manifest-path crates/mm-gtk/Cargo.toml
 members = [
     "crates/mm-core",
     "crates/mm-providers",
@@ -14,11 +19,11 @@ members = [
     "crates/mm-server",
     "crates/mm-cli",
     "crates/mm-ffi",
-    "crates/mm-gtk",
 ]
 
-# Exclude Linux-only GTK4 crate from default builds (requires system GTK4 libs)
-# Build explicitly with: cargo build -p mm-gtk
+# mm-gtk is excluded from the workspace (see above).  All workspace members
+# are default-members so a plain `cargo build` / `cargo test` covers everything
+# except the Linux GTK4 crate.
 default-members = [
     "crates/mm-core",
     "crates/mm-providers",
