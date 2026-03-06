@@ -41,7 +41,7 @@
 | #35 | Create GitHub Wiki — Version Management page | ✅ |
 | #36 | Create GitHub Wiki — Release Process page | ✅ |
 | #37 | Create GitHub Wiki — CI/CD Pipelines page | ✅ |
-| #38 | Write `docs/Dev_Notes.md` (versioning, release, CI reference) | ✅ |
+| #38 | Write `Dev_Notes.md` (versioning, release, CI reference) | ✅ |
 | #39 | Write initial README, Project_Plan.md, PROJECT_STATUS.md, ROADMAP.md | ✅ |
 
 ---

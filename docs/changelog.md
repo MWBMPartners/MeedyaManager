@@ -50,7 +50,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 **Developer documentation:**
 
-- `docs/Dev_Notes.md` — Five new sections: Managing File Type Definitions, Managing Metadata Tag Definitions, File Integrity Checking, Background Service Mode, Settings Export / Import.
+- `Dev_Notes.md` — Five new sections: Managing File Type Definitions, Managing Metadata Tag Definitions, File Integrity Checking, Background Service Mode, Settings Export / Import.
 
 ### Fixed
 

@@ -40,7 +40,7 @@
 | Automated version management | Done | `version-bump.yml` workflow, version-sync CI check |
 | Release build pipeline | Done | `release.yml` with 5 platform builds, checksums, draft releases |
 | GitHub Wiki | Done | Version Management, Release Process, CI/CD Pipelines pages |
-| Developer notes | Done | `docs/Dev_Notes.md` |
+| Developer notes | Done | `Dev_Notes.md` |
 
 ---
 

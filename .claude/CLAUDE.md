@@ -63,7 +63,7 @@
 - **README.md** — Project overview with quick start (root)
 - **docs/CHANGELOG.md** — Detailed change log with dates
 - **docs/ROADMAP.md** — Milestone timeline
-- **docs/Dev_Notes.md** — Developer notes (versioning, release process, CI/CD)
+- **Dev_Notes.md** — Developer notes (versioning, release process, CI/CD)
 - **help/** — User documentation
 - **.claude/** — This file + project brief for session continuity
 - **GitHub Wiki** — Version Management, Release Process, CI/CD Pipelines
@@ -89,7 +89,7 @@
 - **Automated bumping:** `version-bump.yml` GitHub Actions workflow
 - **CI sync check:** `ci-rust.yml` verifies all platform files match
 - **Platform mapping:** semver → MSIX 4-part (2.0.0.0), CFBundle 3-part (2.0.0)
-- See `docs/Dev_Notes.md` for full details
+- See `Dev_Notes.md` for full details
 
 ## API Key Policy
 
@@ -104,7 +104,7 @@
 - `Project_Plan.md` — Comprehensive project plan
 - `PROJECT_STATUS.md` — Current progress
 - `docs/ROADMAP.md` — Milestone details
-- `docs/Dev_Notes.md` — Developer notes and release process
+- `Dev_Notes.md` — Developer notes and release process
 
 ## Packaging & Distribution
 
