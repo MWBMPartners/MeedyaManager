@@ -90,7 +90,7 @@ The Deezer provider returns the following standard metadata fields:
 
 MeedyaManager constructs Deezer search queries using field prefixes for precision:
 
-```
+```text
 track:"Bohemian Rhapsody" artist:"Queen" album:"A Night at the Opera"
 ```
 

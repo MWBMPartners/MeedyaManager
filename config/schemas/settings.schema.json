@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MWBMPartners/MeedyaManager/config/schemas/settings.schema.json",
+  "title": "MeedyaManager Settings",
+  "description": "User-editable configuration for MeedyaManager. (C) 2025-2026 MWBM Partners Ltd",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "watch_paths": {
+      "type": "array",
+      "description": "Directories to monitor for new media files",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "valid_extensions": {
+      "type": "array",
+      "description": "File extensions to process (auto-lowercased)",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]{1,12}$"
+      }
+    },
+    "rename_format": {
+      "type": "string",
+      "description": "Rename template using MusicBee-style syntax (e.g. '<Artist>/<Album>/<Title>.<Ext>')",
+      "minLength": 1
+    },
+    "fallback_metadata": {
+      "type": "object",
+      "description": "Default fallback values when metadata is unavailable",
+      "additionalProperties": false,
+      "properties": {
+        "media_group": {
+          "type": "string",
+          "description": "Default media group (e.g. 'Audio')"
+        },
+        "format_class": {
+          "type": "string",
+          "description": "Default format class (e.g. 'unknown')"
+        },
+        "media_class": {
+          "type": "string",
+          "description": "Default media class (e.g. 'Music')"
+        },
+        "quality_type": {
+          "type": "string",
+          "enum": ["Lossy", "Lossless"],
+          "description": "Default quality classification"
+        }
+      }
+    },
+    "filename_replacements": {
+      "type": "object",
+      "description": "Character replacement map for unsafe filename characters",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "logging": {
+      "type": "object",
+      "description": "Logging configuration",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "default": "INFO",
+          "description": "Minimum log level"
+        },
+        "max_log_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "default": 30,
+          "description": "Days to keep rotated log files"
+        },
+        "max_log_size_mb": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "default": 10,
+          "description": "Maximum size per log file (MB) before rotation"
+        },
+        "console_level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "default": "WARNING",
+          "description": "Minimum level for console/terminal output"
+        },
+        "redact_pii": {
+          "type": "boolean",
+          "default": true,
+          "description": "Redact user paths in log output"
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "description": "Metadata lookup provider configuration",
+      "additionalProperties": false,
+      "properties": {
+        "apple_music": { "$ref": "#/$defs/providerConfig" },
+        "spotify": { "$ref": "#/$defs/providerConfig" },
+        "musicbrainz": { "$ref": "#/$defs/providerConfig" },
+        "deezer": { "$ref": "#/$defs/providerConfig" },
+        "tidal": { "$ref": "#/$defs/providerConfig" },
+        "youtube_music": { "$ref": "#/$defs/providerConfig" },
+        "amazon_music": { "$ref": "#/$defs/providerConfig" },
+        "pandora": { "$ref": "#/$defs/providerConfig" },
+        "shazam": { "$ref": "#/$defs/providerConfig" },
+        "iheart": { "$ref": "#/$defs/providerConfig" },
+        "apple_podcasts": { "$ref": "#/$defs/providerConfig" },
+        "apple_tv": { "$ref": "#/$defs/providerConfig" },
+        "itunes_store": { "$ref": "#/$defs/providerConfig" },
+        "tmdb": { "$ref": "#/$defs/providerConfig" },
+        "tvdb": { "$ref": "#/$defs/providerConfig" },
+        "imdb": { "$ref": "#/$defs/providerConfig" },
+        "isrc": { "$ref": "#/$defs/providerConfig" },
+        "eidr": { "$ref": "#/$defs/providerConfig" },
+        "iswc": { "$ref": "#/$defs/providerConfig" }
+      }
+    },
+    "cover_art": {
+      "type": "object",
+      "description": "Cover art download and embedding preferences",
+      "additionalProperties": false,
+      "properties": {
+        "download_static": {
+          "type": "boolean",
+          "default": true,
+          "description": "Download static cover art (JPEG/PNG)"
+        },
+        "download_animated_square": {
+          "type": "boolean",
+          "default": true,
+          "description": "Download animated square art (MP4)"
+        },
+        "download_animated_portrait": {
+          "type": "boolean",
+          "default": true,
+          "description": "Download animated portrait art (MP4)"
+        },
+        "download_artist_spotlight": {
+          "type": "boolean",
+          "default": true,
+          "description": "Download artist spotlight video (MP4)"
+        },
+        "embed_in_tags": {
+          "type": "boolean",
+          "default": true,
+          "description": "Embed static cover art in file tags"
+        },
+        "max_static_resolution": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 10000,
+          "default": 3000,
+          "description": "Maximum static cover art resolution (pixels)"
+        },
+        "preferred_format": {
+          "type": "string",
+          "enum": ["jpeg", "png"],
+          "default": "jpeg",
+          "description": "Preferred static format"
+        },
+        "overwrite_existing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Overwrite existing cover art files"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "providerConfig": {
+      "type": "object",
+      "description": "Provider-specific configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable or disable this provider"
+        },
+        "storefront": {
+          "type": "string",
+          "pattern": "^[a-z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code (e.g. 'gb', 'us')"
+        },
+        "language": {
+          "type": "string",
+          "description": "Preferred language for results (e.g. 'en-GB')"
+        },
+        "fetch_audio_features": {
+          "type": "boolean",
+          "description": "Fetch extended audio features (Spotify)"
+        },
+        "quality_indicators": {
+          "type": "boolean",
+          "description": "Fetch quality flags like HiFi/Atmos (Tidal)"
+        },
+        "fingerprint_seconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 30,
+          "description": "Seconds of audio to fingerprint (Shazam)"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

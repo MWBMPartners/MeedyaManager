@@ -32,7 +32,8 @@ Runs on: Ubuntu, macOS, Windows (3-OS matrix)
 4. `version-check` — verify Cargo.toml version matches Info.plist + Package.appxmanifest
 
 **Status badge:**
-```
+
+```text
 ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg)
 ```
 
@@ -99,7 +100,7 @@ Triggered by pushing a `v*` tag (e.g., `v1.0.0`).
 
 **Architecture:**
 
-```
+```text
 prepare ──┬── build-macos-arm64
           ├── build-windows-x64
           ├── build-windows-arm64

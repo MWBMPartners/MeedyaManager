@@ -48,7 +48,7 @@ meedya --config /etc/meedya/settings.json5 service status
 
 Inspect a single media file — display its classification, all embedded tags, and file properties.
 
-```
+```text
 meedya debug <FILE> [OPTIONS]
 ```
 
@@ -72,7 +72,7 @@ meedya -v debug ~/Music/song.mp3
 
 ### Sample Output
 
-```
+```text
 File:         song.mp3
 Media Group:  Audio
 Format Class: MP3
@@ -96,7 +96,7 @@ Tags:
 
 Scan a directory for media files and preview what renames would be applied.
 
-```
+```text
 meedya scan [PATH] [OPTIONS]
 ```
 
@@ -126,7 +126,7 @@ meedya scan ~/Music --json
 
 Monitor directories for new or changed media files and process them as they arrive.
 
-```
+```text
 meedya watch [PATHS...] [OPTIONS]
 ```
 
@@ -159,7 +159,7 @@ meedya -v watch
 
 Edit metadata tags and cover art on a media file.
 
-```
+```text
 meedya edit <FILE> [OPTIONS]
 ```
 
@@ -194,7 +194,7 @@ meedya edit song.mp3 --tag "Year=1987" --dry-run
 
 Search metadata providers for a media file and optionally apply the best match.
 
-```
+```text
 meedya lookup <FILE> [OPTIONS]
 meedya lookup --list-providers
 ```
@@ -237,7 +237,7 @@ meedya lookup --list-providers
 
 Validate templates, list available tags, and test rules against files.
 
-```
+```text
 meedya rule <SUBCOMMAND>
 ```
 
@@ -245,7 +245,7 @@ meedya rule <SUBCOMMAND>
 
 Test a template against a file to preview the output.
 
-```
+```text
 meedya rule test --template <TEMPLATE> <FILE>
 ```
 
@@ -257,7 +257,7 @@ meedya rule test --template "<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>" son
 
 Validate a template for syntax errors.
 
-```
+```text
 meedya rule validate --template <TEMPLATE>
 ```
 
@@ -269,7 +269,7 @@ meedya rule validate --template "<Artist>/<Album>/<Title>.<Ext>"
 
 List all available tags and their descriptions.
 
-```
+```text
 meedya rule list-tags
 meedya rule list-tags --json
 ```
@@ -280,7 +280,7 @@ meedya rule list-tags --json
 
 Manage MeedyaManager configuration.
 
-```
+```text
 meedya config <SUBCOMMAND>
 ```
 
@@ -325,7 +325,7 @@ For export/import details, see [settings-export-import.md](settings-export-impor
 
 Manage the MeedyaManager background service.
 
-```
+```text
 meedya service <SUBCOMMAND>
 ```
 
@@ -364,7 +364,7 @@ For full service setup instructions, see [background-service.md](background-serv
 
 Export media library metadata to a database.
 
-```
+```text
 meedya export [OPTIONS]
 ```
 
@@ -394,7 +394,7 @@ meedya export --format sqlite --out ~/library.db --dry-run
 
 Start the HTTPS media server with JWT authentication.
 
-```
+```text
 meedya serve [OPTIONS]
 ```
 
@@ -422,7 +422,7 @@ meedya serve --dry-run
 
 Generate a diagnostic bug report with system info, health check results, and recent log excerpts.
 
-```
+```text
 meedya report-bug [OPTIONS]
 ```
 

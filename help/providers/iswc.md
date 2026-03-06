@@ -49,7 +49,7 @@ One ISWC can have many ISRCs (every cover version, live recording, and remix of 
 
 MusicBrainz does require that API consumers identify themselves with a meaningful `User-Agent` header. MeedyaManager automatically sets this to:
 
-```
+```text
 MeedyaManager/1.0 (https://github.com/MWBMPartners/MeedyaManager)
 ```
 
@@ -141,7 +141,7 @@ The `custom_iswc_work_title` stores the canonical title of the work as registere
 
 An ISWC follows this structure:
 
-```
+```text
 T-NNN.NNN.NNN-C
 ```
 

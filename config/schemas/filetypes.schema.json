@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MWBMPartners/MeedyaManager/config/schemas/filetypes.schema.json",
+  "title": "MeedyaManager File Type Registry",
+  "description": "Defines all file type classifications recognised by MeedyaManager. (C) 2025-2026 MWBM Partners Ltd",
+  "type": "object",
+  "required": ["audio", "video", "subtitle", "companion"],
+  "additionalProperties": false,
+  "properties": {
+    "audio": {
+      "type": "array",
+      "description": "Audio file formats (lossy, lossless, PCM, tracker, MIDI)",
+      "items": { "$ref": "#/$defs/audioFormat" }
+    },
+    "video": {
+      "type": "array",
+      "description": "Video file formats",
+      "items": { "$ref": "#/$defs/videoFormat" }
+    },
+    "subtitle": {
+      "type": "array",
+      "description": "Subtitle, caption, lyrics, and transcript formats",
+      "items": { "$ref": "#/$defs/subtitleFormat" }
+    },
+    "companion": {
+      "type": "array",
+      "description": "Companion file formats (cue sheets, playlists, checksums, archives)",
+      "items": { "$ref": "#/$defs/companionFormat" }
+    }
+  },
+  "$defs": {
+    "extension": {
+      "type": "string",
+      "pattern": "^[a-z0-9]{1,12}$",
+      "description": "Lowercase file extension without leading dot (1-12 alphanumeric characters)"
+    },
+    "mimeType": {
+      "type": ["string", "null"],
+      "pattern": "^[a-z][a-z0-9!#$&\\-^_]{0,63}/[a-z0-9!#$&\\-^_.+]{1,64}(;.*)?$",
+      "description": "IANA MIME type (e.g. 'audio/mpeg') or null if no official type exists"
+    },
+    "audioFormat": {
+      "type": "object",
+      "required": ["ext", "name", "lossless"],
+      "additionalProperties": false,
+      "properties": {
+        "ext": { "$ref": "#/$defs/extension" },
+        "mime": { "$ref": "#/$defs/mimeType" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Human-readable display name"
+        },
+        "lossless": {
+          "type": "boolean",
+          "description": "True for lossless formats (FLAC, WAV, ALAC, etc.)"
+        },
+        "taggable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether embedded metadata tags can be read/written (false for raw bitstream formats like AC3)"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set false to hide this format from all lookups"
+        }
+      }
+    },
+    "videoFormat": {
+      "type": "object",
+      "required": ["ext", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "ext": { "$ref": "#/$defs/extension" },
+        "mime": { "$ref": "#/$defs/mimeType" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Human-readable display name"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set false to hide this format from all lookups"
+        }
+      }
+    },
+    "subtitleFormat": {
+      "type": "object",
+      "required": ["ext", "name", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "ext": { "$ref": "#/$defs/extension" },
+        "mime": { "$ref": "#/$defs/mimeType" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Human-readable display name"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["subtitle", "caption", "lyrics", "transcript"],
+          "description": "Classification of the text-track type"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set false to hide this format from all lookups"
+        }
+      }
+    },
+    "companionFormat": {
+      "type": "object",
+      "required": ["ext", "name", "scope"],
+      "additionalProperties": false,
+      "properties": {
+        "ext": { "$ref": "#/$defs/extension" },
+        "mime": { "$ref": "#/$defs/mimeType" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Human-readable display name"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["track", "album", "artist"],
+          "description": "Scope: 'track' travels with one file, 'album' with the directory, 'artist' with all albums"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set false to hide this format from all lookups"
+        }
+      }
+    }
+  }
+}

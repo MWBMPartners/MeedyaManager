@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -180,8 +181,9 @@ pub fn substitute_template(
         result = result.replace(&placeholder, value);
     }
     // Replace any remaining unreplaced placeholders with "Unknown"
-    let re = regex::Regex::new(r"\{[^}]+\}").unwrap();
-    re.replace_all(&result, "Unknown").to_string()
+    static PLACEHOLDER_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\{[^}]+\}").expect("valid regex"));
+    PLACEHOLDER_RE.replace_all(&result, "Unknown").to_string()
 }
 
 /// Simulate a batch rename operation without moving any files.

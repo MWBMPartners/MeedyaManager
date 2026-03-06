@@ -73,7 +73,7 @@ meedya service status
 
 Output:
 
-```
+```text
 MeedyaManager background service: RUNNING
 ```
 
@@ -114,7 +114,7 @@ The service is installed as a **systemd user unit** — it runs under your user 
 
 **Unit file location:**
 
-```
+```text
 ~/.config/systemd/user/meedyamanager.service
 ```
 
@@ -165,7 +165,7 @@ The service is installed as a **LaunchAgent** — it runs when you log in, under
 
 **Plist file location:**
 
-```
+```text
 ~/Library/LaunchAgents/com.mwbm.meedyamanager.plist
 ```
 

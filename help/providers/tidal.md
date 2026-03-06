@@ -183,7 +183,7 @@ TIDAL provides static cover art via a UUID-based URL template:
 
 The cover art URL pattern is:
 
-```
+```text
 https://resources.tidal.com/images/{uuid}/1280x1280.jpg
 ```
 

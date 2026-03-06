@@ -141,7 +141,7 @@ The `custom_isrc_source` indicates which data source confirmed the ISRC, useful 
 
 An ISRC is a 12-character alphanumeric code with the following structure:
 
-```
+```text
 XX-XXX-YY-NNNNN
 ```
 

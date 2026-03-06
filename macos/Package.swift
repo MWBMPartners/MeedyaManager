@@ -43,6 +43,8 @@ let package = Package(
             resources: [
                 .copy("Resources/AppIcon.icns"),
                 .copy("Resources/AppIcon.svg"),
+                // Apple Privacy Manifest — required for App Store / TestFlight
+                .copy("PrivacyInfo.xcprivacy"),
             ],
             // The FFI framework is linked when available (set by CI)
             // In development without the XCFramework, the app uses stub implementations

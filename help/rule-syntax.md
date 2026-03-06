@@ -32,7 +32,7 @@ A template combines three elements:
 
 ### Simple Example
 
-```
+```text
 <Album Artist>/<Album>/<Track #> - <Title>.<Ext>
 ```
 
@@ -110,7 +110,7 @@ Tags are enclosed in angle brackets and replaced with the corresponding metadata
 
 Custom tags use the `Custom:` prefix and support unlimited user-defined names:
 
-```
+```text
 <Custom:SpotifyURL>
 <Custom:MusicBrainzID>
 <Custom:MyRating>
@@ -128,32 +128,32 @@ All functions are prefixed with `$` and use parentheses for arguments.
 
 #### `$If` — Conditional Evaluation
 
-```
+```text
 $If(criteria, trueResult, falseResult)
 ```
 
 **Criteria operators:** `=`, `>`, `<`
 
-```
+```text
 $If(<Genre>=Rock, Rock/<Artist>, Other/<Artist>)
 $If(<Year>>2000, Modern/<Album>, Classic/<Album>)
 ```
 
 #### `$And` — Both Conditions True
 
-```
+```text
 $If($And(<Genre>=Rock, <Year>>2000), Modern Rock, Other)
 ```
 
 #### `$Or` — Either Condition True
 
-```
+```text
 $If($Or(<Genre>=Rock, <Genre>=Metal), Rock & Metal/<Artist>, Other/<Artist>)
 ```
 
 #### `$IsNull` — Handle Missing Tags
 
-```
+```text
 $IsNull(<Album Artist>, <Artist>, <Album Artist>)
 ```
 
@@ -161,7 +161,7 @@ Returns `<Artist>` if `<Album Artist>` is empty; otherwise returns `<Album Artis
 
 #### `$Contains` — Substring Check
 
-```
+```text
 $If($Contains(<Genre>, Rock)=T, It's Rock, Not Rock)
 ```
 
@@ -169,7 +169,7 @@ Returns `"T"` if the tag contains the search text, `"F"` otherwise.
 
 #### `$IsMatch` — Regex Pattern Check
 
-```
+```text
 $If($IsMatch(<Title>, "^[A-Z]")=T, Starts with letter, Other)
 ```
 
@@ -181,13 +181,13 @@ Returns `"T"` if the tag matches the regex pattern, `"F"` otherwise.
 
 #### `$Replace` — Find and Replace
 
-```
+```text
 $Replace(<Artist>, &, and)
 ```
 
 #### `$RxReplace` — Regex Replace
 
-```
+```text
 $RxReplace(<Title>, "\s*\(feat\..*?\)", "")
 ```
 
@@ -195,7 +195,7 @@ Removes "(feat. ...)" from titles.
 
 #### `$Left` — First N Characters
 
-```
+```text
 $Left(<Artist>, 1)
 ```
 
@@ -203,7 +203,7 @@ Returns `"Q"` for "Queen".
 
 #### `$Right` — Last N Characters
 
-```
+```text
 $Right(<Year>, 2)
 ```
 
@@ -211,7 +211,7 @@ Returns `"75"` for "1975".
 
 #### `$Upper` — Uppercase
 
-```
+```text
 $Upper(<Genre>)
 ```
 
@@ -219,7 +219,7 @@ Returns `"ROCK"` for "Rock".
 
 #### `$Lower` — Lowercase
 
-```
+```text
 $Lower(<Ext>)
 ```
 
@@ -227,7 +227,7 @@ Returns `"mp3"` for "MP3".
 
 #### `$Trim` — Remove Whitespace
 
-```
+```text
 $Trim(<Title>)
 ```
 
@@ -239,7 +239,7 @@ Removes leading and trailing spaces.
 
 #### `$Split` — Split Left-to-Right
 
-```
+```text
 $Split(<Artist>, ;, 1)
 ```
 
@@ -247,7 +247,7 @@ For "Artist A; Artist B", returns "Artist A".
 
 #### `$RSplit` — Split Right-to-Left
 
-```
+```text
 $RSplit(<Artist>, " ", 1)
 ```
 
@@ -255,7 +255,7 @@ For "John Smith", returns "Smith".
 
 #### `$First` — First Multi-Value
 
-```
+```text
 $First(<Genre>)
 ```
 
@@ -267,7 +267,7 @@ For "Rock; Progressive Rock", returns "Rock".
 
 #### `$Pad` — Zero-Pad Numbers
 
-```
+```text
 $Pad(<Track #>, 2)
 ```
 
@@ -275,7 +275,7 @@ Returns `"01"` for track 1, `"12"` for track 12.
 
 #### `$Date` — Format Dates
 
-```
+```text
 $Date(<Date Added>, yyyy-MM-dd)
 ```
 
@@ -283,7 +283,7 @@ Format tokens: `yyyy` (year), `MM` (month), `dd` (day), `hh` (hours), `mm` (minu
 
 #### `$Sort` — Strip Sort Words
 
-```
+```text
 $Sort(<Artist>)
 ```
 
@@ -291,7 +291,7 @@ Returns `"Beatles"` for "The Beatles" (strips "The", "A", "An").
 
 #### `$Group` — Group by Characters
 
-```
+```text
 $Group(<Artist>, 1)
 ```
 
@@ -303,7 +303,7 @@ Returns `"Q"` for "Queen" — useful for A-Z folder grouping.
 
 Folder separators in templates create directory structure:
 
-```
+```text
 <Media Class>/<Album Artist>/<Album>/<Title>.<Ext>
 ```
 
@@ -313,7 +313,7 @@ Use `/` as the separator — MeedyaManager automatically converts to the correct
 
 You can nest as deeply as needed:
 
-```
+```text
 Library/<Media Group>/<Quality Type>/<Genre>/<Album Artist>/<Album> (<Year>)/<$Pad(<Track #>,2)> - <Title>.<Ext>
 ```
 
@@ -325,13 +325,13 @@ Produces: `Library/Audio/Lossless/Rock/Queen/A Night at the Opera (1975)/11 - Bo
 
 ### Basic Music Organisation
 
-```
+```text
 Music/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>
 ```
 
 ### Lossless vs Lossy Separation
 
-```
+```text
 $If(<Quality Type>=Lossless,
     Music/Lossless/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>,
     Music/Lossy/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>
@@ -340,7 +340,7 @@ $If(<Quality Type>=Lossless,
 
 ### TV Shows
 
-```
+```text
 TV Shows/<Show>/Season <$Pad(<Season>,2)>/<Show> - S<$Pad(<Season>,2)>E<$Pad(<Episode>,2)> - <Episode Title>.<Ext>
 ```
 
@@ -348,13 +348,13 @@ Produces: `TV Shows/Breaking Bad/Season 05/Breaking Bad - S05E16 - Felina.mkv`
 
 ### Movies
 
-```
+```text
 Movies/<Title> (<Year>)/<Title>.<Ext>
 ```
 
 ### Spatial Audio Detection
 
-```
+```text
 $If($Or($Contains(<Spatial Format>, Atmos), $Contains(<Spatial Format>, 360 Reality)),
     Music/Spatial/<Album Artist>/<Album>/<Title>.<Ext>,
     Music/Standard/<Album Artist>/<Album>/<Title>.<Ext>
@@ -363,7 +363,7 @@ $If($Or($Contains(<Spatial Format>, Atmos), $Contains(<Spatial Format>, 360 Real
 
 ### A-Z Folder Grouping
 
-```
+```text
 Music/$Group($Sort(<Album Artist>),1)/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>
 ```
 
@@ -371,7 +371,7 @@ Produces: `Music/Q/Queen/A Night at the Opera/11 - Bohemian Rhapsody.flac`
 
 ### Handle Missing Album Artist
 
-```
+```text
 $IsNull(<Album Artist>,
     Music/Unknown Artist/<Album>/<Title>.<Ext>,
     Music/<Album Artist>/<Album>/<Title>.<Ext>
@@ -380,7 +380,7 @@ $IsNull(<Album Artist>,
 
 ### Multi-Type Router
 
-```
+```text
 $If(<Media Class>=Music,
     Music/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>,
     $If(<Media Class>=TV Show,

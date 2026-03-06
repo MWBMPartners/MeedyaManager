@@ -104,7 +104,7 @@ For complete metadata enrichment, use iHeart alongside more comprehensive provid
 
 MeedyaManager queries the following undocumented endpoint:
 
-```
+```text
 GET https://api.iheart.com/api/v3/search/all?keywords={query}&maxRows=10
 ```
 
@@ -151,7 +151,7 @@ MeedyaManager saves this as `FrontCover.jpg`.
 **Solutions:**
 1. Try a simpler search (just the song title, without artist or album)
 2. Verify the API is still accessible by testing in a browser:
-   ```
+   ```text
    https://api.iheart.com/api/v3/search/all?keywords=bohemian+rhapsody&maxRows=5
    ```
 3. If the API has changed, MeedyaManager will need an update — check for new releases

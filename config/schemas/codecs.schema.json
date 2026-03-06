@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MWBMPartners/MeedyaManager/config/schemas/codecs.schema.json",
+  "title": "MeedyaManager Codec Registry",
+  "description": "Internal dev-only codec definitions. Consumed at compile time. (C) 2025-2026 MWBM Partners Ltd",
+  "type": "object",
+  "required": ["audio_codecs", "video_codecs"],
+  "additionalProperties": false,
+  "properties": {
+    "audio_codecs": {
+      "type": "array",
+      "description": "Audio codec definitions",
+      "items": { "$ref": "#/$defs/audioCodec" }
+    },
+    "video_codecs": {
+      "type": "array",
+      "description": "Video codec definitions",
+      "items": { "$ref": "#/$defs/videoCodec" }
+    }
+  },
+  "$defs": {
+    "audioCodec": {
+      "type": "object",
+      "required": ["id", "names", "lossless", "taggable", "max_channels"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "description": "Internal identifier (e.g. 'ac3', 'aac', 'flac')"
+        },
+        "names": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "description": "Human-readable names and aliases (e.g. ['Dolby Digital', 'AC-3', 'DD'])"
+        },
+        "mime": {
+          "type": ["string", "null"],
+          "description": "IANA MIME type for the raw codec stream"
+        },
+        "lossless": {
+          "type": "boolean",
+          "description": "True for lossless codecs (FLAC, ALAC, TrueHD, DTS-HD MA)"
+        },
+        "taggable": {
+          "type": "boolean",
+          "description": "Whether embedded metadata tags can be written to bare streams of this codec"
+        },
+        "max_channels": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "description": "Maximum number of audio channels supported"
+        },
+        "typical_extensions": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9]{1,12}$" },
+          "description": "File extensions commonly used for standalone streams of this codec"
+        },
+        "typical_containers": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9]{1,12}$" },
+          "description": "Container formats that commonly carry this codec"
+        }
+      }
+    },
+    "videoCodec": {
+      "type": "object",
+      "required": ["id", "names", "lossless", "taggable"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "description": "Internal identifier (e.g. 'h264', 'hevc', 'av1')"
+        },
+        "names": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "description": "Human-readable names and aliases"
+        },
+        "mime": {
+          "type": ["string", "null"],
+          "description": "IANA MIME type"
+        },
+        "lossless": {
+          "type": "boolean",
+          "description": "True for lossless video codecs"
+        },
+        "taggable": {
+          "type": "boolean",
+          "description": "Whether embedded metadata tags can be written to raw streams"
+        },
+        "typical_extensions": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9]{1,12}$" },
+          "description": "Standalone file extensions"
+        },
+        "typical_containers": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9]{1,12}$" },
+          "description": "Container formats that commonly carry this codec"
+        }
+      }
+    }
+  }
+}

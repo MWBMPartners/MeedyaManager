@@ -45,7 +45,7 @@ meedya lookup --list-providers
 
 You will see:
 
-```
+```text
 imdb          video       No auth required    Available
 ```
 

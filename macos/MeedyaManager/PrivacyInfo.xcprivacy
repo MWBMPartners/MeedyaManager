@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  (C) 2025-2026 MWBM Partners Ltd
+  MeedyaManager — Privacy Manifest (PrivacyInfo.xcprivacy)
+
+  Required for App Store / TestFlight submission since Xcode 15.3 (Spring 2024).
+  Declares all privacy-relevant API usage and data collection practices.
+  See: https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
+-->
+<plist version="1.0">
+<dict>
+    <!-- Privacy Tracking: MeedyaManager does NOT track users -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+
+    <!-- No tracking domains -->
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <!-- Accessed API Types (Required Reason APIs) -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <!--
+          File timestamp APIs (NSFileCreationDate, NSFileModificationDate)
+          Used by the file watcher and metadata reader to detect new/changed media files.
+          Reason: C617.1 — "Declare this reason to access file timestamps for app functionality"
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+
+        <!--
+          Disk space APIs (NSURLVolumeAvailableCapacityKey)
+          Used by the health check module to verify sufficient disk space before
+          writing renamed files or downloading cover art.
+          Reason: E174.1 — "Declare this reason to check whether there is sufficient
+          disk space to perform an app-specific task"
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>E174.1</string>
+            </array>
+        </dict>
+
+        <!--
+          User defaults APIs (UserDefaults)
+          Used by the SwiftUI app to persist UI preferences (window size, selected tab,
+          theme preference, etc.).
+          Reason: CA92.1 — "Declare this reason to access user defaults for app functionality"
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Collected Data Types: MeedyaManager collects NO user data -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+</dict>
+</plist>

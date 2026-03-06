@@ -40,7 +40,7 @@ MusicBrainz does **not** require an API key or account. The only requirement is 
 
 ### What MeedyaManager sends
 
-```
+```text
 User-Agent: MeedyaManager/1.4 (lance.manasse@mwbmpartners.com)
 ```
 
@@ -96,7 +96,7 @@ The MusicBrainz provider returns the following standard metadata fields:
 
 When an ISRC code is already present in the file's metadata, MusicBrainz can perform a **direct ISRC lookup** instead of a text search. This provides the highest accuracy match possible:
 
-```
+```text
 GET https://musicbrainz.org/ws/2/isrc/GBUM71029604?fmt=json&inc=artist-credits+releases
 ```
 
@@ -134,7 +134,7 @@ MusicBrainz itself does not host cover art. Instead, it integrates with the **Co
 
 The URL pattern is:
 
-```
+```text
 https://coverartarchive.org/release/{release_mbid}/front-500
 ```
 

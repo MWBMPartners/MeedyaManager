@@ -30,7 +30,7 @@
 
 ## 🏗️ Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    Native UI Layer                       │
 │  ┌──────────┐   ┌──────────────┐   ┌────────────────┐  │
@@ -58,6 +58,7 @@
 ```
 
 **FFI Strategy:**
+
 - **macOS**: UniFFI (Mozilla) auto-generates Swift bindings from Rust
 - **Windows**: `cbindgen`/`csbindgen` generates C headers → C# P/Invoke calls Rust `.dll`
 - **Linux**: Direct Rust (GTK4 via `gtk4-rs` + `libadwaita`) — no FFI needed
@@ -153,7 +154,7 @@ cargo build -p mm-gtk --release
 
 ## 📂 Project Structure
 
-```
+```text
 MeedyaManager/
 ├── Cargo.toml                    # Workspace root
 ├── rust-toolchain.toml           # Pin Rust version

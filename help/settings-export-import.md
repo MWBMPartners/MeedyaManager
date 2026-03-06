@@ -155,7 +155,7 @@ When `--include-secrets` is used:
 
 When importing a profile that contains secrets, MeedyaManager will prompt before applying them:
 
-```
+```text
 This profile contains API credentials. Apply them? [y/N]
 ```
 

@@ -494,14 +494,11 @@ fn string_to_mime_type(mime: &str) -> MimeType {
 fn get_or_create_primary_tag(
     tagged_file: &mut lofty::file::TaggedFile,
 ) -> &mut Tag {
-    // If the file already has a primary tag, return it
-    if tagged_file.primary_tag_mut().is_some() {
-        return tagged_file.primary_tag_mut().unwrap();
+    // If the file already has a primary tag, return it; otherwise insert one
+    if tagged_file.primary_tag_mut().is_none() {
+        let tag_type = tagged_file.primary_tag_type();
+        tagged_file.insert_tag(Tag::new(tag_type));
     }
-
-    // Otherwise, insert a new tag of the file's primary type
-    let tag_type = tagged_file.primary_tag_type();
-    tagged_file.insert_tag(Tag::new(tag_type));
     tagged_file
         .primary_tag_mut()
         .expect("primary tag must exist after insert_tag")

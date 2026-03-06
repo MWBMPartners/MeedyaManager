@@ -13,6 +13,15 @@
 - [Release Binary Hardening](#release-binary-hardening)
 - [Dependency Bundling Requirements](#dependency-bundling-requirements)
 - [GitHub Projects Workflow](#github-projects-workflow)
+- [Managing File Type Definitions](#managing-file-type-definitions-configfiletypesjson5)
+- [Managing Metadata Tag Definitions](#managing-metadata-tag-definitions-configtagsjson5)
+- [File Integrity Checking](#file-integrity-checking)
+- [Background Service Mode](#background-service-mode)
+- [Settings Export / Import](#settings-export--import-mmprofile-bundles)
+- [Codec Registry](#codec-registry-configcodecsjson5--planned-for-v130)
+- [JSON Schema Validation](#json-schema-validation)
+- [Apple Privacy Manifest](#apple-privacy-manifest-privacyinfoxcprivacy)
+- [App Store / TestFlight Distribution Checklist](#app-store--testflight-distribution-checklist)
 
 ---
 
@@ -23,7 +32,7 @@
 The **canonical version** lives in the root `Cargo.toml` under `[workspace.package].version`. All other version locations are derived from it:
 
 | File | Format | Example |
-|------|--------|---------|
+| ------ | -------- | --------- |
 | `Cargo.toml` `[workspace.package]` | Full semver | `2.0.0-alpha.2` |
 | `windows/.../Package.appxmanifest` `Identity.Version` | 4-part (no pre-release) | `2.0.0.0` |
 | `macos/.../Info.plist` `CFBundleShortVersionString` | 3-part (no pre-release) | `2.0.0` |
@@ -68,6 +77,7 @@ The `ci-rust.yml` workflow includes a `version-check` job that verifies all plat
    - CI is green
 
 2. **Bump the version**
+
    ```bash
    gh workflow run version-bump.yml \
      -f version=2.0.0-beta.1 \
@@ -80,6 +90,7 @@ The `ci-rust.yml` workflow includes a `version-check` job that verifies all plat
    - Merge to `main`
 
 4. **Push the tag** (if not already created by the workflow)
+
    ```bash
    git tag -a v2.0.0-beta.1 -m "Release v2.0.0-beta.1"
    git push origin v2.0.0-beta.1
@@ -109,14 +120,14 @@ For urgent patches on a released version:
 
 We follow [Semantic Versioning 2.0.0](https://semver.org/):
 
-```
+```text
 MAJOR.MINOR.PATCH[-PRE_RELEASE]
 ```
 
 ### Pre-release Labels
 
 | Label | Usage | Example |
-|-------|-------|---------|
+| ------- | ------- | --------- |
 | `alpha.N` | Early development, API unstable | `2.0.0-alpha.3` |
 | `beta.N` | Feature-complete, bug-fixing phase | `2.0.0-beta.1` |
 | `rc.N` | Release candidate, final testing | `2.0.0-rc.2` |
@@ -125,7 +136,7 @@ MAJOR.MINOR.PATCH[-PRE_RELEASE]
 ### Milestone-to-Version Mapping
 
 | Milestone | Version | Status |
-|-----------|---------|--------|
+| ----------- | --------- | -------- |
 | M0 — Repository Setup | `v0.1.0` | ✅ Released |
 | M1 — Core Engine | `v0.2.0` | ✅ Released |
 | M2 — Rule Engine | `v0.3.0` | ✅ Released |
@@ -150,7 +161,7 @@ MAJOR.MINOR.PATCH[-PRE_RELEASE]
 MSIX uses 4-part versioning (`Major.Minor.Build.Revision`). Pre-release labels are stripped:
 
 | Semver | MSIX |
-|--------|------|
+| -------- | ------ |
 | `2.0.0-alpha.1` | `2.0.0.0` |
 | `2.0.0-beta.3` | `2.0.0.0` |
 | `2.0.0` | `2.0.0.0` |
@@ -172,7 +183,7 @@ Apple requires `CFBundleShortVersionString` to be a valid `X.Y.Z` format for App
 ### 8 Workflows
 
 | Workflow | File | Trigger | Purpose |
-|----------|------|---------|---------|
+| ---------- | ------ | --------- | --------- |
 | **Rust Core CI** | `ci-rust.yml` | Push/PR to `main` (crates/**) | Format, lint, test, version-sync |
 | **macOS CI** | `ci-macos.yml` | Push/PR to `main` (macos/**) | Build SwiftUI app |
 | **Windows CI** | `ci-windows.yml` | Push/PR to `main` (windows/**) | Build WinUI 3 app |
@@ -186,7 +197,7 @@ Apple requires `CFBundleShortVersionString` to be a valid `X.Y.Z` format for App
 
 The release workflow (`release.yml`) runs 5 parallel build jobs + 1 final release job:
 
-```
+```text
 prepare ──┬── release-macos (arm64)
           ├── release-windows-x64
           ├── release-windows-arm64
@@ -197,7 +208,8 @@ prepare ──┬── release-macos (arm64)
 ```
 
 **Artifact naming convention:**
-```
+
+```text
 MeedyaManager-{version}-{platform}-{arch}.tar.gz
 MeedyaManager-{version}-{platform}-{arch}.sha256
 MeedyaManager-{version}-SHA256SUMS.txt
@@ -206,7 +218,7 @@ MeedyaManager-{version}-SHA256SUMS.txt
 ### Code Signing Status
 
 | Platform | Status | Requirement |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | macOS | Implemented | Apple Developer ID cert (`APPLE_CERT_P12` secret) + notarisation |
 | Windows | Implemented | Authenticode PFX cert (`WINDOWS_CERT_PFX` secret) via signtool |
 | Linux | N/A | Not required for Flatpak/Snap distribution |
@@ -234,6 +246,7 @@ a `::warning::` annotation when a secret is absent.
 ### Apple Code Signing & Notarisation (macOS)
 
 Apple **requires** all distributed macOS apps to be:
+
 1. **Code-signed** with a Developer ID Application certificate
 2. **Notarised** by Apple's notary service
 3. **Stapled** — the notarisation ticket attached to the DMG
@@ -243,7 +256,7 @@ Without signing and notarisation, Gatekeeper blocks the app on macOS 12+.
 #### Required secrets
 
 | Secret name | Description | How to obtain |
-|-------------|-------------|---------------|
+| ------------- | ------------- | --------------- |
 | `APPLE_DEVELOPER_ID` | Full name string of the Developer ID Application certificate | Keychain Access → find "Developer ID Application: …" — copy the exact name including Team ID in parentheses |
 | `APPLE_TEAM_ID` | 10-character Apple Team ID | [developer.apple.com/account](https://developer.apple.com/account) → Membership → Team ID |
 | `APPLE_ID` | Apple ID email address used for the Developer Program | The email you use to sign in to developer.apple.com |
@@ -266,7 +279,7 @@ base64 -w0 cert.p12            # Linux — prints single-line base64
 
 #### Example — creating an app-specific password
 
-```
+```text
 1. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords
 2. Click "+" → name it "MeedyaManager CI Notarisation"
 3. Copy the generated password (shown only once)
@@ -289,10 +302,10 @@ Windows **recommends** (and Microsoft Store **requires**) that MSIX packages
 and binaries are signed with an Authenticode certificate. Without signing,
 SmartScreen shows a warning on first launch.
 
-#### Required secrets
+#### Required secrets (Windows)
 
 | Secret name | Description | How to obtain |
-|-------------|-------------|---------------|
+| ------------- | ------------- | --------------- |
 | `WINDOWS_CERT_PFX` | Base64-encoded code signing certificate + private key (`.pfx` / `.p12`) | Purchase an EV Code Signing certificate from DigiCert, Sectigo, or GlobalSign; export as `.pfx`; Base64-encode: `certutil -encode cert.pfx cert.b64` or `base64 -w0 cert.pfx` |
 | `WINDOWS_CERT_PASSWORD` | Password protecting the `.pfx` file | Set when exporting or purchasing the certificate |
 
@@ -308,7 +321,7 @@ SmartScreen shows a warning on first launch.
 base64 -w0 cert.pfx
 ```
 
-#### What the release workflow does
+#### What the release workflow does (Windows)
 
 1. The Base64 value from `WINDOWS_CERT_PFX` is decoded to a temporary `.pfx` file
 2. `signtool.exe sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com` signs all `.exe` and `.dll` files with a trusted timestamp
@@ -338,7 +351,7 @@ without a code signature.
 ### Secrets summary table
 
 | Secret | Required for | Platform |
-|--------|-------------|----------|
+| -------- | ------------- | ---------- |
 | `APPLE_DEVELOPER_ID` | Code signing | macOS |
 | `APPLE_TEAM_ID` | Notarisation | macOS |
 | `APPLE_ID` | Notarisation | macOS |
@@ -364,7 +377,7 @@ with the GPL-2.0-or-later licence (source code remains fully available).
 ### Cargo Build Profiles
 
 | Profile | Use case | Key flags |
-|---------|----------|-----------|
+| --------- | ---------- | ----------- |
 | `dev` | Local development | `opt-level=0`, `debug=true`, incremental |
 | `release` | Release builds | `opt-level=3`, `lto=fat`, `strip=symbols`, `panic=abort` |
 | `dist` | Final shipped artifacts | inherits `release` + `strip=debuginfo` |
@@ -373,7 +386,7 @@ with the GPL-2.0-or-later licence (source code remains fully available).
 ### What Each Flag Does
 
 | Flag | Effect | Platform compliance |
-|------|--------|---------------------|
+| ------ | -------- | --------------------- |
 | `opt-level = 3` | Maximum compiler speed optimisations | All platforms |
 | `lto = "fat"` | Cross-crate link-time optimisation — dead code elimination | All platforms |
 | `codegen-units = 1` | Single codegen unit for maximum LTO effectiveness | All platforms |
@@ -386,6 +399,7 @@ with the GPL-2.0-or-later licence (source code remains fully available).
 ### Platform-Specific Hardening
 
 #### macOS
+
 - **Hardened Runtime** — `MeedyaManager.entitlements` enforces:
   - `com.apple.security.app-sandbox = true` — sandboxed execution
   - `com.apple.security.hardened-runtime = true` — JIT disabled, library validation on
@@ -393,11 +407,13 @@ with the GPL-2.0-or-later licence (source code remains fully available).
 - **Code signing** — Developer ID certificate required for Gatekeeper
 
 #### Windows
+
 - **MSIX packaging** — authenticode signing via WinAppSDK build pipeline
 - **DEP/ASLR** — enforced automatically for all managed (.NET/WinUI 3) code
 - **Integrity Level** — MSIX packages run at `Medium IL` by default
 
 #### Linux
+
 - **PIE (Position-Independent Executable)** — Rust enables this by default on Linux
 - **RELRO / BIND_NOW** — enabled by default in the Rust linker on ELF targets
 - **Strip** — the `cargo build --profile dist` step strips all symbols
@@ -406,7 +422,7 @@ with the GPL-2.0-or-later licence (source code remains fully available).
 ### What We Do NOT Do (and Why)
 
 | Technique | Reason not used |
-|-----------|-----------------|
+| ----------- | ----------------- |
 | LLVM obfuscation / obfuscator-llvm | GPL-2.0-or-later requires source availability; obfuscation conflicts with the spirit and legal requirements of the licence |
 | Binary packing (UPX) | Triggers antivirus false positives; breaks code signing on macOS/Windows |
 | Anti-debugging traps | Not permitted by Apple App Store / Microsoft Store ToS |
@@ -705,3 +721,163 @@ meedya config import ~/my-settings.mmprofile
 The bundle format is standard JSON (not JSON5) for maximum tool compatibility.
 Import is atomic — all files are written via temp-file+rename to prevent partial
 updates.
+
+---
+
+## Codec Registry (`config/codecs.json5`) — Planned for v1.3.0
+
+The **codec registry** is a separate developer-only reference file that maps
+audio/video *codecs* (the actual encoding algorithms) independently of file
+extensions.  This enables:
+
+- **Tagging capability detection** at the codec level (e.g. bare `.ac3` streams
+  are not taggable, but AAC inside `.m4a` is)
+- **Accurate quality classification** for container-wrapped streams (MKV/MP4/TS
+  can carry many different codecs)
+- **Surround sound / spatial audio detection** via `max_channels`
+- **Future use:** transcoding advice, provider match scoring, codec-aware rename
+  templates
+
+### Schema
+
+See `config/schemas/codecs.schema.json` for the full JSON Schema definition.
+
+### Key Differences from the Filetype Registry
+
+| Concern | Filetype Registry | Codec Registry |
+| ------- | ----------------- | -------------- |
+| Scope | File extensions | Encoding algorithms |
+| User override | Via Settings UI (v1.3.0) | **No** — dev-only |
+| Embedded | `include_str!()` | `include_str!()` |
+| Runtime override | `MEEDYA_FILETYPES_OVERRIDE` env var (dev only, v1.3.0) | None |
+
+Tracked by GitHub Issue **#151**.
+
+---
+
+## JSON Schema Validation
+
+All JSON5 configuration files have corresponding **JSON Schema** definitions
+in `config/schemas/`:
+
+| Config File | Schema File | Purpose |
+| ----------- | ----------- | ------- |
+| `config/filetypes.json5` | `config/schemas/filetypes.schema.json` | File type registry validation |
+| `config/tags.json5` | `config/schemas/tags.schema.json` | Metadata tag registry validation |
+| `config/settings.json5` | `config/schemas/settings.schema.json` | User settings validation |
+| `config/codecs.json5` *(v1.3.0)* | `config/schemas/codecs.schema.json` | Codec registry validation |
+
+### Schema Version
+
+All schemas use **JSON Schema Draft 2020-12** (`https://json-schema.org/draft/2020-12/schema`).
+
+### Schema Usage
+
+#### IDE Validation
+
+VS Code users can associate JSON5 files with their schemas in
+`.vscode/settings.json`:
+
+```json
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["config/filetypes.json5"],
+      "url": "./config/schemas/filetypes.schema.json"
+    },
+    {
+      "fileMatch": ["config/tags.json5"],
+      "url": "./config/schemas/tags.schema.json"
+    },
+    {
+      "fileMatch": ["config/settings.json5"],
+      "url": "./config/schemas/settings.schema.json"
+    }
+  ]
+}
+```
+
+#### CI Validation
+
+The `ci-rust.yml` workflow can validate config files against schemas using
+`check-jsonschema` (Python) or `ajv-cli` (Node):
+
+```bash
+pip install check-jsonschema
+check-jsonschema --schemafile config/schemas/filetypes.schema.json config/filetypes.json5
+```
+
+#### Rust Runtime Validation
+
+The schemas are reference documentation; Rust-side validation is performed by
+`serde`/`json5` deserialization into strongly-typed structs.  The schemas
+ensure that external tools and editors can validate files *before* they reach
+the Rust deserializer.
+
+---
+
+## Apple Privacy Manifest (`PrivacyInfo.xcprivacy`)
+
+Since Spring 2024 (Xcode 15.3), Apple **requires** a privacy manifest for all
+apps submitted to the App Store or TestFlight.  MeedyaManager's manifest is at:
+
+```text
+macos/MeedyaManager/PrivacyInfo.xcprivacy
+```
+
+### Declared API Usage
+
+| API Category | Reason Code | Why |
+| ------------ | ----------- | --- |
+| File Timestamp | C617.1 | File watcher detects new/changed media by modification time |
+| Disk Space | E174.1 | Health check verifies sufficient space before writes |
+| User Defaults | CA92.1 | SwiftUI persists UI preferences (window, tab, theme) |
+
+### Data Collection
+
+MeedyaManager collects **no user data** and performs **no tracking**.
+
+---
+
+## App Store / TestFlight Distribution Checklist
+
+### macOS (App Store + TestFlight)
+
+- [x] `Info.plist` with valid `CFBundleIdentifier` (`ltd.MWBMpartners.MeedyaManager`)
+- [x] `MeedyaManager.entitlements` with App Sandbox enabled
+- [x] `PrivacyInfo.xcprivacy` privacy manifest
+- [x] Code signing with Developer ID Application certificate
+- [x] Notarisation via `xcrun notarytool`
+- [x] Hardened Runtime enabled
+- [x] `LSApplicationCategoryType` set (`public.app-category.utilities`)
+- [x] `LSMinimumSystemVersion` set (`15.0`)
+- [x] GPL-2.0 `LICENSE` included in `Contents/Resources/`
+- [ ] **Xcode project** (`.xcodeproj`) — required for Mac App Store submission
+      alongside the SwiftPM package (direct distribution uses SPM only)
+- [ ] **App Store Connect** — create app record, screenshots, description
+- [ ] **TestFlight** — upload build via `xcodebuild` or Transporter
+
+### Windows (Microsoft Store)
+
+- [x] MSIX package with valid `Identity.Name` (`ltd.MWBMpartners.MeedyaManager`)
+- [x] Authenticode signing with EV certificate
+- [x] Windows App SDK self-contained bundling
+- [x] `Package.appxmanifest` configured
+- [ ] **Partner Center** — register app identity, upload MSIX
+
+### Linux (Flathub / Snap Store)
+
+- [x] Flatpak manifest (`ltd.MWBMpartners.MeedyaManager.yml`)
+- [x] AppStream `metainfo.xml` metadata
+- [x] `.desktop` launcher file
+- [x] Snap `snapcraft.yaml`
+- [ ] **Flathub** — submit PR to flathub/flathub repository
+- [ ] **Snap Store** — register snap name, upload
+
+### Chrome OS (Google Play Store)
+
+Chrome OS can run Linux apps via Crostini.  Distribution options:
+
+1. **Flatpak via Flathub** — works out-of-box on Crostini (recommended)
+2. **Android APK** — would require a separate Android/Kotlin UI (not planned)
+3. **PWA** — the `mm-server` web UI could be wrapped as a PWA (future)

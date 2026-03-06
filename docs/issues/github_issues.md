@@ -665,8 +665,6 @@ All text fields in the custom filetype (#153) and custom tag (#154) UI panels ac
 
 ---
 
----
-
 ## GitHub Milestones
 
 Create the following milestones on GitHub (Settings → Milestones):

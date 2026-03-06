@@ -108,13 +108,13 @@ This tag can be populated manually or through metadata import, but will **not** 
 
 The provider includes a helper for constructing Pandora web search URLs:
 
-```
+```text
 https://www.pandora.com/search/{url_encoded_query}
 ```
 
 For example, searching for "Queen Bohemian Rhapsody" generates:
 
-```
+```text
 https://www.pandora.com/search/Queen%20Bohemian%20Rhapsody
 ```
 

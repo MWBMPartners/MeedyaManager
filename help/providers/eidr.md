@@ -148,7 +148,7 @@ The EIDR provider returns the following standard metadata fields when resolving 
 
 EIDR's data model is hierarchical:
 
-```
+```text
 Abstraction (concept of the work)
   └── Edit (specific version: theatrical, director's cut, etc.)
        └── Distribution (specific release: Blu-ray, streaming, etc.)
@@ -182,7 +182,7 @@ Since EIDR IDs are long and contain special characters (`.` and `/`), they are s
 
 An EIDR Content ID follows the DOI (Digital Object Identifier) format:
 
-```
+```text
 10.5240/XXXX-XXXX-XXXX-XXXX-XXXX-C
 ```
 

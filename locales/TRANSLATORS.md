@@ -96,7 +96,7 @@ msgmerge --update locales/<lang>/LC_MESSAGES/meedyamanager.po locales/meedyamana
 ### Steps
 
 1. Create the locale directory and copy the English resource file:
-   ```
+   ```text
    windows/MeedyaManager/Strings/<BCP47>/Resources.resw
    ```
    For example: `Strings/fr-FR/Resources.resw`

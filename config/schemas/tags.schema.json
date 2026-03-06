@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MWBMPartners/MeedyaManager/config/schemas/tags.schema.json",
+  "title": "MeedyaManager Metadata Tag Registry",
+  "description": "Defines all metadata tag definitions recognised by MeedyaManager. (C) 2025-2026 MWBM Partners Ltd",
+  "type": "object",
+  "required": ["tags", "custom"],
+  "additionalProperties": false,
+  "properties": {
+    "tags": {
+      "type": "array",
+      "description": "Standard metadata tag definitions",
+      "items": { "$ref": "#/$defs/standardTag" }
+    },
+    "custom": {
+      "type": "array",
+      "description": "User-defined custom tags (MeedyaMeta namespace)",
+      "items": { "$ref": "#/$defs/customTag" }
+    }
+  },
+  "$defs": {
+    "tagCategory": {
+      "type": "string",
+      "enum": [
+        "core",
+        "sort",
+        "extended",
+        "classical",
+        "replaygain",
+        "encoding",
+        "musicbrainz",
+        "podcast",
+        "virtual"
+      ],
+      "description": "Category classification for the tag"
+    },
+    "standardTag": {
+      "type": "object",
+      "required": ["id", "name", "desc", "category", "multi"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "description": "Internal key (lowercase_snake_case, unique)"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Template display name used in rename rules (e.g. 'Artist' for <Artist>)"
+        },
+        "desc": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Short human-readable description shown in the UI"
+        },
+        "category": { "$ref": "#/$defs/tagCategory" },
+        "multi": {
+          "type": "boolean",
+          "description": "True if the tag commonly holds multiple values (e.g. multiple artists)"
+        },
+        "id3": {
+          "type": ["string", "null"],
+          "description": "ID3v2 frame identifier (e.g. 'TPE1', 'TXXX:BARCODE')"
+        },
+        "vorbis": {
+          "type": ["string", "null"],
+          "description": "Vorbis comment key (e.g. 'ARTIST', 'ALBUMARTIST')"
+        },
+        "mp4": {
+          "type": ["string", "null"],
+          "description": "MP4/iTunes atom (e.g. '\\u00a9ART', 'aART')"
+        },
+        "ape": {
+          "type": ["string", "null"],
+          "description": "APE tag key (e.g. 'Artist', 'Album Artist')"
+        },
+        "mb": {
+          "type": ["string", "null"],
+          "description": "MusicBrainz field name (e.g. 'musicbrainz_trackid')"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set false to hide this tag from the UI"
+        }
+      }
+    },
+    "customTag": {
+      "type": "object",
+      "required": ["id", "name", "desc", "raw_key"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(custom_|meedyameta_)[a-z0-9_]{1,58}$",
+          "description": "Internal key (must start with 'custom_' or 'meedyameta_')"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Template display name"
+        },
+        "desc": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Short human-readable description"
+        },
+        "raw_key": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+          "description": "Raw tag key written into the file (all-caps recommended, e.g. 'MEEDYAMETA_RATING')"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set false to hide this custom tag"
+        }
+      }
+    }
+  }
+}
