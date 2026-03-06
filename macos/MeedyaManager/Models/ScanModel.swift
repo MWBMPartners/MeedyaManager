@@ -73,6 +73,17 @@ final class ScanModel {
     /// True if there are previews that can be executed
     var canExecute: Bool { previews.contains(where: \.isExecutable) }
 
+    /// Short count string announced by VoiceOver for the results list.
+    /// e.g. "No files to rename", "1 file to rename", "5 files to rename"
+    var renameCountDescription: String {
+        let count = previews.filter(\.isExecutable).count
+        switch count {
+        case 0:  return "No files to rename."
+        case 1:  return "1 file to rename."
+        default: return "\(count) files to rename."
+        }
+    }
+
     // MARK: – Actions
 
     /// Run a scan of the selected directory using MmCore.

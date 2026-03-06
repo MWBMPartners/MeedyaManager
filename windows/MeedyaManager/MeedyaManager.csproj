@@ -13,6 +13,10 @@
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
     <WindowsPackageType>MSIX</WindowsPackageType>
+    <!-- Self-contained deployment: bundles the Windows App SDK runtime alongside the
+         MSIX package so users do not need the SDK pre-installed. Required for direct
+         (non-Store) distribution and recommended for Microsoft Store as well. -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <!-- Assembly metadata -->
     <Company>MWBM Partners Ltd</Company>
@@ -27,6 +31,24 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />
     <!-- Windows SDK Build Tools -->
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- mm_ffi.dll — Rust FFI library. Bundled with the MSIX package so users do not
+         need the Rust toolchain installed. Built by `cargo build -p mm-ffi --release`
+         before running `dotnet publish`. The Condition guard prevents build errors on
+         machines where the Rust build has not been run yet. -->
+    <Content Include="..\..\..\target\release\mm_ffi.dll"
+             Condition="Exists('..\..\..\target\release\mm_ffi.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <PackagePath>.</PackagePath>
+    </Content>
+
+    <!-- GPL-2.0-or-later licence file — must be distributed alongside the binary.
+         Required by the GPL; the MSIX AppInstaller will display it to the user. -->
+    <Content Include="..\..\..\LICENSE" Condition="Exists('..\..\..\LICENSE')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

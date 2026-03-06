@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | M10 — Secure Media Server — **Complete** |
-| **Overall Progress** | **100%** (11 of 11 milestones complete) |
-| **Latest Version** | `v1.0.0` |
+| **Current Milestone** | Post-M10 — Accessibility (#128) — **In Progress** |
+| **Overall Progress** | **100%** core milestones complete; cross-cutting enhancements in progress |
+| **Latest Version** | `v1.1.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 

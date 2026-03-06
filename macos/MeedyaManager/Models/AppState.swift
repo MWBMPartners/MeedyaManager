@@ -60,4 +60,8 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .settings: "gearshape.fill"
         }
     }
+
+    /// Human-readable label announced by VoiceOver when the tab gains focus.
+    /// Identical to the raw value; exposed as a named property for clarity.
+    var accessibilityLabel: String { rawValue }
 }

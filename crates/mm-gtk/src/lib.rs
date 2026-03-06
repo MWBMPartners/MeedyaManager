@@ -25,8 +25,9 @@ pub mod state;
 /// GTK4/Adwaita UI components
 pub mod ui;
 
-/// Reverse-DNS application identifier (required by GTK)
-pub const APP_ID: &str = "uk.co.mwbm.MeedyaManager";
+/// Reverse-DNS application identifier (required by GTK / freedesktop).
+/// Must match the Flatpak manifest `app-id` and the .desktop/.metainfo filenames.
+pub const APP_ID: &str = "ltd.MWBMpartners.MeedyaManager";
 
 /// Run the GTK application. Blocks until the application exits.
 pub fn run_app() {

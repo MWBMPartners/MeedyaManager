@@ -13,5 +13,14 @@
     <!-- Allow outbound network connections (for metadata lookups, cloud APIs) -->
     <key>com.apple.security.network.client</key>
     <true/>
+
+    <!-- Keychain sharing group — permits the `keyring` crate to store provider API
+         credentials in the macOS Keychain via the Security framework. The
+         $(AppIdentifierPrefix) variable is substituted by codesign with the team ID
+         prefix. Required when app-sandbox is enabled. -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)ltd.MWBMpartners.MeedyaManager</string>
+    </array>
 </dict>
 </plist>

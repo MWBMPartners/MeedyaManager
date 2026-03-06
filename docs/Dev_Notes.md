@@ -11,6 +11,7 @@
 - [CI/CD Pipeline Overview](#cicd-pipeline-overview)
 - [GitHub Secrets Configuration](#github-secrets-configuration)
 - [Release Binary Hardening](#release-binary-hardening)
+- [Dependency Bundling Requirements](#dependency-bundling-requirements)
 - [GitHub Projects Workflow](#github-projects-workflow)
 
 ---
@@ -427,6 +428,69 @@ cargo build --profile dist
 size target/release/meedya
 file target/release/meedya
 ```
+
+---
+
+## Dependency Bundling Requirements
+
+MeedyaManager must ship as a self-contained application on all three platforms. Users must not need to install any runtime, SDK, or library separately.
+
+### Overview
+
+| Platform | External Dependency | Bundled How |
+| -------- | ------------------- | ----------- |
+| All | Rust crate dependencies | **Statically linked** at compile time via Cargo — zero `.dll`/`.dylib`/`.so` from Cargo crates |
+| macOS | `libmm_ffi.dylib` (Rust FFI bridge) | Placed in `MeedyaManager.app/Contents/Frameworks/` by `create-dmg.sh` |
+| macOS | System frameworks (SwiftUI, Foundation, Security) | Provided by macOS — no bundling required |
+| Windows | `mm_ffi.dll` (Rust FFI bridge) | Included via `<Content>` in `MeedyaManager.csproj`; copied to publish output |
+| Windows | Windows App SDK runtime | `<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>` in `.csproj` bundles the runtime in the MSIX |
+| Linux | GTK4, Libadwaita | Provided by the `org.gnome.Platform//47` Flatpak runtime — not bundled |
+| Linux | All Rust dependencies | Statically compiled into the `mm-gtk` binary by Cargo |
+
+### macOS — Bundling & App Store Compliance
+
+- **`libmm_ffi.dylib`** is signed individually (`codesign --options runtime`) **before** the outer bundle is signed with `--deep`. This is required for Hardened Runtime notarisation.
+- **Entitlements** (`macos/MeedyaManager.entitlements`):
+  - `app-sandbox = true` — required for Mac App Store submission
+  - `files.user-selected.read-write` — grants access to files chosen via open panels
+  - `network.client` — outbound network for metadata providers and cloud APIs
+  - `keychain-access-groups` — allows the `keyring` crate to read/write API credentials from the macOS Keychain. The `$(AppIdentifierPrefix)` variable is substituted by `codesign`.
+- **Mac App Store vs Direct Distribution**: The current build targets **Direct Distribution** via a notarised DMG. For Mac App Store submission, an Xcode project (`.xcodeproj`) is required alongside the SwiftPM package. This is tracked separately.
+- **`reqwest` TLS**: Uses the `rustls-tls` feature — OpenSSL is **not** required and **not** linked dynamically.
+- **GPL-2.0 licence**: The `LICENSE` file is copied into `Contents/Resources/LICENSE` by `create-dmg.sh`.
+
+### Windows — Bundling & Store Compliance
+
+- **`mm_ffi.dll`** must be built (`cargo build -p mm-ffi --release`) **before** `dotnet publish`. The `.csproj` includes it via a conditional `<Content>` element.
+- **Windows App SDK**: `<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>` causes the SDK to be bundled inside the MSIX, eliminating the need for users to install the Windows App Runtime separately.
+- **Microsoft Store**: For Store submission, use the **MSIX** package (already configured). The Store manages the Windows App Runtime dependency automatically when `WindowsAppSDKSelfContained` is false. For direct distribution, self-contained is preferred.
+- **Authenticode signing**: `signtool.exe` is run in `release.yml` using the `WINDOWS_CERT_PFX` and `WINDOWS_CERT_PASSWORD` secrets. See [GitHub Secrets Configuration](#github-secrets-configuration).
+- **GPL-2.0 licence**: The `LICENSE` file is included via `<Content>` in the `.csproj` and deployed alongside the executable.
+
+### Linux — Flatpak & Compliance
+
+- **GNOME Platform runtime** (`org.gnome.Platform//47`) provides GTK4 (4.14), Libadwaita (1.5), and all GNOME libraries. These are **not** bundled inside the Flatpak.
+- **Rust dependencies**: All Cargo crates are **statically linked** into the `mm-gtk` binary. The vendor archive (`vendor.tar.gz`) must be regenerated and committed when dependencies change:
+
+  ```bash
+  cargo vendor vendor
+  tar czf vendor.tar.gz vendor/
+  # Update sha256 in the Flatpak YAML
+  sha256sum vendor.tar.gz
+  ```
+
+- **`libmm_ffi.so`**: Not required for the Linux GTK4 build — `mm-gtk` links directly to `mm-core` as a Cargo workspace dependency without crossing an FFI boundary.
+- **GPL-2.0 licence**: Installed to `${FLATPAK_DEST}/share/licenses/ltd.MWBMpartners.MeedyaManager/LICENSE` by the `desktop-integration` Flatpak module.
+- **Flathub compliance**: The Flathub submission review checks that:
+  - The app ID matches the manifest, `.desktop`, `.metainfo.xml`, and icon filenames.
+  - The vendor archive is reproducible and SHA256-pinned.
+  - No outbound network access is made during the build.
+  - AppStream `<metadata_license>` is FSFAP or CC0; `<project_license>` is GPL-2.0-or-later.
+
+### Snap & AppImage
+
+- **Snap**: `linux/snap/snapcraft.yaml` packages the binary with `confinement: strict`. Rust builds produce statically linked binaries, so no extra stage-packages are needed beyond GTK4 (`libgtk-4-1`, `libadwaita-1-0`).
+- **AppImage**: `linux/appimage/build-appimage.sh` uses `appimagetool` to wrap the binary with its GTK4 dependencies into a portable `*.AppImage`. The AppDir includes the GTK4/Libadwaita shared libraries from the build host.
 
 ---
 

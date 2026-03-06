@@ -20,7 +20,7 @@
 
     <!-- Short version string shown to users (must match Cargo.toml workspace version) -->
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.1.0</string>
 
     <!-- Bundle package type: application -->
     <key>CFBundlePackageType</key>

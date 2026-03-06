@@ -59,7 +59,8 @@ cp "macos/.build/release/MeedyaManager" "${CONTENTS}/MacOS/${APP_NAME}"
 # Copy the mm-ffi dylib into Frameworks
 cp "target/release/libmm_ffi.dylib" "${CONTENTS}/Frameworks/"
 
-# Fix up the dylib rpath so the app bundle can find it
+# Fix up the dylib rpath so the app bundle can find it at
+# @executable_path/../Frameworks/libmm_ffi.dylib (standard macOS bundle rpath)
 install_name_tool -change \
     "@rpath/libmm_ffi.dylib" \
     "@executable_path/../Frameworks/libmm_ffi.dylib" \
@@ -68,11 +69,29 @@ install_name_tool -change \
 # Copy Info.plist
 cp "macos/MeedyaManager/Info.plist" "${CONTENTS}/Info.plist"
 
+# Copy GPL-2.0-or-later licence file into bundle Resources.
+# GPL-2.0-or-later requires the licence to accompany every distributed binary.
+cp "LICENSE" "${CONTENTS}/Resources/LICENSE" 2>/dev/null || \
+    echo "::warning::LICENSE file not found at repo root — skipping"
+
 # ---------------------------------------------------------------------------
 # 3. Code sign the app bundle
 # ---------------------------------------------------------------------------
 if [ -n "${APPLE_DEVELOPER_ID:-}" ]; then
     echo "==> Code signing with: ${APPLE_DEVELOPER_ID}…"
+
+    # Sign the embedded dylib first (Apple requires inner bundles and frameworks
+    # to be individually signed before the outer bundle is signed with --deep).
+    # The --options runtime flag enables Hardened Runtime, required for notarization.
+    codesign \
+        --force \
+        --verify \
+        --verbose \
+        --sign "${APPLE_DEVELOPER_ID}" \
+        --options runtime \
+        "${CONTENTS}/Frameworks/libmm_ffi.dylib"
+
+    # Sign the complete app bundle (--deep signs any remaining nested code)
     codesign \
         --deep \
         --force \

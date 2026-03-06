@@ -8,6 +8,36 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.1.0] — 2026-03-05 — Accessibility + Code Quality (Issue #128)
+
+> **Cross-cutting** — Accessibility and code quality pass. Adds AT-SPI2/VoiceOver/Narrator infrastructure across all three platforms, GTK4 app-ID consistency fix, WinGet v1.0.0 manifest, and removes all remaining `(d/b/a MW Services)` text from source files.
+
+### Added
+
+**Accessibility (Issue #128):**
+- `crates/mm-gtk/src/ui/accessibility.rs` — New GTK4 AT-SPI2 helper module: `set_label()`, `set_description()`, `set_busy()`, `set_expanded()` (using `gtk4::prelude::AccessibleExt::update_property/update_state`), `tab_label()`, `tab_description()` (8 tabs each). 8 unit tests covering label completeness, uniqueness, no-HTML, sentence termination, and out-of-bounds safety.
+- `macos/MeedyaManagerTests/AccessibilityTests.swift` — 19 Swift Testing tests covering `AppTab.accessibilityLabel` completeness and uniqueness, `ServerStatus` VoiceOver descriptions (all 4 variants), `ScanModel` status strings, and `ServerModel` validation error humanness.
+- `windows/MeedyaManager.Tests/AccessibilityTests.cs` — 20 xUnit tests covering `NavigationPageNames` completeness and uniqueness, `AutomationNameHelper.PrimaryButtonLabel` (8 pages via `[Theory]`), `IsValidAutomationName` (5 cases), `ServerStatusA11y` (4 cases), and colour-independence check.
+
+**Accessibility model extensions:**
+- `AppState.swift` — Added `AppTab.accessibilityLabel` computed property (returns `rawValue`).
+- `ScanModel.swift` — Added `renameCountDescription` computed property (VoiceOver-safe pluralised count string).
+
+**WinGet manifest:**
+- `windows/winget/manifests/m/MWBM/MeedyaManager/1.0.0/MWBM.MeedyaManager.yaml` — Created v1.0.0 WinGet singleton manifest; adds "Secure HTTPS media server" and "Database export" to the feature description.
+
+### Fixed
+
+- `crates/mm-gtk/src/lib.rs` — `APP_ID` corrected from `uk.co.mwbm.MeedyaManager` to `ltd.MWBMpartners.MeedyaManager` (now consistent with Flatpak manifest and `.desktop`/`.metainfo` filenames).
+- `.gitignore`, `crates/mm-ffi/src/mm_ffi.udl`, `windows/MeedyaManager/MeedyaManager.csproj`, `windows/MeedyaManager.Tests/MeedyaManager.Tests.csproj` — Removed remaining `(d/b/a MW Services)` text from copyright headers.
+- `docs/issues/github_issues.md` — Closed all M10 issues (#120–#127); added prioritised backlog section; added `#131` for Windows OpenProcess enhancement.
+
+### Changed
+
+- Version bumped to `v1.1.0`.
+
+---
+
 ## [v1.0.0] — 2026-03-05 — Secure Media Server + Public Release (M10)
 
 > **Milestone 10** — Secure Media Server. Implements the `mm-server` crate (axum HTTPS, JWT/HS256 auth, RFC 7233 range streaming, REST API), `meedya serve` CLI command, and Server tab UI on all three platforms. First public release — version `v1.0.0`. ~90 new tests, ~1166 total.

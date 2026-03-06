@@ -32,4 +32,8 @@ pub mod cloud_panel;
 /// Database Export panel — backend picker, DSN input, schema preview, export log (M9)
 pub mod export_panel;
 
+/// Secure Media Server panel — start/stop, route table, access log (M10)
 pub mod server_panel;
+
+/// Accessibility helpers — consistent AT-SPI2 role/label utilities (Issue #128)
+pub mod accessibility;
