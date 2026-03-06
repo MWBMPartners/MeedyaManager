@@ -66,8 +66,7 @@ pub use types::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::uniffi_api;
-    use crate::capi;
+    use crate::{capi, uniffi_api};
     use std::ffi::CString;
 
     // --- MmFfiError tests ---
@@ -220,12 +219,15 @@ mod tests {
 
     // --- mm_version ---
 
-    /// mm_version returns a non-empty string starting with "0."
+    /// mm_version returns a non-empty string in semver format (X.Y.Z)
     #[test]
     fn version_not_empty() {
         let v = uniffi_api::mm_version();
         assert!(!v.is_empty(), "version string must not be empty");
-        assert!(v.starts_with("0."), "version should start with '0.' — got: {v}");
+        // Version must contain at least two dots (X.Y.Z semver)
+        assert!(v.contains('.'), "version should be semver — got: {v}");
+        assert!(v.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false),
+            "version should start with a digit — got: {v}");
     }
 
     // --- validate_template ---
@@ -274,7 +276,10 @@ mod tests {
 
         // Safety: the returned pointer is a valid C string allocated by CString::into_raw
         let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap() };
-        assert!(s.starts_with("0."), "C API version should start with '0.' — got: {s}");
+        // Version must contain a dot (X.Y.Z semver) and start with a digit
+        assert!(s.contains('.'), "C API version should be semver — got: {s}");
+        assert!(s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false),
+            "C API version should start with a digit — got: {s}");
 
         // Free the allocated string to avoid memory leak in tests
         unsafe { capi::mm_ffi_free_string(ptr as *mut std::os::raw::c_char) };

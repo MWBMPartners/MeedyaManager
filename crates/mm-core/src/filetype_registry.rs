@@ -71,7 +71,7 @@ pub struct VideoFormat {
     pub extension: &'static str,
     /// IANA MIME type string (e.g. `"video/x-matroska"`).
     pub mime_type: &'static str,
-    /// Human-readable format name (e.g. `"Matroska`).
+    /// Human-readable format name (e.g. `"Matroska"`).
     pub display_name: &'static str,
 }
 
