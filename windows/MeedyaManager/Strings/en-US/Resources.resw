@@ -223,6 +223,99 @@
   </data>
 
   <!-- ===================================================================
+       Settings page — Test Mode
+       =================================================================== -->
+
+  <data name="Settings.TestMode.Header" xml:space="preserve">
+    <value>Test Mode</value>
+    <comment>Section header for the test mode settings group</comment>
+  </data>
+
+  <data name="Settings.TestMode.Description" xml:space="preserve">
+    <value>When enabled, all file operations (renames, tag writes) are journalled and reversible. Use this to safely preview changes before committing them to disk.</value>
+    <comment>Explanatory text displayed below the Test Mode section header</comment>
+  </data>
+
+  <data name="Settings.TestMode.Toggle.Header" xml:space="preserve">
+    <value>Enable test mode</value>
+    <comment>Header label for the test mode ToggleSwitch</comment>
+  </data>
+
+  <data name="Settings.TestMode.Toggle.Off" xml:space="preserve">
+    <value>File changes are applied immediately</value>
+    <comment>ToggleSwitch off-content for test mode</comment>
+  </data>
+
+  <data name="Settings.TestMode.Toggle.On" xml:space="preserve">
+    <value>File changes are journalled (reversible)</value>
+    <comment>ToggleSwitch on-content for test mode</comment>
+  </data>
+
+  <data name="Settings.TestMode.FileCount" xml:space="preserve">
+    <value>Tracked files: {0}</value>
+    <comment>Label showing the number of files tracked in the test mode journal; {0} = count</comment>
+  </data>
+
+  <data name="Settings.TestMode.Button.Commit" xml:space="preserve">
+    <value>Commit Changes</value>
+    <comment>Button to make all journalled test mode changes permanent</comment>
+  </data>
+
+  <data name="Settings.TestMode.Button.Revert" xml:space="preserve">
+    <value>Revert Changes</value>
+    <comment>Button to restore all files to their original state</comment>
+  </data>
+
+  <data name="Settings.TestMode.Dialog.Title" xml:space="preserve">
+    <value>Test Mode — Uncommitted Changes</value>
+    <comment>Title for the dialog shown when disabling test mode with uncommitted files</comment>
+  </data>
+
+  <data name="Settings.TestMode.Dialog.Content" xml:space="preserve">
+    <value>You have {0} file(s) with uncommitted test mode changes.
+
+Choose "Commit" to make the changes permanent, or "Keep Both" to retain the original and modified copies.</value>
+    <comment>Body text for the test mode disable dialog; {0} = file count</comment>
+  </data>
+
+  <data name="Settings.TestMode.Dialog.Commit" xml:space="preserve">
+    <value>Commit</value>
+    <comment>Primary button in test mode disable dialog — commits changes</comment>
+  </data>
+
+  <data name="Settings.TestMode.Dialog.KeepBoth" xml:space="preserve">
+    <value>Keep Both</value>
+    <comment>Secondary button in test mode disable dialog — keeps both versions</comment>
+  </data>
+
+  <!-- ===================================================================
+       Settings page — Privacy
+       =================================================================== -->
+
+  <data name="Settings.PrivacyPolicy" xml:space="preserve">
+    <value>Privacy Policy</value>
+    <comment>HyperlinkButton text linking to the MeedyaManager privacy policy</comment>
+  </data>
+
+  <!-- ===================================================================
+       App — Pre-release detection
+       =================================================================== -->
+
+  <data name="App.PreRelease.Dialog.Title" xml:space="preserve">
+    <value>Pre-Release Build Detected</value>
+    <comment>Title for the dialog shown on first launch of a pre-release build</comment>
+  </data>
+
+  <data name="App.PreRelease.Dialog.Content" xml:space="preserve">
+    <value>You are running MeedyaManager {0}.
+
+This is a pre-release build. Test Mode has been automatically enabled to protect your files. All file operations (renames, tag writes) will be journalled and can be committed or reverted from the Settings page.
+
+You can disable Test Mode at any time in Settings.</value>
+    <comment>Body text for the pre-release warning dialog; {0} = version string</comment>
+  </data>
+
+  <!-- ===================================================================
        Server page
        =================================================================== -->
 

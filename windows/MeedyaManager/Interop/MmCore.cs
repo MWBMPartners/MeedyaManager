@@ -277,6 +277,66 @@ public sealed class MmCore
     }
 
     // -----------------------------------------------------------------
+    // Test Mode API — safe-mode for pre-release builds
+    // -----------------------------------------------------------------
+
+    // In-memory flag tracking whether test mode is active (stub state)
+    private bool _testModeEnabled;
+
+    /// <summary>
+    /// Returns whether test mode is currently enabled.
+    /// When the DLL is available, delegates to the native function;
+    /// otherwise returns the in-memory stub flag.
+    /// </summary>
+    public bool TestModeEnabled()
+    {
+        // TODO: P/Invoke NativeTestModeEnabled() when DLL ships
+        return _testModeEnabled;
+    }
+
+    /// <summary>
+    /// Enables or disables test mode.
+    /// In test mode, file operations are journalled and reversible.
+    /// </summary>
+    /// <param name="enabled">True to enable test mode, false to disable.</param>
+    public void SetTestMode(bool enabled)
+    {
+        // TODO: P/Invoke NativeSetTestMode(enabled) when DLL ships
+        _testModeEnabled = enabled;
+    }
+
+    /// <summary>
+    /// Returns the number of files currently tracked in the test mode journal.
+    /// Returns 0 when test mode is off or the DLL is unavailable.
+    /// </summary>
+    public int TestModeFileCount()
+    {
+        // TODO: P/Invoke NativeTestModeFileCount() when DLL ships
+        // Stub: always 0 (no real journal without the Rust core)
+        return 0;
+    }
+
+    /// <summary>
+    /// Commits all test mode changes — makes them permanent on disk.
+    /// Clears the test mode journal after successful commit.
+    /// </summary>
+    public void CommitTestModeFiles()
+    {
+        // TODO: P/Invoke NativeCommitTestModeFiles() when DLL ships
+        // Stub: no-op (nothing to commit without the Rust core)
+    }
+
+    /// <summary>
+    /// Reverts all test mode changes — restores original file state.
+    /// Clears the test mode journal after successful revert.
+    /// </summary>
+    public void RevertTestModeFiles()
+    {
+        // TODO: P/Invoke NativeRevertTestModeFiles() when DLL ships
+        // Stub: no-op (nothing to revert without the Rust core)
+    }
+
+    // -----------------------------------------------------------------
     // Stubs (used when DLL is unavailable)
     // -----------------------------------------------------------------
 

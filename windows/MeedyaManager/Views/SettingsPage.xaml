@@ -70,6 +70,55 @@
                 IsOn="True"
                 AutomationProperties.HelpText="When on, replaces file paths and tag values with REDACTED in log output" />
 
+            <!-- ── Test Mode ─────────────────────────────────────────────── -->
+            <TextBlock Text="Test Mode" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <!-- Description of test mode behaviour -->
+            <TextBlock
+                TextWrapping="Wrap"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="When enabled, all file operations (renames, tag writes) are journalled and reversible. Use this to safely preview changes before committing them to disk." />
+
+            <!-- Test mode on/off toggle -->
+            <ToggleSwitch
+                x:Name="TestModeToggle"
+                Header="Enable test mode"
+                OffContent="File changes are applied immediately"
+                OnContent="File changes are journalled (reversible)"
+                Toggled="TestModeToggle_Toggled"
+                AutomationProperties.HelpText="When on, all file changes are journalled and can be committed or reverted" />
+
+            <!-- Tracked file count (visible only when test mode is active) -->
+            <TextBlock
+                x:Name="TestModeFileCountText"
+                Visibility="Collapsed"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                FontSize="12"
+                Text="Tracked files: 0" />
+
+            <!-- Commit / Revert buttons (visible only when test mode has tracked files) -->
+            <StackPanel
+                x:Name="TestModeActionPanel"
+                Orientation="Horizontal"
+                Spacing="8"
+                Visibility="Collapsed">
+
+                <Button
+                    x:Name="TestModeCommitButton"
+                    Content="Commit Changes"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="TestModeCommitButton_Click"
+                    AutomationProperties.Name="Commit test mode changes"
+                    AutomationProperties.HelpText="Makes all journalled file changes permanent" />
+
+                <Button
+                    x:Name="TestModeRevertButton"
+                    Content="Revert Changes"
+                    Click="TestModeRevertButton_Click"
+                    AutomationProperties.Name="Revert test mode changes"
+                    AutomationProperties.HelpText="Restores all files to their original state" />
+            </StackPanel>
+
             <!-- ── Config File ────────────────────────────────────────────── -->
             <TextBlock Text="Config File" Style="{StaticResource SubtitleTextBlockStyle}" />
 
@@ -143,6 +192,15 @@
                 HorizontalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 FontSize="11" />
+
+            <!-- Privacy Policy link -->
+            <HyperlinkButton
+                x:Name="PrivacyPolicyLink"
+                Content="Privacy Policy"
+                NavigateUri="https://github.com/MWBMPartners/MeedyaManager/blob/main/help/privacy-policy.md"
+                HorizontalAlignment="Center"
+                AutomationProperties.Name="Privacy Policy"
+                AutomationProperties.HelpText="Opens the MeedyaManager privacy policy in your default browser" />
 
         </StackPanel>
     </ScrollViewer>

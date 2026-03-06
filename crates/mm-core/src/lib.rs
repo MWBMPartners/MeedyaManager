@@ -68,6 +68,9 @@ pub mod settings_bundle;
 /// User-Agent string builder — consistent HTTP identification across all requests
 pub mod useragent;
 
+/// Test Mode (Safe Edit Mode) — duplicate-on-write for non-destructive editing
+pub mod test_mode;
+
 #[cfg(test)]
 mod tests {
     #[test]

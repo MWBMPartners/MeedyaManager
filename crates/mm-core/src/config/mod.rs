@@ -40,6 +40,12 @@ pub struct AppConfig {
     /// Whether to run the application in dry-run / preview mode globally
     pub dry_run: bool,
 
+    /// Test Mode — when enabled, edit/tag operations create `_MeedyaManager`
+    /// suffixed copies instead of modifying originals.  Managed via the
+    /// `test_mode` module; this field reflects the persisted state.
+    #[serde(default)]
+    pub test_mode: bool,
+
     /// File-system watching settings
     pub watch: WatchConfig,
 
@@ -58,6 +64,7 @@ impl Default for AppConfig {
         Self {
             app_name: "MeedyaManager".to_string(),
             dry_run: false,
+            test_mode: false,
             watch: WatchConfig::default(),
             rename: RenameConfig::default(),
             logging: LoggingConfig::default(),
@@ -413,6 +420,12 @@ impl AppConfig {
         if let Ok(val) = std::env::var("MM_DRY_RUN") {
             config.dry_run = val == "1" || val.eq_ignore_ascii_case("true");
             debug!(dry_run = config.dry_run, "MM_DRY_RUN override applied");
+        }
+
+        // MM_TEST_MODE: override the test-mode flag
+        if let Ok(val) = std::env::var("MM_TEST_MODE") {
+            config.test_mode = val == "1" || val.eq_ignore_ascii_case("true");
+            debug!(test_mode = config.test_mode, "MM_TEST_MODE override applied");
         }
 
         // --- Logging overrides ---

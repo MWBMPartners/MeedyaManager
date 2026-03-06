@@ -267,12 +267,13 @@
 
 ---
 
-## v1.3.0 — Filetype/Codec Architecture + Custom Type Management (Issues #150–#155)
+## v1.3.0 — Test Mode, Privacy Policy, Pre-release Safety (#128) + Filetype/Codec Architecture (#150–#155)
 
 > Dolby standalone format support, internal codec registry, removal of the end-user JSON file override path, and proper UI-driven custom filetype/tag management with validated text inputs.
 
 | # | Title | Platform | Priority | Status |
 | - | ----- | -------- | -------- | ------ |
+| #128 | Test Mode (safe edit mode), Privacy Policy, Pre-release version safety — `_MeedyaManager` duplicate-on-write, persistent manifest, commit/revert workflow, auto-enable on pre-release builds, privacy policy for app store compliance | All | High | ✅ |
 | #150 | Register standalone Dolby audio formats in filetype registry — AC3, E-AC3 (EAC3/EC3), AC4; add `taggable` flag to `AudioFormat`; surface graceful "no embedded tag support" message in tag editor UI; allow normal watch/rename/classify operations | All | High | 🔲 |
 | #151 | Internal codec registry — add `config/codecs.json5` dev-only reference file; define all recognised codecs with properties: `taggable`, `lossless`, `max_channels`, `typical_containers`, display name; consumed at compile time via `include_str!`; drives tagging capability detection independently of file extension | All | Medium | 🔲 |
 | #152 | Remove end-user JSON file override for filetypes/tags — delete `load_user_override()` from `filetype_registry.rs` and the equivalent in `tags.rs`; remove `~/.config/meedyamanager/filetypes.json5` user override path; dev builds may keep a `MEEDYA_FILETYPES_OVERRIDE` env var for local testing; all user customisation goes through the Settings UI | All | High | 🔲 |

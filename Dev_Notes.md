@@ -18,6 +18,9 @@
 - [File Integrity Checking](#file-integrity-checking)
 - [Background Service Mode](#background-service-mode)
 - [Settings Export / Import](#settings-export--import-mmprofile-bundles)
+- [Test Mode (Safe Edit Mode)](#test-mode-safe-edit-mode)
+- [Pre-release Version Safety](#pre-release-version-safety)
+- [Privacy Policy](#privacy-policy)
 - [Codec Registry](#codec-registry-configcodecsjson5--planned-for-v130)
 - [JSON Schema Validation](#json-schema-validation)
 - [Apple Privacy Manifest](#apple-privacy-manifest-privacyinfoxcprivacy)
@@ -721,6 +724,61 @@ meedya config import ~/my-settings.mmprofile
 The bundle format is standard JSON (not JSON5) for maximum tool compatibility.
 Import is atomic — all files are written via temp-file+rename to prevent partial
 updates.
+
+---
+
+## Test Mode (Safe Edit Mode)
+
+Test Mode prevents MeedyaManager from modifying original media files during
+edit/tag operations.  When enabled, all writes create a duplicate with a
+`_MeedyaManager` suffix (e.g. `track.mp3` → `track_MeedyaManager.mp3`).
+
+### Implementation
+
+| Component | File | Notes |
+| --------- | ---- | ----- |
+| Core module | `crates/mm-core/src/test_mode.rs` | Manifest, path helpers, enable/disable, commit/revert |
+| Integrity integration | `crates/mm-core/src/integrity.rs` | `write_tags_safe()` delegates to `write_tags_test_mode()` when active |
+| Config field | `crates/mm-core/src/config/mod.rs` | `test_mode: bool` + `MM_TEST_MODE` env override |
+| CLI command | `crates/mm-cli/src/commands/config_cmd.rs` | `meedya config test-mode on/off/status/commit/revert` |
+| Manifest file | `<config_dir>/meedyamanager/testmode_manifest.json` | Persists across sessions |
+
+### Disable Prompt
+
+When the user disables Test Mode and tracked files exist:
+
+- **Yes (commit):** delete originals, rename copies (remove `_MeedyaManager` suffix)
+- **No (revert):** keep both originals and copies, clear manifest
+
+The prompt applies to **all** tracked files, not just those from the current session.
+
+---
+
+## Pre-release Version Safety
+
+Pre-release builds (semver pre-release label present, e.g. `1.3.0-beta.1`)
+auto-enable Test Mode on first launch.
+
+Detection uses `semver::Version::pre.is_empty()` in
+`crates/mm-core/src/test_mode.rs::is_prerelease_version()`.
+
+On upgrade to a stable release, if Test Mode is still enabled, the user is
+prompted to disable it (with the usual commit/revert choice).
+
+---
+
+## Privacy Policy
+
+The privacy policy at `help/privacy-policy.md` is required for Apple App Store
+and Google Play submission.  It covers:
+
+- No analytics, telemetry, or tracking
+- Local-only data storage (config, manifest, corruption log, OS keyring)
+- Third-party provider data disclosure (search queries sent to enabled providers)
+- Links to each provider's own privacy policy
+- Open-source code availability
+
+All platform UIs include a "Privacy Policy" link in Settings / About.
 
 ---
 

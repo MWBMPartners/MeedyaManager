@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | Post-M10 — v1.2.0 enhancements — **Complete** |
+| **Current Milestone** | Post-M10 — v1.3.0 enhancements — **Complete** |
 | **Overall Progress** | **100%** core milestones complete; cross-cutting enhancements complete |
-| **Latest Version** | `v1.2.0` |
+| **Latest Version** | `v1.3.0` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 

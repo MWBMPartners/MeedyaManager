@@ -30,6 +30,7 @@ use tracing::{info, warn, error};
 
 use crate::error::{MmError, MmResult};
 use crate::metadata::{write_tags, TagMap};
+use crate::test_mode;
 
 // ---------------------------------------------------------------------------
 // Result type for a guarded metadata write
@@ -103,7 +104,14 @@ pub fn verify_file(path: &Path, expected_sha256: &str) -> bool {
 
 /// Write metadata tags to `path` with integrity checking and atomic rename.
 ///
-/// ## Procedure
+/// ## Test Mode Behaviour
+///
+/// When Test Mode is enabled, the original file is **not** modified.  Instead,
+/// a copy is created at `<stem>_MeedyaManager.<ext>` and tags are written into
+/// the copy.  The copy is tracked in the test-mode manifest for later commit
+/// or revert.
+///
+/// ## Standard Procedure (Test Mode disabled)
 /// 1. Hash the original file with SHA256.
 /// 2. Copy the original file to `<path>.meedya_tmp`.
 /// 3. Write the updated tags into the temp file via `write_tags`.
@@ -114,6 +122,17 @@ pub fn verify_file(path: &Path, expected_sha256: &str) -> bool {
 /// If any step fails the temp file is cleaned up and the original is
 /// untouched.  The error is also appended to the corruption log.
 pub fn write_tags_safe(path: &Path, tags: &TagMap) -> IntegrityWriteResult {
+    // -- Check if test mode is active -------------------------------------
+    if test_mode::is_enabled() {
+        return write_tags_test_mode(path, tags);
+    }
+
+    // -- Standard (non-test-mode) write path ------------------------------
+    write_tags_standard(path, tags)
+}
+
+/// Standard integrity-checked write: temp file → rename over original.
+fn write_tags_standard(path: &Path, tags: &TagMap) -> IntegrityWriteResult {
     let tmp_path = temp_path(path);
 
     // -- Step 1: hash the original ----------------------------------------
@@ -176,6 +195,82 @@ pub fn write_tags_safe(path: &Path, tags: &TagMap) -> IntegrityWriteResult {
 
     IntegrityWriteResult {
         path: path.to_path_buf(),
+        sha256_before,
+        sha256_after: Some(sha256_after),
+        success: true,
+        error: None,
+    }
+}
+
+/// Test Mode write: copy original to `_MeedyaManager` suffixed file, write
+/// tags into the copy, record the pair in the test-mode manifest.
+///
+/// The original file is never modified.
+fn write_tags_test_mode(path: &Path, tags: &TagMap) -> IntegrityWriteResult {
+    let copy_path = test_mode::test_mode_path(path);
+
+    // -- Step 1: hash the original ----------------------------------------
+    let sha256_before = match file_sha256(path) {
+        Ok(h) => h,
+        Err(e) => {
+            return failure(path, String::new(), format!("pre-write hash failed: {e}"));
+        }
+    };
+
+    // -- Step 2: copy original to the _MeedyaManager file -----------------
+    if let Err(e) = std::fs::copy(path, &copy_path) {
+        return failure(
+            path,
+            sha256_before,
+            format!(
+                "test mode: cannot create copy '{}': {e}",
+                copy_path.display()
+            ),
+        );
+    }
+
+    // -- Step 3: write tags into the copy ---------------------------------
+    if let Err(e) = write_tags(&copy_path, tags) {
+        cleanup_tmp(&copy_path);
+        return failure(
+            path,
+            sha256_before,
+            format!("test mode: write_tags failed on copy: {e}"),
+        );
+    }
+
+    // -- Step 4: hash the copy --------------------------------------------
+    let sha256_after = match file_sha256(&copy_path) {
+        Ok(h) => h,
+        Err(e) => {
+            cleanup_tmp(&copy_path);
+            return failure(
+                path,
+                sha256_before,
+                format!("test mode: post-write hash failed: {e}"),
+            );
+        }
+    };
+
+    // -- Step 5: record in the manifest -----------------------------------
+    if let Err(e) = test_mode::record_file(path, &copy_path) {
+        warn!(
+            %e,
+            "test mode: failed to record file in manifest (copy is still valid)"
+        );
+    }
+
+    // -- Step 6: log success and return ------------------------------------
+    info!(
+        original = %path.display(),
+        copy = %copy_path.display(),
+        sha256_before = %sha256_before,
+        sha256_after  = %sha256_after,
+        "test mode integrity write: OK (original preserved)"
+    );
+
+    IntegrityWriteResult {
+        path: copy_path,
         sha256_before,
         sha256_after: Some(sha256_after),
         success: true,

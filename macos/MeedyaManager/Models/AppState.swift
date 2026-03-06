@@ -32,6 +32,32 @@ final class AppState {
 
     /// The MeedyaManager core version string (from mm-ffi or hardcoded fallback)
     var coreVersion: String = MmCore.shared.version()
+
+    // MARK: – Test Mode
+
+    /// Whether test mode is currently active.
+    ///
+    /// When enabled, all file-system mutations (renames, tag writes) are
+    /// redirected to a staging area.  The UI reflects this state with
+    /// visual indicators and commit/revert controls.
+    var testModeEnabled: Bool = MmCore.shared.testModeEnabled()
+
+    /// The number of files currently staged in test mode.
+    ///
+    /// Updated whenever test mode state changes, files are scanned,
+    /// or commit/revert operations complete.
+    var testModeFileCount: Int = MmCore.shared.testModeFileCount()
+
+    // MARK: – Pre-release Detection
+
+    /// Whether the current build is a pre-release version.
+    ///
+    /// Determined at launch by checking whether the version string
+    /// contains a hyphen (e.g. "1.3.0-beta.1").
+    var isPreRelease: Bool = false
+
+    /// Controls visibility of the pre-release alert on first launch.
+    var showPreReleaseAlert: Bool = false
 }
 
 /// The top-level navigation destinations in the sidebar / tab strip.

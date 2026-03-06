@@ -1,6 +1,6 @@
 // (C) 2025-2026 MWBM Partners Ltd
 //
-// MeedyaManager — Settings Panel (M6 — Full Config Save)
+// MeedyaManager — Settings Panel (M6 — Full Config Save + Test Mode)
 //
 // Displays the active configuration (loaded from settings.json5) and
 // exposes the most important toggles as native GTK/Adwaita widgets.
@@ -19,6 +19,12 @@
 //   │  Logging                                                   │
 //   │    Log level             [dropdown]                        │
 //   │    Redact PII            [switch]                          │
+//   │  Test Mode (Safe Edit Mode)                                │
+//   │    Enable test mode      [switch]                          │
+//   │    Tracked files: N                                        │
+//   │    [Commit Changes]  [Revert Changes]                      │
+//   │  About                                                     │
+//   │    [Privacy Policy]                                        │
 //   ├────────────────────────────────────────────────────────────┤
 //   │  Raw Configuration (read-only reference)                   │
 //   │  [text view]                                               │
@@ -35,6 +41,7 @@ use libadwaita as adw;
 use adw::prelude::*;
 
 use mm_core::config::AppConfig;
+use mm_core::test_mode;
 
 use crate::state::SettingsSnapshot;
 use crate::ui::accessibility;
@@ -245,6 +252,243 @@ impl SettingsPanel {
         logging_group.add(&pii_row);
 
         // ------------------------------------------------------------------
+        // Test Mode (Safe Edit Mode) group
+        // ------------------------------------------------------------------
+
+        // Read the current test-mode state from the persistent manifest
+        let test_mode_enabled = test_mode::is_enabled();
+        let tracked_count     = test_mode::tracked_file_count();
+
+        // Toggle row — enables/disables test mode globally
+        let test_mode_row = adw::SwitchRow::new();
+        test_mode_row.set_title("Test Mode (Safe Edit Mode)");
+        test_mode_row.set_subtitle(
+            "Edits create copies with a _MeedyaManager suffix instead of \
+             overwriting originals. Tracked files are recorded in a manifest \
+             so they survive restarts."
+        );
+        test_mode_row.set_active(test_mode_enabled);
+
+        // Label showing the number of files tracked in the manifest
+        let tracked_label = gtk::Label::builder()
+            .label(&format!("Tracked files: {tracked_count}"))
+            .halign(gtk::Align::Start)
+            .margin_start(16)
+            .margin_top(4)
+            .margin_bottom(4)
+            .css_classes(["dim-label"])
+            .build();
+
+        // Commit button — deletes originals and renames copies to originals
+        let commit_btn = gtk::Button::builder()
+            .label("Commit Changes")
+            .css_classes(["suggested-action"])
+            .sensitive(tracked_count > 0)
+            .tooltip_text("Delete originals, keep the tagged copies as the new files")
+            .build();
+        accessibility::set_label(&commit_btn, "Commit test mode changes");
+        accessibility::set_description(
+            &commit_btn,
+            "Replaces original files with their tagged copies and clears the manifest.",
+        );
+
+        // Revert button — clears the manifest but keeps both originals and copies
+        let revert_btn = gtk::Button::builder()
+            .label("Revert Changes")
+            .css_classes(["destructive-action"])
+            .sensitive(tracked_count > 0)
+            .tooltip_text("Keep both originals and copies, clear the manifest")
+            .build();
+        accessibility::set_label(&revert_btn, "Revert test mode changes");
+        accessibility::set_description(
+            &revert_btn,
+            "Clears the test-mode manifest without deleting any files.",
+        );
+
+        // Wire up the Commit button
+        {
+            let tl = tracked_label.clone();
+            let cb = commit_btn.clone();
+            let rb = revert_btn.clone();
+            commit_btn.connect_clicked(move |_| {
+                match test_mode::commit_files() {
+                    Ok(n) => {
+                        // Update UI to reflect cleared manifest
+                        tl.set_label("Tracked files: 0");
+                        cb.set_sensitive(false);
+                        rb.set_sensitive(false);
+                        tl.set_label(&format!("Committed {n} file(s). Tracked files: 0"));
+                    }
+                    Err(e) => {
+                        tl.set_label(&format!("Commit error: {e}"));
+                    }
+                }
+            });
+        }
+
+        // Wire up the Revert button
+        {
+            let tl = tracked_label.clone();
+            let cb = commit_btn.clone();
+            let rb = revert_btn.clone();
+            revert_btn.connect_clicked(move |_| {
+                match test_mode::revert_files() {
+                    Ok(()) => {
+                        tl.set_label("Tracked files: 0 (reverted)");
+                        cb.set_sensitive(false);
+                        rb.set_sensitive(false);
+                    }
+                    Err(e) => {
+                        tl.set_label(&format!("Revert error: {e}"));
+                    }
+                }
+            });
+        }
+
+        // Wire up the Test Mode toggle switch.
+        // When toggling OFF with tracked files, show a confirmation dialog.
+        {
+            let tl = tracked_label.clone();
+            let cb = commit_btn.clone();
+            let rb = revert_btn.clone();
+            test_mode_row.connect_active_notify(move |row| {
+                let is_active = row.is_active();
+
+                if is_active {
+                    // --- Turning ON ---
+                    if let Err(e) = test_mode::enable() {
+                        tl.set_label(&format!("Enable error: {e}"));
+                        return;
+                    }
+                    tl.set_label(&format!(
+                        "Tracked files: {}",
+                        test_mode::tracked_file_count()
+                    ));
+                } else {
+                    // --- Turning OFF ---
+                    let count = test_mode::tracked_file_count();
+
+                    if count > 0 {
+                        // Show a confirmation dialog asking the user whether
+                        // to commit (keep tagged copies) or keep both files
+                        let dialog = adw::AlertDialog::new(
+                            Some("Keep only the tagged files?"),
+                            Some(&format!(
+                                "Test Mode has {count} tracked file(s).\n\n\
+                                 Yes = delete originals, rename copies (commit)\n\
+                                 No  = keep both originals and copies (revert)"
+                            )),
+                        );
+                        dialog.add_response("no",  "No");
+                        dialog.add_response("yes", "Yes");
+                        dialog.set_default_response(Some("no"));
+                        dialog.set_close_response("no");
+                        dialog.set_response_appearance(
+                            "yes",
+                            adw::ResponseAppearance::Destructive,
+                        );
+
+                        // Clone references for the async response handler
+                        let tl2 = tl.clone();
+                        let cb2 = cb.clone();
+                        let rb2 = rb.clone();
+
+                        dialog.connect_response(None, move |_dlg, response| {
+                            match response {
+                                "yes" => {
+                                    // Commit: delete originals, rename copies
+                                    match test_mode::commit_files() {
+                                        Ok(n) => {
+                                            tl2.set_label(&format!(
+                                                "Committed {n} file(s). Tracked files: 0"
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            tl2.set_label(&format!("Commit error: {e}"));
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    // No / Cancel: revert — keep both, clear manifest
+                                    let _ = test_mode::revert_files();
+                                    tl2.set_label("Tracked files: 0 (reverted)");
+                                }
+                            }
+                            // Disable the action buttons (manifest is now empty)
+                            cb2.set_sensitive(false);
+                            rb2.set_sensitive(false);
+                        });
+
+                        // Present the dialog. We need a parent window for proper
+                        // modal behaviour; walk up the widget tree to find it.
+                        let parent = row
+                            .root()
+                            .and_then(|r| r.downcast::<gtk::Window>().ok());
+                        dialog.present(parent.as_ref());
+                    }
+
+                    // Disable test mode in the manifest regardless of dialog
+                    if let Err(e) = test_mode::disable() {
+                        tl.set_label(&format!("Disable error: {e}"));
+                    }
+                }
+            });
+        }
+
+        // Button box for Commit / Revert (horizontal, end-aligned)
+        let test_mode_btn_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(8)
+            .halign(gtk::Align::End)
+            .margin_end(16)
+            .margin_bottom(8)
+            .build();
+        test_mode_btn_box.append(&commit_btn);
+        test_mode_btn_box.append(&revert_btn);
+
+        // Wrap the extra widgets (tracked label + buttons) in an ActionRow
+        // so they sit inside the PreferencesGroup styling
+        let test_mode_info_row = adw::ActionRow::new();
+        test_mode_info_row.set_title("Manifest");
+        test_mode_info_row.set_subtitle("Files tracked by the test-mode manifest");
+        test_mode_info_row.add_suffix(&tracked_label);
+
+        let test_mode_group = adw::PreferencesGroup::new();
+        test_mode_group.set_title("Test Mode (Safe Edit Mode)");
+        test_mode_group.set_description(Some(
+            "When enabled, file edits create copies with a _MeedyaManager suffix. \
+             Use Commit to replace originals or Revert to keep both."
+        ));
+        test_mode_group.add(&test_mode_row);
+        test_mode_group.add(&test_mode_info_row);
+
+        // ------------------------------------------------------------------
+        // About / Legal group — Privacy Policy link
+        // ------------------------------------------------------------------
+
+        // Privacy Policy row — opens the privacy policy URL in the default browser
+        let privacy_row = adw::ActionRow::new();
+        privacy_row.set_title("Privacy Policy");
+        privacy_row.set_subtitle("View the MeedyaManager privacy policy");
+        privacy_row.set_activatable(true);
+
+        // Arrow icon to indicate it opens externally
+        let arrow_icon = gtk::Image::from_icon_name("go-next-symbolic");
+        privacy_row.add_suffix(&arrow_icon);
+
+        // Open the privacy policy page in the default web browser on activation
+        privacy_row.connect_activated(|_row| {
+            let _ = gtk::gio::AppInfo::launch_default_for_uri(
+                "https://github.com/MWBMPartners/MeedyaManager/wiki/Privacy-Policy",
+                gtk::gio::AppLaunchContext::NONE,
+            );
+        });
+
+        let about_group = adw::PreferencesGroup::new();
+        about_group.set_title("About");
+        about_group.add(&privacy_row);
+
+        // ------------------------------------------------------------------
         // Raw JSON5 view (read-only reference)
         // ------------------------------------------------------------------
 
@@ -346,6 +590,9 @@ impl SettingsPanel {
         prefs_content.append(&general_group);
         prefs_content.append(&watch_group);
         prefs_content.append(&logging_group);
+        prefs_content.append(&test_mode_group);
+        prefs_content.append(&test_mode_btn_box);
+        prefs_content.append(&about_group);
 
         let scrolled_prefs = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)

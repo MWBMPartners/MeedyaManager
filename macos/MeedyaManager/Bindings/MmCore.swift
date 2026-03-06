@@ -182,6 +182,92 @@ final class MmCore {
         #endif
     }
 
+    // MARK: – Test Mode
+
+    /// Check whether test mode is currently enabled.
+    ///
+    /// In test mode, rename and write operations are staged in a
+    /// temporary scratch area instead of touching real media files.
+    /// - Returns: `true` if test mode is active.
+    func testModeEnabled() -> Bool {
+        #if MM_FFI_AVAILABLE
+        // Real: call mm-ffi testModeEnabled()
+        return testModeEnabled()
+        #else
+        // Stub: delegate to UserDefaults so the toggle persists across launches
+        return UserDefaults.standard.bool(forKey: "mm_test_mode_enabled")
+        #endif
+    }
+
+    /// Enable or disable test mode.
+    ///
+    /// When enabled, all file-system mutations are redirected to a
+    /// staging directory; when disabled, the staging area may be
+    /// committed or reverted via the corresponding functions.
+    /// - Parameter enabled: `true` to activate test mode, `false` to deactivate.
+    func setTestMode(enabled: Bool) {
+        #if MM_FFI_AVAILABLE
+        // Real: call mm-ffi setTestMode(enabled:)
+        setTestMode(enabled: enabled)
+        #else
+        // Stub: persist the flag in UserDefaults for development UI
+        UserDefaults.standard.set(enabled, forKey: "mm_test_mode_enabled")
+        #endif
+    }
+
+    /// Return the number of files currently staged in test mode.
+    ///
+    /// A non-zero count means there are uncommitted rename or tag-write
+    /// operations waiting in the staging area.
+    /// - Returns: Count of staged files (0 when test mode is off).
+    func testModeFileCount() -> Int {
+        #if MM_FFI_AVAILABLE
+        // Real: call mm-ffi testModeFileCount()
+        return Int(testModeFileCount())
+        #else
+        // Stub: return a realistic number when test mode is on, 0 otherwise
+        return UserDefaults.standard.bool(forKey: "mm_test_mode_enabled")
+            ? UserDefaults.standard.integer(forKey: "mm_test_mode_file_count")
+            : 0
+        #endif
+    }
+
+    /// Commit all staged test-mode operations to real files.
+    ///
+    /// Moves renamed files from the staging area to their final destinations
+    /// and applies any queued tag writes.  Resets the staged file count to 0.
+    /// - Throws: If any staged operation fails to apply.
+    func commitTestModeFiles() async throws {
+        #if MM_FFI_AVAILABLE
+        // Real: call mm-ffi commitTestModeFiles()
+        try await Task.detached(priority: .userInitiated) {
+            try commitTestModeFiles()
+        }.value
+        #else
+        // Stub: simulate a commit delay, then reset the staged file count
+        try await Task.sleep(nanoseconds: 500_000_000)
+        UserDefaults.standard.set(0, forKey: "mm_test_mode_file_count")
+        #endif
+    }
+
+    /// Revert all staged test-mode operations, discarding changes.
+    ///
+    /// Deletes all files in the staging area and resets the staged file
+    /// count to 0 without applying any operations.
+    /// - Throws: If the staging area cleanup fails.
+    func revertTestModeFiles() async throws {
+        #if MM_FFI_AVAILABLE
+        // Real: call mm-ffi revertTestModeFiles()
+        try await Task.detached(priority: .userInitiated) {
+            try revertTestModeFiles()
+        }.value
+        #else
+        // Stub: simulate a revert delay, then reset the staged file count
+        try await Task.sleep(nanoseconds: 300_000_000)
+        UserDefaults.standard.set(0, forKey: "mm_test_mode_file_count")
+        #endif
+    }
+
     // MARK: – Stubs (development-only, removed when FFI is available)
 
     #if !MM_FFI_AVAILABLE

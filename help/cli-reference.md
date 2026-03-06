@@ -291,6 +291,7 @@ meedya config <SUBCOMMAND>
 | `path` | Print the config file path |
 | `export` | Export settings to a `.mmprofile` bundle |
 | `import` | Import settings from a `.mmprofile` bundle |
+| `test-mode` | Manage Test Mode — `on`, `off`, `status`, `commit`, `revert` |
 | `reset` | Reset config to defaults (with confirmation) |
 
 ### Examples
@@ -315,9 +316,17 @@ meedya config import ~/my-settings.mmprofile
 
 # Reset to defaults
 meedya config reset
+
+# Test Mode (safe editing)
+meedya config test-mode on
+meedya config test-mode off
+meedya config test-mode status
+meedya config test-mode commit
+meedya config test-mode revert
 ```
 
 For export/import details, see [settings-export-import.md](settings-export-import.md).
+For Test Mode details, see [test-mode.md](test-mode.md).
 
 ---
 

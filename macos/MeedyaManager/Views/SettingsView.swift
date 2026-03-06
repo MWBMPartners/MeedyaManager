@@ -39,6 +39,14 @@ struct SettingsView: View {
     // "idle" | "checking" | "up-to-date" | "available:<version>"
     @State private var updateStatus: String = "idle"
 
+    // ── Test Mode state ───────────────────────────────────────────────────────
+
+    // Controls the confirmation alert shown when disabling test mode with staged files
+    @State private var showTestModeConfirm: Bool = false
+
+    // True while a commit or revert operation is in progress
+    @State private var isTestModeProcessing: Bool = false
+
     // Config file path reported by the core
     private let configFilePath = MmCore.shared.configPath()
 
@@ -56,6 +64,131 @@ struct SettingsView: View {
                         detail:   "Preview renames without writing any changes to disk.",
                         isOn:     $dryRun
                     )
+                }
+
+                // ── Test Mode ──────────────────────────────────────────────────
+                SettingsGroup(title: "Test Mode") {
+                    // Toggle to enable/disable test mode
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            // Primary label for the test mode toggle
+                            Text("Test Mode")
+                            // Description explaining what test mode does
+                            Text("When enabled, renames and tag writes go to a staging area instead of modifying real files.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        // The actual toggle switch for test mode
+                        Toggle("", isOn: Binding(
+                            // Read the current value from appState
+                            get: { appState.testModeEnabled },
+                            // Handle the toggle change with confirmation logic
+                            set: { newValue in
+                                if !newValue && appState.testModeFileCount > 0 {
+                                    // User is turning OFF test mode but has staged files — ask what to do
+                                    showTestModeConfirm = true
+                                } else {
+                                    // Safe to toggle directly (either enabling, or disabling with no staged files)
+                                    MmCore.shared.setTestMode(enabled: newValue)
+                                    appState.testModeEnabled = newValue
+                                    // Refresh the staged file count after toggling
+                                    appState.testModeFileCount = MmCore.shared.testModeFileCount()
+                                }
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .accessibilityLabel("Test Mode")
+                        .accessibilityHint("When enabled, file operations go to a staging area instead of modifying real files")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+
+                    // Show the staged file count when test mode is active
+                    if appState.testModeEnabled {
+                        Divider().padding(.leading, 16)
+
+                        // Staged file count indicator
+                        HStack {
+                            // File count label with dynamic icon
+                            Label(
+                                "\(appState.testModeFileCount) file\(appState.testModeFileCount == 1 ? "" : "s") staged",
+                                systemImage: appState.testModeFileCount > 0
+                                    ? "doc.on.doc.fill"
+                                    : "doc"
+                            )
+                            .font(.subheadline)
+                            .foregroundStyle(appState.testModeFileCount > 0 ? .primary : .secondary)
+
+                            Spacer()
+
+                            // Show processing spinner during commit/revert
+                            if isTestModeProcessing {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .padding(.trailing, 4)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+
+                        // Commit and Revert buttons — only visible when staged files exist
+                        if appState.testModeFileCount > 0 {
+                            Divider().padding(.leading, 16)
+
+                            HStack(spacing: 12) {
+                                Spacer()
+
+                                // Revert button — discards all staged changes
+                                Button(role: .destructive) {
+                                    revertTestModeFiles()
+                                } label: {
+                                    Label("Revert", systemImage: "arrow.uturn.backward")
+                                }
+                                .controlSize(.small)
+                                .disabled(isTestModeProcessing)
+                                .accessibilityLabel("Revert staged files")
+                                .accessibilityHint("Discards all staged test-mode changes without applying them")
+
+                                // Commit button — applies all staged changes to real files
+                                Button {
+                                    commitTestModeFiles()
+                                } label: {
+                                    Label("Commit", systemImage: "checkmark.circle")
+                                }
+                                .controlSize(.small)
+                                .buttonStyle(.borderedProminent)
+                                .disabled(isTestModeProcessing)
+                                .accessibilityLabel("Commit staged files")
+                                .accessibilityHint("Applies all staged test-mode changes to real files")
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
+                // Confirmation alert when disabling test mode with uncommitted staged files
+                .alert(
+                    "Uncommitted Test Files",
+                    isPresented: $showTestModeConfirm
+                ) {
+                    // "Yes" commits the staged files, then disables test mode
+                    Button("Yes — Commit") {
+                        commitTestModeFiles()
+                        MmCore.shared.setTestMode(enabled: false)
+                        appState.testModeEnabled = false
+                    }
+                    // "No" reverts the staged files, then disables test mode
+                    Button("No — Revert", role: .destructive) {
+                        revertTestModeFiles()
+                        MmCore.shared.setTestMode(enabled: false)
+                        appState.testModeEnabled = false
+                    }
+                    // Cancel keeps test mode enabled
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("You have \(appState.testModeFileCount) staged file\(appState.testModeFileCount == 1 ? "" : "s"). Would you like to commit them to disk or revert?")
                 }
 
                 // ── Watching ─────────────────────────────────────────────────
@@ -220,6 +353,26 @@ struct SettingsView: View {
                     .padding(.vertical, 12)
                 }
 
+                // ── About & Legal ────────────────────────────────────────────
+                SettingsGroup(title: "About") {
+                    HStack {
+                        // Privacy Policy link — opens the policy document on GitHub
+                        Label("Privacy Policy", systemImage: "hand.raised.fill")
+                        Spacer()
+                        Link(
+                            "View",
+                            destination: URL(
+                                string: "https://github.com/MWBMPartners/MeedyaManager/blob/main/help/privacy-policy.md"
+                            )!
+                        )
+                        .controlSize(.small)
+                        .accessibilityLabel("View Privacy Policy")
+                        .accessibilityHint("Opens the MeedyaManager privacy policy in your web browser")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                }
+
                 // ── Save Button ───────────────────────────────────────────────
                 HStack {
                     if isSaving {
@@ -341,6 +494,50 @@ struct SettingsView: View {
             DispatchQueue.main.async {
                 self.updateStatus = result
             }
+        }
+    }
+
+    /// Commit all staged test-mode files to their real locations.
+    ///
+    /// Runs the FFI commit asynchronously, disabling the commit/revert
+    /// buttons while in progress and refreshing the file count on completion.
+    private func commitTestModeFiles() {
+        // Mark the operation as in progress to disable buttons
+        isTestModeProcessing = true
+        Task {
+            do {
+                // Ask the core to apply all staged operations
+                try await MmCore.shared.commitTestModeFiles()
+            } catch {
+                // Log commit failures (in production, surface to the user)
+                print("[MeedyaManager] Test mode commit failed: \(error)")
+            }
+            // Refresh the staged file count from the core
+            appState.testModeFileCount = MmCore.shared.testModeFileCount()
+            // Re-enable the buttons
+            isTestModeProcessing = false
+        }
+    }
+
+    /// Revert all staged test-mode files, discarding uncommitted changes.
+    ///
+    /// Runs the FFI revert asynchronously, disabling the commit/revert
+    /// buttons while in progress and refreshing the file count on completion.
+    private func revertTestModeFiles() {
+        // Mark the operation as in progress to disable buttons
+        isTestModeProcessing = true
+        Task {
+            do {
+                // Ask the core to discard all staged operations
+                try await MmCore.shared.revertTestModeFiles()
+            } catch {
+                // Log revert failures (in production, surface to the user)
+                print("[MeedyaManager] Test mode revert failed: \(error)")
+            }
+            // Refresh the staged file count from the core
+            appState.testModeFileCount = MmCore.shared.testModeFileCount()
+            // Re-enable the buttons
+            isTestModeProcessing = false
         }
     }
 

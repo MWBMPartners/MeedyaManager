@@ -8,6 +8,56 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.3.0] — 2026-03-06 — Test Mode, Privacy Policy, Pre-release Safety, JSON Schemas
+
+> **User safety and compliance** — Test Mode for non-destructive editing, privacy policy for app store compliance, pre-release version safety, and JSON Schema validation for config files.
+
+### Added
+
+**Test Mode (Safe Edit Mode):**
+
+- `crates/mm-core/src/test_mode.rs` — New module: `TestModeManifest`, `TestModeEntry`, `enable()`, `disable()`, `is_enabled()`, `record_file()`, `commit_files()`, `revert_files()`, `tracked_file_count()`, `tracked_files()`. Path helpers: `test_mode_path()`, `is_test_mode_copy()`, `original_path_from_copy()`. Persistent manifest at `<config_dir>/meedyamanager/testmode_manifest.json`. 20+ unit tests.
+- `crates/mm-core/src/integrity.rs` — `write_tags_safe()` now checks test mode; when enabled, writes to `_MeedyaManager` copy instead of modifying the original. New internal functions `write_tags_standard()` and `write_tags_test_mode()`.
+- `crates/mm-core/src/config/mod.rs` — Added `test_mode: bool` field to `AppConfig` with `MM_TEST_MODE` env override.
+- `crates/mm-cli/src/commands/config_cmd.rs` — New `meedya config test-mode` subcommand with actions: `on`, `off`, `status`, `commit`, `revert`. Supports `--json` and `--dry-run`.
+
+**Pre-release Version Safety:**
+
+- `crates/mm-core/src/test_mode.rs` — `is_prerelease_version()` and `is_current_prerelease()` using `semver::Version::pre`. Pre-release builds auto-enable test mode on first launch.
+- All platform UIs show a pre-release notice dialog on first launch; offer stable update if available; auto-enable test mode.
+
+**Privacy Policy:**
+
+- `help/privacy-policy.md` — Full privacy notice: no tracking, no analytics, no data collection; third-party provider data disclosure with links to each provider's privacy policy; local-only data storage; open source.
+
+**JSON Schema Validation:**
+
+- `config/schemas/filetypes.schema.json` — JSON Schema (Draft 2020-12) for `filetypes.json5`
+- `config/schemas/tags.schema.json` — JSON Schema for `tags.json5`
+- `config/schemas/settings.schema.json` — JSON Schema for `settings.json5`
+- `config/schemas/codecs.schema.json` — JSON Schema for planned codec registry
+
+**Apple App Store Compliance:**
+
+- `macos/MeedyaManager/PrivacyInfo.xcprivacy` — Apple Privacy Manifest (FileTimestamp, DiskSpace, UserDefaults API declarations)
+- `.markdownlint.json` — Project-wide markdownlint configuration
+
+### Changed
+
+- `crates/mm-core/src/renamer/mod.rs` — Optimised regex compilation with `LazyLock`
+- `crates/mm-core/src/metadata/mod.rs` — Fixed redundant `is_some()`/`unwrap()` pattern
+- 15+ markdown files — Fixed lint warnings (MD060, MD031, MD040, MD022, MD024, MD032)
+
+### Documentation
+
+- `help/test-mode.md` — Complete Test Mode user guide
+- `help/privacy-policy.md` — Privacy policy
+- `help/index.md` — Added Test Mode and Privacy Policy links
+- `help/cli-reference.md` — Added `test-mode` subcommand documentation
+- `Dev_Notes.md` — Added codec registry, JSON schema, Apple privacy, App Store distribution sections
+
+---
+
 ## [v1.2.0] — 2026-03-06 — External Config, Tag Registry, File Integrity, Background Service, Settings Bundle
 
 > **Cross-cutting hardening** — Five enterprise-grade features: JSON5-driven file type and tag definitions, SHA256 atomic-write integrity checking, cross-platform background service management, and portable `.mmprofile` settings bundles.

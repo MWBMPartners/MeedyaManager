@@ -48,6 +48,13 @@ pub enum ConfigAction {
         /// Path to the .mmprofile bundle to import
         profile: PathBuf,
     },
+
+    /// Manage Test Mode (safe edit mode) — on, off, or status
+    #[command(name = "test-mode")]
+    TestMode {
+        /// Action: on, off, status, commit, or revert
+        action: String,
+    },
 }
 
 // ─── JSON output structures ─────────────────────────────────────────────────
@@ -74,6 +81,14 @@ struct ProfileOutput {
     success: bool,
 }
 
+/// Test mode status for JSON output.
+#[derive(Serialize)]
+struct TestModeOutput {
+    enabled: bool,
+    tracked_files: usize,
+    action: String,
+}
+
 // ─── Command execution ─────────────────────────────────────────────────────
 
 /// Execute the `meedya config` command.
@@ -84,6 +99,7 @@ pub fn run(ctx: &CliContext, args: &ConfigArgs) -> anyhow::Result<i32> {
         ConfigAction::Init { path } => run_init(ctx, path.as_deref()),
         ConfigAction::Export { output } => run_export(ctx, output),
         ConfigAction::Import { profile } => run_import(ctx, profile),
+        ConfigAction::TestMode { action } => run_test_mode(ctx, action),
     }
 }
 
@@ -272,6 +288,168 @@ fn run_import(ctx: &CliContext, profile_path: &PathBuf) -> anyhow::Result<i32> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+// ─── Subcommand: test-mode ───────────────────────────────────────────────────
+
+/// Manage Test Mode (safe edit mode).
+///
+/// Actions:
+///   - `on`      — Enable test mode
+///   - `off`     — Disable test mode (does NOT clean up files — use commit/revert)
+///   - `status`  — Show test mode status and tracked file count
+///   - `commit`  — Delete originals, rename copies (removes _MeedyaManager suffix)
+///   - `revert`  — Keep both originals and copies, clear the manifest
+fn run_test_mode(ctx: &CliContext, action: &str) -> anyhow::Result<i32> {
+    match action {
+        "on" => {
+            mm_core::test_mode::enable()
+                .map_err(|e| anyhow::anyhow!("Failed to enable test mode: {e}"))?;
+
+            match ctx.output {
+                OutputFormat::Json => {
+                    output::print_json(&TestModeOutput {
+                        enabled: true,
+                        tracked_files: mm_core::test_mode::tracked_file_count(),
+                        action: "on".into(),
+                    });
+                }
+                OutputFormat::Human => {
+                    output::print_success(
+                        "Test Mode enabled — edits will create _MeedyaManager copies instead of modifying originals.",
+                    );
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        "off" => {
+            let count = mm_core::test_mode::tracked_file_count();
+            mm_core::test_mode::disable()
+                .map_err(|e| anyhow::anyhow!("Failed to disable test mode: {e}"))?;
+
+            match ctx.output {
+                OutputFormat::Json => {
+                    output::print_json(&TestModeOutput {
+                        enabled: false,
+                        tracked_files: count,
+                        action: "off".into(),
+                    });
+                }
+                OutputFormat::Human => {
+                    output::print_success("Test Mode disabled.");
+                    if count > 0 {
+                        println!(
+                            "  {} test-mode file(s) remain — use `meedya config test-mode commit` or `revert` to clean up.",
+                            count
+                        );
+                    }
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        "status" => {
+            let enabled = mm_core::test_mode::is_enabled();
+            let count = mm_core::test_mode::tracked_file_count();
+
+            match ctx.output {
+                OutputFormat::Json => {
+                    output::print_json(&TestModeOutput {
+                        enabled,
+                        tracked_files: count,
+                        action: "status".into(),
+                    });
+                }
+                OutputFormat::Human => {
+                    output::print_key_value(
+                        "Test Mode",
+                        if enabled { "ENABLED" } else { "disabled" },
+                    );
+                    output::print_key_value("Tracked files", &count.to_string());
+
+                    if count > 0 {
+                        println!("\n  Tracked test-mode files:");
+                        for entry in mm_core::test_mode::tracked_files() {
+                            println!(
+                                "    {} -> {}",
+                                entry.original.display(),
+                                entry.copy.display()
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        "commit" => {
+            let count = mm_core::test_mode::tracked_file_count();
+            if count == 0 {
+                output::print_warning("No test-mode files to commit.");
+                return Ok(ExitCode::SUCCESS);
+            }
+
+            if ctx.dry_run {
+                println!(
+                    "Dry-run: would commit {} test-mode file(s) — delete originals, rename copies.",
+                    count
+                );
+                return Ok(ExitCode::SUCCESS);
+            }
+
+            let committed = mm_core::test_mode::commit_files()
+                .map_err(|e| anyhow::anyhow!("Failed to commit test-mode files: {e}"))?;
+
+            match ctx.output {
+                OutputFormat::Json => {
+                    output::print_json(&serde_json::json!({
+                        "action": "commit",
+                        "files_committed": committed,
+                        "success": true,
+                    }));
+                }
+                OutputFormat::Human => {
+                    output::print_success(&format!(
+                        "Committed {} test-mode file(s) — originals deleted, copies renamed.",
+                        committed
+                    ));
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        "revert" => {
+            let count = mm_core::test_mode::tracked_file_count();
+            if count == 0 {
+                output::print_warning("No test-mode files to revert.");
+                return Ok(ExitCode::SUCCESS);
+            }
+
+            mm_core::test_mode::revert_files()
+                .map_err(|e| anyhow::anyhow!("Failed to revert test-mode files: {e}"))?;
+
+            match ctx.output {
+                OutputFormat::Json => {
+                    output::print_json(&serde_json::json!({
+                        "action": "revert",
+                        "files_kept": count,
+                        "success": true,
+                    }));
+                }
+                OutputFormat::Human => {
+                    output::print_success(&format!(
+                        "Reverted — both originals and {} test-mode copies kept.",
+                        count
+                    ));
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        _ => {
+            output::print_error(&format!(
+                "Unknown test-mode action '{}'. Use: on, off, status, commit, revert",
+                action
+            ));
+            Ok(ExitCode::ERROR)
+        }
+    }
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────

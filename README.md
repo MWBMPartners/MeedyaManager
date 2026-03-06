@@ -68,7 +68,7 @@
 ## ✨ Features
 
 | Feature | Description |
-|---------|-------------|
+| --------- | ------------- |
 | 👁️ **Real-Time File Watching** | Monitors folders for new media files and processes them automatically (`notify` crate) |
 | 📐 **MusicBee-Inspired Rule Engine** | Template syntax with `<Tag>`, `$If()`, `$And()`, `$Or()`, 20+ functions, regex, deep nesting |
 | ✏️ **Metadata Editing** | Read/write tags across audio and video formats via `lofty` |
@@ -79,6 +79,9 @@
 | 🔒 **File Integrity Checking** | SHA256 hash before/after every metadata write; atomic rename (`rename(2)`); rollback + corruption log on failure |
 | ⚙️ **Background Service Mode** | Runs as systemd user unit (Linux), launchd agent (macOS), or Windows Service; managed via `meedya service` CLI |
 | 📦 **Settings Export / Import** | Portable `.mmprofile` bundles for device migration and backup (`meedya config export/import`) |
+| 🧪 **Test Mode** | Safe editing — creates `_MeedyaManager` copies instead of modifying originals; commit or revert when done |
+| 🛡️ **Pre-release Safety** | Pre-release builds auto-enable Test Mode; stable upgrade prompts to disable |
+| 📜 **Privacy Policy** | No tracking, no analytics; full third-party provider disclosure |
 | ☁️ **Cloud Storage Sync** | OneDrive, Google Drive, Dropbox, MEGA, iCloud (planned) |
 | 🗄️ **Database Export** | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL |
 | 🌐 **Secure Media Server** | REST API with JWT auth, media streaming, web frontend |
@@ -89,7 +92,7 @@
 ## 💻 Platform Support
 
 | Platform | Architectures | UI Framework | FFI Binding | Store Target |
-|----------|---------------|--------------|-------------|--------------|
+| ---------- | --------------- | -------------- | ------------- | -------------- |
 | 🍎 **macOS** | Apple Silicon (arm64) | SwiftUI (Swift 6) | UniFFI | App Store |
 | 🪟 **Windows** | x64, ARM64 | WinUI 3 (C# .NET 8) | cbindgen / P/Invoke | Microsoft Store |
 | 🐧 **Linux** | x86_64, ARM64 | GTK4 + Libadwaita (gtk4-rs) | Direct Rust | Flatpak / Snap |
@@ -200,7 +203,7 @@ MeedyaManager/
 ## 🗺️ Milestone Roadmap
 
 | # | Milestone | Status | Description |
-|---|-----------|--------|-------------|
+| --- | ----------- | -------- | ------------- |
 | M0 | 🔧 Repository Setup & Scaffolding | ✅ **Complete** | Archive Python, init Cargo workspace, scaffold native apps, CI stubs |
 | M1 | 🧱 Core Engine (Rust) | ✅ **Complete** | Config, classification, metadata (`lofty`), watcher (`notify`), renamer, logging (217 tests) |
 | M2 | 📐 Rule Engine | ✅ **Complete** | Lexer, recursive descent parser, evaluator, 20+ template functions (182 tests) |
@@ -222,7 +225,7 @@ MeedyaManager/
 ### Rust Core
 
 | Purpose | Crate |
-|---------|-------|
+| --------- | ------- |
 | File watching | `notify` |
 | Metadata read/write | `lofty` |
 | CLI framework | `clap` |
@@ -245,7 +248,7 @@ MeedyaManager/
 ### Native UIs
 
 | Platform | Language | Framework | Version |
-|----------|----------|-----------|---------|
+| ---------- | ---------- | ----------- | --------- |
 | macOS | Swift 6 | SwiftUI | Xcode 16+ |
 | Windows | C# | WinUI 3 / .NET 8 | Visual Studio 2022+ |
 | Linux | Rust | GTK4 + Libadwaita | gtk4-rs |
@@ -280,7 +283,7 @@ This project is licensed under the **GPL-2.0-or-later** — see the [LICENSE](LI
 ## 📚 Documentation
 
 | Document | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | 📋 [Project_Plan.md](Project_Plan.md) | Full project plan with architecture, milestones & tech stack |
 | 📊 [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current progress tracker |
 | 📍 [docs/ROADMAP.md](docs/ROADMAP.md) | Milestone timeline |

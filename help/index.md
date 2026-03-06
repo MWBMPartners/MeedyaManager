@@ -24,6 +24,7 @@ Welcome to the MeedyaManager documentation. Choose a topic below to get started.
 | [supported-formats.md](supported-formats.md) | All recognised audio, video, image, and companion file formats |
 | [background-service.md](background-service.md) | Run MeedyaManager as a system service (systemd, launchd, Windows Service) |
 | [file-integrity.md](file-integrity.md) | SHA256 integrity checking and atomic rename safety |
+| [test-mode.md](test-mode.md) | Test Mode — non-destructive editing with `_MeedyaManager` copies |
 | [settings-export-import.md](settings-export-import.md) | Export and import your configuration as a portable `.mmprofile` bundle |
 
 ---
@@ -69,6 +70,7 @@ Welcome to the MeedyaManager documentation. Choose a topic below to get started.
 | ----- | ----------- |
 | [troubleshooting.md](troubleshooting.md) | Common issues and their solutions |
 | [faq.md](faq.md) | Frequently asked questions |
+| [privacy-policy.md](privacy-policy.md) | Privacy policy and third-party data disclosure |
 
 ---
 
@@ -94,6 +96,11 @@ meedya edit ~/Music/song.mp3 --tag "Artist=My Artist"
 meedya service install
 meedya service start
 meedya service status
+
+# Test Mode (safe editing)
+meedya config test-mode on
+meedya config test-mode status
+meedya config test-mode commit
 
 # Export/import configuration
 meedya config export --out ~/my-settings.mmprofile
