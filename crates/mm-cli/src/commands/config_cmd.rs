@@ -187,11 +187,21 @@ fn run_init(ctx: &CliContext, custom_path: Option<&std::path::Path>) -> anyhow::
 
 // ─── Subcommand: export ─────────────────────────────────────────────────────
 
-/// Export current configuration to a .mmprofile bundle (JSON).
+/// Export current configuration to a portable .mmprofile bundle.
+///
+/// The bundle includes the full `AppConfig` plus any custom `filetypes.json5`
+/// and `tags.json5` override files, packed into a single JSON file.
 fn run_export(ctx: &CliContext, output_path: &PathBuf) -> anyhow::Result<i32> {
-    let profile = serde_json::to_string_pretty(&ctx.config)?;
-    std::fs::write(output_path, &profile)
-        .map_err(|e| anyhow::anyhow!("Failed to write profile: {e}"))?;
+    if ctx.dry_run {
+        println!("Dry-run: would export settings bundle to '{}'", output_path.display());
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    // Build the portable bundle from the current config + user override files
+    let bundle = mm_core::settings_bundle::SettingsBundle::capture(ctx.config.clone());
+
+    bundle.export(output_path)
+        .map_err(|e| anyhow::anyhow!("Failed to export settings bundle: {e}"))?;
 
     match ctx.output {
         OutputFormat::Json => {
@@ -203,9 +213,17 @@ fn run_export(ctx: &CliContext, output_path: &PathBuf) -> anyhow::Result<i32> {
         }
         OutputFormat::Human => {
             output::print_success(&format!(
-                "Configuration exported to {}",
+                "Settings bundle exported to '{}'",
                 output_path.display()
             ));
+            if bundle.custom_filetypes.is_some() {
+                println!("  Included: custom filetypes.json5");
+            }
+            if bundle.custom_tags.is_some() {
+                println!("  Included: custom tags.json5");
+            }
+            println!("  Version: {}", bundle.version);
+            output::print_warning("  Warning: this bundle may contain API keys — keep it private.");
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -213,40 +231,44 @@ fn run_export(ctx: &CliContext, output_path: &PathBuf) -> anyhow::Result<i32> {
 
 // ─── Subcommand: import ─────────────────────────────────────────────────────
 
-/// Import configuration from a .mmprofile bundle.
+/// Import a .mmprofile bundle, restoring all configuration files.
 fn run_import(ctx: &CliContext, profile_path: &PathBuf) -> anyhow::Result<i32> {
-    if !profile_path.exists() {
-        output::print_error(&format!("Profile not found: {}", profile_path.display()));
-        return Ok(ExitCode::ERROR);
+    // Parse and validate the bundle
+    let bundle = mm_core::settings_bundle::SettingsBundle::import(profile_path)
+        .map_err(|e| anyhow::anyhow!("Failed to read settings bundle: {e}"))?;
+
+    if ctx.dry_run {
+        println!(
+            "Dry-run: would import settings bundle (v{}, exported {})",
+            bundle.version, bundle.exported_at
+        );
+        return Ok(ExitCode::SUCCESS);
     }
 
-    // Read and validate the profile
-    let contents = std::fs::read_to_string(profile_path)
-        .map_err(|e| anyhow::anyhow!("Failed to read profile: {e}"))?;
-    let _config: mm_core::config::AppConfig = serde_json::from_str(&contents)
-        .map_err(|e| anyhow::anyhow!("Invalid profile format: {e}"))?;
-
-    // Write to platform config location
-    let target_path = mm_core::config::AppConfig::default_settings_path()
-        .map_err(|e| anyhow::anyhow!("Cannot determine config path: {e}"))?;
-    if let Some(parent) = target_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&target_path, &contents)?;
+    // Write all configuration files to their correct locations
+    let written = bundle.apply()
+        .map_err(|e| anyhow::anyhow!("Failed to apply settings bundle: {e}"))?;
 
     match ctx.output {
         OutputFormat::Json => {
-            output::print_json(&ProfileOutput {
-                path: target_path.display().to_string(),
-                action: "import".to_string(),
-                success: true,
-            });
+            let paths: Vec<String> = written.iter()
+                .map(|p| p.display().to_string())
+                .collect();
+            output::print_json(&serde_json::json!({
+                "action": "import",
+                "success": true,
+                "bundle_version": bundle.version,
+                "files_written": paths,
+            }));
         }
         OutputFormat::Human => {
-            output::print_success(&format!(
-                "Configuration imported to {}",
-                target_path.display()
-            ));
+            output::print_success("Settings bundle imported successfully.");
+            for path in &written {
+                println!("  Written: {}", path.display());
+            }
+            println!("  Bundle version: {}", bundle.version);
+            println!("  Exported at: {}", bundle.exported_at);
+            println!("  Restart MeedyaManager for changes to take effect.");
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -324,8 +346,8 @@ mod tests {
         };
         assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
         assert!(profile_path.exists());
-        // Validate exported file is parseable
+        // Validate exported file is parseable as a SettingsBundle
         let contents = std::fs::read_to_string(&profile_path).unwrap();
-        let _: mm_core::config::AppConfig = serde_json::from_str(&contents).unwrap();
+        let _: mm_core::settings_bundle::SettingsBundle = serde_json::from_str(&contents).unwrap();
     }
 }

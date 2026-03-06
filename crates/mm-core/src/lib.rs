@@ -56,6 +56,15 @@ pub mod i18n;
 /// MIME types, companion scopes, and subtitle kinds
 pub mod filetype_registry;
 
+/// File integrity checking — SHA256 hashing, atomic writes, corruption log
+pub mod integrity;
+
+/// Background service management — install/start/stop on Linux/macOS/Windows
+pub mod service;
+
+/// Portable settings bundle — export/import full configuration for device migration
+pub mod settings_bundle;
+
 #[cfg(test)]
 mod tests {
     #[test]

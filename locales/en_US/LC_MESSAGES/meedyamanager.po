@@ -16,7 +16,7 @@
 
 msgid ""
 msgstr ""
-"Project-Id-Version: MeedyaManager 1.1.0\n"
+"Project-Id-Version: MeedyaManager 1.2.0\n"
 "Report-Msgid-Bugs-To: dev@mwbm.co.uk\n"
 "POT-Creation-Date: 2026-03-06\n"
 "PO-Revision-Date: 2026-03-06\n"

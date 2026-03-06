@@ -1,0 +1,47 @@
+# (C) 2025-2026 MWBM Partners Ltd
+#
+# MeedyaManager — systemd User Service Unit
+#
+# INSTALLATION
+# ────────────
+#   Automated:  meedya service install
+#   Manual:     cp meedyamanager.service ~/.config/systemd/user/
+#               systemctl --user daemon-reload
+#               systemctl --user enable --now meedyamanager
+#
+# MANAGEMENT
+# ──────────
+#   Start:  systemctl --user start  meedyamanager
+#   Stop:   systemctl --user stop   meedyamanager
+#   Status: systemctl --user status meedyamanager
+#   Logs:   journalctl --user -u meedyamanager -f
+#
+# NOTES
+# ─────
+# This is a *user* service (not a system service) — it runs under your own
+# account without root privileges.  It starts automatically at login when
+# enabled.  The binary path must be adjusted to match your installation.
+
+[Unit]
+Description=MeedyaManager — Media File Auto-Organiser
+Documentation=https://github.com/MWBM-Partners-Ltd/MeedyaManager
+After=network.target
+
+[Service]
+# Replace with the full path to your meedya binary if not on PATH
+ExecStart=/usr/local/bin/meedya watch --organize
+
+# Restart automatically after a crash, with a 5-second back-off
+Restart=on-failure
+RestartSec=5s
+
+# Run at idle CPU and I/O priority to minimise impact on interactive use
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+
+# Do not add any environment variables here — use ~/.config/meedyamanager/.env
+# or the MeedyaManager settings UI instead.
+
+[Install]
+# Started automatically when the user logs in
+WantedBy=default.target

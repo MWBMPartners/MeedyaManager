@@ -250,6 +250,23 @@
 
 ---
 
+## v1.2.0 — Core Infrastructure Hardening (Issues #142–#149)
+
+> Foundational improvements: external config files, service mode, integrity checking, multi-account cloud.
+
+| # | Title | Platform | Priority | Status |
+| - | ----- | -------- | -------- | ------ |
+| #142 | External JSON5 filetype registry — move `config/filetypes.json5` out of Rust code; embed at compile time with user-override support at runtime | All | High | ✅ |
+| #143 | External JSON5 metadata tag definitions — `config/tags.json5` with industry-standard mappings (MusicBrainz, MP3tag, Picard), MeedyaMeta namespace, user-extensible custom tags | All | High | ✅ |
+| #144 | Full settings export/import — portable JSON5 config bundle (rules, tag definitions, filetype overrides, API keys, preferences) for device migration and backup | All | High | ✅ |
+| #145 | Background service mode — run as systemd unit (Linux), launchd agent (macOS), Windows Service (Windows); toggle in Settings; default ON; minimal CPU/memory footprint | All | High | ✅ |
+| #146 | Multi-account cloud storage — support multiple accounts per provider (e.g. two Google Drive accounts); Sign in with Apple for iCloud, MSAL for Microsoft, Google OAuth PKCE | All | Medium | 🔲 |
+| #147 | File integrity verification — SHA256 checksums before and after every metadata write; atomic rename (write to `.tmp` then `rename(2)`); rollback on checksum mismatch; corruption log | All | High | ✅ |
+| #148 | Binary release hardening (documented) — strip symbols, LTO, `panic=abort`, PIE, anti-debug notes; GPL-compatible only (full source obfuscation not legally permissible under GPL-2.0) | All | Medium | 🔲 |
+| #149 | GitHub Wiki — write complete developer and user wiki pages (architecture, service setup, tag customisation, filetype customisation, release process, troubleshooting) | All | Medium | 🔲 |
+
+---
+
 ## GitHub Milestones
 
 Create the following milestones on GitHub (Settings → Milestones):
@@ -291,4 +308,4 @@ Create a **GitHub Projects v2** board with the following columns/views:
 
 ---
 
-> *Last updated: 2026-03-06 (v1.1.0 — #128 Accessibility, #130 i18n, #131 Windows OpenProcess, #132 FiletypeRegistry, #133 Extended Metadata all closed; #134–#141 Apple wishlist issues opened)*
+> *Last updated: 2026-03-06 (v1.2.0 complete — #142, #143, #144, #145, #147 closed; #146, #148, #149 remain open)*

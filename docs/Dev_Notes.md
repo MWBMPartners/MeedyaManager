@@ -529,3 +529,179 @@ just fmt              # Auto-format code
 just audit            # Security + license audit
 just docs             # Generate API docs
 ```
+
+---
+
+## Managing File Type Definitions (`config/filetypes.json5`)
+
+All file-type classifications (audio, video, subtitle, companion) are stored in
+**`config/filetypes.json5`** at the workspace root.  This file is:
+
+- **Embedded** into every binary at compile time via `include_str!()`.
+- **Overridable** at runtime: place a modified copy at
+  `~/.config/meedyamanager/filetypes.json5` (Linux/macOS) or
+  `%APPDATA%\MeedyaManager\filetypes.json5` (Windows).
+
+### Adding a New Format
+
+1. Open `config/filetypes.json5`.
+2. Find the correct section (`audio`, `video`, `subtitle`, or `companion`).
+3. Add a JSON5 object following the documented schema at the top of the file:
+
+   ```json5
+   // Audio example
+   { "ext": "xyz", "mime": "audio/x-xyz", "name": "XYZ Format", "lossless": false },
+
+   // Companion example (scope: "track" | "album" | "artist")
+   { "ext": "notes", "name": "Track Notes", "scope": "track" },
+   ```
+
+4. Run `cargo test -p mm-core -- filetype` to verify no uniqueness invariants are broken.
+5. Commit the updated JSON5 file — the binary re-embeds it at the next build.
+
+### Disabling a Format
+
+Add `"enabled": false` to the entry.  The format is ignored by all lookups.
+
+### Supported Fields
+
+| Section | Field | Required | Type | Notes |
+| ------- | ----- | -------- | ---- | ----- |
+| all | `ext` | ✅ | string | Lowercase, no leading dot |
+| all | `name` | ✅ | string | Human-readable display name |
+| all | `mime` | ❌ | string/null | IANA MIME type |
+| all | `enabled` | ❌ | bool | Default `true` |
+| audio | `lossless` | ✅ | bool | `true` for lossless formats |
+| subtitle | `kind` | ✅ | string | `"subtitle"` \| `"caption"` \| `"lyrics"` \| `"transcript"` |
+| companion | `scope` | ✅ | string | `"track"` \| `"album"` \| `"artist"` |
+
+---
+
+## Managing Metadata Tag Definitions (`config/tags.json5`)
+
+All known metadata tag definitions are stored in **`config/tags.json5`**.
+Like `filetypes.json5`, it is embedded at compile time and user-overridable at
+runtime.
+
+### Adding a Standard Tag
+
+Add an entry to the `tags` array with the required fields:
+
+```json5
+{
+  "id": "my_tag",      // internal key (lowercase_snake_case)
+  "name": "MyTag",     // template display name (used as <MyTag>)
+  "desc": "My custom tag description",
+  "category": "core",  // core|sort|extended|classical|replaygain|encoding|podcast|virtual
+  "multi": false,      // true if multiple values are common
+  // Optional format-specific keys (documentation only):
+  "id3": "TXXX:MYTAG", "vorbis": "MYTAG", "mp4": null, "ape": "MyTag"
+}
+```
+
+### Adding a User-Defined Custom Tag (MeedyaMeta Namespace)
+
+Custom tags are added to the `custom` array in **your user override file**
+(`~/.config/meedyamanager/tags.json5`), not to the codebase file:
+
+```json5
+{
+  "custom": [
+    {
+      "id": "custom_rating",
+      "name": "Rating",
+      "desc": "Personal star rating 1–5",
+      "raw_key": "MEEDYAMETA_RATING"
+    }
+  ]
+}
+```
+
+The `raw_key` is the actual tag key written into the file:
+
+- FLAC/Ogg: Vorbis comment with key `MEEDYAMETA_RATING`
+- MP3: ID3v2 `TXXX` frame with description `MEEDYAMETA_RATING`
+- MP4/M4A: free-form atom `----:com.meedyamanager:MEEDYAMETA_RATING`
+- APE: APE item with key `MEEDYAMETA_RATING`
+
+Custom tags are also available in rename templates as `<Rating>` once defined.
+
+---
+
+## File Integrity Checking
+
+MeedyaManager uses **atomic, integrity-checked writes** for all metadata
+operations.  This prevents file corruption from power failures or mid-write
+crashes.
+
+**Flow** (`mm_core::integrity::write_tags_safe`):
+
+1. Compute **SHA256** of the original file.
+2. Copy original → `<filename>.meedya_tmp` (same directory for atomic rename).
+3. Write updated tags into the temp file via `lofty`.
+4. Compute SHA256 of the temp file.
+5. `rename(2)` temp file over original (atomic on same filesystem).
+6. Log before/after hashes to `tracing`.
+
+If any step fails, the temp file is deleted and the original is **untouched**.
+
+**Corruption log**: persistent failures are appended to
+`~/.config/meedyamanager/corruption.log` with a timestamp, file path, and
+error message.
+
+---
+
+## Background Service Mode
+
+MeedyaManager can run as an OS background service to continuously monitor
+watch folders and auto-organise media.
+
+### Platform Implementations
+
+| Platform | Mechanism | Unit/Config Location |
+| -------- | --------- | -------------------- |
+| Linux | systemd user service | `~/.config/systemd/user/meedyamanager.service` |
+| macOS | launchd user agent | `~/Library/LaunchAgents/com.mwbm.meedyamanager.plist` |
+| Windows | Windows Service via `sc.exe` | Windows Service Control Manager |
+
+### CLI Management
+
+```bash
+meedya service install    # Register and enable at login
+meedya service start      # Start immediately
+meedya service stop       # Stop
+meedya service status     # Check if running
+meedya service uninstall  # Remove registration
+```
+
+The service runs `meedya watch --organize` at background/idle CPU priority,
+minimising impact on interactive use.
+
+Template files for the unit/plist are in `platform/linux/` and `platform/macos/`.
+
+---
+
+## Settings Export / Import (`.mmprofile` Bundles)
+
+A `.mmprofile` file is a portable JSON bundle containing:
+
+- Full `AppConfig` (watch folders, rename rules, provider API keys, etc.)
+- Custom `filetypes.json5` override (if present)
+- Custom `tags.json5` override (if present)
+- Bundle version and creation timestamp
+
+### Usage
+
+```bash
+# Export current configuration
+meedya config export ~/my-settings.mmprofile
+
+# Import on a new machine
+meedya config import ~/my-settings.mmprofile
+```
+
+**Security note**: `.mmprofile` bundles may contain API keys.  Do not share them publicly.
+
+The bundle format is standard JSON (not JSON5) for maximum tool compatibility.
+Import is atomic — all files are written via temp-file+rename to prevent partial
+updates.

@@ -336,25 +336,17 @@ pub fn apply_template(template: String, tags: Vec<TagEntry>) -> Result<String, M
 
 /// List all tag display names that MeedyaManager recognises.
 ///
-/// Returns names as used in templates (e.g. "Artist", "Title", "Album").
-/// Used to populate the tag picker in the rule builder UI.
+/// Returns names as used in templates (e.g. "Artist", "Title", "Album"),
+/// sorted alphabetically.  Sourced dynamically from the TagRegistry so any
+/// user-defined custom tags added to `tags.json5` are included automatically.
+///
+/// Used to populate the tag picker in the rule builder UI and by the FFI
+/// layer so Swift / C# do not need to maintain their own lists.
 #[uniffi::export]
 pub fn list_known_tags() -> Vec<String> {
-    // These are the canonical template tag names from the tag registry.
-    // Kept as a static list here so Swift/C# don't need to call into the
-    // lexer; the rule engine accepts these case-insensitively at evaluation time.
-    vec![
-        "Title".into(), "Artist".into(), "Album".into(), "AlbumArtist".into(),
-        "Year".into(), "Genre".into(), "TrackNumber".into(), "TrackTotal".into(),
-        "DiscNumber".into(), "DiscTotal".into(), "Composer".into(), "Comment".into(),
-        "Lyrics".into(), "ISRC".into(), "Barcode".into(), "CatalogNumber".into(),
-        "Label".into(), "Compilation".into(), "BPM".into(),
-        // Virtual / computed tags
-        "Filename".into(), "Extension".into(), "Folder".into(), "FullPath".into(),
-        "Duration".into(), "DurationSecs".into(), "BitrateKbps".into(),
-        "SampleRateHz".into(), "Channels".into(), "BitDepth".into(),
-        "MediaClass".into(), "MediaGroup".into(), "MediaFormat".into(), "MediaQuality".into(),
-    ]
+    // Delegate to the TagRegistry which loads from config/tags.json5
+    // (embedded at compile time, user-overridable at runtime).
+    mm_core::metadata::tag_registry::all_known_template_tags()
 }
 
 // ---------------------------------------------------------------------------

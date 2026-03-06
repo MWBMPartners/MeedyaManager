@@ -19,6 +19,10 @@
 //
 // License: GPL-2.0-or-later
 
+/// Tag definition registry — loads from config/tags.json5 at startup.
+/// Provides known tag lists for template validation and UI pickers.
+pub mod tag_registry;
+
 use std::collections::HashMap;
 use std::path::Path;
 

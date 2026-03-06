@@ -8,6 +8,58 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.2.0] — 2026-03-06 — External Config, Tag Registry, File Integrity, Background Service, Settings Bundle
+
+> **Cross-cutting hardening** — Five enterprise-grade features: JSON5-driven file type and tag definitions, SHA256 atomic-write integrity checking, cross-platform background service management, and portable `.mmprofile` settings bundles.
+
+### Added
+
+**External JSON5 file type config:**
+
+- `config/filetypes.json5` — Human-editable source of truth for all recognised audio (30+), video (25+), subtitle, and companion formats. Replaces hardcoded Rust arrays. Embedded at compile time via `include_str!`; user-overridable at `~/.config/meedyamanager/filetypes.json5`.
+- `crates/mm-core/src/filetype_registry.rs` — Rewrote from static arrays to `LazyLock<FiletypeRegistryData>` parsed from embedded JSON5. Added `enabled` field (defaults `true`) so formats can be disabled without recompile. `SubtitleKind` and `CompanionScope` enums now `#[serde(rename_all = "lowercase")]`. New test `default_json5_parses_successfully`.
+
+**External JSON5 tag registry:**
+
+- `config/tags.json5` — 60+ tag definitions in sections: `core`, `sort`, `extended`, `classical`, `replaygain`, `encoding`, `musicbrainz`, `podcast`, `virtual`, `custom`. Each entry carries `id3`, `vorbis`, `mp4`, `ape`, `mb` mapping fields. Empty `custom` array for user additions.
+- `crates/mm-core/src/metadata/tag_registry.rs` — New module: `TagDefinition`, `CustomTagDefinition`, `TagCategory` enum with 10 variants. `LazyLock<TagRegistryData>` with user override support. Public API: `tag_definitions()`, `tag_by_id()`, `tag_by_name()`, `custom_tag_by_id()`, `known_template_tags()`, `known_template_tags_for_category()`, `known_custom_template_tags()`, `all_known_template_tags()`. 17 unit tests.
+- `crates/mm-core/src/metadata/mod.rs` — Added `pub mod tag_registry;`.
+- `crates/mm-ffi/src/uniffi_api.rs` — `list_known_tags()` now delegates to `tag_registry::all_known_template_tags()` — dynamically includes any user-defined custom tags.
+
+**File integrity checking:**
+
+- `crates/mm-core/src/integrity.rs` — New module: `file_sha256()` (64 KiB chunked SHA256), `verify_file()`, `IntegrityWriteResult` struct, `write_tags_safe()` (5-step atomic write: hash → copy to `.meedya_tmp` → write tags → hash temp → rename over original → log). Corruption log at `<config_dir>/meedyamanager/corruption.log`. 12 unit tests.
+
+**Background service management:**
+
+- `crates/mm-core/src/service.rs` — New module: `ServiceStatus` enum (Running/Stopped/NotInstalled/Unknown), `install_service()`, `uninstall_service()`, `start_service()`, `stop_service()`, `service_status()`, `is_service_running()`. Platform modules for Linux (systemd user units), macOS (launchd), Windows (sc.exe), and an unsupported-platform fallback. 4 unit tests.
+- `crates/mm-cli/src/commands/service_cmd.rs` — New `meedya service install|uninstall|start|stop|status` command. Supports `--dry-run` and `--json` output.
+- `crates/mm-cli/src/commands/mod.rs` — Added `pub mod service_cmd;`.
+- `crates/mm-cli/src/main.rs` — Added `Service(commands::service_cmd::ServiceArgs)` command dispatch.
+- `platform/linux/meedyamanager.service` — systemd user unit template with `CPUSchedulingPolicy=idle`, `IOSchedulingClass=idle`.
+- `platform/macos/com.mwbm.meedyamanager.plist` — launchd plist with `RunAtLoad=true`, `KeepAlive.Crashed=true`, `ProcessType=Background`.
+
+**Settings export / import (.mmprofile bundles):**
+
+- `crates/mm-core/src/settings_bundle.rs` — New module: `SettingsBundle` (version, exported_at, settings: AppConfig, custom_filetypes: `Option<String>`, custom_tags: `Option<String>`). `capture()` reads active config + user override files. `export()` writes atomically. `import()` reads + parses. `apply()` writes all files atomically, returns list of written paths. 10 unit tests.
+- `crates/mm-cli/src/commands/config_cmd.rs` — `meedya config export` and `meedya config import` now use `SettingsBundle` for full portable bundles including custom filetypes and tags. Dry-run support. Export warns about API keys.
+
+**Core module declarations:**
+
+- `crates/mm-core/src/lib.rs` — Added `pub mod integrity;`, `pub mod service;`, `pub mod settings_bundle;`.
+
+**Developer documentation:**
+
+- `docs/Dev_Notes.md` — Five new sections: Managing File Type Definitions, Managing Metadata Tag Definitions, File Integrity Checking, Background Service Mode, Settings Export / Import.
+
+### Fixed
+
+- `crates/mm-cli/src/commands/service_cmd.rs` — Fixed `ctx.json` (non-existent field) → `ctx.output == OutputFormat::Json`.
+- `crates/mm-cli/src/commands/config_cmd.rs` — Fixed export roundtrip test: was deserializing `.mmprofile` as bare `AppConfig`; now correctly deserializes as `SettingsBundle`.
+- `crates/mm-core/src/filetype_registry.rs` — Added `#[serde(default)]` to `SubtitleFormat.mime_type` and `CompanionFormat.mime_type` so absent `"mime"` keys in JSON5 don't cause deserialization errors.
+
+---
+
 ## [v1.1.0] — 2026-03-06 — Accessibility + i18n + Windows OpenProcess + FiletypeRegistry + CI Fixes (#128, #130, #131, #132, #133)
 
 > **Cross-cutting** — Post-v1.0 hardening: accessibility, i18n, process detection, a centralised file type registry, extended metadata tags, and comprehensive GitHub Actions fixes.

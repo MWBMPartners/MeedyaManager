@@ -17,6 +17,7 @@
 //   meedya report-bug         — Generate a bug report
 //   meedya export             — Export library to database (M9)
 //   meedya serve              — Start HTTPS media server (M10)
+//   meedya service <action>   — Manage background service (install/start/stop/status)
 
 // Subcommand modules
 mod commands;
@@ -95,6 +96,9 @@ enum Commands {
 
     /// Start the HTTPS media server with JWT authentication (M10)
     Serve(commands::serve::ServeArgs),
+
+    /// Manage the MeedyaManager background service (install/start/stop/status)
+    Service(commands::service_cmd::ServiceArgs),
 }
 
 /// Application entry point.
@@ -142,7 +146,8 @@ async fn main() {
         Some(Commands::Config(ref args)) => commands::config_cmd::run(&ctx, args),
         Some(Commands::ReportBug(ref args)) => commands::report_bug::run(&ctx, args),
         Some(Commands::Export(ref args)) => commands::export::run(&ctx, args),
-        Some(Commands::Serve(ref args))  => commands::serve::run(&ctx, args),
+        Some(Commands::Serve(ref args))   => commands::serve::run(&ctx, args),
+        Some(Commands::Service(ref args)) => commands::service_cmd::run(&ctx, args),
         None => {
             // No subcommand provided — print help
             use clap::CommandFactory;

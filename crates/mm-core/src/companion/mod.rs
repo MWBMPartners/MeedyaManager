@@ -23,7 +23,7 @@ pub use crate::filetype_registry::CompanionScope;
 /// Types of companion files we recognise.
 ///
 /// When a new companion type is needed, add an entry here AND add the
-/// relevant extension entries to `crate::filetype_registry::COMPANION_FORMATS`.
+/// relevant extension entries to `config/filetypes.json5` (companion section).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CompanionType {
     /// Subtitle file (.srt, .sub, .ass, .ssa, .vtt, .idx, .smi, .ttml)
@@ -102,8 +102,8 @@ const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "bmp", "webp", 
 /// extension is not a recognised companion format.
 ///
 /// The canonical source of truth for companion extensions is
-/// `crate::filetype_registry::COMPANION_FORMATS`. This function mirrors
-/// that registry and additionally handles subtitles (from SUBTITLE_FORMATS).
+/// `config/filetypes.json5`. This function mirrors that registry and
+/// additionally handles subtitles (from the subtitle section).
 pub fn classify_companion(extension: &str) -> Option<CompanionType> {
     match extension.to_ascii_lowercase().as_str() {
         // ── Subtitles ────────────────────────────────────────────────────────

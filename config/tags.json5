@@ -1,0 +1,382 @@
+// (C) 2025-2026 MWBM Partners Ltd
+//
+// MeedyaManager — Default Metadata Tag Registry
+// ===============================================
+//
+// This file is the single source of truth for all metadata tag definitions
+// recognised by MeedyaManager.  It is embedded into the binary at compile
+// time via `include_str!` and can be overridden at runtime by placing a
+// modified copy at:
+//
+//   Linux/macOS:  ~/.config/meedyamanager/tags.json5
+//   Windows:      %APPDATA%\MeedyaManager\tags.json5
+//
+// HOW TO ADD A STANDARD TAG
+// --------------------------
+//   Add an entry to the `tags` array with the following fields:
+//     id       — internal key (lowercase_snake_case), must be unique
+//     name     — template display name used in rename rules (e.g. <Artist>)
+//     desc     — short human description shown in the UI
+//     category — one of: core | sort | extended | classical | replaygain |
+//                        encoding | podcast | virtual
+//     multi    — true if the tag commonly holds multiple values (e.g. artists)
+//   Optional format-specific keys (documented examples for tag editors):
+//     id3      — ID3v2 frame (e.g. "TIT2")
+//     vorbis   — Vorbis comment key (e.g. "TITLE")
+//     mp4      — MP4/iTunes atom (e.g. "©nam")
+//     ape      — APE tag key (e.g. "Title")
+//     mb       — MusicBrainz field name (e.g. "musicbrainz_trackid")
+//   Optional control:
+//     enabled  — set false to hide tag from the UI (default: true)
+//
+// HOW TO ADD A CUSTOM TAG (MeedyaMeta namespace)
+// ------------------------------------------------
+//   Add an entry to the `custom` array:
+//     id       — your internal key (e.g. "custom_rating") — must start with
+//                "custom_" or "meedyameta_"
+//     name     — template display name (e.g. "MyRating")
+//     desc     — description
+//     raw_key  — raw tag key written into the file (e.g. "MEEDYAMETA_RATING")
+//   MeedyaMeta custom tags are written as free-form Vorbis/ID3 TXXX/APE fields.
+//
+// Run `cargo test -p mm-core -- tag_registry` to verify registry invariants.
+
+{
+  // ==========================================================================
+  // Standard metadata tags
+  // ==========================================================================
+  "tags": [
+
+    // ── Core tags ─────────────────────────────────────────────────────────────
+    {
+      "id": "title",        "name": "Title",       "category": "core",   "multi": false,
+      "desc": "Track title",
+      "id3": "TIT2",  "vorbis": "TITLE",        "mp4": "©nam",  "ape": "Title"
+    },
+    {
+      "id": "artist",       "name": "Artist",      "category": "core",   "multi": true,
+      "desc": "Performing artist(s)",
+      "id3": "TPE1",  "vorbis": "ARTIST",       "mp4": "©ART",  "ape": "Artist"
+    },
+    {
+      "id": "album",        "name": "Album",       "category": "core",   "multi": false,
+      "desc": "Album name",
+      "id3": "TALB",  "vorbis": "ALBUM",        "mp4": "©alb",  "ape": "Album"
+    },
+    {
+      "id": "album_artist", "name": "AlbumArtist", "category": "core",   "multi": true,
+      "desc": "Album artist (may differ from track artist on compilations)",
+      "id3": "TPE2",  "vorbis": "ALBUMARTIST",  "mp4": "aART",  "ape": "Album Artist"
+    },
+    {
+      "id": "year",         "name": "Year",        "category": "core",   "multi": false,
+      "desc": "Release year (4-digit string, e.g. \"2024\")",
+      "id3": "TDRC",  "vorbis": "DATE",          "mp4": "©day",  "ape": "Year"
+    },
+    {
+      "id": "genre",        "name": "Genre",       "category": "core",   "multi": true,
+      "desc": "Genre (free-text, e.g. \"Rock\", \"Jazz\")",
+      "id3": "TCON",  "vorbis": "GENRE",         "mp4": "©gen",  "ape": "Genre"
+    },
+    {
+      "id": "track_number", "name": "TrackNumber", "category": "core",   "multi": false,
+      "desc": "Track number within the disc (e.g. \"3\")",
+      "id3": "TRCK",  "vorbis": "TRACKNUMBER",   "mp4": "trkn",  "ape": "Track"
+    },
+    {
+      "id": "track_total",  "name": "TrackTotal",  "category": "core",   "multi": false,
+      "desc": "Total number of tracks on the disc (e.g. \"12\")",
+      "id3": "TRCK",  "vorbis": "TRACKTOTAL",    "mp4": "trkn",  "ape": "Track"
+    },
+    {
+      "id": "disc_number",  "name": "DiscNumber",  "category": "core",   "multi": false,
+      "desc": "Disc / volume number within a multi-disc release (e.g. \"1\")",
+      "id3": "TPOS",  "vorbis": "DISCNUMBER",    "mp4": "disk",  "ape": "Disc"
+    },
+    {
+      "id": "disc_total",   "name": "DiscTotal",   "category": "core",   "multi": false,
+      "desc": "Total number of discs in the release (e.g. \"2\")",
+      "id3": "TPOS",  "vorbis": "DISCTOTAL",     "mp4": "disk",  "ape": "Disc"
+    },
+    {
+      "id": "composer",     "name": "Composer",    "category": "core",   "multi": true,
+      "desc": "Composer / songwriter",
+      "id3": "TCOM",  "vorbis": "COMPOSER",      "mp4": "©wrt",  "ape": "Composer"
+    },
+    {
+      "id": "comment",      "name": "Comment",     "category": "core",   "multi": false,
+      "desc": "Free-text comment",
+      "id3": "COMM",  "vorbis": "COMMENT",       "mp4": "©cmt",  "ape": "Comment"
+    },
+    {
+      "id": "lyrics",       "name": "Lyrics",      "category": "core",   "multi": false,
+      "desc": "Unsynchronised lyrics / song text",
+      "id3": "USLT",  "vorbis": "LYRICS",        "mp4": "©lyr",  "ape": "Lyrics"
+    },
+    {
+      "id": "isrc",         "name": "ISRC",        "category": "core",   "multi": false,
+      "desc": "International Standard Recording Code (12-character alphanumeric)",
+      "id3": "TSRC",  "vorbis": "ISRC",          "mp4": null,     "ape": "ISRC"
+    },
+    {
+      "id": "barcode",      "name": "Barcode",     "category": "core",   "multi": false,
+      "desc": "Product barcode / UPC / EAN",
+      "id3": "TXXX:BARCODE", "vorbis": "BARCODE", "mp4": null,     "ape": "Barcode"
+    },
+    {
+      "id": "catalog_number", "name": "CatalogNumber", "category": "core", "multi": false,
+      "desc": "Record label catalogue number (e.g. \"COL-12345\")",
+      "id3": "TXXX:CATALOGNUMBER", "vorbis": "CATALOGNUMBER", "mp4": null, "ape": "Catalog"
+    },
+    {
+      "id": "label",        "name": "Label",       "category": "core",   "multi": false,
+      "desc": "Record label name",
+      "id3": "TPUB",  "vorbis": "LABEL",         "mp4": null,     "ape": "Publisher"
+    },
+    {
+      "id": "compilation",  "name": "Compilation", "category": "core",   "multi": false,
+      "desc": "\"1\" for compilation / various-artists releases, \"0\" otherwise",
+      "id3": "TCMP",  "vorbis": "COMPILATION",   "mp4": "cpil",  "ape": "Compilation"
+    },
+    {
+      "id": "bpm",          "name": "BPM",         "category": "core",   "multi": false,
+      "desc": "Beats per minute (integer stored as a string)",
+      "id3": "TBPM",  "vorbis": "BPM",           "mp4": "tmpo",  "ape": "BPM"
+    },
+
+    // ── Sort order fields ─────────────────────────────────────────────────────
+    // Sort fields tell Apple Music / foobar2000 / etc. how to sort entries
+    // alphabetically without "The" / "A" prefix confusion.
+    {
+      "id": "title_sort",        "name": "TitleSort",       "category": "sort", "multi": false,
+      "desc": "Track title sort key (e.g. \"Wall, The\" sorts under W)",
+      "id3": "TSOT",  "vorbis": "TITLESORT",       "mp4": "sonm",  "ape": "TitleSort"
+    },
+    {
+      "id": "artist_sort",       "name": "ArtistSort",      "category": "sort", "multi": false,
+      "desc": "Performing artist sort key (e.g. \"Beatles, The\")",
+      "id3": "TSOP",  "vorbis": "ARTISTSORT",      "mp4": "soar",  "ape": "ArtistSort"
+    },
+    {
+      "id": "album_sort",        "name": "AlbumSort",       "category": "sort", "multi": false,
+      "desc": "Album title sort key",
+      "id3": "TSOA",  "vorbis": "ALBUMSORT",       "mp4": "soal",  "ape": "AlbumSort"
+    },
+    {
+      "id": "album_artist_sort", "name": "AlbumArtistSort", "category": "sort", "multi": false,
+      "desc": "Album artist sort key",
+      "id3": "TXXX:ALBUMARTISTSORT", "vorbis": "ALBUMARTISTSORT", "mp4": "soaa", "ape": "Album ArtistSort"
+    },
+    {
+      "id": "composer_sort",     "name": "ComposerSort",    "category": "sort", "multi": false,
+      "desc": "Composer sort key",
+      "id3": "TSOC",  "vorbis": "COMPOSERSORT",    "mp4": "soco",  "ape": "ComposerSort"
+    },
+
+    // ── Extended attribution ──────────────────────────────────────────────────
+    {
+      "id": "conductor", "name": "Conductor", "category": "extended", "multi": false,
+      "desc": "Orchestra conductor name",
+      "id3": "TPE3",  "vorbis": "CONDUCTOR",    "mp4": null,     "ape": "Conductor"
+    },
+    {
+      "id": "remixer",   "name": "Remixer",   "category": "extended", "multi": false,
+      "desc": "Remixer or mix engineer",
+      "id3": "TPE4",  "vorbis": "REMIXER",     "mp4": null,     "ape": "MixArtist"
+    },
+    {
+      "id": "lyricist",  "name": "Lyricist",  "category": "extended", "multi": true,
+      "desc": "Primary lyricist",
+      "id3": "TEXT",  "vorbis": "LYRICIST",   "mp4": null,     "ape": "Lyricist"
+    },
+    {
+      "id": "language",  "name": "Language",  "category": "extended", "multi": false,
+      "desc": "Language of the lyrics (ISO 639-1, e.g. \"en\", \"fr\", \"ja\")",
+      "id3": "TLAN",  "vorbis": "LANGUAGE",   "mp4": null,     "ape": "Language"
+    },
+    {
+      "id": "mood",      "name": "Mood",      "category": "extended", "multi": false,
+      "desc": "Emotional mood tag (e.g. \"Melancholic\", \"Upbeat\")",
+      "id3": "TMOO",  "vorbis": "MOOD",       "mp4": null,     "ape": "Mood"
+    },
+    {
+      "id": "grouping",  "name": "Grouping",  "category": "extended", "multi": false,
+      "desc": "Content grouping (iTunes Grouping field; used for classical works)",
+      "id3": "TIT1",  "vorbis": "GROUPING",   "mp4": "©grp",  "ape": "Grouping"
+    },
+
+    // ── Classical music fields ─────────────────────────────────────────────────
+    {
+      "id": "work",           "name": "Work",          "category": "classical", "multi": false,
+      "desc": "Overarching work title (e.g. \"Symphony No. 5 in C minor, Op. 67\")",
+      "id3": "TIT1",  "vorbis": "WORK",           "mp4": null,  "ape": "Work"
+    },
+    {
+      "id": "movement",       "name": "Movement",      "category": "classical", "multi": false,
+      "desc": "Movement name within a work (e.g. \"I. Allegro con brio\")",
+      "id3": "MVNM",  "vorbis": "MOVEMENT",       "mp4": null,  "ape": "Movement"
+    },
+    {
+      "id": "movement_index", "name": "MovementIndex", "category": "classical", "multi": false,
+      "desc": "Movement index within the work (integer as string, e.g. \"1\")",
+      "id3": "MVIN",  "vorbis": "MOVEMENTNUMBER", "mp4": null,  "ape": "MovementNumber"
+    },
+    {
+      "id": "movement_total", "name": "MovementTotal", "category": "classical", "multi": false,
+      "desc": "Total number of movements in the work",
+      "id3": "MVIN",  "vorbis": "MOVEMENTTOTAL",  "mp4": null,  "ape": "MovementTotal"
+    },
+
+    // ── ReplayGain (loudness normalisation) ──────────────────────────────────
+    // ReplayGain values are written by tools such as MP3Gain, foobar2000,
+    // and beets.  They allow a media player to level-match tracks and albums.
+    {
+      "id": "replaygain_track_gain", "name": "ReplayGainTrackGain", "category": "replaygain", "multi": false,
+      "desc": "Per-track gain in dB (e.g. \"-6.54 dB\")",
+      "id3": "TXXX:REPLAYGAIN_TRACK_GAIN", "vorbis": "REPLAYGAIN_TRACK_GAIN", "mp4": null, "ape": "REPLAYGAIN_TRACK_GAIN"
+    },
+    {
+      "id": "replaygain_track_peak", "name": "ReplayGainTrackPeak", "category": "replaygain", "multi": false,
+      "desc": "Per-track peak sample value (e.g. \"0.987654\")",
+      "id3": "TXXX:REPLAYGAIN_TRACK_PEAK", "vorbis": "REPLAYGAIN_TRACK_PEAK", "mp4": null, "ape": "REPLAYGAIN_TRACK_PEAK"
+    },
+    {
+      "id": "replaygain_album_gain", "name": "ReplayGainAlbumGain", "category": "replaygain", "multi": false,
+      "desc": "Album-level gain in dB",
+      "id3": "TXXX:REPLAYGAIN_ALBUM_GAIN", "vorbis": "REPLAYGAIN_ALBUM_GAIN", "mp4": null, "ape": "REPLAYGAIN_ALBUM_GAIN"
+    },
+    {
+      "id": "replaygain_album_peak", "name": "ReplayGainAlbumPeak", "category": "replaygain", "multi": false,
+      "desc": "Album-level peak sample value",
+      "id3": "TXXX:REPLAYGAIN_ALBUM_PEAK", "vorbis": "REPLAYGAIN_ALBUM_PEAK", "mp4": null, "ape": "REPLAYGAIN_ALBUM_PEAK"
+    },
+
+    // ── Encoding information ──────────────────────────────────────────────────
+    {
+      "id": "encoded_by",       "name": "EncodedBy",       "category": "encoding", "multi": false,
+      "desc": "Name of the encoder software (e.g. \"LAME 3.100\")",
+      "id3": "TENC",  "vorbis": "ENCODEDBY",        "mp4": null,  "ape": "EncodedBy"
+    },
+    {
+      "id": "encoder_settings", "name": "EncoderSettings", "category": "encoding", "multi": false,
+      "desc": "Encoding tool / settings string (e.g. \"--preset standard\")",
+      "id3": "TSSE",  "vorbis": "ENCODERSETTINGS",  "mp4": null,  "ape": "EncoderSettings"
+    },
+    {
+      "id": "original_year",    "name": "OriginalYear",    "category": "encoding", "multi": false,
+      "desc": "Original release year before remaster (4-digit string)",
+      "id3": "TDOR",  "vorbis": "ORIGINALDATE",     "mp4": null,  "ape": "OriginalDate"
+    },
+    {
+      "id": "original_album",   "name": "OriginalAlbum",   "category": "encoding", "multi": false,
+      "desc": "Original album title before remaster or reissue",
+      "id3": "TOAL",  "vorbis": "ORIGINALALBUM",    "mp4": null,  "ape": "Original Album"
+    },
+    {
+      "id": "original_artist",  "name": "OriginalArtist",  "category": "encoding", "multi": false,
+      "desc": "Original performing artist before cover or remake",
+      "id3": "TOPE",  "vorbis": "ORIGINALARTIST",   "mp4": null,  "ape": "Original Artist"
+    },
+
+    // ── MusicBrainz IDs ───────────────────────────────────────────────────────
+    // MusicBrainz assigns globally unique identifiers (UUIDs) to every entity.
+    // Used by mm-providers for fingerprint-based lookups.
+    {
+      "id": "mb_track_id",          "name": "MBTrackId",         "category": "musicbrainz", "multi": false,
+      "desc": "MusicBrainz Recording ID (UUID)",
+      "id3": "UFID:http://musicbrainz.org", "vorbis": "MUSICBRAINZ_TRACKID",         "mp4": null, "ape": "MUSICBRAINZ_TRACKID",
+      "mb": "musicbrainz_trackid"
+    },
+    {
+      "id": "mb_release_id",        "name": "MBReleaseId",       "category": "musicbrainz", "multi": false,
+      "desc": "MusicBrainz Release (album) ID (UUID)",
+      "id3": "TXXX:MUSICBRAINZ_ALBUMID", "vorbis": "MUSICBRAINZ_ALBUMID", "mp4": null, "ape": "MUSICBRAINZ_ALBUMID",
+      "mb": "musicbrainz_albumid"
+    },
+    {
+      "id": "mb_release_group_id",  "name": "MBReleaseGroupId",  "category": "musicbrainz", "multi": false,
+      "desc": "MusicBrainz Release Group ID (UUID) — groups editions of the same album",
+      "id3": "TXXX:MUSICBRAINZ_RELEASEGROUPID", "vorbis": "MUSICBRAINZ_RELEASEGROUPID", "mp4": null, "ape": "MUSICBRAINZ_RELEASEGROUPID",
+      "mb": "musicbrainz_releasegroupid"
+    },
+    {
+      "id": "mb_artist_id",         "name": "MBArtistId",        "category": "musicbrainz", "multi": true,
+      "desc": "MusicBrainz Artist ID (UUID, multi-value for collaborations)",
+      "id3": "TXXX:MUSICBRAINZ_ARTISTID", "vorbis": "MUSICBRAINZ_ARTISTID", "mp4": null, "ape": "MUSICBRAINZ_ARTISTID",
+      "mb": "musicbrainz_artistid"
+    },
+    {
+      "id": "mb_album_artist_id",   "name": "MBAlbumArtistId",   "category": "musicbrainz", "multi": true,
+      "desc": "MusicBrainz Album Artist ID (UUID)",
+      "id3": "TXXX:MUSICBRAINZ_ALBUMARTISTID", "vorbis": "MUSICBRAINZ_ALBUMARTISTID", "mp4": null, "ape": "MUSICBRAINZ_ALBUMARTISTID",
+      "mb": "musicbrainz_albumartistid"
+    },
+
+    // ── Podcast-specific fields ───────────────────────────────────────────────
+    {
+      "id": "podcast_title",       "name": "PodcastTitle",       "category": "podcast", "multi": false,
+      "desc": "Podcast feed / show title",
+      "id3": "TXXX:PODCAST_TITLE", "vorbis": "PODCASTTITLE", "mp4": "tvsh",  "ape": null
+    },
+    {
+      "id": "podcast_id",          "name": "PodcastId",          "category": "podcast", "multi": false,
+      "desc": "Podcast episode GUID / unique identifier",
+      "id3": "TXXX:PODCAST_ID",    "vorbis": "PODCASTID",    "mp4": "purl",  "ape": null
+    },
+    {
+      "id": "podcast_url",         "name": "PodcastUrl",         "category": "podcast", "multi": false,
+      "desc": "Podcast feed RSS URL",
+      "id3": "WFED",               "vorbis": "PODCASTURL",   "mp4": "purl",  "ape": null
+    },
+    {
+      "id": "podcast_category",    "name": "PodcastCategory",    "category": "podcast", "multi": false,
+      "desc": "Podcast category (e.g. \"Technology\", \"True Crime\")",
+      "id3": "TCAT",               "vorbis": "PODCASTCATEGORY", "mp4": "catg", "ape": null
+    },
+    {
+      "id": "podcast_description", "name": "PodcastDescription", "category": "podcast", "multi": false,
+      "desc": "Podcast episode show notes / description",
+      "id3": "TDES",               "vorbis": "PODCASTDESCRIPTION", "mp4": "ldes", "ape": null
+    },
+
+    // ── Virtual / computed tags ───────────────────────────────────────────────
+    // These tags are computed at rename evaluation time and are NOT stored
+    // in file metadata.  They are available in rename templates only.
+    { "id": "filename",     "name": "Filename",     "category": "virtual", "multi": false, "desc": "Original filename without extension" },
+    { "id": "extension",    "name": "Extension",    "category": "virtual", "multi": false, "desc": "File extension (without leading dot)" },
+    { "id": "folder",       "name": "Folder",       "category": "virtual", "multi": false, "desc": "Parent directory name" },
+    { "id": "full_path",    "name": "FullPath",     "category": "virtual", "multi": false, "desc": "Full absolute file path" },
+    { "id": "duration",     "name": "Duration",     "category": "virtual", "multi": false, "desc": "Playback duration formatted as H:MM:SS" },
+    { "id": "duration_secs","name": "DurationSecs", "category": "virtual", "multi": false, "desc": "Playback duration in whole seconds" },
+    { "id": "bitrate_kbps", "name": "BitrateKbps",  "category": "virtual", "multi": false, "desc": "Encoded bitrate in kbps" },
+    { "id": "sample_rate_hz","name": "SampleRateHz","category": "virtual", "multi": false, "desc": "Audio sample rate in Hz (e.g. 44100, 48000)" },
+    { "id": "channels",     "name": "Channels",     "category": "virtual", "multi": false, "desc": "Number of audio channels (1=mono, 2=stereo)" },
+    { "id": "bit_depth",    "name": "BitDepth",     "category": "virtual", "multi": false, "desc": "Bit depth per sample (e.g. 16, 24, 32)" },
+    { "id": "media_class",  "name": "MediaClass",   "category": "virtual", "multi": false, "desc": "Top-level media class: Audio or Video" },
+    { "id": "media_group",  "name": "MediaGroup",   "category": "virtual", "multi": false, "desc": "Media group: Music, Podcast, Audiobook, etc." },
+    { "id": "media_format", "name": "MediaFormat",  "category": "virtual", "multi": false, "desc": "Container/codec format name (e.g. FLAC, MP3, H.264)" },
+    { "id": "media_quality","name": "MediaQuality", "category": "virtual", "multi": false, "desc": "Lossless or Lossy" }
+  ],
+
+  // ==========================================================================
+  // Custom user-defined tags (MeedyaMeta namespace)
+  // ==========================================================================
+  //
+  // Add your own tags here.  Each entry MUST have:
+  //   id      — unique key starting with "custom_" or "meedyameta_"
+  //   name    — display name for use in rename templates
+  //   desc    — short description
+  //   raw_key — the raw key written into the file's tag (all-caps recommended)
+  //             e.g. "MEEDYAMETA_RATING", "MEEDYAMETA_SOURCE"
+  //
+  // MeedyaMeta custom tags are written as:
+  //   • FLAC/Ogg: Vorbis comment with key = raw_key
+  //   • MP3:      ID3v2 TXXX frame with description = raw_key
+  //   • MP4/M4A:  Free-form atom ----:com.meedyamanager:<raw_key>
+  //   • APE:      APE tag item with key = raw_key
+  //
+  // Example:
+  //   { "id": "custom_rating", "name": "Rating", "desc": "Star rating 1-5", "raw_key": "MEEDYAMETA_RATING" }
+  //
+  "custom": []
+}

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  (C) 2025-2026 MWBM Partners Ltd
+
+  MeedyaManager — launchd User Agent Plist
+
+  INSTALLATION
+  ────────────
+    Automated:  meedya service install
+    Manual:
+      cp com.mwbm.meedyamanager.plist ~/Library/LaunchAgents/
+      launchctl load ~/Library/LaunchAgents/com.mwbm.meedyamanager.plist
+
+  MANAGEMENT
+    Start:  launchctl start com.mwbm.meedyamanager
+    Stop:   launchctl stop  com.mwbm.meedyamanager
+    Status: launchctl list  com.mwbm.meedyamanager
+    Logs:   tail -f /tmp/meedyamanager.stdout.log
+
+  NOTES
+    - This is a user-level LaunchAgent; it does NOT require root.
+    - Replace /usr/local/bin/meedya with the actual installation path.
+    - Auto-starts at login when loaded with `launchctl load`.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Unique label — must match the plist filename -->
+    <key>Label</key>
+    <string>com.mwbm.meedyamanager</string>
+
+    <!-- Binary and arguments: meedya watch --organize -->
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Replace with the full path to your meedya binary if not on PATH -->
+        <string>/usr/local/bin/meedya</string>
+        <string>watch</string>
+        <string>--organize</string>
+    </array>
+
+    <!-- Auto-start when the plist is loaded at login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart automatically if the process crashes -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <!-- Background priority — keeps impact on interactive use minimal -->
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- Throttle restarts: wait at least 5 seconds before restarting -->
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <!-- Redirect stdout / stderr to temp log files for easy debugging -->
+    <key>StandardOutPath</key>
+    <string>/tmp/meedyamanager.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/meedyamanager.stderr.log</string>
+</dict>
+</plist>

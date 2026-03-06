@@ -1,0 +1,204 @@
+// (C) 2025-2026 MWBM Partners Ltd
+//
+// MeedyaManager — Default File Type Registry
+// ============================================
+//
+// This file is the single source of truth for all file type classifications
+// recognised by MeedyaManager. It is embedded into the binary at compile time
+// via `include_str!` and can also be overridden by the user at runtime by
+// placing a modified copy at:
+//
+//   Linux/macOS:  ~/.config/meedyamanager/filetypes.json5
+//   Windows:      %APPDATA%\MeedyaManager\filetypes.json5
+//
+// HOW TO ADD A NEW FORMAT
+// -----------------------
+//   1. Find the correct section (audio / video / subtitle / companion).
+//   2. Add a new object to that array.
+//   3. For audio: { ext, mime, name, lossless }
+//   4. For video: { ext, mime, name }
+//   5. For subtitle: { ext, mime (optional), name, kind }
+//      kind values: "subtitle" | "caption" | "lyrics" | "transcript"
+//   6. For companion: { ext, mime (optional), name, scope }
+//      scope values: "track" | "album" | "artist"
+//   7. Extensions must be lowercase, without a leading dot.
+//   8. Run `cargo test -p mm-core -- filetype` to verify the registry invariants.
+//
+// HOW TO DISABLE A FORMAT
+// -----------------------
+//   Add "enabled": false to any entry. The format is ignored everywhere.
+//   (User override files can also remove entries from the compiled defaults.)
+//
+// MIME TYPES
+// ----------
+//   Use IANA-registered types where available.
+//   For formats without an official MIME type, omit the field (or use null).
+
+{
+  // =========================================================================
+  // Audio formats
+  // =========================================================================
+  "audio": [
+
+    // ── Lossy compressed ────────────────────────────────────────────────────
+    { "ext": "mp3",  "mime": "audio/mpeg",              "name": "MP3",                   "lossless": false },
+    { "ext": "aac",  "mime": "audio/aac",               "name": "AAC",                   "lossless": false },
+    { "ext": "m4a",  "mime": "audio/mp4",               "name": "M4A (AAC/ALAC)",        "lossless": false }, // container; may be lossless if ALAC
+    { "ext": "m4b",  "mime": "audio/mp4",               "name": "M4B (Audiobook)",       "lossless": false },
+    { "ext": "m4r",  "mime": "audio/mp4",               "name": "M4R (iPhone Ringtone)", "lossless": false },
+    { "ext": "ogg",  "mime": "audio/ogg",               "name": "Ogg Vorbis",            "lossless": false },
+    { "ext": "oga",  "mime": "audio/ogg",               "name": "Ogg Audio",             "lossless": false },
+    { "ext": "opus", "mime": "audio/ogg; codecs=opus",  "name": "Opus",                  "lossless": false },
+    { "ext": "wma",  "mime": "audio/x-ms-wma",          "name": "WMA",                   "lossless": false },
+    { "ext": "amr",  "mime": "audio/amr",               "name": "AMR",                   "lossless": false },
+    { "ext": "3gp",  "mime": "audio/3gpp",              "name": "3GPP Audio",            "lossless": false },
+    { "ext": "mp2",  "mime": "audio/mpeg",              "name": "MP2",                   "lossless": false },
+    { "ext": "ra",   "mime": "audio/x-realaudio",       "name": "RealAudio",             "lossless": false },
+    { "ext": "mpc",  "mime": "audio/x-musepack",        "name": "Musepack",              "lossless": false },
+    { "ext": "spx",  "mime": "audio/ogg; codecs=speex", "name": "Speex",                 "lossless": false },
+    { "ext": "snd",  "mime": "audio/basic",             "name": "NeXT/Sun Audio",        "lossless": false },
+
+    // ── Lossless compressed ─────────────────────────────────────────────────
+    { "ext": "flac", "mime": "audio/flac",              "name": "FLAC",                  "lossless": true },
+    { "ext": "alac", "mime": "audio/mp4",               "name": "ALAC",                  "lossless": true },
+    { "ext": "ape",  "mime": "audio/x-ape",             "name": "Monkey's Audio (APE)",  "lossless": true },
+    { "ext": "wv",   "mime": "audio/x-wavpack",         "name": "WavPack",               "lossless": true },
+    { "ext": "tta",  "mime": "audio/x-tta",             "name": "True Audio (TTA)",      "lossless": true },
+
+    // ── Uncompressed / PCM ──────────────────────────────────────────────────
+    { "ext": "wav",  "mime": "audio/wav",               "name": "WAV (PCM)",             "lossless": true },
+    { "ext": "aiff", "mime": "audio/aiff",              "name": "AIFF",                  "lossless": true },
+    { "ext": "aif",  "mime": "audio/aiff",              "name": "AIFF",                  "lossless": true },
+    { "ext": "aifc", "mime": "audio/aiff",              "name": "AIFF-C",                "lossless": true },
+    { "ext": "au",   "mime": "audio/basic",             "name": "Sun AU",                "lossless": true },
+    { "ext": "caf",  "mime": "audio/x-caf",             "name": "Core Audio Format (CAF)", "lossless": true },
+
+    // ── Tracker / chiptune / MIDI ────────────────────────────────────────────
+    { "ext": "mod",  "mime": "audio/x-mod",             "name": "MOD Tracker",           "lossless": true },
+    { "ext": "xm",   "mime": "audio/x-xm",              "name": "XM Tracker",            "lossless": true },
+    { "ext": "it",   "mime": "audio/x-it",              "name": "Impulse Tracker",       "lossless": true },
+    { "ext": "s3m",  "mime": "audio/x-s3m",             "name": "ScreamTracker 3",       "lossless": true },
+    { "ext": "mid",  "mime": "audio/midi",              "name": "MIDI",                  "lossless": true },
+    { "ext": "midi", "mime": "audio/midi",              "name": "MIDI",                  "lossless": true },
+  ],
+
+  // =========================================================================
+  // Video formats
+  // =========================================================================
+  "video": [
+    { "ext": "mp4",  "mime": "video/mp4",                                      "name": "MPEG-4 Video" },
+    { "ext": "m4v",  "mime": "video/x-m4v",                                    "name": "M4V (iTunes Video)" },
+    { "ext": "mkv",  "mime": "video/x-matroska",                               "name": "Matroska" },
+    { "ext": "webm", "mime": "video/webm",                                     "name": "WebM" },
+    { "ext": "avi",  "mime": "video/x-msvideo",                                "name": "AVI" },
+    { "ext": "mov",  "mime": "video/quicktime",                                "name": "QuickTime MOV" },
+    { "ext": "wmv",  "mime": "video/x-ms-wmv",                                 "name": "Windows Media Video" },
+    { "ext": "flv",  "mime": "video/x-flv",                                    "name": "Flash Video" },
+    { "ext": "f4v",  "mime": "video/mp4",                                      "name": "Flash MP4 Video" },
+    { "ext": "mpg",  "mime": "video/mpeg",                                     "name": "MPEG Video" },
+    { "ext": "mpeg", "mime": "video/mpeg",                                     "name": "MPEG Video" },
+    { "ext": "ts",   "mime": "video/mp2t",                                     "name": "MPEG Transport Stream" },
+    { "ext": "m2ts", "mime": "video/mp2t",                                     "name": "MPEG-2 Transport Stream" },
+    { "ext": "mts",  "mime": "video/mp2t",                                     "name": "AVCHD Transport Stream" },
+    { "ext": "vob",  "mime": "video/mpeg",                                     "name": "DVD Video Object" },
+    { "ext": "rmvb", "mime": "application/vnd.rn-realmedia-vbr",               "name": "RealMedia Variable Bitrate" },
+    { "ext": "rm",   "mime": "application/vnd.rn-realmedia",                   "name": "RealMedia" },
+    { "ext": "3gp",  "mime": "video/3gpp",                                     "name": "3GPP Video" },
+    { "ext": "ogv",  "mime": "video/ogg",                                      "name": "Ogg Video" },
+    { "ext": "divx", "mime": "video/x-msvideo",                                "name": "DivX Video" },
+    { "ext": "xvid", "mime": "video/x-msvideo",                                "name": "Xvid Video" },
+    { "ext": "dv",   "mime": "video/x-dv",                                     "name": "Digital Video (DV)" },
+    { "ext": "hevc", "mime": "video/hevc",                                     "name": "HEVC / H.265" },
+    { "ext": "heic", "mime": "image/heic",                                     "name": "HEIC (Apple Video Still)" },
+    { "ext": "avif", "mime": "image/avif",                                     "name": "AVIF" },
+  ],
+
+  // =========================================================================
+  // Subtitle / caption / lyrics formats
+  // =========================================================================
+  // kind: "subtitle" | "caption" | "lyrics" | "transcript"
+  "subtitle": [
+
+    // ── Subtitles ────────────────────────────────────────────────────────────
+    { "ext": "srt",  "mime": "application/x-subrip",   "name": "SubRip (.srt)",            "kind": "subtitle" },
+    { "ext": "sub",                                      "name": "MicroDVD / SubViewer",     "kind": "subtitle" },
+    { "ext": "ass",  "mime": "text/x-ass",              "name": "Advanced SSA (.ass)",      "kind": "subtitle" },
+    { "ext": "ssa",  "mime": "text/x-ssa",              "name": "SubStation Alpha (.ssa)",  "kind": "subtitle" },
+    { "ext": "vtt",  "mime": "text/vtt",                "name": "WebVTT (.vtt)",            "kind": "subtitle" },
+    { "ext": "idx",                                      "name": "VobSub Index (.idx)",      "kind": "subtitle" },
+    { "ext": "smi",  "mime": "application/smil+xml",   "name": "SAMI (.smi)",              "kind": "subtitle" },
+    { "ext": "ttml", "mime": "application/ttml+xml",   "name": "Timed Text (.ttml)",       "kind": "subtitle" },
+    { "ext": "dfxp", "mime": "application/ttml+xml",   "name": "DFXP (.dfxp)",             "kind": "subtitle" },
+
+    // ── Captions ─────────────────────────────────────────────────────────────
+    { "ext": "sbv",                                      "name": "YouTube SBV (.sbv)",       "kind": "caption" },
+    { "ext": "srv1",                                     "name": "YouTube SRV1 (.srv1)",     "kind": "caption" },
+    { "ext": "srv2",                                     "name": "YouTube SRV2 (.srv2)",     "kind": "caption" },
+    { "ext": "srv3",                                     "name": "YouTube SRV3 (.srv3)",     "kind": "caption" },
+    { "ext": "cap",                                      "name": "Caption (.cap)",           "kind": "caption" },
+
+    // ── Lyrics ───────────────────────────────────────────────────────────────
+    { "ext": "lrc",  "mime": "application/x-lrc",      "name": "Timed Lyrics (.lrc)",      "kind": "lyrics" },
+    { "ext": "elrc",                                     "name": "Enhanced LRC (.elrc)",     "kind": "lyrics" },
+
+    // ── Transcripts ──────────────────────────────────────────────────────────
+    { "ext": "txt",  "mime": "text/plain",              "name": "Plain Text Transcript",    "kind": "transcript" },
+  ],
+
+  // =========================================================================
+  // Companion file formats
+  // =========================================================================
+  // scope: "track" | "album" | "artist"
+  //   track  — travels with a single track (renamed by shared filename stem)
+  //   album  — applies to the whole album / directory
+  //   artist — applies to all albums for an artist
+  "companion": [
+
+    // ── Cue sheets ───────────────────────────────────────────────────────────
+    { "ext": "cue",     "mime": "application/x-cue",            "name": "Cue Sheet",                   "scope": "album" },
+
+    // ── Disc / optical images ────────────────────────────────────────────────
+    { "ext": "iso",     "mime": "application/x-iso9660-image",  "name": "ISO Disc Image",              "scope": "album" },
+    { "ext": "bin",     "mime": "application/x-cd-image",       "name": "BIN Disc Image",              "scope": "album" },
+    { "ext": "img",     "mime": "application/x-raw-disk-image", "name": "IMG Disc Image",              "scope": "album" },
+    { "ext": "nrg",     "mime": "application/x-nrg",            "name": "Nero Image (.nrg)",           "scope": "album" },
+    { "ext": "mdf",                                              "name": "Media Descriptor Image (.mdf)", "scope": "album" },
+    { "ext": "mds",                                              "name": "MDS Sidecar (.mds)",          "scope": "album" },
+    { "ext": "daa",                                              "name": "PowerISO Image (.daa)",       "scope": "album" },
+    { "ext": "udf",                                              "name": "UDF Disc Image (.udf)",       "scope": "album" },
+
+    // ── Archives ─────────────────────────────────────────────────────────────
+    // ZIP/RAR/7z archives often contain full album release packages
+    // (liner notes, booklet PDFs, bonus tracks). Keep them alongside the album.
+    { "ext": "zip",     "mime": "application/zip",               "name": "ZIP Archive",                 "scope": "album" },
+    { "ext": "rar",     "mime": "application/x-rar-compressed",  "name": "RAR Archive",                 "scope": "album" },
+    { "ext": "7z",      "mime": "application/x-7z-compressed",   "name": "7-Zip Archive",               "scope": "album" },
+    { "ext": "tar",     "mime": "application/x-tar",             "name": "TAR Archive",                 "scope": "album" },
+    { "ext": "gz",      "mime": "application/gzip",              "name": "Gzip Archive",                "scope": "album" },
+
+    // ── Apple iTunes packages ─────────────────────────────────────────────────
+    { "ext": "itlp",                                             "name": "iTunes LP Package (.itlp)",  "scope": "artist" },
+    { "ext": "itmsp",                                            "name": "iTunes Music Store Package",  "scope": "artist" },
+    { "ext": "itms",                                             "name": "iTunes Music Store Link",     "scope": "artist" },
+
+    // ── Info / release notes ─────────────────────────────────────────────────
+    { "ext": "nfo",     "mime": "text/plain",                    "name": "Release Info (.nfo)",         "scope": "album" },
+    { "ext": "sfv",     "mime": "text/plain",                    "name": "SFV Checksum (.sfv)",         "scope": "album" },
+    { "ext": "md5",     "mime": "text/plain",                    "name": "MD5 Checksum (.md5)",         "scope": "album" },
+
+    // ── Rip logs ─────────────────────────────────────────────────────────────
+    { "ext": "log",     "mime": "text/plain",                    "name": "Rip Log (.log)",              "scope": "album" },
+
+    // ── Accuracy checks ───────────────────────────────────────────────────────
+    { "ext": "accurip",                                          "name": "AccurateRip Result (.accurip)", "scope": "album" },
+    { "ext": "crc",                                              "name": "CRC Checksum (.crc)",         "scope": "album" },
+
+    // ── Playlists ────────────────────────────────────────────────────────────
+    { "ext": "m3u",     "mime": "audio/x-mpegurl",              "name": "M3U Playlist",                "scope": "album" },
+    { "ext": "m3u8",    "mime": "audio/x-mpegurl",              "name": "M3U8 Playlist (UTF-8)",       "scope": "album" },
+    { "ext": "pls",     "mime": "audio/x-scpls",               "name": "PLS Playlist",                "scope": "album" },
+    { "ext": "xspf",    "mime": "application/xspf+xml",         "name": "XSPF Playlist",               "scope": "album" },
+    { "ext": "wpl",     "mime": "application/vnd.ms-wpl",       "name": "Windows Media Playlist",      "scope": "album" },
+    { "ext": "asx",     "mime": "video/x-ms-asf",              "name": "ASX Playlist",                "scope": "album" },
+  ],
+}

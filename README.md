@@ -74,9 +74,13 @@
 | 🔍 **19+ Metadata Lookup Providers** | Music (10), Video (5), Podcasts (1), Identifiers (3) — with fuzzy matching and cover art |
 | 🧠 **Smart Classification** | 4-level hierarchy: Media Group → Format → Class → Quality |
 | 🔄 **Companion File Tracking** | Moves subtitles, cover art, and disc images alongside media |
+| 🗂️ **External JSON5 Config** | File types and metadata tags defined in `filetypes.json5` / `tags.json5` — editable without recompile, user-overridable |
+| 🔒 **File Integrity Checking** | SHA256 hash before/after every metadata write; atomic rename (`rename(2)`); rollback + corruption log on failure |
+| ⚙️ **Background Service Mode** | Runs as systemd user unit (Linux), launchd agent (macOS), or Windows Service; managed via `meedya service` CLI |
+| 📦 **Settings Export / Import** | Portable `.mmprofile` bundles for device migration and backup (`meedya config export/import`) |
 | ☁️ **Cloud Storage Sync** | OneDrive, Google Drive, Dropbox, MEGA, iCloud (planned) |
-| 🗄️ **Database Export** | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL (planned) |
-| 🌐 **Secure Media Server** | REST API with JWT auth, media streaming, web frontend (planned) |
+| 🗄️ **Database Export** | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL |
+| 🌐 **Secure Media Server** | REST API with JWT auth, media streaming, web frontend |
 | 🎨 **Native Look & Feel** | SwiftUI + Liquid Glass on macOS, WinUI 3 + Mica on Windows, GTK4 + Libadwaita on Linux |
 
 ---
@@ -207,6 +211,8 @@ MeedyaManager/
 | M8 | 📦 Packaging & Public Release | ✅ **Complete** | App Store, Microsoft Store, Flatpak/Snap, auto-updater (~33 tests) |
 | M9 | 🗄️ Database Export | ✅ **Complete** | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL (~90 tests) |
 | M10 | 🌐 Secure Media Server | ✅ **Complete** | `axum` HTTP server, REST API, JWT auth, media streaming — **v1.0.0 released** (~90 tests) |
+| — | 🔧 Post-Release Enhancements (v1.1.0) | ✅ **Complete** | Accessibility (AT-SPI2/VoiceOver/XAML), i18n (gettextrs/.xcstrings/.resw), external filetype registry, extended metadata tags |
+| — | 🔧 Post-Release Enhancements (v1.2.0) | ✅ **Complete** | External JSON5 tag registry, file integrity (SHA256 + atomic write), background service mode, settings export/import |
 
 ---
 

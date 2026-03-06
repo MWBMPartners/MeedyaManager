@@ -35,3 +35,6 @@ pub mod export;
 
 /// `meedya serve` — Start the HTTPS media server with JWT auth (M10)
 pub mod serve;
+
+/// `meedya service` — Install/start/stop/status the background service
+pub mod service_cmd;
