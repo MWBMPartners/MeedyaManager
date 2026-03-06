@@ -214,8 +214,8 @@ This is **expected** for most users. EIDR requires paid membership. If you do ha
 
 - Ensure `EIDR_CLIENT_ID` and `EIDR_CLIENT_SECRET` are set in your `.env` file
 - Verify there are no extra spaces or newline characters in the values
-- Check that your `.env` file is in the project root directory
-- Run `python cli/runner.py --providers-list` to verify provider status
+- Check that your `.env` file is next to `settings.json5`
+- Run `meedya lookup --list-providers` to verify provider status
 
 ### "401 Unauthorized" errors in logs
 

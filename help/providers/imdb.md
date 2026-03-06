@@ -21,7 +21,7 @@ This guide explains how to configure and use the **IMDb** metadata provider in M
 
 ## Overview
 
-The IMDb provider retrieves movie and TV show metadata from the **Internet Movie Database** (IMDb) — the world's most popular and comprehensive source of film, television, and celebrity information. Instead of using a paid API, this provider uses the **cinemagoer** library (formerly IMDbPY) to access IMDb data programmatically.
+The IMDb provider retrieves movie and TV show metadata from the **Internet Movie Database** (IMDb) — the world's most popular and comprehensive source of film, television, and celebrity information. It accesses IMDb data via HTTP, with no API key or account required.
 
 This provider is useful for:
 
@@ -31,41 +31,22 @@ This provider is useful for:
 - Accessing IMDb's authoritative rating and vote data
 - Downloading movie/TV poster artwork
 
-> **Important:** This provider has a **GPL-2.0 licence dependency**. See [Legal Notes](#legal-notes) for details.
-
 ---
 
 ## Authentication
 
-**No API authentication is required.** The IMDb provider uses the **cinemagoer** Python library to access IMDb data without an API key or account.
-
-However, the cinemagoer library is an **OPTIONAL dependency** that must be installed separately due to its GPL-2.0 licence.
-
-### Installing cinemagoer
-
-```bash
-# Install cinemagoer (optional — only needed for IMDb provider)
-pip install cinemagoer
-```
-
-If cinemagoer is not installed, the IMDb provider will gracefully report itself as **unavailable** and MeedyaManager will continue to function normally with all other providers.
+**No API authentication is required.** The IMDb provider accesses IMDb data via HTTP without an API key or account.
 
 You can verify the provider's status with:
 
 ```bash
-python cli/runner.py --providers-list
+meedya lookup --list-providers
 ```
 
-If cinemagoer is installed, you will see:
+You will see:
 
 ```
 imdb          video       No auth required    Available
-```
-
-If cinemagoer is not installed, you will see:
-
-```
-imdb          video       No auth required    Unavailable (cinemagoer not installed)
 ```
 
 ---
@@ -85,7 +66,6 @@ You can optionally configure the provider's behaviour in `config/settings.json5`
   providers: {
     imdb: {
       // Enable or disable this provider (default: true)
-      // Set to false to skip even if cinemagoer is installed
       enabled: true,
 
       // Maximum number of search results to evaluate (1-20, default: 5)
@@ -176,34 +156,18 @@ The IMDb provider supplies **static JPEG poster images** extracted from IMDb pag
 
 ## Troubleshooting
 
-### Provider shows "Unavailable (cinemagoer not installed)"
+### Provider shows "Unavailable"
 
-The cinemagoer library is not installed. Install it with:
-
-```bash
-pip install cinemagoer
-```
-
-If you are using MeedyaManager's virtual environment, ensure it is activated first:
-
-```bash
-source venv/bin/activate  # macOS/Linux
-venv\Scripts\activate     # Windows
-pip install cinemagoer
-```
-
-### Provider shows "Unavailable" even after installing cinemagoer
-
-- Verify the installation: `python -c "import imdb; print(imdb.VERSION)"`
-- If using a release package (Nuitka build), cinemagoer may need to be installed into the bundled environment — check the release notes for instructions
 - Ensure the `enabled` setting is not set to `false` in your configuration
+- Verify with `meedya lookup --list-providers`
+- Run `meedya config validate` to check for configuration errors
 
 ### Searches are slow
 
-The cinemagoer library works by loading and parsing IMDb web pages, which is inherently slower than a dedicated API. To improve speed:
+IMDb access is inherently slower than a dedicated API. To improve speed:
 
-1. Reduce `result_limit` to minimise the number of pages loaded
-2. Set `fetch_full_details: false` to skip detailed lookups (you will get less metadata but faster results)
+1. Reduce `result_limit` to minimise the number of lookups performed
+2. Set `fetch_full_details: false` to skip detailed lookups (less metadata but faster results)
 3. Reduce `request_timeout` if you prefer to skip slow responses rather than wait
 4. Consider using TMDB as your primary video provider and IMDb as a supplementary source for ratings data
 
@@ -212,29 +176,18 @@ The cinemagoer library works by loading and parsing IMDb web pages, which is inh
 - Check your internet connection
 - IMDb may be temporarily unreachable — the provider will retry automatically
 - Increase `request_timeout` if you are on a slow connection
-- The cinemagoer library accesses IMDb's web pages directly, so corporate firewalls or content filters may block these requests
+- The IMDb provider accesses IMDb's web pages directly; corporate firewalls or content filters may block these requests
 
 ### Results are missing or incomplete
 
-The cinemagoer library depends on IMDb's page structure. If IMDb changes their website layout:
+The IMDb provider depends on IMDb's page structure. If IMDb changes their website layout:
 
-1. Update cinemagoer to the latest version: `pip install --upgrade cinemagoer`
-2. Check the [cinemagoer GitHub](https://github.com/cinemagoer/cinemagoer) for known issues
-3. Report persistent issues on the MeedyaManager issue tracker
+1. Check for a MeedyaManager update — we track IMDb changes and update the provider
+2. Report persistent issues on the MeedyaManager issue tracker
 
 ---
 
 ## Legal Notes
-
-### GPL-2.0 Licence Notice
-
-> **The cinemagoer library is licensed under the GNU General Public License v2.0 (GPL-2.0).** This is a copyleft licence that has implications for software distribution.
-
-**What this means for MeedyaManager users:**
-
-- **Personal use:** You can freely install and use cinemagoer alongside MeedyaManager for personal media library management. There are no restrictions on personal use.
-- **Separate installation:** cinemagoer is **not bundled** with MeedyaManager. It is an optional dependency that users install separately. This design choice ensures MeedyaManager's own licence is not affected by GPL-2.0 requirements.
-- **If cinemagoer is not installed:** The IMDb provider simply reports itself as unavailable. All other MeedyaManager functionality continues to work normally.
 
 ### IMDb Data Usage
 

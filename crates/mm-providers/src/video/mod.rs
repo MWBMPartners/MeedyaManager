@@ -56,7 +56,7 @@ impl TmdbProvider {
 
     pub fn with_base_url(api_key: Option<String>, base_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             api_key,
             capabilities: Capabilities {
@@ -199,7 +199,7 @@ impl TheTvdbProvider {
 
     pub fn with_base_url(api_key: Option<String>, base_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             api_key,
             capabilities: Capabilities {
@@ -315,7 +315,7 @@ impl OmdbProvider {
 
     pub fn with_base_url(api_key: Option<String>, base_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             api_key,
             capabilities: Capabilities {
@@ -445,7 +445,7 @@ impl AppleTvProvider {
 
     pub fn with_base_url(country: impl Into<String>, base_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             enabled: true,
             country: country.into(),
@@ -578,7 +578,7 @@ impl ItunesStoreProvider {
 
     pub fn with_base_url(country: impl Into<String>, base_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             enabled: true,
             country: country.into(),

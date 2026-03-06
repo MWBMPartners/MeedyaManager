@@ -202,8 +202,8 @@ Available image sizes from TMDB (configurable):
 
 - Ensure `TMDB_API_KEY` is set in your `.env` file (or in `settings.json5` under `providers.tmdb.api_key`)
 - Verify the key is correct — copy it directly from [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-- Check that your `.env` file is in the project root directory
-- Run `python cli/runner.py --providers-list` to verify provider status
+- Check that your `.env` file is next to `settings.json5`
+- Run `meedya lookup --list-providers` to verify provider status
 
 ### "401 Unauthorized" errors in logs
 

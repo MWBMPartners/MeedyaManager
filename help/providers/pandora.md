@@ -25,7 +25,7 @@ The Pandora provider exists as a **stub** in MeedyaManager's provider framework.
 
 This provider is included in the framework for completeness and to construct reference URLs for the Pandora web interface, allowing users to manually look up tracks on Pandora when needed.
 
-**Current status:** Stub provider — `is_available() = False` always.
+**Current status:** Stub provider — always returns no results.
 
 **What this provider can do:**
 
@@ -75,7 +75,7 @@ No environment variables are required or used for Pandora.
 | `enabled` | `false` | Disabled by default — no functional API available |
 | `priority` | `99` | Lowest priority (will never be used for searching) |
 
-> **Note:** Even if `enabled` is set to `true`, the provider will still report `is_available() = False` and return empty results for all searches. Enabling it has no negative effect but provides no benefit.
+> **Note:** Even if `enabled` is set to `true`, the provider will return empty results for all searches. Enabling it has no negative effect but provides no benefit.
 
 ---
 
@@ -137,9 +137,7 @@ Pandora (owned by SiriusXM) has never offered a public metadata API. Their platf
 
 ### What does not work
 
-- `is_available()` always returns `False`
-- `search()` always returns an empty list
-- `lookup_by_id()` always returns `None`
+- The provider is disabled (returns empty results for all searches)
 - No automated metadata or cover art retrieval
 
 ### Will this change?
@@ -160,9 +158,7 @@ There are no known plans for Pandora to release a public metadata API. If Pandor
 
 ### Can I use a third-party Pandora library?
 
-There are no widely maintained, community-supported Python libraries for Pandora metadata access. Unlike YouTube Music (which has `ytmusicapi`) or Shazam (which has `shazamio`), there is no equivalent for Pandora.
-
-If such a library becomes available in the future, MeedyaManager may integrate it as an optional dependency.
+There are no known public APIs or community projects for Pandora metadata access. If Pandora opens their API in the future, MeedyaManager will update this provider to support it.
 
 ---
 

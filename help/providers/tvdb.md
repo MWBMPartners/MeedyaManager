@@ -177,8 +177,8 @@ The TVDB provider supplies **static JPEG images** from its extensive artwork dat
 
 - Ensure `TVDB_API_KEY` is set in your `.env` file
 - Verify the key is correct — copy it from [thetvdb.com/dashboard/account/apikeys](https://thetvdb.com/dashboard/account/apikeys)
-- Check that your `.env` file is in the project root directory
-- Run `python cli/runner.py --providers-list` to verify provider status
+- Check that your `.env` file is next to `settings.json5`
+- Run `meedya lookup --list-providers` to verify provider status
 
 ### "401 Unauthorized" or "JWT token expired" errors
 

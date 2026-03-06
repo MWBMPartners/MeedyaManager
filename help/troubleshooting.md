@@ -1,110 +1,108 @@
-# 🔧 Troubleshooting — MeedyaManager
+# Troubleshooting — MeedyaManager
 
-> **(C) 2025–2026 MWBM Partners Ltd**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
 This guide covers common issues, error messages, and their solutions.
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
 1. [Installation Issues](#installation-issues)
-2. [MediaInfo Problems](#mediainfo-problems)
+2. [Configuration Errors](#configuration-errors)
 3. [Watcher Issues](#watcher-issues)
-4. [Configuration Errors](#configuration-errors)
-5. [Rename/Move Issues](#renamemove-issues)
-6. [Platform-Specific Issues](#platform-specific-issues)
-7. [Getting Help](#getting-help)
+4. [Rename and Move Issues](#rename-and-move-issues)
+5. [Metadata and Tag Issues](#metadata-and-tag-issues)
+6. [Provider and Lookup Issues](#provider-and-lookup-issues)
+7. [Background Service Issues](#background-service-issues)
+8. [Platform-Specific Issues](#platform-specific-issues)
+9. [Generating a Bug Report](#generating-a-bug-report)
 
 ---
 
 ## Installation Issues
 
-### "ModuleNotFoundError: No module named 'pymediainfo'"
+### "meedya: command not found"
 
-**Cause:** Dependencies not installed.
-
-**Solution:**
-
-```bash
-pip install -r requirements.txt
-```
-
-If using a virtual environment, make sure it's activated first:
-
-```bash
-source venv/bin/activate  # macOS/Linux
-venv\Scripts\activate     # Windows
-```
-
-### "Python version X.X is not supported"
-
-**Cause:** MeedyaManager requires Python 3.10 or newer.
-
-**Solution:** Install Python 3.11+ from [python.org](https://www.python.org/downloads/).
-
-### Checksum verification fails
-
-**Cause:** Downloaded file may be corrupted or tampered with.
-
-**Solution:**
-
-1. Re-download the release archive
-2. Re-run verification:
-
-```bash
-python utils/verify_checksum.py <archive> <archive>.sha256
-```
-
-3. If it still fails, report it as a [security issue](https://github.com/MWBMPartners/MeedyaManager/issues)
-
----
-
-## MediaInfo Problems
-
-### "MediaInfo library not found"
-
-**Cause:** MediaInfo is not installed or not in the system PATH.
-
-**Solutions by platform:**
-
-**macOS:**
-
-```bash
-brew install mediainfo
-```
-
-**Linux (Debian/Ubuntu):**
-
-```bash
-sudo apt install mediainfo libmediainfo-dev
-```
-
-**Linux (Fedora):**
-
-```bash
-sudo dnf install mediainfo libmediainfo-devel
-```
-
-**Windows:**
-
-1. Download from [mediaarea.net](https://mediaarea.net/en/MediaInfo/Download/Windows)
-2. Run the installer
-3. Ensure the install directory is in your system PATH
-
-### "No metadata extracted" for a file
-
-**Possible causes:**
-
-- File is corrupted or incomplete (still being copied)
-- File format not recognised by MediaInfo
-- File has no embedded metadata tags
+**Cause:** The `meedya` binary is not in your PATH.
 
 **Solutions:**
 
-1. Verify the file plays correctly in a media player
-2. Check MediaInfo directly: `mediainfo path/to/file`
-3. If the file is being copied, wait and retry — MeedyaManager's retry queue handles this automatically
+- **Release package:** Re-run the installer. The installer adds `meedya` to your PATH automatically.
+- **From source:** Run `cargo install --path crates/mm-cli` to install the binary, or add `~/.cargo/bin` to your PATH:
+
+  ```bash
+  echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+  source ~/.bashrc
+  ```
+
+- **Linux AppImage:** Make the AppImage executable and place it somewhere on your PATH:
+
+  ```bash
+  chmod +x MeedyaManager-*.AppImage
+  mv MeedyaManager-*.AppImage ~/.local/bin/meedya
+  ```
+
+### Checksum verification fails after download
+
+**Cause:** The downloaded file is corrupted or incomplete.
+
+**Solution:** Re-download the release from [GitHub Releases](https://github.com/MWBMPartners/MeedyaManager/releases) and verify the SHA256 checksum published on the release page:
+
+```bash
+# Linux / macOS
+sha256sum -c MeedyaManager-linux-x86_64.tar.gz.sha256
+
+# macOS (alternative)
+shasum -a 256 -c MeedyaManager-macos-arm64.tar.gz.sha256
+
+# Windows (PowerShell)
+Get-FileHash MeedyaManager-windows-x64.msix -Algorithm SHA256
+```
+
+If verification still fails, report it as a [security issue](https://github.com/MWBMPartners/MeedyaManager/security).
+
+---
+
+## Configuration Errors
+
+### "Failed to load configuration: JSON5 parse error"
+
+**Cause:** Syntax error in `settings.json5`.
+
+**Solution:** Common JSON5 mistakes to look for:
+
+- Trailing comma after the last item in an array or object
+- Unmatched `{`, `}`, `[`, or `]`
+- Unescaped backslashes in Windows paths (use `\\` or forward slashes)
+- Smart/curly quotes (`"`) instead of straight quotes (`"`)
+
+Validate your config:
+
+```bash
+meedya config validate
+```
+
+### "Failed to initialise: ..."
+
+**Cause:** MeedyaManager could not start due to a configuration or environment error.
+
+**Solution:** Run with verbose logging to see the full error:
+
+```bash
+meedya -vv config show
+```
+
+### Config changes are not taking effect
+
+**Cause:** The running watcher process is using the config that was loaded at startup.
+
+**Solution:** Restart MeedyaManager (or the background service) after editing the config:
+
+```bash
+meedya service stop
+meedya service start
+```
 
 ---
 
@@ -114,123 +112,219 @@ sudo dnf install mediainfo libmediainfo-devel
 
 **Possible causes:**
 
-- Watch path doesn't exist
-- Insufficient permissions
-- watchdog library issue
+- Watch folders not configured
+- Watch folders do not exist
+- Insufficient read permissions
+- Native file system events not supported on the current volume (e.g. network shares, Docker volumes)
 
 **Solutions:**
 
-1. Check your `config/settings.json5` — verify `watch_paths` are correct
-2. Check logs at `logs/watcher_events.log` for warnings
-3. Ensure the directories exist and are readable:
+1. Verify your `folders` list in `settings.json5` — the directories must exist:
 
-```bash
-ls -la ~/Downloads/Media
-```
+   ```bash
+   meedya config show
+   ```
 
-4. Try polling mode if watchdog has issues:
+2. Check the watcher log for warnings:
 
-```json5
-watch_mode: "polling"
-```
+   ```bash
+   meedya -v watch --dry-run
+   ```
+
+3. On network mounts or Docker volumes, switch to polling mode by increasing `poll_interval_secs`:
+
+   ```json5
+   watch: {
+     poll_interval_secs: 10
+   }
+   ```
 
 ### "File disappeared before processing"
 
-**Cause:** The file was moved or deleted between detection and processing.
+**Cause:** The file was moved or deleted by another application between detection and processing.
 
-**Solution:** This is usually harmless — it means another application moved the file first. If it happens frequently, check for conflicts with other file management tools.
+**Solution:** This is harmless. If it happens frequently, check for conflicts with other file management tools running concurrently.
 
 ### High CPU usage from watcher
 
-**Cause:** Watching too many directories or using polling mode on large directory trees.
-
 **Solutions:**
 
-1. Reduce the number of `watch_paths`
-2. Ensure `watch_mode` is set to `"watchdog"` (not `"polling"`)
-3. Avoid watching the entire home directory — be specific
+1. Be specific about watch folders — avoid watching your entire home directory
+2. Use `exclude_extensions` to skip file types you don't need processed
+3. Increase `debounce_ms` to reduce notification frequency for rapidly changing folders
 
 ---
 
-## Configuration Errors
+## Rename and Move Issues
 
-### "JSON5 parse error"
+### "Simulated rename" — no files actually moved
 
-**Cause:** Syntax error in `config/settings.json5`.
+**Cause:** Dry-run mode is active (the default for safety).
 
-**Solution:** Check for:
+**Solution:** Remove `--dry-run` from the command, or set `dry_run: false` in `settings.json5`:
 
-- Missing commas between items
-- Unmatched brackets or braces
-- Invalid escape sequences in strings
+```bash
+meedya watch          # live mode (moves files)
+meedya watch --dry-run  # preview only
+```
 
-Use a JSON5-aware editor or validator to find the issue.
+### File is processed but not renamed as expected
 
-### "Config key not found"
+**Solution:**
 
-**Cause:** A required configuration key is missing.
+1. Test your template against the file:
 
-**Solution:** Ensure your `settings.json5` includes all required keys. Compare against the [configuration reference](configuration.md).
+   ```bash
+   meedya rule test --template "<Artist>/<Album>/<Title>" path/to/file.mp3
+   ```
 
-### ".env file not loaded"
+2. Inspect the file's actual tag values:
 
-**Cause:** `.env` file doesn't exist or is in the wrong location.
+   ```bash
+   meedya debug path/to/file.mp3
+   ```
+
+3. Check `missing_tag_mode` — if set to `"empty"`, missing tags produce blank path segments
+
+### Conflict: file already exists at destination
+
+**Cause:** A file with the same name already exists in the output directory.
+
+**Solution:** Change `conflict_strategy` in `settings.json5`:
+
+```json5
+rename: {
+  conflict_strategy: "rename"   // append a counter: "Song (1).mp3"
+}
+```
+
+Options: `"skip"` (default), `"overwrite"`, `"rename"`, `"ask"` (GUI only).
+
+### File in use — "queued for retry"
+
+**Cause:** The file is open in another application (e.g. being written by a download client).
+
+**Solution:** This is expected behaviour. MeedyaManager detects the lock, queues the file, and retries automatically. No action required — just wait for the other application to finish.
+
+---
+
+## Metadata and Tag Issues
+
+### "No tags found" for a file
+
+**Possible causes:**
+
+- The file has no embedded metadata tags
+- The file format is supported but the tag format is unusual
+
+**Solution:**
+
+1. Inspect the file:
+
+   ```bash
+   meedya debug path/to/file.mp3
+   ```
+
+2. Edit tags manually if needed:
+
+   ```bash
+   meedya edit path/to/file.mp3 --tag "Artist=My Artist" --tag "Title=My Title"
+   ```
+
+### Cover art not embedded after lookup
+
+**Cause:** The provider returned a result but cover art download was not enabled, or the image exceeded the configured maximum resolution.
+
+**Solution:** Check your `providers` config and ensure `lookup` output confirms art was downloaded. Re-run with `-v` for detail:
+
+```bash
+meedya -v lookup path/to/file.mp3
+```
+
+---
+
+## Provider and Lookup Issues
+
+### "Provider not configured" or no results from a provider
+
+**Cause:** The provider is disabled or missing credentials.
+
+**Solution:**
+
+1. Check which providers are active:
+
+   ```bash
+   meedya lookup --list-providers
+   ```
+
+2. Enable the provider in `settings.json5`:
+
+   ```json5
+   providers: {
+     spotify_enabled: true,
+     spotify_client_id: "...",
+     spotify_client_secret: "..."
+   }
+   ```
+
+3. Or set via environment variable:
+
+   ```bash
+   export MM_SPOTIFY_CLIENT_ID=your_id
+   export MM_SPOTIFY_CLIENT_SECRET=your_secret
+   ```
+
+### "Rate limited by provider"
+
+**Cause:** Too many requests sent to the provider's API in a short period.
+
+**Solution:** MeedyaManager has built-in rate limiting per provider. If you're hitting limits during batch operations, reduce `max_concurrent_requests`:
+
+```json5
+providers: {
+  max_concurrent_requests: 2
+}
+```
+
+### Network timeout during lookup
+
+**Solution:** Increase `request_timeout_secs`:
+
+```json5
+providers: {
+  request_timeout_secs: 60
+}
+```
+
+---
+
+## Background Service Issues
+
+### Service not starting
 
 **Solution:**
 
 ```bash
-cp .env.example .env
-# Edit .env with your values
+# Check service status
+meedya service status
+
+# View service logs
+meedya -vv watch --dry-run   # run interactively to see startup errors
 ```
 
-The `.env` file must be in the project root directory.
-
----
-
-## Rename/Move Issues
-
-### "Simulated rename" but no actual files moved
-
-**Cause:** Simulation mode is enabled (this is the default, safe behaviour).
-
-**Solution:** To actually move files, run with simulation disabled:
+Platform-specific checks:
 
 ```bash
-python cli/runner.py --simulate-off
+# Linux (systemd)
+systemctl --user status meedyamanager
+journalctl --user -u meedyamanager -n 50
+
+# macOS (launchd)
+launchctl list | grep meedyamanager
+log show --predicate 'subsystem == "ltd.mwbm.meedyamanager"' --last 1h
 ```
 
-Or set in config:
-
-```json5
-simulate_watcher: false
-```
-
-### File in use — "queued for retry"
-
-**Cause:** The file is open in another application.
-
-**Solution:** This is expected behaviour. MeedyaManager will:
-
-1. Detect the file is locked
-2. Queue it for later processing
-3. Retry when the file is no longer in use
-
-No action needed — just close the other application when ready.
-
-### Filename contains invalid characters
-
-**Cause:** Metadata tags contain characters not allowed in file paths.
-
-**Solution:** Configure `filename_replacements` in `settings.json5`:
-
-```json5
-filename_replacements: {
-  "/": "-",
-  ":": "-",
-  "*": "",
-  "?": ""
-}
-```
+See [background-service.md](background-service.md) for full service setup instructions.
 
 ---
 
@@ -238,50 +332,65 @@ filename_replacements: {
 
 ### macOS: "Operation not permitted"
 
-**Cause:** macOS security restrictions (especially on system directories or external drives).
+**Cause:** macOS privacy restrictions prevent access to monitored directories.
 
 **Solution:**
 
-1. Go to **System Preferences > Privacy & Security > Files and Folders**
-2. Grant access to the Terminal or Python application
-3. For full disk access: **Privacy & Security > Full Disk Access**
+1. Open **System Settings > Privacy & Security > Files and Folders**
+2. Grant MeedyaManager access to the relevant directories
+3. For external drives or full disk access: **Privacy & Security > Full Disk Access**
 
 ### Windows: Long path errors
 
-**Cause:** Windows has a 260-character path limit by default.
+**Cause:** Windows enforces a 260-character path limit by default.
 
-**Solution:**
-
-1. Enable long paths in Windows: Run as Administrator:
+**Solution:** Enable long path support (requires administrator):
 
 ```cmd
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1
 ```
 
-2. Use shorter rename templates to avoid deep nesting
+Then reboot. Alternatively, use shorter rename templates to avoid deeply nested output paths.
 
-### Linux: Permission denied on mounted drives
+### Linux: "inotify watch limit reached"
 
-**Cause:** External or network drives may have restrictive mount permissions.
+**Cause:** The kernel's inotify watch limit is too low for a large directory tree.
 
 **Solution:**
 
-1. Check mount options: `mount | grep <drive>`
-2. Remount with appropriate permissions if needed
-3. Run MeedyaManager as a user with access to the mount point
+```bash
+# Temporary (until reboot)
+sudo sysctl fs.inotify.max_user_watches=524288
+
+# Permanent
+echo "fs.inotify.max_user_watches=524288" | sudo tee /etc/sysctl.d/40-meedyamanager.conf
+sudo sysctl -p /etc/sysctl.d/40-meedyamanager.conf
+```
+
+### Linux: "Permission denied" on mounted drives
+
+**Cause:** External or network drives mounted with restrictive permissions.
+
+**Solution:**
+
+```bash
+# Check mount options
+mount | grep <drivename>
+
+# Remount with user-accessible permissions (example for ext4)
+sudo mount -o remount,uid=$(id -u),gid=$(id -g) /mnt/mydrive
+```
 
 ---
 
-## Getting Help
+## Generating a Bug Report
 
-If your issue isn't covered here:
+MeedyaManager has a built-in bug report generator that includes system information, health check results, and log excerpts:
 
-1. **Check the logs:** `logs/watcher_events.log` and `logs/rename_preview.log`
-2. **Check the FAQ:** [faq.md](faq.md)
-3. **Open an issue:** [GitHub Issues](https://github.com/MWBMPartners/MeedyaManager/issues/new)
-   - Include your OS, Python version, and relevant log output
-   - Use the appropriate issue template (bug report, feature request, etc.)
+```bash
+meedya report-bug
+```
 
----
+This produces a `meedya-bug-report-<date>.txt` file in your current directory. When opening an issue on GitHub, attach this file to help us diagnose the problem quickly.
 
-> 📝 *This guide is updated as new issues are discovered and resolved.*
+**GitHub Issues:** [github.com/MWBMPartners/MeedyaManager/issues](https://github.com/MWBMPartners/MeedyaManager/issues)

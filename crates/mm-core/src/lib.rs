@@ -65,6 +65,9 @@ pub mod service;
 /// Portable settings bundle — export/import full configuration for device migration
 pub mod settings_bundle;
 
+/// User-Agent string builder — consistent HTTP identification across all requests
+pub mod useragent;
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -540,7 +540,8 @@ fn run_search_blocking(
         // Register only MusicBrainz for the background search (no API key needed).
         // Additional providers (Spotify, TMDb, etc.) require credentials configured
         // by the user in Settings — they will be wired in a future patch.
-        registry.register(MusicBrainzProvider::new("MeedyaManager/0.7.0 (GTK4 lookup)"));
+        // Use the standard MeedyaManager User-Agent (MusicBrainz requires a descriptive UA).
+        registry.register(MusicBrainzProvider::new(mm_core::useragent::build_user_agent()));
 
         let mut search_query = SearchQuery {
             query: query.to_owned(),

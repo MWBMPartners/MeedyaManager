@@ -1,383 +1,320 @@
-# ⚙️ Configuration Reference — MeedyaManager
+# Configuration Reference — MeedyaManager
 
-> **(C) 2025–2026 MWBM Partners Ltd**
+> **(C) 2025-2026 MWBM Partners Ltd**
 
-MeedyaManager is configured through two primary mechanisms: a **JSON5 settings file** and **environment variables**.
-
----
-
-## 📋 Table of Contents
-
-1. [Configuration Files](#configuration-files)
-2. [Settings Reference (settings.json5)](#settings-reference)
-3. [Environment Variables (.env)](#environment-variables)
-4. [API Key Management](#api-key-management)
-5. [Metadata Lookup Providers](#metadata-lookup-providers)
-6. [Platform-Specific Settings](#platform-specific-settings)
+MeedyaManager is configured through a single **JSON5 settings file** — no command-line flags required for basic operation, and no environment variables needed unless you want to store API keys outside the config file.
 
 ---
 
-## Configuration Files
+## Table of Contents
 
-| File | Purpose | Tracked in Git? |
-| ---- | ------- | --------------- |
-| `config/settings.json5` | Main application settings | ✅ Yes (defaults) |
-| `settings.local.json5` | Local overrides (per machine) | ❌ No (git-ignored) |
-| `.env` | API keys and sensitive values | ❌ No (git-ignored) |
-| `.env.example` | Template for `.env` | ✅ Yes |
-
-### Priority Order
-
-Settings are resolved in this order (highest priority first):
-
-1. **Environment variables** (`.env` or system)
-2. **Local config** (`settings.local.json5`)
-3. **Main config** (`config/settings.json5`)
-4. **Built-in defaults** (hardcoded fallbacks)
+1. [Configuration File Location](#configuration-file-location)
+2. [AppConfig — Root Settings](#appconfig--root-settings)
+3. [watch — File System Watcher](#watch--file-system-watcher)
+4. [rename — File Organisation](#rename--file-organisation)
+5. [logging — Diagnostics](#logging--diagnostics)
+6. [providers — Metadata Lookup](#providers--metadata-lookup)
+7. [Environment Variable Overrides](#environment-variable-overrides)
+8. [CLI Config Commands](#cli-config-commands)
 
 ---
 
-## Settings Reference
+## Configuration File Location
 
-### `watch_paths` — Folders to Monitor
+MeedyaManager automatically creates a default configuration file on first run at the platform-appropriate location:
 
-```json5
-watch_paths: [
-  "~/Downloads/Media",
-  "~/Desktop/NewMedia",
-  "/Volumes/ExternalDrive/Incoming"
-]
-```
+| Platform | Path |
+| -------- | ---- |
+| **macOS** | `~/Library/Application Support/MeedyaManager/settings.json5` |
+| **Linux** | `~/.config/MeedyaManager/settings.json5` |
+| **Windows** | `%APPDATA%\MeedyaManager\settings.json5` |
 
-- Array of directory paths to watch for new media files
-- Supports `~` expansion for home directory
-- Non-existent paths are logged as warnings but don't cause errors
-- Subdirectories are watched recursively
-
-### `valid_extensions` — Accepted File Types
-
-```json5
-valid_extensions: [
-  "mp3", "flac", "m4a", "alac", "ogg", "wav", "ac3", "eac3", "ac4",
-  "mp4", "m4v", "mkv", "mka", "avi", "mpg", "mpeg", "hevc", "divx",
-  "mov", "wmv", "webm", "ts", "opus", "aac", "aiff", "wma"
-]
-```
-
-- All extensions are auto-lowercased during comparison
-- Do not include the leading dot (use `"mp3"` not `".mp3"`)
-
-### `rename_format` — Rename Template
-
-```json5
-// MusicBee-style <Tag> syntax with template functions:
-rename_format: "<Media Class>/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>"
-```
-
-See [rule-syntax.md](rule-syntax.md) for the full template syntax reference.
-
-### `fallback_metadata` — Default Values
-
-```json5
-fallback_metadata: {
-  media_group: "Audio",
-  format_class: "unknown",
-  media_class: "Music",
-  quality_type: "Lossy"
-}
-```
-
-Used when MediaInfo cannot determine a classification value.
-
-### `filename_replacements` — Character Substitution
-
-```json5
-filename_replacements: {
-  "/": "-",
-  "\\": "-",
-  ":": "-",
-  "*": "",
-  "?": "",
-  "\"": "'",
-  "<": "",
-  ">": "",
-  "|": ""
-}
-```
-
-Characters on the left are replaced with the character on the right in generated filenames. This prevents filesystem errors across platforms.
-
-### `watch_mode` — Watcher Backend
-
-```json5
-watch_mode: "watchdog"  // Options: "watchdog", "polling"
-```
-
-- `"watchdog"` — Uses native OS file system events (recommended, lower CPU)
-- `"polling"` — Periodically scans directories (fallback if watchdog unavailable)
-
-### `simulate_watcher` — Safe Mode
-
-```json5
-simulate_watcher: true  // true = dry-run only, false = actually move/rename files
-```
-
-When `true`, no files are moved or renamed — operations are only logged.
-
----
-
-## Environment Variables
-
-Create a `.env` file by copying the template:
+To view or edit the configuration from the CLI:
 
 ```bash
-cp .env.example .env
+meedya config show        # Print current config to terminal
+meedya config validate    # Check config for errors
+meedya config path        # Print the config file path
 ```
 
-### Music Metadata API Keys (M5)
+To use a custom config file path:
 
-```env
-SPOTIFY_CLIENT_ID=
-SPOTIFY_CLIENT_SECRET=
-APPLE_MUSIC_TEAM_ID=
-APPLE_MUSIC_KEY_ID=
-APPLE_MUSIC_PRIVATE_KEY=
-TIDAL_CLIENT_ID=
-TIDAL_CLIENT_SECRET=
-YOUTUBE_MUSIC_HEADERS_AUTH=
-```
-
-### Video Metadata API Keys (M5)
-
-```env
-TMDB_API_KEY=
-TVDB_API_KEY=
-EIDR_CLIENT_ID=
-EIDR_CLIENT_SECRET=
-```
-
-### Providers That Need No API Key
-
-The following providers work without any API key or credentials:
-
-- **MusicBrainz** — Open music metadata database
-- **Deezer** — Public search API
-- **Apple Podcasts** — Public catalogue lookup
-- **Apple TV** — Public catalogue lookup
-- **iTunes Store** — Public search API
-- **Shazam** — Public recognition API
-- **iHeart** — Public search API
-
-### Application Overrides
-
-```env
-METAMANCER_PROFILE_NAME=dev       # Profile name for logging
-METAMANCER_FALLBACK_LANGUAGE=en   # Default language for metadata
-METAMANCER_REGION_DEFAULT=GB      # Default region code
-METAMANCER_LOG_LEVEL=INFO         # Logging level: DEBUG, INFO, WARNING, ERROR
+```bash
+meedya --config /path/to/my-settings.json5 scan ~/Music
 ```
 
 ---
 
-## API Key Management
-
-MeedyaManager supports three tiers of API key management:
-
-### 1. Developer Keys (Private)
-
-Stored in `.env` (git-ignored). For development and testing only.
-
-### 2. Universal Keys (Bundled)
-
-For services whose Terms of Service allow a shared API key, the key can be bundled with the application. Controlled via build config:
+## AppConfig — Root Settings
 
 ```json5
-api_keys: {
-  musicbrainz: { include_in_build: true },   // ToS allows shared key
-  spotify:     { include_in_build: false },   // User must provide own
+{
+  // Human-readable application name (informational only)
+  app_name: "MeedyaManager",
+
+  // Global dry-run — when true, no files are moved or renamed
+  dry_run: false,
+
+  watch:     { /* ... */ },
+  rename:    { /* ... */ },
+  logging:   { /* ... */ },
+  providers: { /* ... */ }
 }
 ```
 
-### 3. User-Provided Keys
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `app_name` | string | `"MeedyaManager"` | Application name (informational) |
+| `dry_run` | bool | `false` | When `true`, no files are moved or renamed globally |
 
-End users can always provide their own API keys via:
-
-- The `.env` file
-- The Settings dialog (UI, M2+)
-- `settings.local.json5`
-
-User-provided keys always take priority over bundled keys.
+> Setting `dry_run: true` in the config file is equivalent to passing `--dry-run` on every command.
 
 ---
 
-## 🔍 Metadata Lookup Providers
+## watch — File System Watcher
 
-MeedyaManager can look up and enrich media file metadata from a variety of online providers. This section covers how to configure providers, cover art behaviour, and credential resolution.
-
-### Provider Configuration
-
-Enable or disable individual providers in `settings.json5`:
+Controls which directories MeedyaManager monitors and how events are debounced.
 
 ```json5
-providers: {
-  spotify: {
-    enabled: true,
-    // Credentials loaded from .env or OS keyring
-  },
-  apple_music: {
-    enabled: true,
-    storefront: "gb",    // Country code for search results
-  },
-  musicbrainz: {
-    enabled: true,
-    // No credentials required
-  },
-  tmdb: {
-    enabled: true,
-  },
-  // ... more providers
+watch: {
+  // Directories to watch for new or changed media files
+  folders: [
+    "~/Downloads/Media",
+    "~/Desktop/Incoming",
+    "/mnt/nas/Unsorted"
+  ],
+
+  // Watch subdirectories recursively
+  recursive: true,
+
+  // Polling interval (seconds) — used as fallback when native FS events
+  // are unavailable (e.g. network mounts, Docker volumes)
+  poll_interval_secs: 5,
+
+  // Debounce window (milliseconds) — events within this window are merged
+  // into a single notification, preventing duplicate processing
+  debounce_ms: 200,
+
+  // Extensions to process (empty list = all recognised media types)
+  include_extensions: ["mp3", "flac", "m4a", "mp4", "mkv"],
+
+  // Extensions to always skip
+  exclude_extensions: ["tmp", "part", "crdownload"]
 }
 ```
 
-Each provider entry supports an `enabled` flag to toggle it on or off. Provider-specific options (such as `storefront` for Apple Music) are documented in the individual provider guides.
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `folders` | `string[]` | `[]` | Directories to monitor (must be configured) |
+| `recursive` | bool | `true` | Watch subdirectories recursively |
+| `poll_interval_secs` | int | `5` | Polling fallback interval in seconds |
+| `debounce_ms` | int | `200` | Event debounce window in milliseconds |
+| `include_extensions` | `string[]` | `[]` | Restrict processing to these extensions (empty = all) |
+| `exclude_extensions` | `string[]` | `[]` | Always skip these extensions |
 
-### Cover Art Configuration
-
-Control how MeedyaManager handles cover art downloaded during metadata lookup:
-
-```json5
-cover_art: {
-  download_static: true,      // Download static cover art (FrontCover.jpg)
-  download_animated: true,    // Download animated covers (FrontCover.mp4, PortraitCover.mp4)
-  embed_in_file: true,        // Embed cover art in media file tags
-  save_alongside: true,       // Save cover art files next to media files
-  max_resolution: 3000,       // Maximum resolution for static art
-}
-```
-
-### Credential Priority Chain
-
-When resolving API credentials for a provider, MeedyaManager checks the following sources in order (highest priority first):
-
-1. **Environment variables** (`.env`) — Keys defined in your `.env` file or exported in your shell environment
-2. **Config file** (`settings.json5` → `providers` section) — Credentials specified inline in the provider configuration
-3. **OS keyring** — Platform-native secure storage (macOS Keychain, Windows Credential Manager, Linux SecretService via D-Bus)
-4. **Encrypted bundle** — The application's bundled fallback keys (for providers whose Terms of Service permit shared keys)
-
-The first source that provides a valid credential wins. This means you can always override bundled or keyring-stored keys by setting an environment variable.
-
-### Per-Provider Setup Guides
-
-See individual provider guides in [help/providers/](providers/) for detailed setup instructions, including how to obtain API keys, configure OAuth flows, and troubleshoot authentication issues.
+> **Note:** No default watch folders are configured. You must add at least one folder before `meedya watch` will process any files.
 
 ---
 
-## Logging Configuration
+## rename — File Organisation
 
-MeedyaManager uses centralized logging with platform-appropriate log directories and automatic PII redaction.
+Controls how files are renamed and where they are placed.
 
-### Log Settings
+```json5
+rename: {
+  // MusicBee-style template for building the destination file path.
+  // Uses <Tag> placeholders and $Function() calls.
+  // See help/rule-syntax.md for the full syntax reference.
+  template: "<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
+
+  // Root directory where organised files are placed.
+  // Relative paths are resolved from the user's home directory.
+  output_dir: "~/Media/Organised",
+
+  // What to do when a destination file already exists:
+  //   "skip"       — leave the source file untouched (safest)
+  //   "overwrite"  — replace the destination
+  //   "rename"     — append a counter to make the name unique
+  //   "ask"        — prompt interactively (GUI only)
+  conflict_strategy: "skip",
+
+  // Create missing directories in the output path automatically
+  create_dirs: true,
+
+  // Copy the source file instead of moving it
+  copy_mode: false,
+
+  // Behaviour when a tag is missing during template evaluation:
+  //   "empty"    — insert an empty string (default)
+  //   "literal"  — insert the tag name verbatim, e.g. <Artist>
+  //   "error"    — abort the rename for this file
+  missing_tag_mode: "empty",
+
+  // Conditional rules evaluated before the fallback template above.
+  // First matching rule wins. See help/rule-syntax.md for syntax.
+  rules: []
+}
+```
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `template` | string | `"<Artist>/<Album>/<Title>"` | Default rename template |
+| `output_dir` | string or null | `null` | Output root (null = same dir as source) |
+| `conflict_strategy` | string | `"skip"` | Conflict resolution: `"skip"`, `"overwrite"`, `"rename"`, `"ask"` |
+| `create_dirs` | bool | `true` | Create missing output directories |
+| `copy_mode` | bool | `false` | Copy files instead of moving |
+| `missing_tag_mode` | string | `"empty"` | Missing tag behaviour: `"empty"`, `"literal"`, `"error"` |
+| `rules` | array | `[]` | Conditional rule list (evaluated in priority order) |
+
+---
+
+## logging — Diagnostics
+
+Controls log verbosity, output destinations, and PII redaction.
 
 ```json5
 logging: {
-  level: "INFO",           // DEBUG, INFO, WARNING, ERROR, CRITICAL
-  max_log_days: 30,        // Retain log files for this many days
-  max_log_size_mb: 10,     // Safety-net file size cap per log file
-  console_level: "WARNING", // Minimum level for console output
-  redact_pii: true,        // Redact user paths from all log records
+  // Minimum log level: "trace", "debug", "info", "warn", "error"
+  level: "info",
+
+  // Emit logs to the terminal (stdout)
+  console: true,
+
+  // Optional log file path (null = no file logging)
+  // Use an absolute path or one starting with ~/
+  file: null,
+
+  // Maximum log file size in bytes before rotating (default: 10 MB)
+  max_file_size_bytes: 10485760,
+
+  // Number of rotated log files to retain
+  max_rotated_files: 3,
+
+  // Redact file paths and other PII from log records
+  redact_pii: true
 }
 ```
 
-### Log File Location
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `level` | string | `"info"` | Log level: `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"` |
+| `console` | bool | `true` | Print logs to terminal |
+| `file` | string or null | `null` | Log file path (null = disabled) |
+| `max_file_size_bytes` | int | `10485760` | 10 MB max per log file before rotation |
+| `max_rotated_files` | int | `3` | Number of old log files to keep |
+| `redact_pii` | bool | `true` | Redact file paths and user data from logs |
 
-| Platform | Directory |
-|----------|-----------|
-| macOS | `~/Library/Logs/MeedyaManager/` |
-| Windows | `%LOCALAPPDATA%\MeedyaManager\logs\` |
-| Linux | `~/.local/state/MeedyaManager/logs/` |
-
-Override with the `METAMANCER_LOG_LEVEL` environment variable:
-
-```env
-METAMANCER_LOG_LEVEL=DEBUG
-```
-
-### Log Rotation
-
-- **Daily rotation** — New log file each day at midnight
-- **Size safety net** — 10 MB max per file (5 backups)
-- **Auto-cleanup** — Logs older than 30 days are removed on startup
+> Verbose output can also be enabled per-command with `-v` (info), `-vv` (debug), or `-vvv` (trace). This overrides the config `level` for that run.
 
 ---
 
-## Configuration Profiles (Export / Import)
+## providers — Metadata Lookup
 
-MeedyaManager supports exporting and importing settings as portable `.mmprofile` bundles for migration between platforms.
+Configures which metadata providers are enabled and supplies their credentials. All keys can be stored in the config file or overridden via environment variables (recommended for secrets).
 
-### Export
+```json5
+providers: {
+  // MusicBrainz — free, no credentials required
+  musicbrainz_enabled: true,
+
+  // Discogs — requires a personal access token
+  discogs_enabled: false,
+  discogs_token: null,        // or set MM_DISCOGS_TOKEN env var
+
+  // Spotify — requires OAuth client credentials
+  spotify_enabled: false,
+  spotify_client_id: null,    // or MM_SPOTIFY_CLIENT_ID
+  spotify_client_secret: null, // or MM_SPOTIFY_CLIENT_SECRET
+
+  // TMDb (The Movie Database) — requires an API key
+  tmdb_enabled: false,
+  tmdb_api_key: null,         // or MM_TMDB_API_KEY
+
+  // AcoustID — acoustic fingerprint matching, requires an API key
+  acoustid_enabled: false,
+  acoustid_api_key: null,     // or MM_ACOUSTID_API_KEY
+
+  // Global timeout for all provider HTTP requests (seconds)
+  request_timeout_secs: 30,
+
+  // Maximum number of concurrent provider API requests
+  max_concurrent_requests: 4
+}
+```
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `musicbrainz_enabled` | bool | `true` | Enable MusicBrainz lookups (no key needed) |
+| `discogs_enabled` | bool | `false` | Enable Discogs lookups |
+| `discogs_token` | string or null | `null` | Discogs personal access token |
+| `spotify_enabled` | bool | `false` | Enable Spotify lookups |
+| `spotify_client_id` | string or null | `null` | Spotify client ID |
+| `spotify_client_secret` | string or null | `null` | Spotify client secret |
+| `tmdb_enabled` | bool | `false` | Enable TMDb (movie/TV) lookups |
+| `tmdb_api_key` | string or null | `null` | TMDb API key |
+| `acoustid_enabled` | bool | `false` | Enable AcoustID fingerprint lookups |
+| `acoustid_api_key` | string or null | `null` | AcoustID API key |
+| `request_timeout_secs` | int | `30` | Per-request timeout in seconds |
+| `max_concurrent_requests` | int | `4` | Maximum concurrent API requests |
+
+For provider-specific setup instructions, see the guides in [providers/](providers/).
+
+---
+
+## Environment Variable Overrides
+
+API keys can be stored as environment variables instead of in the config file, which keeps secrets out of the settings file:
+
+| Environment Variable | Config Field | Provider |
+| -------------------- | ------------ | -------- |
+| `MM_DISCOGS_TOKEN` | `providers.discogs_token` | Discogs |
+| `MM_SPOTIFY_CLIENT_ID` | `providers.spotify_client_id` | Spotify |
+| `MM_SPOTIFY_CLIENT_SECRET` | `providers.spotify_client_secret` | Spotify |
+| `MM_TMDB_API_KEY` | `providers.tmdb_api_key` | TMDb |
+| `MM_ACOUSTID_API_KEY` | `providers.acoustid_api_key` | AcoustID |
+
+Environment variables always take priority over values in `settings.json5`.
+
+You can set them in your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) or in a `.env` file placed next to the `settings.json5` file. The `.env` file is not created automatically — create it manually if you want to use it:
 
 ```bash
-meedyamanager config export --out ~/backup.mmprofile --name "Home Mac"
-meedyamanager config export --out ~/backup.mmprofile --include-secrets
+# ~/.config/MeedyaManager/.env
+MM_SPOTIFY_CLIENT_ID=your_client_id_here
+MM_SPOTIFY_CLIENT_SECRET=your_client_secret_here
+MM_TMDB_API_KEY=your_tmdb_key_here
 ```
 
-Or via **Settings dialog** → **Export Settings...** button.
+> Keep your `.env` file private. Do not commit it to version control.
 
-### Import
+---
+
+## CLI Config Commands
 
 ```bash
-meedyamanager config import ~/backup.mmprofile --dry-run        # Preview changes
-meedyamanager config import ~/backup.mmprofile --mode merge      # Additive merge
-meedyamanager config import ~/backup.mmprofile --mode replace -y # Replace without prompt
+# Show the current config (pretty-printed)
+meedya config show
+
+# Show as JSON (useful for scripting)
+meedya config show --json
+
+# Validate the config file and report any errors
+meedya config validate
+
+# Print the config file path
+meedya config path
+
+# Export current settings to a portable .mmprofile bundle
+meedya config export --out ~/my-settings.mmprofile
+
+# Import settings from a .mmprofile bundle
+meedya config import ~/my-settings.mmprofile
+
+# Reset config to defaults (with confirmation prompt)
+meedya config reset
 ```
 
-Or via **Settings dialog** → **Import Settings...** button.
-
-### Profile Format
-
-A `.mmprofile` file is a ZIP archive containing:
-
-| File | Purpose |
-|------|---------|
-| `manifest.json` | Version, platform, timestamp, profile name |
-| `settings.json5` | Full config with paths tokenized for portability |
-| `env.template` | API key names with blank values |
-| `env.secrets` | Actual API key values (only if `--include-secrets`) |
-
-### Cross-Platform Path Tokens
-
-Paths are automatically converted between platforms:
-
-| Token | macOS | Windows | Linux |
-|-------|-------|---------|-------|
-| `{HOME}` | `/Users/name` | `C:\Users\name` | `/home/name` |
-| `{DESKTOP}` | `~/Desktop` | `~\Desktop` | `~/Desktop` |
-| `{DOWNLOADS}` | `~/Downloads` | `~\Downloads` | `~/Downloads` |
-| `{MUSIC}` | `~/Music` | `~\Music` | `~/Music` |
-| `{VIDEOS}` | `~/Movies` | `~\Videos` | `~/Videos` |
+For export/import details, see [settings-export-import.md](settings-export-import.md).
 
 ---
 
-## Platform-Specific Settings
-
-### macOS (Apple Silicon)
-
-- MediaInfo: Bundled via `pymediainfo` pip wheel (fallback: `brew install mediainfo`)
-- Service: LaunchAgent (per-user) or LaunchDaemon (system-wide)
-- Paths use `/` separators
-
-### Windows (x64/ARM)
-
-- MediaInfo: Bundled via `pymediainfo` pip wheel (fallback: install from [mediaarea.net](https://mediaarea.net))
-- Service: Windows Service via `pywin32`
-- Paths use `\` separators (JSON5 requires `\\` escaping)
-
-### Linux (x64/ARM)
-
-- MediaInfo: Install via package manager (`apt install mediainfo`, `dnf install mediainfo`, `pacman -S mediainfo`)
-- Service: systemd unit file
-- Paths use `/` separators
-
----
-
-> 📝 *For troubleshooting configuration issues, see [troubleshooting.md](troubleshooting.md).*
+> For troubleshooting configuration issues, see [troubleshooting.md](troubleshooting.md).

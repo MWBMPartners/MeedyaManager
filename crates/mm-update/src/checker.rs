@@ -98,11 +98,11 @@ impl UpdateChecker {
     /// Returns `Ok(Some(ReleaseInfo))` when an update is available, or
     /// `Ok(None)` when already on the latest version.
     pub async fn check(&self) -> Result<Option<ReleaseInfo>, UpdateError> {
+        // Build a client with the standard MeedyaManager User-Agent.
+        // Format: "MeedyaManager/<version> (<platform>)"
+        // e.g.   "MeedyaManager/1.2.0 (macOS; Apple Silicon)"
         let client = reqwest::Client::builder()
-            .user_agent(format!(
-                "MeedyaManager/{} (update-check; github.com/MWBMPartners/MeedyaManager)",
-                self.current_version
-            ))
+            .user_agent(mm_core::useragent::build_user_agent())
             .build()
             .map_err(|e| UpdateError::Network(e.to_string()))?;
 

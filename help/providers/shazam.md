@@ -21,7 +21,7 @@ This guide covers setting up the **Shazam** metadata provider in MeedyaManager. 
 
 ## Overview
 
-The Shazam provider uses the **shazamio** Python library — an unofficial wrapper around Shazam's audio recognition API — to identify and search for music. Its most powerful feature is **audio fingerprinting**: MeedyaManager can analyse the first 10-15 seconds of an audio file to identify the track, even when the file has no metadata tags at all.
+The Shazam provider communicates with Shazam's audio recognition API directly via HTTP to identify and search for music. Its most powerful feature is **audio fingerprinting**: MeedyaManager can analyse the first 10-15 seconds of an audio file to identify the track, even when the file has no metadata tags at all.
 
 This makes Shazam especially useful for:
 
@@ -37,27 +37,17 @@ This makes Shazam especially useful for:
 - Genre classification
 - Static cover art from Shazam's CDN
 - Shazam URLs for sharing and linking
-- No API key required — uses the `shazamio` library
+- No API key required
 
 ---
 
 ## Authentication
 
-Shazam requires **no API key or authentication**. The `shazamio` library communicates with Shazam's API using reverse-engineered endpoints. No accounts, tokens, or credentials are needed.
-
-### Requirements
-
-The only requirement is that the `shazamio` Python package is installed:
-
-```bash
-pip install shazamio
-```
-
-> Release builds include this dependency automatically.
+Shazam requires **no API key or authentication**. MeedyaManager communicates with Shazam's recognition API using reverse-engineered endpoints. No accounts, tokens, or credentials are needed — the Shazam provider is available out of the box.
 
 ### No setup required
 
-Once `shazamio` is installed, the Shazam provider is immediately available. There is nothing to configure for basic functionality.
+There is nothing to install or configure for basic functionality.
 
 ---
 
@@ -141,7 +131,7 @@ Audio fingerprinting is the Shazam provider's most distinctive feature. When a f
 ### How it works
 
 1. MeedyaManager reads the first 10-15 seconds of audio from the file
-2. The `shazamio` library generates an audio fingerprint (a compact digital signature)
+2. MeedyaManager generates an audio fingerprint (a compact digital signature)
 3. The fingerprint is sent to Shazam's recognition API
 4. Shazam returns the matched track information (if found)
 
@@ -174,17 +164,6 @@ MeedyaManager saves this as `FrontCover.jpg`.
 ---
 
 ## Troubleshooting
-
-### "shazamio not installed — Shazam provider unavailable"
-
-**Cause:** The `shazamio` library is not installed in the Python environment.
-
-**Solution:**
-```bash
-pip install shazamio
-```
-
-> Release builds include this dependency automatically. This issue typically only affects development/source installations.
 
 ### Audio fingerprinting fails or returns no results
 
@@ -223,13 +202,12 @@ pip install shazamio
 ## Legal Notes
 
 - Shazam is a service owned by **Apple Inc.**
-- The `shazamio` library is a **community-maintained, unofficial** Python wrapper for Shazam's API
 - This integration uses **reverse-engineered API endpoints** and may break without notice if Shazam changes their API
 - Use of this provider may be subject to [Shazam's Terms of Use](https://www.shazam.com/terms) and [Apple's Terms of Service](https://www.apple.com/legal/internet-services/terms/site.html)
 - Audio fingerprinting sends a compact digital signature of the audio content to Shazam's servers — the full audio file is **not** uploaded
 - MeedyaManager includes this provider as a convenience with the understanding that it is unofficial and best-effort
 - Cover art and metadata are the property of their respective rights holders
-- The `shazamio` package is a separate open-source project and is not affiliated with Shazam or Apple Inc.
+- MeedyaManager's Shazam integration is not affiliated with Shazam or Apple Inc.
 
 ---
 

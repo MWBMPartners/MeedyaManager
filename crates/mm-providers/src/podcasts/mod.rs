@@ -42,7 +42,7 @@ impl ApplePodcastsProvider {
     /// Create a provider with a custom base URL (for test mocking).
     pub fn with_base_url(country: impl Into<String>, base_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             enabled: true,
             country: country.into(),

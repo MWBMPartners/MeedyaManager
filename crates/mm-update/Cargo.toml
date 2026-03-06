@@ -12,6 +12,8 @@ description = "Auto-update version checker — queries GitHub Releases API for n
 rust-version.workspace = true
 
 [dependencies]
+# Core library — provides the shared User-Agent string builder
+mm-core = { path = "../mm-core" }
 # Async HTTP client — queries the GitHub Releases API
 reqwest  = { workspace = true }
 # JSON deserialization for the GitHub API response

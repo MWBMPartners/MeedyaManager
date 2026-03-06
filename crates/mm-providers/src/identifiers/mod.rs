@@ -84,7 +84,7 @@ impl IsrcProvider {
     pub fn with_base_url(user_agent: impl Into<String>, base_url: impl Into<String>) -> Self {
         let user_agent = user_agent.into();
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             user_agent,
             capabilities: Capabilities {
@@ -180,7 +180,7 @@ impl MetadataProvider for IsrcProvider {
         let url = format!("{}/ws/2/recording/", self.base_url);
         let response = self.client
             .get(&url)
-            .header("User-Agent", &self.user_agent)
+            // User-Agent is set at client level by crate::http::build_client()
             .header("Accept", "application/json")
             .query(&[
                 ("query", &format!("isrc:{isrc}")),
@@ -232,7 +232,7 @@ impl EidrProvider {
         base_url: impl Into<String>,
     ) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             username,
             password,
@@ -376,7 +376,7 @@ impl IswcProvider {
     pub fn with_base_url(user_agent: impl Into<String>, base_url: impl Into<String>) -> Self {
         let user_agent = user_agent.into();
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             user_agent,
             capabilities: Capabilities {
@@ -460,7 +460,7 @@ impl MetadataProvider for IswcProvider {
         let url = format!("{}/ws/2/work/", self.base_url);
         let response = self.client
             .get(&url)
-            .header("User-Agent", &self.user_agent)
+            // User-Agent is set at client level by crate::http::build_client()
             .header("Accept", "application/json")
             .query(&[
                 ("query", &format!("iswc:{iswc}")),

@@ -83,7 +83,7 @@ impl MusicBrainzProvider {
         let user_agent = user_agent.into();
         let enabled = !user_agent.is_empty();
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             enabled,
             user_agent,
@@ -209,7 +209,9 @@ impl MetadataProvider for MusicBrainzProvider {
         let response = self
             .client
             .get(&url)
-            .header("User-Agent", &self.user_agent)
+            // User-Agent is set at the client level by crate::http::build_client()
+            // so no per-request override is needed. MusicBrainz receives our
+            // standard "MeedyaManager/<version> (<platform>)" header automatically.
             .header("Accept", "application/json")
             .query(&[
                 ("query", &lucene_query as &str),
@@ -275,7 +277,7 @@ impl SpotifyProvider {
             homepage_url: "https://spotify.com".into(),
         };
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             client_id,
             client_secret,
@@ -472,7 +474,7 @@ impl AppleMusicProvider {
 
     pub fn with_base_url(country: impl Into<String>, base_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             enabled: true,
             country: country.into(),
@@ -622,7 +624,7 @@ impl DeezerProvider {
 
     pub fn with_base_url(base_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::http::build_client(),
             base_url: base_url.into(),
             enabled: true,
             capabilities: Capabilities {

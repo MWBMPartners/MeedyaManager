@@ -50,6 +50,9 @@ pub mod podcasts;
 /// Identifier lookup services (ISRC via MusicBrainz, EIDR, ISWC via MusicBrainz).
 pub mod identifiers;
 
+/// Shared HTTP client factory — builds reqwest::Client with the correct User-Agent.
+pub(crate) mod http;
+
 // ---------------------------------------------------------------------------
 // Convenient re-exports — consumers only need `use mm_providers::*`
 // ---------------------------------------------------------------------------
@@ -129,7 +132,7 @@ mod tests {
     #[test]
     fn all_19_providers_instantiate() {
         // Music — concrete
-        let _mb = MusicBrainzProvider::new("MeedyaManager/0.6.0 (test)");
+        let _mb = MusicBrainzProvider::new(mm_core::useragent::build_user_agent());
         let _sp = SpotifyProvider::new(Some("client_id".into()), Some("client_secret".into()));
         let _am = AppleMusicProvider::new("US");
         let _dz = DeezerProvider::new();
@@ -149,9 +152,9 @@ mod tests {
         // Podcasts
         let _ap = ApplePodcastsProvider::new("US");
         // Identifiers
-        let _is = IsrcProvider::new("MeedyaManager/0.6.0 (test)");
+        let _is = IsrcProvider::new(mm_core::useragent::build_user_agent());
         let _ei = EidrProvider::new(Some("user".into()), Some("password".into()));
-        let _iw = IswcProvider::new("MeedyaManager/0.6.0 (test)");
+        let _iw = IswcProvider::new(mm_core::useragent::build_user_agent());
     }
 
     // -----------------------------------------------------------------------

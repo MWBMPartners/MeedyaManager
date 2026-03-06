@@ -62,9 +62,9 @@ Apple Music requires **JWT Developer Tokens** signed with the **ES256** (Ellipti
    - Your **Team ID** is shown in the top-right corner of the Membership page
    - It is a 10-character alphanumeric string (e.g. `A1B2C3D4E5`)
 
-5. **Note the required Python packages**
-   - MeedyaManager uses `pyjwt` and `cryptography` to sign JWT tokens
-   - These are included in `requirements.txt` and bundled with release builds
+5. **That's it — no additional dependencies needed**
+   - MeedyaManager uses the `jsonwebtoken` Rust crate to sign JWT tokens natively
+   - No external libraries or packages to install
 
 ---
 
@@ -180,18 +180,7 @@ MeedyaManager saves these as:
 **Solutions:**
 1. Verify all three environment variables are set: `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY`
 2. Check that the `.p8` file path is correct and the file is readable
-3. Ensure `pyjwt` and `cryptography` are installed: `pip install pyjwt cryptography`
-
-### "pyjwt not installed — Apple Music provider unavailable"
-
-**Cause:** The `pyjwt` Python package is not available.
-
-**Solution:**
-```bash
-pip install pyjwt[crypto]
-```
-
-> Release builds include this dependency automatically.
+3. Verify the key has not been revoked in the Apple Developer portal
 
 ### "Apple Music search returned 0 results"
 

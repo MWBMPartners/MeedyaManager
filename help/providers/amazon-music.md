@@ -25,7 +25,7 @@ The Amazon Music provider is designed to integrate with the **Amazon Music API**
 
 MeedyaManager includes this provider as a framework stub that will become functional when Amazon opens their API to the public, or when a user gains access to the closed beta programme.
 
-**Current status:** `is_available() = False` for most users.
+**Current status:** Stub provider — returns no results for most users (no public API).
 
 **Planned features (when API becomes available):**
 
@@ -127,9 +127,7 @@ The following custom tags will be stored when the provider becomes functional:
 
 ### What does not work
 
-- `is_available()` returns `False` — the provider will not be used in searches
-- `search()` returns an empty list
-- `lookup_by_id()` returns `None`
+- The provider returns empty results — it will not be used in searches
 - No cover art is available
 
 ### When will it be available?
@@ -147,22 +145,13 @@ Amazon has not announced a public release date for their music metadata API. Mee
 **If you have closed beta access:**
 1. Set `AMAZON_MUSIC_AUTH` in your `.env` file with your OAuth token
 2. Set `enabled: true` in `settings.json5` under `providers.amazon_music`
-3. The provider's `is_available()` check will be updated in a future release to validate beta credentials
+3. The provider will be updated in a future release to validate beta credentials
 
 ### "Amazon Music API not available — search skipped"
 
 **This is expected behaviour.** MeedyaManager logs this informational message when the Amazon Music provider is queried but unavailable. It does not indicate an error — the system gracefully falls back to other enabled providers.
 
-### Using the unofficial `amazon-music` package
-
-If you have the community `amazon-music` Python package installed and wish to use it:
-
-1. Install the package: `pip install amazon-music`
-2. Set `accept_tos_risk: true` in `settings.json5`
-3. Set `enabled: true` in `settings.json5`
-4. Be aware this may violate Amazon's Terms of Service
-
-> **MeedyaManager does not officially support or endorse the use of unofficial Amazon Music packages.** This option is provided for advanced users who understand and accept the risks.
+> **MeedyaManager does not officially support or endorse unofficial Amazon Music API access.** If Amazon opens their API publicly, this provider will be updated accordingly.
 
 ---
 
