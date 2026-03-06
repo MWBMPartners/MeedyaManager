@@ -46,10 +46,13 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Run Clippy lints
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        # mm-gtk requires GTK4 system libraries (only available in ci-linux.yml).
+        # Exclude it here so the 3-OS matrix stays clean on macOS and Windows.
+        run: cargo clippy --workspace --all-targets --exclude mm-gtk -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace
+        # mm-gtk is exercised in ci-linux.yml where GTK4 is installed via apt.
+        run: cargo test --workspace --exclude mm-gtk
 
   # ---------------------------------------------------------------------------
   # Version Sync — verify all platform version files match Cargo.toml

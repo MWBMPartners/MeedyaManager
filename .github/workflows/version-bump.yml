@@ -177,11 +177,11 @@ jobs:
 
           # Insert new version section after the "## [Unreleased]" line or after the header
           # If there's an [Unreleased] section, insert after it; otherwise insert after first ## line
-          if grep -q '## \[Unreleased\]' docs/CHANGELOG.md; then
-            sed -i "/## \[Unreleased\]/a\\\\n## [v${VERSION}] — ${DATE}\\n\\n### Added\\n\\n### Changed\\n\\n### Fixed\\n" docs/CHANGELOG.md
+          if grep -q '## \[Unreleased\]' docs/changelog.md; then
+            sed -i "/## \[Unreleased\]/a\\\\n## [v${VERSION}] — ${DATE}\\n\\n### Added\\n\\n### Changed\\n\\n### Fixed\\n" docs/changelog.md
           else
             # Insert after the first existing version entry marker
-            sed -i "0,/^## \[v/s//## [v${VERSION}] — ${DATE}\n\n### Added\n\n### Changed\n\n### Fixed\n\n## [v/" docs/CHANGELOG.md
+            sed -i "0,/^## \[v/s//## [v${VERSION}] — ${DATE}\n\n### Added\n\n### Changed\n\n### Fixed\n\n## [v/" docs/changelog.md
           fi
           echo "Updated CHANGELOG.md with v${VERSION}"
 
@@ -217,7 +217,7 @@ jobs:
           VERSION="${{ steps.new.outputs.version }}"
           BRANCH="version/v${VERSION}"
           git checkout -b "$BRANCH"
-          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/CHANGELOG.md
+          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/changelog.md
           git commit -m "chore: bump version to v${VERSION}"
           git push origin "$BRANCH"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
@@ -236,7 +236,7 @@ jobs:
           - \`Cargo.toml\` — workspace version
           - \`windows/MeedyaManager/Package.appxmanifest\` — MSIX identity version
           - \`macos/MeedyaManager/Info.plist\` — CFBundleShortVersionString
-          - \`docs/CHANGELOG.md\` — new version section
+          - \`docs/changelog.md\` — new version section
 
           ### How to verify
           1. Check all version files are consistent
@@ -256,7 +256,7 @@ jobs:
         if: ${{ !inputs.create_pr }}
         run: |
           VERSION="${{ steps.new.outputs.version }}"
-          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/CHANGELOG.md
+          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/changelog.md
           git commit -m "chore: bump version to v${VERSION}"
           git push origin HEAD
 

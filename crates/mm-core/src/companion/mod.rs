@@ -3,8 +3,12 @@
 // Companion file detection and grouping.
 //
 // Detects files that belong alongside a media file (subtitles, lyrics,
-// cue sheets, cover art, disc images, NFO files) and groups them so
-// they move together during rename operations.
+// cue sheets, cover art, disc images, NFO files, archives) and groups
+// them so they move together during rename operations.
+//
+// The canonical list of recognised extensions and their MIME types lives in
+// `crate::filetype_registry`. This module uses that registry for lookups
+// and adds file-system-level grouping logic on top.
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -13,41 +17,52 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MmError, MmResult};
+// Re-export CompanionScope from the filetype registry for consumer convenience
+pub use crate::filetype_registry::CompanionScope;
 
-/// Types of companion files we recognise
+/// Types of companion files we recognise.
+///
+/// When a new companion type is needed, add an entry here AND add the
+/// relevant extension entries to `crate::filetype_registry::COMPANION_FORMATS`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CompanionType {
-    /// Subtitle file (.srt, .sub, .ass, .ssa, .vtt, .idx)
+    /// Subtitle file (.srt, .sub, .ass, .ssa, .vtt, .idx, .smi, .ttml)
     Subtitle,
-    /// Lyrics file (.lrc)
+    /// Lyrics file (.lrc, .elrc)
     Lyrics,
-    /// Cue sheet (.cue)
+    /// Cue sheet (.cue) — describes disc track layout
     CueSheet,
     /// Cover art image (cover.jpg, folder.png, album.jpg, etc.)
     CoverArt,
-    /// Disc image (.iso, .bin, .img, .nrg)
+    /// Disc / optical image (.iso, .bin, .img, .nrg, .mdf, .mds, .daa)
     DiscImage,
-    /// Information file (.nfo)
+    /// Compressed archive containing album release files (.zip, .rar, .7z)
+    Archive,
+    /// Apple iTunes LP / music store package (.itlp, .itmsp, .itms)
+    ItunesPackage,
+    /// Information / release notes file (.nfo)
     InfoFile,
-    /// Log file from ripping (.log)
+    /// Log file from CD ripping (.log)
     RipLog,
-    /// Playlist file (.m3u, .m3u8, .pls, .xspf)
+    /// Playlist file (.m3u, .m3u8, .pls, .xspf, .wpl, .asx)
     Playlist,
-    /// Accuracy check file (.accurip, .crc)
+    /// Accuracy check / checksum file (.accurip, .crc, .sfv, .md5)
     AccuracyCheck,
 }
 
 impl std::fmt::Display for CompanionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subtitle => write!(f, "Subtitle"),
-            Self::Lyrics => write!(f, "Lyrics"),
-            Self::CueSheet => write!(f, "Cue Sheet"),
-            Self::CoverArt => write!(f, "Cover Art"),
-            Self::DiscImage => write!(f, "Disc Image"),
-            Self::InfoFile => write!(f, "Info File"),
-            Self::RipLog => write!(f, "Rip Log"),
-            Self::Playlist => write!(f, "Playlist"),
+            Self::Subtitle      => write!(f, "Subtitle"),
+            Self::Lyrics        => write!(f, "Lyrics"),
+            Self::CueSheet      => write!(f, "Cue Sheet"),
+            Self::CoverArt      => write!(f, "Cover Art"),
+            Self::DiscImage     => write!(f, "Disc Image"),
+            Self::Archive       => write!(f, "Archive"),
+            Self::ItunesPackage => write!(f, "iTunes Package"),
+            Self::InfoFile      => write!(f, "Info File"),
+            Self::RipLog        => write!(f, "Rip Log"),
+            Self::Playlist      => write!(f, "Playlist"),
             Self::AccuracyCheck => write!(f, "Accuracy Check"),
         }
     }
@@ -81,26 +96,43 @@ const COVER_ART_STEMS: &[&str] = &[
 /// Image extensions that qualify as cover art
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif"];
 
-/// Classify a file extension as a companion type, if applicable
+/// Classify a file extension as a companion type, if applicable.
+///
+/// Returns the `CompanionType` for the given extension, or `None` if the
+/// extension is not a recognised companion format.
+///
+/// The canonical source of truth for companion extensions is
+/// `crate::filetype_registry::COMPANION_FORMATS`. This function mirrors
+/// that registry and additionally handles subtitles (from SUBTITLE_FORMATS).
 pub fn classify_companion(extension: &str) -> Option<CompanionType> {
     match extension.to_ascii_lowercase().as_str() {
-        // Subtitles
-        "srt" | "sub" | "ass" | "ssa" | "vtt" | "idx" | "smi" => Some(CompanionType::Subtitle),
-        // Lyrics
-        "lrc" => Some(CompanionType::Lyrics),
-        // Cue sheets
+        // ── Subtitles ────────────────────────────────────────────────────────
+        "srt" | "sub" | "ass" | "ssa" | "vtt" | "idx" | "smi" | "ttml" | "dfxp" => {
+            Some(CompanionType::Subtitle)
+        }
+        // ── Captions ─────────────────────────────────────────────────────────
+        "sbv" | "srv1" | "srv2" | "srv3" | "cap" => Some(CompanionType::Subtitle),
+        // ── Lyrics ───────────────────────────────────────────────────────────
+        "lrc" | "elrc" => Some(CompanionType::Lyrics),
+        // ── Cue sheets ───────────────────────────────────────────────────────
         "cue" => Some(CompanionType::CueSheet),
-        // Disc images
-        "iso" | "bin" | "img" | "nrg" | "mdf" | "mds" => Some(CompanionType::DiscImage),
-        // Info files
+        // ── Disc / optical images ─────────────────────────────────────────────
+        "iso" | "bin" | "img" | "nrg" | "mdf" | "mds" | "daa" | "udf" => {
+            Some(CompanionType::DiscImage)
+        }
+        // ── Archives (ZIP, RAR and friends travel with album releases) ────────
+        "zip" | "rar" | "7z" | "tar" | "gz" => Some(CompanionType::Archive),
+        // ── Apple iTunes LP / music store packages ────────────────────────────
+        "itlp" | "itmsp" | "itms" => Some(CompanionType::ItunesPackage),
+        // ── Info / release notes ──────────────────────────────────────────────
         "nfo" => Some(CompanionType::InfoFile),
-        // Rip logs
+        // ── Rip logs ─────────────────────────────────────────────────────────
         "log" => Some(CompanionType::RipLog),
-        // Playlists
-        "m3u" | "m3u8" | "pls" | "xspf" | "wpl" => Some(CompanionType::Playlist),
-        // Accuracy checks
-        "accurip" | "crc" => Some(CompanionType::AccuracyCheck),
-        // Not a companion extension
+        // ── Playlists ────────────────────────────────────────────────────────
+        "m3u" | "m3u8" | "pls" | "xspf" | "wpl" | "asx" => Some(CompanionType::Playlist),
+        // ── Accuracy checks / checksums ───────────────────────────────────────
+        "accurip" | "crc" | "sfv" | "md5" => Some(CompanionType::AccuracyCheck),
+        // ── Not a companion extension ─────────────────────────────────────────
         _ => None,
     }
 }
@@ -327,6 +359,40 @@ mod tests {
         assert_eq!(classify_companion("mp3"), None);
         assert_eq!(classify_companion("flac"), None);
         assert_eq!(classify_companion("xyz"), None);
+    }
+
+    #[test]
+    fn classify_archive_extensions() {
+        assert_eq!(classify_companion("zip"), Some(CompanionType::Archive));
+        assert_eq!(classify_companion("ZIP"), Some(CompanionType::Archive));
+        assert_eq!(classify_companion("rar"), Some(CompanionType::Archive));
+        assert_eq!(classify_companion("7z"),  Some(CompanionType::Archive));
+    }
+
+    #[test]
+    fn classify_itunes_package_extensions() {
+        assert_eq!(classify_companion("itlp"),  Some(CompanionType::ItunesPackage));
+        assert_eq!(classify_companion("itmsp"), Some(CompanionType::ItunesPackage));
+        assert_eq!(classify_companion("itms"),  Some(CompanionType::ItunesPackage));
+    }
+
+    #[test]
+    fn classify_checksum_extensions() {
+        assert_eq!(classify_companion("sfv"), Some(CompanionType::AccuracyCheck));
+        assert_eq!(classify_companion("md5"), Some(CompanionType::AccuracyCheck));
+    }
+
+    #[test]
+    fn classify_ttml_subtitle() {
+        assert_eq!(classify_companion("ttml"), Some(CompanionType::Subtitle));
+        assert_eq!(classify_companion("dfxp"), Some(CompanionType::Subtitle));
+    }
+
+    #[test]
+    fn companion_type_display_new_types() {
+        assert_eq!(CompanionType::Archive.to_string(),       "Archive");
+        assert_eq!(CompanionType::ItunesPackage.to_string(), "iTunes Package");
+        assert_eq!(CompanionType::AccuracyCheck.to_string(), "Accuracy Check");
     }
 
     #[test]

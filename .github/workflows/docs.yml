@@ -26,5 +26,10 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Install GTK4 system dependencies for mm-gtk doc build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev gettext
+
       - name: Build Rust API documentation
         run: cargo doc --no-deps --workspace

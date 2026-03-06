@@ -457,9 +457,9 @@ MeedyaManager/
 
 | OS | Rust | Targets |
 |----|------|---------|
-| ubuntu-latest | stable | `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --workspace` |
-| macos-latest (ARM) | stable | Same as above |
-| windows-latest | stable | Same as above |
+| ubuntu-latest | stable | `cargo fmt --check`, `cargo clippy --workspace --exclude mm-gtk -- -D warnings`, `cargo test --workspace --exclude mm-gtk` |
+| macos-latest (ARM) | stable | Same as above (mm-gtk excluded — GTK4 not available on macOS runners) |
+| windows-latest | stable | Same as above (mm-gtk excluded — GTK4 not available on Windows runners) |
 
 ### Verification Checklist (M0 Completion)
 
@@ -542,6 +542,25 @@ Each release includes:
 
 ---
 
+## 🍎 Apple Platform Wishlist (v1.2.0+)
+
+> The following Apple-specific features extend MeedyaManager beyond cross-platform parity.
+> Each is tracked as an open GitHub issue. They will be scheduled into future milestones once
+> cross-platform core quality is established. All require macOS-only Swift code in `macos/`.
+
+| # | Feature | Description | Effort |
+| - | ------- | ----------- | ------ |
+| #134 | **Music.app Library Import** | Parse `~/Music/Music/` (SQLite + XML) to bulk-import metadata, ratings, play counts, and playlists into MeedyaManager without re-tagging | Medium |
+| #135 | **MusicKit Framework** | Replace the REST-based Apple Music provider with the native `MusicKit` framework for richer catalog access, authenticated user-library sync, and on-device catalog search | Medium |
+| #136 | **Quick Look Extension** | Register a `QLPreviewExtension` target so Finder shows rich previews (album art, tags, waveform) for media files managed by MeedyaManager | Small |
+| #137 | **Siri Shortcuts / App Intents** | Implement `AppIntent` conformances for key operations (scan folder, rename preview, tag lookup) so users can automate MeedyaManager from the Shortcuts app or Siri | Small |
+| #138 | **Core ML Audio Fingerprinting** | Use Apple's Sound Analysis framework and Neural Engine to identify tracks on-device without any external API — works fully offline on Apple Silicon | Large |
+| #139 | **Spotlight Importer** | Publish the MeedyaManager library to macOS Spotlight via `CoreSpotlight` so every track is instantly findable system-wide, including from Alfred and Raycast | Small |
+| #140 | **AirPlay 2 Streaming** | Extend `mm-server` to advertise itself as an AirPlay 2 source, enabling playback on HomePod, Apple TV, and any AirPlay-enabled speaker | Medium |
+| #141 | **CloudKit Settings Sync** | Synchronise rename rules, provider credentials, and app preferences across all Apple devices via iCloud / CloudKit — configuration set on Mac appears on iPhone/iPad automatically | Medium |
+
+---
+
 ## ⚖️ Licensing & Copyright
 
 ### Licence
@@ -585,7 +604,7 @@ All source files include a copyright header:
 | `README.md` | Everyone | Project overview, quick start |
 | `Project_Plan.md` | Developers | This file — full project plan |
 | `PROJECT_STATUS.md` | Everyone | Current status & progress |
-| `docs/CHANGELOG.md` | Everyone | Detailed change log with dates |
+| `docs/changelog.md` | Everyone | Detailed change log with dates |
 | `docs/ROADMAP.md` | Everyone | Milestone timeline |
 | `help/` | End users | Usage docs, troubleshooting, FAQs |
 | `.claude/` | AI/Developers | Project brief, Claude context |

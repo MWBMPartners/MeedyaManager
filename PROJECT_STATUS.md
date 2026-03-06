@@ -377,6 +377,6 @@
 
 ---
 
-> *This file is updated with each significant change. For detailed changelog, see [docs/CHANGELOG.md](docs/CHANGELOG.md).*
+> *This file is updated with each significant change. For detailed changelog, see [docs/changelog.md](docs/changelog.md).*
 >
 > *Last updated: 2026-03-05 (M10 complete — Secure Media Server + Public Release v1.0.0)*

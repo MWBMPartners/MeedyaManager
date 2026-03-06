@@ -31,10 +31,16 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build mm-ffi native library
-        # TODO: Replace with actual mm-ffi build command once crate is scaffolded
-        run: echo "Placeholder — cargo build -p mm-ffi --release"
+        # Compile the UniFFI-based Rust FFI crate that generates Swift bindings.
+        # The resulting dylib (libmm_ffi.dylib) is linked by the Swift package.
+        run: cargo build -p mm-ffi --release
 
       - name: Build SwiftUI application
         working-directory: macos
-        # TODO: Replace with xcodebuild once Xcode project is created
-        run: swift build
+        # Release build of the SwiftUI app via Swift Package Manager.
+        run: swift build -c release
+
+      - name: Run Swift tests
+        working-directory: macos
+        # Unit tests for pure-logic Swift helpers (no WinUI/XAML runtime needed).
+        run: swift test

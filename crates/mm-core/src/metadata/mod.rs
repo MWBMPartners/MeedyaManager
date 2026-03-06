@@ -76,6 +76,76 @@ pub const TAG_COMPILATION: &str = "compilation";
 /// Beats per minute (integer as string)
 pub const TAG_BPM: &str = "bpm";
 
+// ── Sort fields (used by Apple Music / iTunes for correct alphabetical sort) ──
+/// Track title sort key (e.g. "Sacrifice, The" → "The Sacrifice" sorts under T)
+pub const TAG_TITLE_SORT: &str = "title_sort";
+/// Performing artist sort key
+pub const TAG_ARTIST_SORT: &str = "artist_sort";
+/// Album title sort key
+pub const TAG_ALBUM_SORT: &str = "album_sort";
+/// Album artist sort key
+pub const TAG_ALBUM_ARTIST_SORT: &str = "album_artist_sort";
+/// Composer sort key
+pub const TAG_COMPOSER_SORT: &str = "composer_sort";
+
+// ── Extended attribution ─────────────────────────────────────────────────────
+/// Conductor name (classical music)
+pub const TAG_CONDUCTOR: &str = "conductor";
+/// Remixer or mix engineer
+pub const TAG_REMIXER: &str = "remixer";
+/// Primary lyricist
+pub const TAG_LYRICIST: &str = "lyricist";
+/// Language of the lyrics (ISO 639-1, e.g. "en", "fr", "ja")
+pub const TAG_LANGUAGE: &str = "language";
+/// Emotional mood tag (e.g. "Melancholic", "Upbeat")
+pub const TAG_MOOD: &str = "mood";
+/// Content grouping (iTunes "Grouping" field; used for classical works)
+pub const TAG_GROUPING: &str = "grouping";
+
+// ── Classical music fields ───────────────────────────────────────────────────
+/// The overarching work title (e.g. "Symphony No. 5 in C minor")
+pub const TAG_WORK: &str = "work";
+/// Movement name within a work (e.g. "I. Allegro con brio")
+pub const TAG_MOVEMENT: &str = "movement";
+/// Movement index within the work (integer as string, e.g. "1")
+pub const TAG_MOVEMENT_INDEX: &str = "movement_index";
+/// Total number of movements in the work
+pub const TAG_MOVEMENT_TOTAL: &str = "movement_total";
+
+// ── ReplayGain (loudness normalisation) ─────────────────────────────────────
+/// Per-track ReplayGain gain value in dB (e.g. "-6.54 dB")
+pub const TAG_REPLAYGAIN_TRACK_GAIN: &str = "replaygain_track_gain";
+/// Per-track ReplayGain peak sample value (e.g. "0.987654")
+pub const TAG_REPLAYGAIN_TRACK_PEAK: &str = "replaygain_track_peak";
+/// Album-level ReplayGain gain value in dB
+pub const TAG_REPLAYGAIN_ALBUM_GAIN: &str = "replaygain_album_gain";
+/// Album-level ReplayGain peak sample value
+pub const TAG_REPLAYGAIN_ALBUM_PEAK: &str = "replaygain_album_peak";
+
+// ── Encoding information ─────────────────────────────────────────────────────
+/// Name of the encoder software (e.g. "LAME 3.100", "Apple iTunes 12.9.0.164")
+pub const TAG_ENCODED_BY: &str = "encoded_by";
+/// Encoding tool / settings string
+pub const TAG_ENCODER_SETTINGS: &str = "encoder_settings";
+/// Original release year (before remaster), 4-digit string
+pub const TAG_ORIGINAL_YEAR: &str = "original_year";
+/// Original album title (before remaster/reissue)
+pub const TAG_ORIGINAL_ALBUM: &str = "original_album";
+/// Original performing artist (before cover/remake)
+pub const TAG_ORIGINAL_ARTIST: &str = "original_artist";
+
+// ── Podcast-specific fields ─────────────────────────────────────────────────
+/// Podcast title (iTunes podcast feed title)
+pub const TAG_PODCAST_TITLE: &str = "podcast_title";
+/// Podcast episode identifier / GUID
+pub const TAG_PODCAST_ID: &str = "podcast_id";
+/// Podcast feed URL
+pub const TAG_PODCAST_URL: &str = "podcast_url";
+/// Podcast category (e.g. "Technology", "True Crime")
+pub const TAG_PODCAST_CATEGORY: &str = "podcast_category";
+/// Podcast description / episode notes
+pub const TAG_PODCAST_DESCRIPTION: &str = "podcast_description";
+
 // ---------------------------------------------------------------------------
 // Type aliases
 // ---------------------------------------------------------------------------
@@ -156,25 +226,67 @@ pub fn join_multi_value(values: &[String]) -> String {
 /// we recognise.  This is the single source of truth for field mapping.
 fn tag_key_mappings() -> Vec<(&'static str, ItemKey)> {
     vec![
-        (TAG_TITLE,          ItemKey::TrackTitle),
-        (TAG_ARTIST,         ItemKey::TrackArtist),
-        (TAG_ALBUM,          ItemKey::AlbumTitle),
-        (TAG_ALBUM_ARTIST,   ItemKey::AlbumArtist),
-        (TAG_YEAR,           ItemKey::Year),
-        (TAG_GENRE,          ItemKey::Genre),
-        (TAG_TRACK_NUMBER,   ItemKey::TrackNumber),
-        (TAG_TRACK_TOTAL,    ItemKey::TrackTotal),
-        (TAG_DISC_NUMBER,    ItemKey::DiscNumber),
-        (TAG_DISC_TOTAL,     ItemKey::DiscTotal),
-        (TAG_COMPOSER,       ItemKey::Composer),
-        (TAG_COMMENT,        ItemKey::Comment),
-        (TAG_LYRICS,         ItemKey::Lyrics),
-        (TAG_ISRC,           ItemKey::Isrc),
-        (TAG_BARCODE,        ItemKey::Barcode),
-        (TAG_CATALOG_NUMBER, ItemKey::CatalogNumber),
-        (TAG_LABEL,          ItemKey::Label),
-        (TAG_COMPILATION,    ItemKey::FlagCompilation),
-        (TAG_BPM,            ItemKey::Bpm),
+        // ── Core tags ────────────────────────────────────────────────────────
+        (TAG_TITLE,                  ItemKey::TrackTitle),
+        (TAG_ARTIST,                 ItemKey::TrackArtist),
+        (TAG_ALBUM,                  ItemKey::AlbumTitle),
+        (TAG_ALBUM_ARTIST,           ItemKey::AlbumArtist),
+        (TAG_YEAR,                   ItemKey::Year),
+        (TAG_GENRE,                  ItemKey::Genre),
+        (TAG_TRACK_NUMBER,           ItemKey::TrackNumber),
+        (TAG_TRACK_TOTAL,            ItemKey::TrackTotal),
+        (TAG_DISC_NUMBER,            ItemKey::DiscNumber),
+        (TAG_DISC_TOTAL,             ItemKey::DiscTotal),
+        (TAG_COMPOSER,               ItemKey::Composer),
+        (TAG_COMMENT,                ItemKey::Comment),
+        (TAG_LYRICS,                 ItemKey::Lyrics),
+        (TAG_ISRC,                   ItemKey::Isrc),
+        (TAG_BARCODE,                ItemKey::Barcode),
+        (TAG_CATALOG_NUMBER,         ItemKey::CatalogNumber),
+        (TAG_LABEL,                  ItemKey::Label),
+        (TAG_COMPILATION,            ItemKey::FlagCompilation),
+        (TAG_BPM,                    ItemKey::Bpm),
+
+        // ── Sort fields ───────────────────────────────────────────────────────
+        (TAG_TITLE_SORT,             ItemKey::TrackTitleSortOrder),
+        (TAG_ARTIST_SORT,            ItemKey::TrackArtistSortOrder),
+        (TAG_ALBUM_SORT,             ItemKey::AlbumTitleSortOrder),
+        (TAG_ALBUM_ARTIST_SORT,      ItemKey::AlbumArtistSortOrder),
+        (TAG_COMPOSER_SORT,          ItemKey::ComposerSortOrder),
+
+        // ── Extended attribution ──────────────────────────────────────────────
+        (TAG_CONDUCTOR,              ItemKey::Conductor),
+        (TAG_REMIXER,                ItemKey::Remixer),
+        (TAG_LYRICIST,               ItemKey::Lyricist),
+        (TAG_LANGUAGE,               ItemKey::Language),
+        (TAG_MOOD,                   ItemKey::Mood),
+        (TAG_GROUPING,               ItemKey::ContentGroup),
+
+        // ── Classical music ───────────────────────────────────────────────────
+        (TAG_WORK,                   ItemKey::Work),
+        (TAG_MOVEMENT,               ItemKey::Movement),
+        (TAG_MOVEMENT_INDEX,         ItemKey::MovementNumber),
+        (TAG_MOVEMENT_TOTAL,         ItemKey::MovementTotal),
+
+        // ── ReplayGain ────────────────────────────────────────────────────────
+        (TAG_REPLAYGAIN_TRACK_GAIN,  ItemKey::ReplayGainTrackGain),
+        (TAG_REPLAYGAIN_TRACK_PEAK,  ItemKey::ReplayGainTrackPeak),
+        (TAG_REPLAYGAIN_ALBUM_GAIN,  ItemKey::ReplayGainAlbumGain),
+        (TAG_REPLAYGAIN_ALBUM_PEAK,  ItemKey::ReplayGainAlbumPeak),
+
+        // ── Encoding information ──────────────────────────────────────────────
+        (TAG_ENCODED_BY,             ItemKey::EncodedBy),
+        (TAG_ENCODER_SETTINGS,       ItemKey::EncoderSettings),
+        (TAG_ORIGINAL_YEAR,          ItemKey::OriginalReleaseDate),
+        (TAG_ORIGINAL_ALBUM,         ItemKey::OriginalAlbumTitle),
+        (TAG_ORIGINAL_ARTIST,        ItemKey::OriginalArtist),
+
+        // ── Podcast ───────────────────────────────────────────────────────────
+        (TAG_PODCAST_TITLE,          ItemKey::PodcastTitle),
+        (TAG_PODCAST_ID,             ItemKey::PodcastIdentifier),
+        (TAG_PODCAST_URL,            ItemKey::PodcastUrl),
+        (TAG_PODCAST_CATEGORY,       ItemKey::PodcastCategory),
+        (TAG_PODCAST_DESCRIPTION,    ItemKey::PodcastDescription),
     ]
 }
 

@@ -196,17 +196,17 @@ MeedyaManager/
 
 | # | Milestone | Status | Description |
 |---|-----------|--------|-------------|
-| M0 | 🔧 Repository Setup & Scaffolding | 🚧 **In Progress** | Archive Python, init Cargo workspace, scaffold native apps, CI stubs |
-| M1 | 🧱 Core Engine (Rust) | 🔲 Planned | Config, classification, metadata (`lofty`), watcher (`notify`), renamer, logging |
-| M2 | 📐 Rule Engine | 🔲 Planned | Lexer, recursive descent parser, evaluator, 20+ template functions |
-| M3 | ⌨️ CLI | 🔲 Planned | `clap`-based commands: scan, debug, watch, rule, edit, lookup, config |
-| M4 | 🖥️ FFI Layer & Native UI Shells | 🔲 Planned | UniFFI + cbindgen, SwiftUI/WinUI 3/GTK4 app shells |
-| M5 | 🔍 Metadata Lookup Providers | 🔲 Planned | 19 providers, fuzzy matching, rate limiting, cover art |
-| M6 | 🎨 Full Native UI | 🔲 Planned | Rule Builder, Metadata Editor, Lookup Panel on all platforms |
-| M7 | ☁️ Cloud Storage Monitoring | 🔲 Planned | OneDrive, Google Drive, Dropbox, MEGA, iCloud |
-| M8 | 📦 Packaging & Public Release | 🔲 Planned | App Store, Microsoft Store, Flatpak/Snap, auto-updater |
-| M9 | 🗄️ Database Export | 🔲 Planned | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL |
-| M10 | 🌐 Secure Media Server | 🔲 Planned | `axum` HTTP server, REST API, JWT auth, media streaming |
+| M0 | 🔧 Repository Setup & Scaffolding | ✅ **Complete** | Archive Python, init Cargo workspace, scaffold native apps, CI stubs |
+| M1 | 🧱 Core Engine (Rust) | ✅ **Complete** | Config, classification, metadata (`lofty`), watcher (`notify`), renamer, logging (217 tests) |
+| M2 | 📐 Rule Engine | ✅ **Complete** | Lexer, recursive descent parser, evaluator, 20+ template functions (182 tests) |
+| M3 | ⌨️ CLI | ✅ **Complete** | `clap`-based commands: scan, debug, watch, rule, edit, lookup, config (45 tests) |
+| M4 | 🖥️ FFI Layer & Native UI Shells | ✅ **Complete** | UniFFI + cbindgen, SwiftUI/WinUI 3/GTK4 app shells (20 tests) |
+| M5 | 🔍 Metadata Lookup Providers | ✅ **Complete** | 19+ providers, fuzzy matching, rate limiting, cover art (332 tests) |
+| M6 | 🎨 Full Native UI | ✅ **Complete** | Rule Builder, Metadata Editor, Lookup Panel on all platforms (~90 tests) |
+| M7 | ☁️ Cloud Storage Monitoring | ✅ **Complete** | OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub (~90 tests) |
+| M8 | 📦 Packaging & Public Release | ✅ **Complete** | App Store, Microsoft Store, Flatpak/Snap, auto-updater (~33 tests) |
+| M9 | 🗄️ Database Export | ✅ **Complete** | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL (~90 tests) |
+| M10 | 🌐 Secure Media Server | ✅ **Complete** | `axum` HTTP server, REST API, JWT auth, media streaming — **v1.0.0 released** (~90 tests) |
 
 ---
 
@@ -245,6 +245,25 @@ MeedyaManager/
 
 ---
 
+## 🍎 Apple Platform Wishlist
+
+The following Apple-specific and Apple-enhanced features are planned for future releases on macOS (and potentially iOS/iPadOS). These extend MeedyaManager beyond cross-platform parity to take full advantage of the Apple ecosystem.
+
+| Feature | Description | GitHub Issue |
+| ------- | ----------- | ------------ |
+| 🎵 **Music.app Library Import** | Parse the macOS Music app library (`~/Music/Music/`) to bulk-import existing metadata, ratings, and play counts — zero re-tagging needed for existing collections | #134 |
+| 🎼 **MusicKit Framework** | Replace REST-based Apple Music lookups with the native `MusicKit` framework for on-device catalog search, richer metadata, and authenticated user-library access | #135 |
+| 🔭 **Quick Look Extension** | Register a `QLPreviewExtension` so Finder shows rich album-art previews with metadata for any media file managed by MeedyaManager | #136 |
+| 🗣️ **Siri Shortcuts / App Intents** | Expose MeedyaManager operations (scan folder, rename preview, metadata lookup) as `AppIntent` actions usable in the Shortcuts app and via Siri voice commands | #137 |
+| 🧠 **Core ML Audio Fingerprinting** | Use Apple's Neural Engine (Core ML / Sound Analysis) for on-device audio fingerprinting — identify tracks without an external API, works fully offline | #138 |
+| 🔍 **Spotlight Importer** | Publish library metadata to macOS Spotlight via `CoreSpotlight` so every track is searchable system-wide from Spotlight or Alfred | #139 |
+| 📡 **AirPlay 2 Streaming** | Stream media from the built-in MeedyaManager server to any AirPlay 2 receiver (HomePod, Apple TV, AirPlay-enabled speaker) | #140 |
+| ☁️ **CloudKit Settings Sync** | Sync rename rules, config, and preferences across all Apple devices via iCloud / CloudKit — rules set on Mac appear automatically on iPhone/iPad | #141 |
+
+> These features are tracked as **wishlist GitHub Issues** and will be scheduled in a future milestone once core cross-platform parity is solid.
+
+---
+
 ## ⚖️ License
 
 This project is licensed under the **GPL-2.0-or-later** — see the [LICENSE](LICENSE) file for details.
@@ -258,7 +277,7 @@ This project is licensed under the **GPL-2.0-or-later** — see the [LICENSE](LI
 | 📋 [Project_Plan.md](Project_Plan.md) | Full project plan with architecture, milestones & tech stack |
 | 📊 [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current progress tracker |
 | 📍 [docs/ROADMAP.md](docs/ROADMAP.md) | Milestone timeline |
-| 📦 [docs/CHANGELOG.md](docs/CHANGELOG.md) | Detailed change log |
+| 📦 [docs/changelog.md](docs/changelog.md) | Detailed change log |
 | 📖 [help/getting-started.md](help/getting-started.md) | Getting started guide |
 | ⚙️ [help/configuration.md](help/configuration.md) | Configuration reference |
 | 📐 [help/rule-syntax.md](help/rule-syntax.md) | Rule template syntax guide |

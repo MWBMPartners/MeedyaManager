@@ -31,14 +31,25 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build mm-ffi native library
-        # TODO: Replace with actual mm-ffi build command once crate is scaffolded
-        run: echo "Placeholder — cargo build -p mm-ffi --release"
+        # Compile the cbindgen/csbindgen Rust FFI crate that produces mm_ffi.dll
+        # and the C header used by the C# P/Invoke layer.
+        run: cargo build -p mm-ffi --release
 
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
 
+      - name: Restore NuGet packages
+        working-directory: windows
+        run: dotnet restore
+
       - name: Build WinUI 3 application
         working-directory: windows
-        run: dotnet build
+        run: dotnet build --no-restore
+
+      - name: Run .NET unit tests
+        working-directory: windows
+        # Runs C# unit tests that replicate pure logic without requiring the
+        # WinUI 3 XAML runtime (which is not available on GitHub runners).
+        run: dotnet test --no-build --verbosity normal

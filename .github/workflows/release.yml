@@ -67,9 +67,9 @@ jobs:
           VERSION="${{ steps.meta.outputs.version }}"
           # Extract the section for this version from CHANGELOG.md
           # Match from "## [vX.Y.Z]" until the next "## [v" or end of file
-          NOTES=$(sed -n "/^## \[v${VERSION}\]/,/^## \[v/{ /^## \[v${VERSION}\]/d; /^## \[v/d; p; }" docs/CHANGELOG.md)
+          NOTES=$(sed -n "/^## \[v${VERSION}\]/,/^## \[v/{ /^## \[v${VERSION}\]/d; /^## \[v/d; p; }" docs/changelog.md)
           if [ -z "$NOTES" ]; then
-            NOTES="No changelog entry found for v${VERSION}. See [docs/CHANGELOG.md](docs/CHANGELOG.md) for details."
+            NOTES="No changelog entry found for v${VERSION}. See [docs/changelog.md](docs/changelog.md) for details."
           fi
           # Write to file for the release step
           echo "$NOTES" > /tmp/release-notes.md
@@ -354,10 +354,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install GTK4 and Libadwaita system dependencies
+      - name: Install GTK4, Libadwaita and gettext system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+          # gettext is required by the gettextrs crate for GNU gettext i18n support
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev gettext
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -508,7 +509,7 @@ jobs:
           if [ -f release-artifacts/release-notes/release-notes.md ]; then
             cp release-artifacts/release-notes/release-notes.md /tmp/body.md
           else
-            echo "See [CHANGELOG](docs/CHANGELOG.md) for details." > /tmp/body.md
+            echo "See [CHANGELOG](docs/changelog.md) for details." > /tmp/body.md
           fi
 
       - name: Create GitHub Release

@@ -223,15 +223,30 @@
 
 ---
 
-## Prioritised Backlog (v1.1.0+)
+## v1.1.0 — Post-Release Improvements (Issues #132–#133)
 
-Issues ordered by recommended implementation sequence:
+| # | Title | Status |
+| - | ----- | ------ |
+| #132 | Add centralised `FiletypeRegistry` module — MIME types, companion scopes, `.zip`/`.rar`/`.itlp` support | ✅ |
+| #133 | Extend metadata tag coverage — sort fields, ReplayGain, classical, podcast, encoding tags | ✅ |
 
-| Priority | # | Title | Rationale |
-| -------- | - | ----- | --------- |
-| 1 | #128 | Accessibility support | App Store requirement; legal compliance (WCAG 2.1); high user impact |
-| 2 | #130 | Translation / i18n | Expands addressable market; localisable string infrastructure needed before scaling |
-| 3 | #131 | Windows OpenProcess check | Minor correctness gap in state manager; low risk |
+---
+
+## Apple Platform Wishlist (Issues #134–#141)
+
+> Apple-specific and Apple-enhanced features planned for future milestones.
+> Tracked as open wishlist issues; scheduling TBD after v1.1.0.
+
+| # | Title | Platform | Priority | Status |
+| - | ----- | -------- | -------- | ------ |
+| #134 | Music.app library import — parse `~/Music/Music/` library to bulk-import metadata, ratings, play counts | macOS | Medium | 🔲 |
+| #135 | MusicKit framework integration — replace REST Apple Music provider with native `MusicKit` for richer catalog/library access | macOS | Medium | 🔲 |
+| #136 | Quick Look extension — `QLPreviewExtension` for rich Finder media previews showing album art and tag info | macOS | Low | 🔲 |
+| #137 | Siri Shortcuts / App Intents — expose scan/rename/lookup as `AppIntent` actions for Shortcuts app and Siri voice control | macOS/iOS | Low | 🔲 |
+| #138 | Core ML audio fingerprinting — on-device track identification via Neural Engine (Sound Analysis), fully offline | macOS (Apple Silicon) | Low | 🔲 |
+| #139 | Spotlight importer — publish library metadata via `CoreSpotlight` for system-wide Spotlight and Alfred search | macOS | Low | 🔲 |
+| #140 | AirPlay 2 streaming — stream from the mm-server media server to AirPlay 2 receivers (HomePod, Apple TV) | macOS | Low | 🔲 |
+| #141 | CloudKit settings sync — sync rename rules and config across Apple devices via iCloud / CloudKit | macOS/iOS | Low | 🔲 |
 
 ---
 
@@ -276,4 +291,4 @@ Create a **GitHub Projects v2** board with the following columns/views:
 
 ---
 
-> *Last updated: 2026-03-06 (v1.1.0 — #128 Accessibility, #130 i18n, #131 Windows OpenProcess all closed; all post-v1.0 issues resolved)*
+> *Last updated: 2026-03-06 (v1.1.0 — #128 Accessibility, #130 i18n, #131 Windows OpenProcess, #132 FiletypeRegistry, #133 Extended Metadata all closed; #134–#141 Apple wishlist issues opened)*

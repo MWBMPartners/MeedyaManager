@@ -22,10 +22,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install GTK4 and Libadwaita system dependencies
+      - name: Install GTK4, Libadwaita and gettext system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+          # libgtk-4-dev + libadwaita-1-dev: GTK4 UI bindings
+          # gettext: required by the gettextrs crate for GNU gettext i18n support
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev gettext
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

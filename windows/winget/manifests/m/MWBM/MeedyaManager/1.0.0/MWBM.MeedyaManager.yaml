@@ -60,7 +60,7 @@ ReleaseNotes: >
   - Release artifact code signing (Authenticode for Windows, notarisation for macOS)
   - All M0-M10 milestones complete; ~1166 tests passing
 
-  Full changelog: https://github.com/MWBMPartners/MeedyaManager/blob/main/docs/CHANGELOG.md
+  Full changelog: https://github.com/MWBMPartners/MeedyaManager/blob/main/docs/changelog.md
 ReleaseNotesUrl: https://github.com/MWBMPartners/MeedyaManager/releases/tag/v1.0.0
 
 Installers:

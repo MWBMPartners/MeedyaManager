@@ -8,6 +8,48 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.1.0] — 2026-03-06 — Accessibility + i18n + Windows OpenProcess + FiletypeRegistry + CI Fixes (#128, #130, #131, #132, #133)
+
+> **Cross-cutting** — Post-v1.0 hardening: accessibility, i18n, process detection, a centralised file type registry, extended metadata tags, and comprehensive GitHub Actions fixes.
+
+### Added
+
+**FiletypeRegistry (Issue #132):**
+
+- `crates/mm-core/src/filetype_registry.rs` — New centralised registry: `AudioFormat` (30+ audio), `VideoFormat` (25+ video), `SubtitleFormat` + `SubtitleKind` enum, `CompanionFormat` + `CompanionScope` enum (Track/Album/Artist). Helper functions `is_audio()`, `is_video()`, `is_media()`, `mime_for_extension()`, `audio_format()`, `video_format()`, `subtitle_format()`, `companion_format()`. 20+ unit tests.
+- `crates/mm-core/src/companion/mod.rs` — Extended `CompanionType` with `Archive` and `ItunesPackage` variants; updated `classify_companion()` for `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.itlp`, `.itmsp`, `.itms`, `.sfv`, `.md5`, `.ttml`, `.dfxp`, `.elrc`. 5 new tests.
+- `crates/mm-core/src/lib.rs` — Added `pub mod filetype_registry;` and `pub mod i18n;`.
+
+**Extended Metadata Tags (Issue #133):**
+
+- `crates/mm-core/src/metadata/mod.rs` — Added sort fields (`TAG_TITLE_SORT`, `TAG_ARTIST_SORT`, `TAG_ALBUM_SORT`, `TAG_ALBUM_ARTIST_SORT`, `TAG_COMPOSER_SORT`), classical (`TAG_WORK`, `TAG_MOVEMENT`, `TAG_MOVEMENT_INDEX`, `TAG_MOVEMENT_TOTAL`), ReplayGain (`TAG_REPLAYGAIN_TRACK_GAIN`, `TAG_REPLAYGAIN_TRACK_PEAK`, `TAG_REPLAYGAIN_ALBUM_GAIN`, `TAG_REPLAYGAIN_ALBUM_PEAK`), encoding (`TAG_ENCODED_BY`, `TAG_ENCODER_SETTINGS`, `TAG_ORIGINAL_YEAR`, `TAG_ORIGINAL_ALBUM`, `TAG_ORIGINAL_ARTIST`), podcast (`TAG_PODCAST_TITLE`, `TAG_PODCAST_ID`, `TAG_PODCAST_URL`, `TAG_PODCAST_CATEGORY`, `TAG_PODCAST_DESCRIPTION`), extended tags (`TAG_CONDUCTOR`, `TAG_REMIXER`, `TAG_LYRICIST`, `TAG_LANGUAGE`, `TAG_MOOD`, `TAG_GROUPING`). All mapped to `lofty::ItemKey` variants in `tag_key_mappings()`.
+
+**Apple Platform Wishlist (Issues #134–#141):**
+
+- `docs/issues/github_issues.md` — 8 new Apple wishlist issues (#134–#141): Music.app Library Import, MusicKit Framework, Quick Look Extension, Siri Shortcuts / App Intents, Core ML Audio Fingerprinting, Spotlight Importer, AirPlay 2 Streaming, CloudKit Settings Sync.
+- `README.md` — New "Apple Platform Wishlist" section with feature table.
+- `Project_Plan.md` — New "Apple Platform Wishlist (v1.2.0+)" section with effort estimates.
+
+### Fixed
+
+**GitHub Actions (CI/CD):**
+
+- `ci-rust.yml` — Added `--exclude mm-gtk` to both `cargo clippy` and `cargo test` steps; mm-gtk requires GTK4 system libraries not available on macOS/Windows runners. GTK4 testing handled exclusively in `ci-linux.yml`.
+- `ci-macos.yml` — Replaced placeholder `echo "..."` mm-ffi build step with `cargo build -p mm-ffi --release`; changed `swift build` to `swift build -c release`; added `swift test` step.
+- `ci-windows.yml` — Replaced placeholder mm-ffi build step with `cargo build -p mm-ffi --release`; added `dotnet restore`, `--no-restore` build, and `dotnet test` steps.
+- `ci-linux.yml` — Added `gettext` to apt-get install (required by `gettextrs` crate).
+- `docs.yml` — Added GTK4 + gettext apt-get install step before `cargo doc --no-deps --workspace` so mm-gtk docs build correctly on ubuntu-latest.
+- `release.yml` — Fixed `docs/CHANGELOG.md` case bug → `docs/changelog.md` (3 occurrences); added `gettext` to Linux x64 apt-get install.
+- `version-bump.yml` — Fixed all `docs/CHANGELOG.md` references → `docs/changelog.md`.
+
+**Documentation path fixes (`CHANGELOG.md` → `changelog.md`):**
+
+- `README.md`, `Project_Plan.md`, `PROJECT_STATUS.md`, `windows/winget/…/MWBM.MeedyaManager.yaml` — All corrected to use lowercase `docs/changelog.md`.
+- `README.md` — Milestone roadmap updated from all "Planned" to ✅ Complete with test counts.
+- `Project_Plan.md` — CI matrix updated to show `--exclude mm-gtk` flag; new Apple Wishlist section added; `docs/changelog.md` reference corrected.
+
+---
+
 ## [v1.1.0] — 2026-03-06 — Accessibility + i18n + Windows OpenProcess (#128, #130, #131)
 
 > **Cross-cutting** — Three post-v1.0 issues fully resolved: full accessibility labelling across all three platforms (GTK4, macOS SwiftUI, Windows WinUI 3), i18n infrastructure (gettextrs/gettext + .xcstrings + .resw), and Windows single-instance lock hardening via `OpenProcess`.
@@ -15,21 +57,26 @@ Format: `## [Version] — YYYY-MM-DD`
 ### Added
 
 **Accessibility (Issue #128) — GTK4 panel labels:**
+
 - `crates/mm-gtk/src/ui/accessibility.rs` — New AT-SPI2 helper module: `set_label()`, `set_description()`, `set_busy()`, `set_expanded()`, `tab_label()`, `tab_description()`. 8 unit tests.
 - `scan_panel.rs`, `metadata_panel.rs`, `lookup_panel.rs`, `rules_panel.rs`, `cloud_panel.rs`, `export_panel.rs`, `settings_panel.rs`, `server_panel.rs` — Full AT-SPI2 label + description applied to every interactive widget (entry rows, buttons, spin buttons, drop-downs, status labels). Cloud connect/disconnect button accessible label updated dynamically on toggle. Tag pills in rules panel each receive unique `"Insert <Tag> tag"` label.
 
 **Accessibility (Issue #128) — macOS SwiftUI:**
+
 - All views (`ScanView`, `MetadataView`, `LookupView`, `RulesView`, `CloudView`, `ExportView`, `SettingsView`, `ServerView`) — `.accessibilityLabel()` / `.accessibilityHint()` on all interactive widgets; `.accessibilityLiveRegion(.polite)` on status `Text` labels; `.accessibilityHidden(true)` on decorative elements (icons, status dots).
 
 **Accessibility (Issue #128) — Windows XAML:**
+
 - `ScanPage.xaml`, `MetadataPage.xaml`, `LookupPage.xaml`, `RulesPage.xaml`, `CloudPage.xaml`, `ExportPage.xaml`, `SettingsPage.xaml`, `ServerPage.xaml` — `AutomationProperties.Name` + `AutomationProperties.HelpText` on all interactive controls; `AutomationProperties.LiveSetting="Polite"` on all status `TextBlock` elements.
 
 **Accessibility (Issue #128) — test infrastructure:**
+
 - `crates/mm-gtk/src/ui/accessibility.rs` — 8 unit tests.
 - `macos/MeedyaManagerTests/AccessibilityTests.swift` — 19 Swift Testing tests.
 - `windows/MeedyaManager.Tests/AccessibilityTests.cs` — 20 xUnit tests.
 
 **i18n (Issue #130) — Rust/CLI/GTK4:**
+
 - `crates/mm-core/src/i18n.rs` — New `mm_core::i18n::init()` function: `setlocale(LC_ALL, "")`, `bindtextdomain("meedyamanager", …)` with environment override + Flatpak XDG path + system fallback, `bind_textdomain_codeset("UTF-8")`, `textdomain()`. 4 unit tests.
 - `Cargo.toml` (workspace) — Added `gettextrs = "0.15"` to workspace dependencies.
 - `crates/mm-core/Cargo.toml`, `crates/mm-cli/Cargo.toml`, `crates/mm-gtk/Cargo.toml` — Added `gettextrs` dependency.
@@ -39,18 +86,22 @@ Format: `## [Version] — YYYY-MM-DD`
 - `locales/TRANSLATORS.md` — Full guide for adding new languages on all three platforms.
 
 **i18n (Issue #130) — macOS:**
+
 - `macos/MeedyaManager/Localizable.xcstrings` — Xcode 15+ `.xcstrings` JSON catalogue with 34 keys covering all UI panels. BCP 47 structured for multi-language expansion.
 
 **i18n (Issue #130) — Windows:**
+
 - `windows/MeedyaManager/Strings/en-US/Resources.resw` — WinUI 3 resource file with 40+ string keys (dot-separated naming: `Page.Context.Name`). Includes schema headers for MSBuild compatibility.
 - `windows/MeedyaManager/Helpers/ResourceHelper.cs` — Static `ResourceHelper.Get(key)` and `ResourceHelper.Format(key, args)` wrappers around `ResourceLoader`; falls back to key string on missing translation.
 
 **Windows OpenProcess check (Issue #131):**
+
 - `crates/mm-core/src/state/mod.rs` — Replaced `cfg(not(unix))` stub (always returned `true`) with proper `cfg(windows)` implementation using `winapi::OpenProcess(SYNCHRONIZE, FALSE, pid)`. Correctly distinguishes: process exists → `true`, `ERROR_ACCESS_DENIED` (process exists, no access) → `true`, `ERROR_INVALID_PARAMETER` (no such PID) → `false`. Also improved Unix path to handle `EPERM` (process exists but not signalable).
 - `crates/mm-core/Cargo.toml` — Added `winapi = { version = "0.3", features = ["processthreadsapi", "handleapi", "errhandlingapi", "winerror"] }` as `[target.'cfg(windows)'.dependencies]`.
 - New tests: `current_process_is_detected_as_running()`, `extremely_large_pid_is_not_running()`, `windows_stale_lock_is_cleaned()` (Windows-only).
 
 **WinGet manifest:**
+
 - `windows/winget/manifests/m/MWBM/MeedyaManager/1.0.0/MWBM.MeedyaManager.yaml` — v1.0.0 WinGet singleton manifest.
 
 ### Fixed

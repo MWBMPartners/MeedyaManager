@@ -52,6 +52,10 @@ pub mod error;
 /// Internationalisation — gettext initialisation and locale helpers
 pub mod i18n;
 
+/// File type registry — single source of truth for all recognised extensions,
+/// MIME types, companion scopes, and subtitle kinds
+pub mod filetype_registry;
+
 #[cfg(test)]
 mod tests {
     #[test]
