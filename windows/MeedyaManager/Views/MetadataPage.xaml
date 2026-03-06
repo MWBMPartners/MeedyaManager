@@ -30,13 +30,17 @@
                 x:Name="FilePathBox"
                 PlaceholderText="No file selected"
                 IsReadOnly="True"
-                TextWrapping="Wrap" />
+                TextWrapping="Wrap"
+                AutomationProperties.Name="Selected file path"
+                AutomationProperties.HelpText="Shows the path of the currently loaded media file" />
 
             <Button
                 x:Name="OpenFileButton"
                 Content="Open File…"
                 HorizontalAlignment="Stretch"
-                Click="OpenFileButton_Click" />
+                Click="OpenFileButton_Click"
+                AutomationProperties.Name="Open media file"
+                AutomationProperties.HelpText="Opens a file picker to choose a media file for tag editing" />
 
             <!-- Cover art (shown when a URL is loaded by the metadata provider) -->
             <TextBlock
@@ -88,7 +92,8 @@
                 x:Name="StatusText"
                 Text=""
                 TextWrapping="Wrap"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
 
         <!-- Splitter -->
@@ -157,13 +162,17 @@
                         x:Name="RevertButton"
                         Content="Revert"
                         IsEnabled="False"
-                        Click="RevertButton_Click" />
+                        Click="RevertButton_Click"
+                        AutomationProperties.Name="Revert changes"
+                        AutomationProperties.HelpText="Discards all unsaved tag edits and reloads the file" />
                     <Button
                         x:Name="SaveButton"
                         Content="Save All"
                         Style="{StaticResource AccentButtonStyle}"
                         IsEnabled="False"
-                        Click="SaveButton_Click" />
+                        Click="SaveButton_Click"
+                        AutomationProperties.Name="Save metadata tags"
+                        AutomationProperties.HelpText="Writes all edited tags back to the media file on disk" />
                 </StackPanel>
             </Border>
         </Grid>

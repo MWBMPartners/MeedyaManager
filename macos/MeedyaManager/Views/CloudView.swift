@@ -155,6 +155,8 @@ struct CloudView: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                         .font(.caption)
+                        .accessibilityLabel("Clear event log")
+                        .accessibilityHint("Removes all cloud storage events from the log")
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -185,10 +187,11 @@ private struct CloudProviderRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Provider icon
+            // Provider icon — decorative, label provided by row accessibilityElement
             Image(systemName: entry.iconName)
                 .frame(width: 24)
                 .foregroundStyle(entry.isConnected ? .green : .secondary)
+                .accessibilityHidden(true)
 
             // Provider name
             Text(entry.label)
@@ -196,9 +199,11 @@ private struct CloudProviderRow: View {
 
             // Status indicator dot + label
             HStack(spacing: 6) {
+                // Decorative dot — status already announced via text
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
                 Text(entry.syncStatus)
                     .foregroundStyle(.secondary)
                     .font(.caption)
@@ -212,10 +217,15 @@ private struct CloudProviderRow: View {
                     .buttonStyle(.borderless)
                     .controlSize(.small)
                     .foregroundStyle(entry.isConnected ? .red : .accentColor)
+                    .accessibilityLabel(entry.isConnected ? "Disconnect \(entry.label)" : "Connect \(entry.label)")
+                    .accessibilityHint(entry.isConnected
+                        ? "Disconnects your \(entry.label) account from MeedyaManager"
+                        : "Connects your \(entry.label) account and starts monitoring the configured folder")
             } else {
                 Text("—")
                     .foregroundStyle(.tertiary)
                     .font(.caption)
+                    .accessibilityHidden(true)
             }
         }
         .padding(.vertical, 4)

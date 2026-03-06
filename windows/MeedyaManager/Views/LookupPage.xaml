@@ -47,12 +47,16 @@
                 <TextBox
                     x:Name="QueryBox"
                     Header="Track / show / podcast title"
-                    PlaceholderText="Enter a title to search…" />
+                    PlaceholderText="Enter a title to search…"
+                    AutomationProperties.Name="Search query"
+                    AutomationProperties.HelpText="Enter a track, show, or podcast title to search across all enabled providers" />
 
                 <TextBox
                     x:Name="ArtistBox"
                     Header="Artist (optional)"
-                    PlaceholderText="Artist name…" />
+                    PlaceholderText="Artist name…"
+                    AutomationProperties.Name="Artist hint (optional)"
+                    AutomationProperties.HelpText="Optionally narrow the search by providing an artist name" />
 
                 <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                     <!-- Progress ring shown during search -->
@@ -66,7 +70,9 @@
                         x:Name="SearchButton"
                         Content="Search"
                         Style="{StaticResource AccentButtonStyle}"
-                        Click="SearchButton_Click" />
+                        Click="SearchButton_Click"
+                        AutomationProperties.Name="Search providers"
+                        AutomationProperties.HelpText="Searches all enabled metadata providers for the entered query" />
                 </StackPanel>
             </StackPanel>
 
@@ -212,7 +218,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- Status message -->
+                    <!-- Status message — live region so Narrator announces search results -->
                     <TextBlock
                         Grid.Column="0"
                         x:Name="StatusText"
@@ -220,7 +226,8 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         FontSize="12"
                         VerticalAlignment="Center"
-                        TextTrimming="CharacterEllipsis" />
+                        TextTrimming="CharacterEllipsis"
+                        AutomationProperties.LiveSetting="Polite" />
 
                     <!-- Clear button -->
                     <Button
@@ -228,7 +235,9 @@
                         x:Name="ClearButton"
                         Content="Clear"
                         Margin="0,0,8,0"
-                        Click="ClearButton_Click" />
+                        Click="ClearButton_Click"
+                        AutomationProperties.Name="Clear results"
+                        AutomationProperties.HelpText="Clears the search results and resets the lookup form" />
 
                     <!-- Apply to File button -->
                     <Button
@@ -237,7 +246,9 @@
                         Content="Apply to File"
                         Style="{StaticResource AccentButtonStyle}"
                         IsEnabled="False"
-                        Click="ApplyButton_Click" />
+                        Click="ApplyButton_Click"
+                        AutomationProperties.Name="Apply result to file"
+                        AutomationProperties.HelpText="Writes the selected result's tags to the currently open media file" />
                 </Grid>
             </Border>
         </Grid>

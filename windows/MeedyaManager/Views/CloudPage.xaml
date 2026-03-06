@@ -77,7 +77,8 @@
                      BorderThickness="1"
                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                      Padding="8"
-                     MinHeight="120" />
+                     MinHeight="120"
+                     AutomationProperties.Name="Cloud storage event log" />
         </ScrollViewer>
 
         <!-- ── Clear log button ──────────────────────────────────────────── -->
@@ -85,7 +86,9 @@
                 x:Name="ClearLogButton"
                 Content="Clear Log"
                 HorizontalAlignment="Right"
-                Click="ClearLogButton_Click" />
+                Click="ClearLogButton_Click"
+                AutomationProperties.Name="Clear event log"
+                AutomationProperties.HelpText="Removes all cloud storage events from the log" />
 
     </Grid>
 </Page>

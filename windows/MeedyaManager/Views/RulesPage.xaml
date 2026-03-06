@@ -28,7 +28,9 @@
                 Header="Rename Template"
                 PlaceholderText="e.g. &lt;Artist&gt; - &lt;Title&gt;"
                 FontFamily="Cascadia Mono, Consolas, monospace"
-                TextChanged="TemplateEntry_TextChanged" />
+                TextChanged="TemplateEntry_TextChanged"
+                AutomationProperties.Name="Rename template"
+                AutomationProperties.HelpText="Enter a template using angle-bracket tags such as Artist, Title, Album" />
 
             <!-- Validation feedback InfoBar -->
             <InfoBar
@@ -86,7 +88,9 @@
                 x:Name="RuleNameBox"
                 Header="Rule Name"
                 PlaceholderText="e.g. Music Rule"
-                Text="Default Rule" />
+                Text="Default Rule"
+                AutomationProperties.Name="Rule name"
+                AutomationProperties.HelpText="Enter a name to identify this rename rule" />
 
         </StackPanel>
     </ScrollViewer>

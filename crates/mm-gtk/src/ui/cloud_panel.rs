@@ -20,6 +20,8 @@ use adw::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::ui::accessibility;
+
 // ---------------------------------------------------------------------------
 // Provider descriptor
 // ---------------------------------------------------------------------------
@@ -134,6 +136,8 @@ impl CloudPanel {
             .margin_end(12)
             .margin_bottom(12)
             .build();
+        accessibility::set_label(&clear_btn, "Clear event log");
+        accessibility::set_description(&clear_btn, "Removes all cloud storage events from the log.");
 
         {
             let lb = log_buf.clone();
@@ -179,6 +183,9 @@ fn build_provider_row(info: &ProviderInfo, log_buf: gtk::TextBuffer) -> adw::Act
         .valign(gtk::Align::Center)
         .css_classes(["suggested-action"])
         .build();
+    // Set initial accessible label — updated dynamically on each toggle
+    accessibility::set_label(&btn, &format!("Connect {}", info.label));
+    accessibility::set_description(&btn, &format!("Connects your {} account and starts monitoring the configured folder.", info.label));
 
     let provider_label = info.label.to_string();
     let row_clone      = row.clone();
@@ -194,6 +201,9 @@ fn build_provider_row(info: &ProviderInfo, log_buf: gtk::TextBuffer) -> adw::Act
             b.set_label("Disconnect");
             b.remove_css_class("suggested-action");
             b.add_css_class("destructive-action");
+            // Update accessible label for the new state
+            accessibility::set_label(b, &format!("Disconnect {}", provider_label));
+            accessibility::set_description(b, &format!("Disconnects your {} account from MeedyaManager.", provider_label));
             append_log(&log_buf, &format!("[{}] Connecting…", provider_label));
             // Simulate successful sync (in production this calls mm-cloud FFI)
             append_log(&log_buf, &format!("[{}] Connected — watching /Music", provider_label));
@@ -204,6 +214,9 @@ fn build_provider_row(info: &ProviderInfo, log_buf: gtk::TextBuffer) -> adw::Act
             b.set_label("Connect");
             b.remove_css_class("destructive-action");
             b.add_css_class("suggested-action");
+            // Update accessible label for the new state
+            accessibility::set_label(b, &format!("Connect {}", provider_label));
+            accessibility::set_description(b, &format!("Connects your {} account and starts monitoring the configured folder.", provider_label));
             append_log(&log_buf, &format!("[{}] Disconnected", provider_label));
         }
     });

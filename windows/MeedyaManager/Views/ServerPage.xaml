@@ -44,7 +44,9 @@
                                   x:Name="BindAddressBox"
                                   PlaceholderText="0.0.0.0"
                                   Text="0.0.0.0"
-                                  ToolTipService.ToolTip="IP address to bind. Use 0.0.0.0 for all interfaces."/>
+                                  ToolTipService.ToolTip="IP address to bind. Use 0.0.0.0 for all interfaces."
+                                  AutomationProperties.Name="Bind address"
+                                  AutomationProperties.HelpText="IP address to bind. Use 0.0.0.0 for all interfaces or 127.0.0.1 for loopback only."/>
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="HTTPS port"
                                    VerticalAlignment="Center"/>
                         <TextBox  Grid.Row="1" Grid.Column="1"
@@ -53,7 +55,9 @@
                                   Text="8443"
                                   MaxWidth="100"
                                   HorizontalAlignment="Left"
-                                  ToolTipService.ToolTip="TCP port. Ports below 1024 require elevated privileges."/>
+                                  ToolTipService.ToolTip="TCP port. Ports below 1024 require elevated privileges."
+                                  AutomationProperties.Name="HTTPS port"
+                                  AutomationProperties.HelpText="TCP port for HTTPS connections. Ports below 1024 require elevated privileges."/>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -78,18 +82,23 @@
                         <TextBox  Grid.Row="0" Grid.Column="1"
                                   x:Name="CertPathBox"
                                   PlaceholderText="C:\ssl\cert.pem"
-                                  ToolTipService.ToolTip="Path to PEM-encoded TLS certificate file."/>
+                                  ToolTipService.ToolTip="Path to PEM-encoded TLS certificate file."
+                                  AutomationProperties.Name="TLS certificate path"
+                                  AutomationProperties.HelpText="Enter the file path to your PEM-encoded TLS certificate"/>
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="Private key (PEM)"
                                    VerticalAlignment="Center"/>
                         <TextBox  Grid.Row="1" Grid.Column="1"
                                   x:Name="KeyPathBox"
                                   PlaceholderText="C:\ssl\key.pem"
-                                  ToolTipService.ToolTip="Path to PEM-encoded TLS private key file."/>
+                                  ToolTipService.ToolTip="Path to PEM-encoded TLS private key file."
+                                  AutomationProperties.Name="TLS private key path"
+                                  AutomationProperties.HelpText="Enter the file path to your PEM-encoded TLS private key"/>
                     </Grid>
                     <ToggleSwitch x:Name="NoTlsToggle"
                                   Header="Disable TLS (HTTP only — development use)"
                                   IsOn="False"
-                                  ToolTipService.ToolTip="Serve plain HTTP instead of HTTPS. Not recommended for production."/>
+                                  ToolTipService.ToolTip="Serve plain HTTP instead of HTTPS. Not recommended for production."
+                                  AutomationProperties.HelpText="When on, serves plain HTTP instead of HTTPS. Not recommended for production."/>
                 </StackPanel>
             </Border>
 
@@ -113,7 +122,9 @@
                         <PasswordBox Grid.Row="0" Grid.Column="1"
                                      x:Name="JwtSecretBox"
                                      PlaceholderText="or set MM_JWT_SECRET env var"
-                                     ToolTipService.ToolTip="Secret used to sign JWT tokens. Minimum 16 characters."/>
+                                     ToolTipService.ToolTip="Secret used to sign JWT tokens. Minimum 16 characters."
+                                     AutomationProperties.Name="JWT secret"
+                                     AutomationProperties.HelpText="Secret used to sign JWT tokens. Minimum 16 characters."/>
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="Token expiry (s)"
                                    VerticalAlignment="Center"/>
                         <TextBox  Grid.Row="1" Grid.Column="1"
@@ -121,7 +132,9 @@
                                   Text="86400"
                                   MaxWidth="100"
                                   HorizontalAlignment="Left"
-                                  ToolTipService.ToolTip="JWT token lifetime in seconds. Default: 86400 (24 hours)."/>
+                                  ToolTipService.ToolTip="JWT token lifetime in seconds. Default: 86400 (24 hours)."
+                                  AutomationProperties.Name="Token expiry in seconds"
+                                  AutomationProperties.HelpText="How long issued tokens remain valid. Default is 86400, which is 24 hours."/>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -141,7 +154,9 @@
                         <TextBox  Grid.Column="1"
                                   x:Name="CorsOriginsBox"
                                   PlaceholderText="https://app.example.com, https://local.dev:3000"
-                                  ToolTipService.ToolTip="Comma-separated allowed CORS origins. Leave empty to deny all cross-origin requests."/>
+                                  ToolTipService.ToolTip="Comma-separated allowed CORS origins. Leave empty to deny all cross-origin requests."
+                                  AutomationProperties.Name="CORS allowed origins"
+                                  AutomationProperties.HelpText="Comma-separated list of allowed cross-origin request origins. Leave empty to deny all."/>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -153,11 +168,12 @@
                 <StackPanel Spacing="12">
                     <TextBlock Text="Server Control" Style="{StaticResource SubtitleTextBlockStyle}"/>
 
-                    <!-- Status -->
+                    <!-- Status — live region so Narrator announces state changes -->
                     <TextBlock x:Name="StatusText"
                                Text="Status: Stopped"
                                Style="{StaticResource BodyTextBlockStyle}"
-                               Opacity="0.75"/>
+                               Opacity="0.75"
+                               AutomationProperties.LiveSetting="Polite"/>
 
                     <!-- Buttons -->
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -165,16 +181,22 @@
                                 Content="Start Server"
                                 Style="{StaticResource AccentButtonStyle}"
                                 Click="StartBtn_Click"
-                                ToolTipService.ToolTip="Start the HTTPS media server"/>
+                                ToolTipService.ToolTip="Start the HTTPS media server"
+                                AutomationProperties.Name="Start server"
+                                AutomationProperties.HelpText="Starts the HTTPS media server with the current configuration"/>
                         <Button x:Name="StopBtn"
                                 Content="Stop Server"
                                 IsEnabled="False"
                                 Click="StopBtn_Click"
-                                ToolTipService.ToolTip="Stop the running media server"/>
+                                ToolTipService.ToolTip="Stop the running media server"
+                                AutomationProperties.Name="Stop server"
+                                AutomationProperties.HelpText="Stops the running media server"/>
                         <Button x:Name="RoutesBtn"
                                 Content="Show Routes"
                                 Click="RoutesBtn_Click"
-                                ToolTipService.ToolTip="Print the HTTP route table to the log"/>
+                                ToolTipService.ToolTip="Print the HTTP route table to the log"
+                                AutomationProperties.Name="Show routes"
+                                AutomationProperties.HelpText="Prints the HTTP route table to the access log"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -198,7 +220,9 @@
                     <Button x:Name="ClearLogBtn"
                             Content="Clear Log"
                             HorizontalAlignment="Right"
-                            Click="ClearLogBtn_Click"/>
+                            Click="ClearLogBtn_Click"
+                            AutomationProperties.Name="Clear access log"
+                            AutomationProperties.HelpText="Removes all log entries and resets any error state"/>
                 </StackPanel>
             </Border>
 

@@ -36,6 +36,8 @@ struct MetadataView: View {
                 }
 
                 Button("Open…") { showFilePicker = true }
+                    .accessibilityLabel("Open media file")
+                    .accessibilityHint("Opens a file picker to choose a media file for tag editing")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -68,6 +70,8 @@ struct MetadataView: View {
                 Text(model.status)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Metadata status: \(model.status)")
+                    .accessibilityLiveRegion(.polite)
 
                 Spacer()
 
@@ -76,11 +80,15 @@ struct MetadataView: View {
                         Task { await model.revert() }
                     }
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Revert changes")
+                    .accessibilityHint("Discards all unsaved tag edits and reloads the file")
 
                     Button("Save Tags") {
                         Task { await model.saveAll() }
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Save metadata tags")
+                    .accessibilityHint("Writes all edited tags back to the media file on disk")
                 }
             }
             .padding(.horizontal, 16)
@@ -194,10 +202,12 @@ private struct TagRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 140, alignment: .trailing)
 
-            // Editable value
+            // Editable value — labelled so VoiceOver announces which tag is being edited
             TextField(key, text: $value)
                 .textFieldStyle(.plain)
                 .onChange(of: value) { _, _ in onChange() }
+                .accessibilityLabel("\(key) tag")
+                .accessibilityHint("Edit the \(key) metadata tag value")
         }
         .padding(.vertical, 2)
     }

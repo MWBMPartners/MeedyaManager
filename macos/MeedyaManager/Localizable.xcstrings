@@ -1,0 +1,295 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+
+    "scan.folder.label" : {
+      "comment" : "Label for the source folder path entry in the Scan panel",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Source folder path" }
+        }
+      }
+    },
+
+    "scan.folder.placeholder" : {
+      "comment" : "Placeholder text for the source folder entry",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Drag a folder here or paste a path" }
+        }
+      }
+    },
+
+    "scan.template.label" : {
+      "comment" : "Label for the rename template entry in the Scan panel",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Rename template" }
+        }
+      }
+    },
+
+    "scan.button.scan" : {
+      "comment" : "Button that starts a folder scan",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Scan" }
+        }
+      }
+    },
+
+    "scan.button.execute" : {
+      "comment" : "Button that executes renames after a scan preview",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Execute Renames" }
+        }
+      }
+    },
+
+    "scan.status.idle" : {
+      "comment" : "Status shown when no scan is active",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Idle" }
+        }
+      }
+    },
+
+    "metadata.button.open" : {
+      "comment" : "Button to open a file for metadata editing",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Open File" }
+        }
+      }
+    },
+
+    "metadata.button.save" : {
+      "comment" : "Button to save metadata changes to disk",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Save" }
+        }
+      }
+    },
+
+    "metadata.button.revert" : {
+      "comment" : "Button to discard unsaved metadata changes",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Revert" }
+        }
+      }
+    },
+
+    "lookup.button.search" : {
+      "comment" : "Button to search metadata providers",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Search" }
+        }
+      }
+    },
+
+    "lookup.button.apply" : {
+      "comment" : "Button to apply selected lookup result to file tags",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Apply" }
+        }
+      }
+    },
+
+    "lookup.button.clear" : {
+      "comment" : "Button to clear lookup results",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Clear" }
+        }
+      }
+    },
+
+    "cloud.button.connect" : {
+      "comment" : "Button to connect a cloud storage provider (%@ = provider name)",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Connect" }
+        }
+      }
+    },
+
+    "cloud.button.disconnect" : {
+      "comment" : "Button to disconnect a cloud storage provider (%@ = provider name)",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Disconnect" }
+        }
+      }
+    },
+
+    "cloud.log.clear" : {
+      "comment" : "Button to clear the cloud event log",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Clear" }
+        }
+      }
+    },
+
+    "cloud.status.notConnected" : {
+      "comment" : "Status shown when a cloud provider is not connected",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Not Connected" }
+        }
+      }
+    },
+
+    "cloud.status.syncing" : {
+      "comment" : "Status shown while a cloud provider is syncing",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Syncing\u2026" }
+        }
+      }
+    },
+
+    "cloud.status.synced" : {
+      "comment" : "Status shown when a cloud provider has successfully synced",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Synced" }
+        }
+      }
+    },
+
+    "cloud.status.comingSoon" : {
+      "comment" : "Status shown for not-yet-implemented cloud providers",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Coming Soon" }
+        }
+      }
+    },
+
+    "export.button.export" : {
+      "comment" : "Button to start a database export",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Export Library" }
+        }
+      }
+    },
+
+    "export.button.schema" : {
+      "comment" : "Button to show schema DDL in the export log",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Show Schema DDL" }
+        }
+      }
+    },
+
+    "export.button.clear" : {
+      "comment" : "Button to clear the export log",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Clear Log" }
+        }
+      }
+    },
+
+    "settings.button.save" : {
+      "comment" : "Button to save the current settings to disk",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Save Settings" }
+        }
+      }
+    },
+
+    "settings.button.openFolder" : {
+      "comment" : "Button to open the config folder in Finder",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Show in Finder" }
+        }
+      }
+    },
+
+    "settings.button.copyPath" : {
+      "comment" : "Button to copy the config file path to the clipboard",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Copy Path" }
+        }
+      }
+    },
+
+    "settings.status.saved" : {
+      "comment" : "Status shown after settings are saved successfully",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Settings saved." }
+        }
+      }
+    },
+
+    "server.button.start" : {
+      "comment" : "Button to start the HTTPS media server",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Start Server" }
+        }
+      }
+    },
+
+    "server.button.stop" : {
+      "comment" : "Button to stop the running HTTPS media server",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Stop Server" }
+        }
+      }
+    },
+
+    "server.button.routes" : {
+      "comment" : "Button to display the HTTP route table",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Show Routes" }
+        }
+      }
+    },
+
+    "server.button.clearLog" : {
+      "comment" : "Button to clear the server access log",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Clear Log" }
+        }
+      }
+    },
+
+    "server.status.stopped" : {
+      "comment" : "Status label when the server is not running",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Status: stopped" }
+        }
+      }
+    },
+
+    "server.status.running" : {
+      "comment" : "Status label when the server is running (%@ = address)",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Status: running \u2014 %@" }
+        }
+      }
+    }
+
+  },
+  "version" : "1.0"
+}

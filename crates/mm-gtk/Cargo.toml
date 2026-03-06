@@ -51,6 +51,9 @@ serde_json = "1"
 # Platform directories — config path resolution for settings panel
 dirs = "6"
 
+# Internationalisation — initialise gettext locale at GTK startup
+gettextrs = { workspace = true }
+
 # Error handling
 anyhow = "1"
 

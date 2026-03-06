@@ -33,6 +33,7 @@ use libadwaita as adw;
 use adw::prelude::*;
 
 use crate::state::{LookupResult, LookupState};
+use crate::ui::accessibility;
 
 /// The Metadata Lookup panel.
 pub struct LookupPanel {
@@ -238,6 +239,21 @@ impl LookupPanel {
             .build();
         btn_row.append(&clear_btn);
         btn_row.append(&apply_btn);
+
+        // ------------------------------------------------------------------
+        // AT-SPI2 accessibility labels (Issue #128)
+        // ------------------------------------------------------------------
+        accessibility::set_label(&title_entry, "Search query");
+        accessibility::set_description(&title_entry, "Enter a track, show, or podcast title to search across all enabled providers.");
+        accessibility::set_label(&artist_entry, "Artist hint (optional)");
+        accessibility::set_description(&artist_entry, "Optionally narrow the search by providing an artist name.");
+        accessibility::set_label(&search_btn, "Search providers");
+        accessibility::set_description(&search_btn, "Searches all enabled metadata providers for the entered query.");
+        accessibility::set_label(&apply_btn, "Apply result to file");
+        accessibility::set_description(&apply_btn, "Writes the selected result's tags to the currently open media file.");
+        accessibility::set_label(&clear_btn, "Clear results");
+        accessibility::set_description(&clear_btn, "Clears the search results and resets the lookup form.");
+        accessibility::set_label(&status_label, "Lookup status");
 
         // ------------------------------------------------------------------
         // Root layout

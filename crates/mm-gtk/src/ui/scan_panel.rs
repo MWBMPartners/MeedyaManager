@@ -35,6 +35,7 @@ use mm_core::renamer::{self, SanitizeConfig};
 use mm_core::metadata;
 
 use crate::state::ScanState;
+use crate::ui::accessibility;
 
 /// The Library / Scan panel widget.
 pub struct ScanPanel {
@@ -158,6 +159,23 @@ impl ScanPanel {
             .margin_bottom(12)
             .halign(gtk::Align::End)
             .build();
+
+        // ------------------------------------------------------------------
+        // AT-SPI2 accessibility labels (Issue #128)
+        // ------------------------------------------------------------------
+        accessibility::set_label(&folder_entry, "Source folder path");
+        accessibility::set_description(&folder_entry, "Enter a folder path or drag a folder from the file manager.");
+        accessibility::set_label(&browse_btn, "Browse for folder");
+        accessibility::set_description(&browse_btn, "Opens a folder picker to choose the directory to scan.");
+        accessibility::set_label(&template_entry, "Rename template");
+        accessibility::set_description(&template_entry, "Enter a MusicBee-style template using angle-bracket tags such as Artist, Title, Album.");
+        accessibility::set_label(&recursive_check, "Include sub-folders");
+        accessibility::set_description(&recursive_check, "When checked, scans all nested subdirectories recursively.");
+        accessibility::set_label(&scan_btn, "Scan folder");
+        accessibility::set_description(&scan_btn, "Scans the selected folder for media files and shows rename previews.");
+        accessibility::set_label(&execute_btn, "Execute renames");
+        accessibility::set_description(&execute_btn, "Permanently renames all previewed files on disk. This cannot be undone.");
+        accessibility::set_label(&summary_label, "Scan status");
 
         // ------------------------------------------------------------------
         // Drag-and-drop — accept folders dropped from the file manager

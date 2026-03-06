@@ -183,12 +183,16 @@ struct ServerView: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 200)
                             .help("Use 0.0.0.0 for all interfaces or 127.0.0.1 for loopback only.")
+                            .accessibilityLabel("Bind address")
+                            .accessibilityHint("Use 0.0.0.0 for all interfaces or 127.0.0.1 for loopback only")
                     }
                     LabeledContent("Port") {
                         TextField("8443", text: $model.port)
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 80)
                             .help("TCP port for HTTPS connections. Ports below 1024 require elevated privileges.")
+                            .accessibilityLabel("Port")
+                            .accessibilityHint("TCP port for HTTPS connections. Ports below 1024 require elevated privileges.")
                     }
                 }
 
@@ -199,14 +203,19 @@ struct ServerView: View {
                         TextField("/etc/ssl/cert.pem", text: $model.tlsCertPath)
                             .textFieldStyle(.roundedBorder)
                             .help("Path to PEM-encoded TLS certificate file.")
+                            .accessibilityLabel("TLS certificate path")
+                            .accessibilityHint("Enter the file path to your PEM-encoded TLS certificate")
                     }
                     LabeledContent("Private key (PEM)") {
                         TextField("/etc/ssl/key.pem", text: $model.tlsKeyPath)
                             .textFieldStyle(.roundedBorder)
                             .help("Path to PEM-encoded TLS private key file.")
+                            .accessibilityLabel("TLS private key path")
+                            .accessibilityHint("Enter the file path to your PEM-encoded TLS private key")
                     }
                     Toggle("Disable TLS (HTTP only — development use)", isOn: $model.noTls)
                         .help("Use plain HTTP instead of HTTPS. Not recommended for production.")
+                        .accessibilityHint("Switches to plain HTTP. Not recommended for production deployments.")
                 }
 
                 // ── Authentication ────────────────────────────────────────
@@ -216,12 +225,16 @@ struct ServerView: View {
                         SecureField("or set MM_JWT_SECRET env var", text: $model.jwtSecret)
                             .textFieldStyle(.roundedBorder)
                             .help("Secret key used to sign JWT tokens. Minimum 16 characters.")
+                            .accessibilityLabel("JWT secret")
+                            .accessibilityHint("Secret key used to sign authentication tokens. Minimum 16 characters.")
                     }
                     LabeledContent("Token expiry (s)") {
                         TextField("86400", text: $model.jwtExpirySecs)
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 100)
                             .help("How long issued JWTs remain valid. Default: 86400 (24 hours).")
+                            .accessibilityLabel("Token expiry in seconds")
+                            .accessibilityHint("How long issued tokens remain valid. Default is 86400, which is 24 hours.")
                     }
                 }
 
@@ -233,6 +246,8 @@ struct ServerView: View {
                                   text: $model.corsOrigins)
                             .textFieldStyle(.roundedBorder)
                             .help("Comma-separated list of allowed origins. Leave empty to deny cross-origin requests.")
+                            .accessibilityLabel("CORS allowed origins")
+                            .accessibilityHint("Comma-separated list of allowed cross-origin request origins. Leave empty to deny all cross-origin requests.")
                     }
                 }
 
@@ -247,12 +262,16 @@ struct ServerView: View {
 
                     // Status
                     HStack {
+                        // Decorative dot — status announced via text live region
                         Circle()
                             .fill(statusColor)
                             .frame(width: 10, height: 10)
+                            .accessibilityHidden(true)
                         Text(model.status.displayText)
                             .font(.callout)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel("Server status: \(model.status.displayText)")
+                            .accessibilityLiveRegion(.polite)
                     }
 
                     // Buttons
@@ -262,6 +281,8 @@ struct ServerView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(model.status.isRunning || model.isLoading)
+                        .accessibilityLabel("Start server")
+                        .accessibilityHint("Starts the HTTPS media server with the current configuration")
 
                         Button(action: { model.stopServer() }) {
                             Label("Stop Server", systemImage: "stop.fill")
@@ -269,11 +290,15 @@ struct ServerView: View {
                         .buttonStyle(.bordered)
                         .tint(.red)
                         .disabled(!model.status.isRunning || model.isLoading)
+                        .accessibilityLabel("Stop server")
+                        .accessibilityHint("Stops the running media server")
 
                         Button(action: { model.showRoutes() }) {
                             Label("Show Routes", systemImage: "list.bullet")
                         }
                         .buttonStyle(.bordered)
+                        .accessibilityLabel("Show routes")
+                        .accessibilityHint("Displays the API route table in the access log")
                     }
                 }
 
@@ -303,6 +328,8 @@ struct ServerView: View {
                         Spacer()
                         Button("Clear Log") { model.clearLog() }
                             .buttonStyle(.bordered)
+                            .accessibilityLabel("Clear access log")
+                            .accessibilityHint("Removes all log entries and resets any error state")
                     }
                 }
             }

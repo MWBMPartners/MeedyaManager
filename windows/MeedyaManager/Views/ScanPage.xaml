@@ -40,12 +40,16 @@
                         IsReadOnly="True"
                         AllowDrop="True"
                         DragOver="FolderBox_DragOver"
-                        Drop="FolderBox_Drop" />
+                        Drop="FolderBox_Drop"
+                        AutomationProperties.Name="Source folder path"
+                        AutomationProperties.HelpText="Type a folder path or drag a folder from Explorer" />
                     <Button
                         x:Name="BrowseButton"
                         Grid.Column="1"
                         Content="Browse…"
-                        Click="BrowseButton_Click" />
+                        Click="BrowseButton_Click"
+                        AutomationProperties.Name="Browse for folder"
+                        AutomationProperties.HelpText="Opens a folder picker to choose the directory to scan" />
                 </Grid>
                 <TextBlock
                     Text="Tip: drag a folder from Explorer to set the path."
@@ -57,7 +61,9 @@
                 <TextBox
                     x:Name="TemplateBox"
                     PlaceholderText="e.g. &lt;Artist&gt; - &lt;Title&gt;"
-                    TextChanged="TemplateBox_TextChanged" />
+                    TextChanged="TemplateBox_TextChanged"
+                    AutomationProperties.Name="Rename template"
+                    AutomationProperties.HelpText="Enter a MusicBee-style template using angle-bracket tags such as Artist, Title, Album" />
                 <InfoBar
                     x:Name="ValidationBar"
                     IsOpen="False"
@@ -67,7 +73,8 @@
                 <ToggleSwitch
                     x:Name="RecursiveToggle"
                     Header="Include sub-folders"
-                    IsOn="True" />
+                    IsOn="True"
+                    AutomationProperties.HelpText="When on, scans all nested subdirectories recursively" />
 
                 <!-- Action buttons -->
                 <Button
@@ -75,14 +82,18 @@
                     Content="Scan"
                     HorizontalAlignment="Stretch"
                     Style="{StaticResource AccentButtonStyle}"
-                    Click="ScanButton_Click" />
+                    Click="ScanButton_Click"
+                    AutomationProperties.Name="Scan folder"
+                    AutomationProperties.HelpText="Scans the selected folder for media files and shows rename previews" />
 
                 <Button
                     x:Name="ExecuteButton"
                     Content="Execute Renames"
                     HorizontalAlignment="Stretch"
                     IsEnabled="False"
-                    Click="ExecuteButton_Click" />
+                    Click="ExecuteButton_Click"
+                    AutomationProperties.Name="Execute renames"
+                    AutomationProperties.HelpText="Permanently renames all previewed files on disk. This cannot be undone." />
 
                 <!-- Progress ring shown during scan -->
                 <ProgressRing
@@ -90,12 +101,13 @@
                     IsActive="False"
                     HorizontalAlignment="Center" />
 
-                <!-- Status text -->
+                <!-- Status text — live region so Narrator announces changes -->
                 <TextBlock
                     x:Name="StatusText"
                     Text=""
                     TextWrapping="Wrap"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
         </ScrollViewer>
 

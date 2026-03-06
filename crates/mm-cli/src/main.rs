@@ -104,6 +104,9 @@ enum Commands {
 /// from the command handler is propagated to the process.
 #[tokio::main]
 async fn main() {
+    // Initialise i18n — must run before any user-visible strings are produced
+    mm_core::i18n::init();
+
     // Parse command-line arguments using clap derive
     let cli = Cli::parse();
 

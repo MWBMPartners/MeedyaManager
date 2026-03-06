@@ -86,6 +86,8 @@ struct SettingsView: View {
                                 .monospacedDigit()
                                 .frame(width: 72, alignment: .trailing)
                         }
+                        .accessibilityLabel("Debounce interval")
+                        .accessibilityHint("Milliseconds to wait before processing a file-system event. Range: 50 to 5000.")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -108,6 +110,8 @@ struct SettingsView: View {
                         }
                         .labelsHidden()
                         .frame(width: 100)
+                        .accessibilityLabel("Log level")
+                        .accessibilityHint("Controls the verbosity of structured log output")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -141,6 +145,8 @@ struct SettingsView: View {
                                 openInFinder(path: configFilePath)
                             }
                             .controlSize(.small)
+                            .accessibilityLabel("Show config file in Finder")
+                            .accessibilityHint("Opens the Finder and selects the settings file")
 
                             // Copy path to clipboard
                             Button("Copy Path") {
@@ -148,6 +154,8 @@ struct SettingsView: View {
                                 NSPasteboard.general.setString(configFilePath, forType: .string)
                             }
                             .controlSize(.small)
+                            .accessibilityLabel("Copy config file path")
+                            .accessibilityHint("Copies the settings file path to the clipboard")
                         }
                     }
                     .padding(.horizontal, 16)
@@ -196,6 +204,8 @@ struct SettingsView: View {
                             .controlSize(.regular)
                             .buttonStyle(.bordered)
                             .disabled(updateStatus == "checking")
+                            .accessibilityLabel("Check for updates")
+                            .accessibilityHint("Checks whether a newer version of MeedyaManager is available")
 
                             // "Download" link — only shown when an update is found
                             if updateStatus.hasPrefix("available:") {
@@ -227,6 +237,8 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(isSaving)
+                    .accessibilityLabel("Save settings")
+                    .accessibilityHint("Writes the current settings to the config file on disk")
                 }
                 .padding(.bottom, 8)
 
@@ -385,6 +397,8 @@ private struct SettingsToggleRow: View {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
+                .accessibilityLabel(label)
+                .accessibilityHint(detail)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

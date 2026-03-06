@@ -31,6 +31,7 @@ use adw::prelude::*;
 use mm_core::rule_engine;
 
 use crate::state::RulesState;
+use crate::ui::accessibility;
 
 /// The Rules tab panel.
 pub struct RulesPanel {
@@ -51,6 +52,8 @@ impl RulesPanel {
             .placeholder_text("Rename template, e.g. <Artist>/<Album>/<TrackNumber>. <Title>")
             .hexpand(true)
             .build();
+        accessibility::set_label(&template_entry, "Rename template");
+        accessibility::set_description(&template_entry, "Enter a MusicBee-style template using angle-bracket tags such as Artist, Title, Album.");
 
         // Validation label (green on valid, red on error)
         let validation_label = gtk::Label::builder()
@@ -176,6 +179,9 @@ impl RulesPanel {
                 .label(&format!("<{tag}>"))
                 .css_classes(["pill"])
                 .build();
+            // Set accessible label so Orca announces intent, not just the angle-bracket text
+            accessibility::set_label(&pill, &format!("Insert {tag} tag"));
+            accessibility::set_description(&pill, &format!("Appends <{tag}> to the rename template."));
 
             let entry_clone = template_entry.clone();
             let tag_text = format!("<{tag}>");

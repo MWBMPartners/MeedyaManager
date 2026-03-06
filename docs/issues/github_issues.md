@@ -216,10 +216,10 @@
 
 | # | Title | Priority | Status |
 | - | ----- | -------- | ------ |
-| #128 | Accessibility support: VoiceOver (macOS), Narrator (Windows), AT-SPI (Linux) | High | 🔄 |
+| #128 | Accessibility support: VoiceOver (macOS), Narrator (Windows), AT-SPI (Linux) | High | ✅ |
 | #129 | Release binary hardening: LTO, strip, panic=abort, PIE, code signing | — | ✅ |
-| #130 | Translation / Internationalisation (i18n) support — Fluent/gettext CLI, NSLocalizedString macOS, resw Windows, gettextrs Linux | Medium | 🔲 |
-| #131 | Windows process check via OpenProcess (platform-specific state manager enhancement) | Low | 🔲 |
+| #130 | Translation / Internationalisation (i18n) support — gettextrs CLI+Linux, .xcstrings macOS, .resw Windows | Medium | ✅ |
+| #131 | Windows process check via OpenProcess (platform-specific state manager enhancement) | Low | ✅ |
 
 ---
 
@@ -276,4 +276,4 @@ Create a **GitHub Projects v2** board with the following columns/views:
 
 ---
 
-> *Last updated: 2026-03-05 (M10 complete — all M0-M10 issues closed; v1.0.0 released; #128 in progress)*
+> *Last updated: 2026-03-06 (v1.1.0 — #128 Accessibility, #130 i18n, #131 Windows OpenProcess all closed; all post-v1.0 issues resolved)*

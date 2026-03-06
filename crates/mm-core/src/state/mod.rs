@@ -185,26 +185,82 @@ impl Drop for LockFile {
 /// Check if a process with the given PID is currently running.
 ///
 /// Uses platform-specific methods:
-/// - Unix: `kill(pid, 0)` — signal 0 checks existence without affecting the process
-/// - Windows: `OpenProcess` — attempts to open the process handle
+/// - Unix:    `kill(pid, 0)` — signal 0 probes existence without affecting the process.
+/// - Windows: `OpenProcess(SYNCHRONIZE, FALSE, pid)` — attempts to open a minimal
+///            handle to the target process.  Two distinct failure codes let us
+///            distinguish "process does not exist" from "process exists but access
+///            was denied".
+/// - Other:   Conservative fallback — always returns `true` (never clears a lock).
+
+// ---------------------------------------------------------------------------
+// Unix implementation (Linux, macOS, FreeBSD, etc.)
+// ---------------------------------------------------------------------------
 #[cfg(unix)]
 fn is_process_running(pid: u32) -> bool {
-    // Signal 0 checks if the process exists without sending a signal
-    unsafe { libc::kill(pid as i32, 0) == 0 }
-}
-
-#[cfg(not(unix))]
-fn is_process_running(_pid: u32) -> bool {
-    // Conservative fallback on non-Unix platforms.
-    // Windows production implementation would call OpenProcess(SYNCHRONIZE, …)
-    // and check for ERROR_INVALID_PARAMETER vs ERROR_ACCESS_DENIED.
-    // Tracked in issue #131 (future Windows single-instance hardening).
-    true
+    // `kill(pid, 0)` returns 0 if the process exists (even if owned by another user),
+    // or -1 with errno ESRCH if no such process exists.
+    // errno EPERM means the process exists but we cannot signal it — still running.
+    unsafe { libc::kill(pid as i32, 0) == 0 || *libc::__errno_location() == libc::EPERM }
 }
 
 // Declare libc dependency for Unix PID checking
 #[cfg(unix)]
 extern crate libc;
+
+// ---------------------------------------------------------------------------
+// Windows implementation — OpenProcess (issue #131)
+// ---------------------------------------------------------------------------
+#[cfg(windows)]
+fn is_process_running(pid: u32) -> bool {
+    use winapi::shared::winerror::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER};
+    use winapi::um::errhandlingapi::GetLastError;
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::processthreadsapi::OpenProcess;
+    use winapi::um::winnt::SYNCHRONIZE;
+
+    unsafe {
+        // Request only SYNCHRONIZE — the minimal access right for process handles.
+        // This succeeds for most processes, including those owned by other users in
+        // the same session, without requiring elevated privileges.
+        let handle = OpenProcess(
+            SYNCHRONIZE, // dwDesiredAccess
+            0,           // bInheritHandle = FALSE
+            pid,         // dwProcessId
+        );
+
+        if !handle.is_null() {
+            // Successfully opened a handle — process is alive.
+            CloseHandle(handle);
+            return true;
+        }
+
+        // The call failed.  Inspect the error code to determine why.
+        match GetLastError() {
+            // ERROR_ACCESS_DENIED: the process exists but we cannot open a handle
+            // to it (e.g. it's a system process or belongs to a different user).
+            // The process IS running — treat the lock as live.
+            ERROR_ACCESS_DENIED => true,
+
+            // ERROR_INVALID_PARAMETER: no process with this PID exists.
+            // The lock is stale and can be safely removed.
+            ERROR_INVALID_PARAMETER => false,
+
+            // Any other error (e.g. ERROR_INVALID_HANDLE for PID 0): conservatively
+            // assume the process is still running to avoid corrupting state.
+            _ => true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fallback for exotic platforms (WASM, UEFI, etc.)
+// ---------------------------------------------------------------------------
+#[cfg(not(any(unix, windows)))]
+fn is_process_running(_pid: u32) -> bool {
+    // No process-inspection API available.  Return true (conservative) so we
+    // never silently delete a lock file that belongs to a running instance.
+    true
+}
 
 #[cfg(test)]
 mod tests {
@@ -356,5 +412,47 @@ mod tests {
         let path = LockFile::default_path();
         let path_str = path.to_string_lossy();
         assert!(path_str.contains("MeedyaManager"));
+    }
+
+    // -----------------------------------------------------------------------
+    // is_process_running — platform-specific tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn current_process_is_detected_as_running() {
+        // Our own PID must always be detected as running.
+        let my_pid = std::process::id();
+        assert!(is_process_running(my_pid),
+            "is_process_running() must return true for the current process PID");
+    }
+
+    #[test]
+    fn extremely_large_pid_is_not_running() {
+        // PID 4_294_967_295 (u32::MAX) is not a valid PID on any platform and
+        // should reliably return false.  On Unix, kill() returns ESRCH; on Windows,
+        // OpenProcess() returns ERROR_INVALID_PARAMETER.
+        // We accept that on some exotic platforms it might return true (conservative
+        // fallback), so we only assert on the platforms with real implementations.
+        #[cfg(unix)]
+        assert!(!is_process_running(u32::MAX),
+            "PID u32::MAX should not be detected as running on Unix");
+
+        #[cfg(windows)]
+        assert!(!is_process_running(u32::MAX),
+            "PID u32::MAX should not be detected as running on Windows");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_stale_lock_is_cleaned() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("win_stale.lock");
+
+        // Write a PID that is guaranteed not to exist (u32::MAX is invalid on Windows)
+        std::fs::write(&path, u32::MAX.to_string()).unwrap();
+
+        // LockFile::acquire should detect the stale lock and overwrite it
+        let lock = LockFile::acquire(&path);
+        assert!(lock.is_ok(), "Stale lock with invalid PID should be cleaned on Windows");
     }
 }

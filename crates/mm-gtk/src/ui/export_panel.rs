@@ -19,6 +19,8 @@ use gtk::prelude::*;
 use libadwaita as adw;
 use adw::prelude::*;
 
+use crate::ui::accessibility;
+
 // ─── Backend option ──────────────────────────────────────────────────────────
 
 /// A single database backend option displayed in the backend picker.
@@ -86,6 +88,8 @@ impl ExportPanel {
             backend_combo.append(Some(b.id), b.label);
         }
         backend_combo.set_active_id(Some("sqlite")); // default to SQLite
+        accessibility::set_label(&backend_combo, "Database backend");
+        accessibility::set_description(&backend_combo, "Select the database engine to export your media library to.");
 
         let backend_row = adw::ActionRow::builder()
             .title("Backend")
@@ -105,6 +109,8 @@ impl ExportPanel {
             .placeholder_text("sqlite:///home/user/library.db")
             .hexpand(true)
             .build();
+        accessibility::set_label(&dsn_entry, "Connection string");
+        accessibility::set_description(&dsn_entry, "Enter the DSN connection string for the selected database backend.");
 
         // Update placeholder when backend changes
         {
@@ -130,6 +136,8 @@ impl ExportPanel {
             .text("mm_")
             .max_length(32)
             .build();
+        accessibility::set_label(&prefix_entry, "Table prefix");
+        accessibility::set_description(&prefix_entry, "Prefix applied to all created database tables.");
 
         let prefix_row = adw::ActionRow::builder()
             .title("Table prefix")
@@ -152,6 +160,8 @@ impl ExportPanel {
             .tooltip_text("Preview the CREATE TABLE statements without running the export")
             .build();
         schema_btn.add_css_class("pill");
+        accessibility::set_label(&schema_btn, "Show schema DDL");
+        accessibility::set_description(&schema_btn, "Displays the database schema SQL statements in the export log.");
 
         let export_btn = gtk::Button::builder()
             .label("Export Library")
@@ -159,6 +169,8 @@ impl ExportPanel {
             .build();
         export_btn.add_css_class("pill");
         export_btn.add_css_class("suggested-action");
+        accessibility::set_label(&export_btn, "Export library");
+        accessibility::set_description(&export_btn, "Exports your media library to the configured database backend.");
 
         btn_box.append(&schema_btn);
         btn_box.append(&export_btn);
@@ -171,6 +183,7 @@ impl ExportPanel {
             .xalign(0.0)
             .build();
         status_label.add_css_class("caption");
+        accessibility::set_label(&status_label, "Export status");
         outer_box.append(&status_label);
 
         // ── Log / results area ────────────────────────────────────────────────
@@ -204,6 +217,8 @@ impl ExportPanel {
             .halign(gtk::Align::End)
             .build();
         clear_btn.add_css_class("flat");
+        accessibility::set_label(&clear_btn, "Clear export log");
+        accessibility::set_description(&clear_btn, "Removes all log entries and resets the export status.");
         {
             let buf = log_buffer.clone();
             clear_btn.connect_clicked(move |_| {

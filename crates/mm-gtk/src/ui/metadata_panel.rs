@@ -38,6 +38,7 @@ use adw::prelude::*;
 use mm_core::metadata::{self, TagMap};
 
 use crate::state::MetadataState;
+use crate::ui::accessibility;
 
 // Cover art display size (px × px square)
 const COVER_ART_SIZE: i32 = 180;
@@ -206,6 +207,19 @@ impl MetadataPanel {
         root.append(&status_label);
         root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         root.append(&btn_row);
+
+        // ------------------------------------------------------------------
+        // AT-SPI2 accessibility labels (Issue #128)
+        // ------------------------------------------------------------------
+        accessibility::set_label(&file_entry, "Selected file path");
+        accessibility::set_description(&file_entry, "Shows the path of the currently loaded media file.");
+        accessibility::set_label(&open_btn, "Open media file");
+        accessibility::set_description(&open_btn, "Opens a file picker to choose a media file for tag editing.");
+        accessibility::set_label(&revert_btn, "Revert changes");
+        accessibility::set_description(&revert_btn, "Discards all unsaved tag edits and reloads the file.");
+        accessibility::set_label(&save_btn, "Save metadata tags");
+        accessibility::set_description(&save_btn, "Writes all edited tags back to the media file on disk.");
+        accessibility::set_label(&status_label, "Metadata status");
 
         // ------------------------------------------------------------------
         // Signal handlers

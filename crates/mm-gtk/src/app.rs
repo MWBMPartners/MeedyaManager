@@ -17,6 +17,10 @@ use crate::ui::main_window;
 ///
 /// Blocks until the application window is closed.
 pub fn run(app_id: &str) {
+    // Initialise i18n — must run before any user-visible strings are produced.
+    // Resolves the system locale and binds the "meedyamanager" gettext domain.
+    mm_core::i18n::init();
+
     // Initialise libadwaita (also initialises GTK4 and GLib internally)
     // This must be called before any GTK/Adwaita object is created.
     adw::init().expect("Failed to initialise libadwaita — is GTK4 installed?");

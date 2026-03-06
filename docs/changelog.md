@@ -8,29 +8,55 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v1.1.0] — 2026-03-05 — Accessibility + Code Quality (Issue #128)
+## [v1.1.0] — 2026-03-06 — Accessibility + i18n + Windows OpenProcess (#128, #130, #131)
 
-> **Cross-cutting** — Accessibility and code quality pass. Adds AT-SPI2/VoiceOver/Narrator infrastructure across all three platforms, GTK4 app-ID consistency fix, WinGet v1.0.0 manifest, and removes all remaining `(d/b/a MW Services)` text from source files.
+> **Cross-cutting** — Three post-v1.0 issues fully resolved: full accessibility labelling across all three platforms (GTK4, macOS SwiftUI, Windows WinUI 3), i18n infrastructure (gettextrs/gettext + .xcstrings + .resw), and Windows single-instance lock hardening via `OpenProcess`.
 
 ### Added
 
-**Accessibility (Issue #128):**
-- `crates/mm-gtk/src/ui/accessibility.rs` — New GTK4 AT-SPI2 helper module: `set_label()`, `set_description()`, `set_busy()`, `set_expanded()` (using `gtk4::prelude::AccessibleExt::update_property/update_state`), `tab_label()`, `tab_description()` (8 tabs each). 8 unit tests covering label completeness, uniqueness, no-HTML, sentence termination, and out-of-bounds safety.
-- `macos/MeedyaManagerTests/AccessibilityTests.swift` — 19 Swift Testing tests covering `AppTab.accessibilityLabel` completeness and uniqueness, `ServerStatus` VoiceOver descriptions (all 4 variants), `ScanModel` status strings, and `ServerModel` validation error humanness.
-- `windows/MeedyaManager.Tests/AccessibilityTests.cs` — 20 xUnit tests covering `NavigationPageNames` completeness and uniqueness, `AutomationNameHelper.PrimaryButtonLabel` (8 pages via `[Theory]`), `IsValidAutomationName` (5 cases), `ServerStatusA11y` (4 cases), and colour-independence check.
+**Accessibility (Issue #128) — GTK4 panel labels:**
+- `crates/mm-gtk/src/ui/accessibility.rs` — New AT-SPI2 helper module: `set_label()`, `set_description()`, `set_busy()`, `set_expanded()`, `tab_label()`, `tab_description()`. 8 unit tests.
+- `scan_panel.rs`, `metadata_panel.rs`, `lookup_panel.rs`, `rules_panel.rs`, `cloud_panel.rs`, `export_panel.rs`, `settings_panel.rs`, `server_panel.rs` — Full AT-SPI2 label + description applied to every interactive widget (entry rows, buttons, spin buttons, drop-downs, status labels). Cloud connect/disconnect button accessible label updated dynamically on toggle. Tag pills in rules panel each receive unique `"Insert <Tag> tag"` label.
 
-**Accessibility model extensions:**
-- `AppState.swift` — Added `AppTab.accessibilityLabel` computed property (returns `rawValue`).
-- `ScanModel.swift` — Added `renameCountDescription` computed property (VoiceOver-safe pluralised count string).
+**Accessibility (Issue #128) — macOS SwiftUI:**
+- All views (`ScanView`, `MetadataView`, `LookupView`, `RulesView`, `CloudView`, `ExportView`, `SettingsView`, `ServerView`) — `.accessibilityLabel()` / `.accessibilityHint()` on all interactive widgets; `.accessibilityLiveRegion(.polite)` on status `Text` labels; `.accessibilityHidden(true)` on decorative elements (icons, status dots).
+
+**Accessibility (Issue #128) — Windows XAML:**
+- `ScanPage.xaml`, `MetadataPage.xaml`, `LookupPage.xaml`, `RulesPage.xaml`, `CloudPage.xaml`, `ExportPage.xaml`, `SettingsPage.xaml`, `ServerPage.xaml` — `AutomationProperties.Name` + `AutomationProperties.HelpText` on all interactive controls; `AutomationProperties.LiveSetting="Polite"` on all status `TextBlock` elements.
+
+**Accessibility (Issue #128) — test infrastructure:**
+- `crates/mm-gtk/src/ui/accessibility.rs` — 8 unit tests.
+- `macos/MeedyaManagerTests/AccessibilityTests.swift` — 19 Swift Testing tests.
+- `windows/MeedyaManager.Tests/AccessibilityTests.cs` — 20 xUnit tests.
+
+**i18n (Issue #130) — Rust/CLI/GTK4:**
+- `crates/mm-core/src/i18n.rs` — New `mm_core::i18n::init()` function: `setlocale(LC_ALL, "")`, `bindtextdomain("meedyamanager", …)` with environment override + Flatpak XDG path + system fallback, `bind_textdomain_codeset("UTF-8")`, `textdomain()`. 4 unit tests.
+- `Cargo.toml` (workspace) — Added `gettextrs = "0.15"` to workspace dependencies.
+- `crates/mm-core/Cargo.toml`, `crates/mm-cli/Cargo.toml`, `crates/mm-gtk/Cargo.toml` — Added `gettextrs` dependency.
+- `crates/mm-cli/src/main.rs` — Added `mm_core::i18n::init()` call before argument parsing.
+- `crates/mm-gtk/src/app.rs` — Added `mm_core::i18n::init()` call before `adw::init()`.
+- `locales/en_US/LC_MESSAGES/meedyamanager.po` — English source catalogue with all CLI and GTK4 translatable strings (80+ message IDs covering scan, metadata, lookup, cloud, export, settings, server panels).
+- `locales/TRANSLATORS.md` — Full guide for adding new languages on all three platforms.
+
+**i18n (Issue #130) — macOS:**
+- `macos/MeedyaManager/Localizable.xcstrings` — Xcode 15+ `.xcstrings` JSON catalogue with 34 keys covering all UI panels. BCP 47 structured for multi-language expansion.
+
+**i18n (Issue #130) — Windows:**
+- `windows/MeedyaManager/Strings/en-US/Resources.resw` — WinUI 3 resource file with 40+ string keys (dot-separated naming: `Page.Context.Name`). Includes schema headers for MSBuild compatibility.
+- `windows/MeedyaManager/Helpers/ResourceHelper.cs` — Static `ResourceHelper.Get(key)` and `ResourceHelper.Format(key, args)` wrappers around `ResourceLoader`; falls back to key string on missing translation.
+
+**Windows OpenProcess check (Issue #131):**
+- `crates/mm-core/src/state/mod.rs` — Replaced `cfg(not(unix))` stub (always returned `true`) with proper `cfg(windows)` implementation using `winapi::OpenProcess(SYNCHRONIZE, FALSE, pid)`. Correctly distinguishes: process exists → `true`, `ERROR_ACCESS_DENIED` (process exists, no access) → `true`, `ERROR_INVALID_PARAMETER` (no such PID) → `false`. Also improved Unix path to handle `EPERM` (process exists but not signalable).
+- `crates/mm-core/Cargo.toml` — Added `winapi = { version = "0.3", features = ["processthreadsapi", "handleapi", "errhandlingapi", "winerror"] }` as `[target.'cfg(windows)'.dependencies]`.
+- New tests: `current_process_is_detected_as_running()`, `extremely_large_pid_is_not_running()`, `windows_stale_lock_is_cleaned()` (Windows-only).
 
 **WinGet manifest:**
-- `windows/winget/manifests/m/MWBM/MeedyaManager/1.0.0/MWBM.MeedyaManager.yaml` — Created v1.0.0 WinGet singleton manifest; adds "Secure HTTPS media server" and "Database export" to the feature description.
+- `windows/winget/manifests/m/MWBM/MeedyaManager/1.0.0/MWBM.MeedyaManager.yaml` — v1.0.0 WinGet singleton manifest.
 
 ### Fixed
 
-- `crates/mm-gtk/src/lib.rs` — `APP_ID` corrected from `uk.co.mwbm.MeedyaManager` to `ltd.MWBMpartners.MeedyaManager` (now consistent with Flatpak manifest and `.desktop`/`.metainfo` filenames).
-- `.gitignore`, `crates/mm-ffi/src/mm_ffi.udl`, `windows/MeedyaManager/MeedyaManager.csproj`, `windows/MeedyaManager.Tests/MeedyaManager.Tests.csproj` — Removed remaining `(d/b/a MW Services)` text from copyright headers.
-- `docs/issues/github_issues.md` — Closed all M10 issues (#120–#127); added prioritised backlog section; added `#131` for Windows OpenProcess enhancement.
+- `crates/mm-gtk/src/lib.rs` — `APP_ID` corrected from `uk.co.mwbm.MeedyaManager` to `ltd.MWBMpartners.MeedyaManager`.
+- `docs/issues/github_issues.md` — All post-v1.0 issues (#128, #130, #131) closed.
 
 ### Changed
 

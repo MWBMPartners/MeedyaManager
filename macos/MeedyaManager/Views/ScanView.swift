@@ -29,12 +29,14 @@ struct ScanView: View {
                 Divider()
                 Spacer()
 
-                // Status bar at the bottom
+                // Status bar — live region so VoiceOver announces progress changes
                 Text(model.status)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("Scan status: \(model.status)")
+                    .accessibilityLiveRegion(.polite)
             }
             .frame(minWidth: 260, idealWidth: 280, maxWidth: 340)
 
@@ -68,6 +70,8 @@ private struct OptionsPane: View {
                 HStack {
                     TextField("Folder path", text: $model.directoryPath)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Source folder path")
+                        .accessibilityHint("Enter a folder path or drag a folder from Finder")
                         // Accept dropped folders (or files — use parent directory)
                         .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
                             guard let provider = providers.first else { return false }
@@ -82,6 +86,8 @@ private struct OptionsPane: View {
                             return true
                         }
                     Button("Browse…") { showFolderPicker = true }
+                        .accessibilityLabel("Browse for folder")
+                        .accessibilityHint("Opens a folder picker to choose the directory to scan")
                 }
                 Text("Tip: drag a folder from Finder to set the path.")
                     .font(.caption)
@@ -93,6 +99,8 @@ private struct OptionsPane: View {
                 TextField("<Artist> - <Title>", text: $model.template)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
+                    .accessibilityLabel("Rename template")
+                    .accessibilityHint("Enter a MusicBee-style template using angle-bracket tags such as Artist, Title, Album")
 
                 // Inline validation feedback
                 TemplateValidationBadge(template: model.template)
@@ -101,6 +109,7 @@ private struct OptionsPane: View {
             // Options
             Section("Options") {
                 Toggle("Include sub-folders", isOn: $model.recursive)
+                    .accessibilityHint("When on, scans all nested subdirectories recursively")
             }
 
             // Scan + Execute buttons
@@ -112,6 +121,8 @@ private struct OptionsPane: View {
                     }
                     .disabled(!model.canExecute || model.isRunning)
                     .foregroundStyle(.red)
+                    .accessibilityLabel("Execute renames")
+                    .accessibilityHint("Permanently renames all previewed files on disk. This cannot be undone.")
 
                     Spacer()
 
@@ -121,6 +132,8 @@ private struct OptionsPane: View {
                     }
                     .disabled(model.directoryPath.isEmpty || model.isRunning)
                     .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Scan folder")
+                    .accessibilityHint("Scans the selected folder for media files and shows rename previews")
                 }
             }
         }
@@ -187,10 +200,11 @@ private struct PreviewRow: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Arrow indicator
+            // Arrow indicator — decorative, hidden from VoiceOver
             Image(systemName: "arrow.right")
                 .foregroundStyle(.secondary)
                 .imageScale(.small)
+                .accessibilityHidden(true)
 
             // Destination filename
             Text(preview.destinationName)
@@ -209,6 +223,9 @@ private struct PreviewRow: View {
                 .foregroundStyle(badgeColor(preview))
         }
         .padding(.vertical, 2)
+        // Combine the entire row into one VoiceOver element with a descriptive label
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(preview.badgeText): \(preview.sourceName) will become \(preview.destinationName)")
     }
 
     private func badgeColor(_ p: RenamePreviewItem) -> Color {

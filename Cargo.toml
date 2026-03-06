@@ -106,6 +106,9 @@ uuid = { version = "1", features = ["v4"] }
 # Unix process checking (for lock file PID verification)
 libc = "0.2"
 
+# Internationalisation — GNU gettext bindings for translatable strings
+gettextrs = "0.15"
+
 # Semantic version comparison (mm-update)
 semver = { version = "1", features = ["serde"] }
 

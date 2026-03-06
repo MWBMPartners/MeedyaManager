@@ -31,6 +31,8 @@ struct RulesView: View {
                         // Rule name — used to identify this template in the rule list
                         TextField("Rule name", text: $ruleName)
                             .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Rule name")
+                            .accessibilityHint("Enter a name to identify this rename rule")
                     }
 
                     Section("Rename Template") {
@@ -38,6 +40,8 @@ struct RulesView: View {
                             .textFieldStyle(.roundedBorder)
                             .font(.system(.body, design: .monospaced))
                             .onChange(of: template) { _, new in updatePreview(new) }
+                            .accessibilityLabel("Rename template")
+                            .accessibilityHint("Enter a template using angle-bracket tags such as Artist, Title, Album")
 
                         // Validation feedback
                         ValidationFeedback(template: template)
@@ -65,6 +69,8 @@ struct RulesView: View {
                                     set: { sampleTags[key] = $0; updatePreview(template) }
                                 ))
                                 .textFieldStyle(.roundedBorder)
+                                .accessibilityLabel("\(key) sample value")
+                                .accessibilityHint("Enter a sample \(key) value used in the live preview")
                             }
                         }
                     }
@@ -151,6 +157,8 @@ private struct TagPill: View {
         }
         .buttonStyle(.bordered)
         .tint(.accentColor)
+        .accessibilityLabel("Insert \(tag) tag")
+        .accessibilityHint("Appends <\(tag)> to the rename template")
     }
 }
 

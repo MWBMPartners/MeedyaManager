@@ -22,6 +22,8 @@ use gtk::prelude::*;
 use libadwaita as adw;
 use adw::prelude::*;
 
+use crate::ui::accessibility;
+
 // ---------------------------------------------------------------------------
 // ServerPanel
 // ---------------------------------------------------------------------------
@@ -124,6 +126,8 @@ impl ServerPanel {
         let status_label = gtk::Label::new(Some("Status: stopped"));
         status_label.set_halign(gtk::Align::Start);
         status_label.add_css_class("dim-label");
+        accessibility::set_label(&status_label, "Server status: stopped");
+        accessibility::set_description(&status_label, "Displays whether the media server is stopped, starting, or running.");
 
         // Start / Stop button row
         let btn_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -132,11 +136,15 @@ impl ServerPanel {
         let start_btn = gtk::Button::with_label("Start Server");
         start_btn.add_css_class("suggested-action");
         start_btn.set_tooltip_text(Some("Start the HTTPS media server"));
+        accessibility::set_label(&start_btn, "Start server");
+        accessibility::set_description(&start_btn, "Starts the MeedyaManager HTTPS media server with the current configuration.");
 
         let stop_btn = gtk::Button::with_label("Stop Server");
         stop_btn.add_css_class("destructive-action");
         stop_btn.set_sensitive(false);
         stop_btn.set_tooltip_text(Some("Stop the running media server"));
+        accessibility::set_label(&stop_btn, "Stop server");
+        accessibility::set_description(&stop_btn, "Stops the currently running media server.");
 
         btn_row.append(&start_btn);
         btn_row.append(&stop_btn);
@@ -144,6 +152,8 @@ impl ServerPanel {
         // Route table button
         let routes_btn = gtk::Button::with_label("Show Routes");
         routes_btn.set_tooltip_text(Some("Display the HTTP route table for this server"));
+        accessibility::set_label(&routes_btn, "Show routes");
+        accessibility::set_description(&routes_btn, "Displays the HTTP route table for the media server in the access log.");
 
         btn_row.append(&routes_btn);
         ctrl_group.add(&btn_row);
@@ -169,6 +179,8 @@ impl ServerPanel {
         let clear_btn = gtk::Button::with_label("Clear Log");
         clear_btn.set_halign(gtk::Align::End);
         clear_btn.set_tooltip_text(Some("Clear the access log"));
+        accessibility::set_label(&clear_btn, "Clear access log");
+        accessibility::set_description(&clear_btn, "Removes all entries from the server access log.");
 
         let log_buffer = log_view.buffer();
 
@@ -183,10 +195,12 @@ impl ServerPanel {
         // Start button callback
         start_btn.connect_clicked(move |_| {
             status_for_start.set_label("Status: starting…");
+            accessibility::set_label(&status_for_start, "Server status: starting");
             let mut end_iter = log_buf_for_start.end_iter();
             log_buf_for_start.insert(&mut end_iter, "[server] Starting MeedyaManager media server…\n");
             log_buf_for_start.insert(&mut end_iter, "[server] Listening on https://0.0.0.0:8443\n");
             status_for_start.set_label("Status: running — https://0.0.0.0:8443");
+            accessibility::set_label(&status_for_start, "Server status: running on https://0.0.0.0:8443");
             start_btn_ref.set_sensitive(false);
             stop_btn_ref.set_sensitive(true);
         });
@@ -200,6 +214,7 @@ impl ServerPanel {
                 let mut end_iter = log_buf.end_iter();
                 log_buf.insert(&mut end_iter, "[server] Server stopped.\n");
                 status.set_label("Status: stopped");
+                accessibility::set_label(&status, "Server status: stopped");
                 start_b.set_sensitive(true);
                 btn.set_sensitive(false);
             });

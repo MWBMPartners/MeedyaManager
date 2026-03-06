@@ -25,7 +25,9 @@
                 <ComboBox x:Name="BackendCombo"
                           SelectionChanged="BackendCombo_SelectionChanged"
                           HorizontalAlignment="Stretch"
-                          MinWidth="220">
+                          MinWidth="220"
+                          AutomationProperties.Name="Database backend"
+                          AutomationProperties.HelpText="Select the database engine to export your media library to">
                     <ComboBoxItem Tag="sqlite"   Content="SQLite"      IsSelected="True" />
                     <ComboBoxItem Tag="mysql"    Content="MySQL" />
                     <ComboBoxItem Tag="mariadb"  Content="MariaDB" />
@@ -41,7 +43,9 @@
                          PlaceholderText="sqlite:///C:/Users/You/library.db"
                          TextWrapping="Wrap"
                          AcceptsReturn="False"
-                         HorizontalAlignment="Stretch" />
+                         HorizontalAlignment="Stretch"
+                         AutomationProperties.Name="Connection string"
+                         AutomationProperties.HelpText="Enter the DSN connection string for the selected database backend" />
                 <TextBlock x:Name="DsnHintText"
                            Text="Example: sqlite:///path/to/library.db"
                            FontSize="11"
@@ -55,7 +59,9 @@
                          Text="mm_"
                          MaxLength="32"
                          Width="160"
-                         HorizontalAlignment="Left" />
+                         HorizontalAlignment="Left"
+                         AutomationProperties.Name="Table prefix"
+                         AutomationProperties.HelpText="Prefix applied to all created database tables" />
                 <TextBlock Text="Prefix applied to all created tables (e.g. mm_files, mm_tags, mm_history)."
                            FontSize="11"
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
@@ -64,25 +70,31 @@
             <!-- Dry run toggle -->
             <ToggleSwitch x:Name="DryRunToggle"
                           Header="Dry run — preview without writing to the database"
-                          IsOn="False" />
+                          IsOn="False"
+                          AutomationProperties.HelpText="When on, previews the export without writing any data to the database" />
 
             <!-- Action buttons -->
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                 <Button x:Name="SchemaBtn"
                         Content="Show Schema DDL"
-                        Click="SchemaBtn_Click" />
+                        Click="SchemaBtn_Click"
+                        AutomationProperties.Name="Show schema DDL"
+                        AutomationProperties.HelpText="Displays the database schema SQL statements in the export log" />
                 <Button x:Name="ExportBtn"
                         Content="Export Library"
                         Style="{StaticResource AccentButtonStyle}"
-                        Click="ExportBtn_Click" />
+                        Click="ExportBtn_Click"
+                        AutomationProperties.Name="Export library"
+                        AutomationProperties.HelpText="Exports your media library to the configured database backend" />
             </StackPanel>
 
-            <!-- Status bar -->
+            <!-- Status bar — live region so Narrator announces completion -->
             <TextBlock x:Name="StatusText"
                        Text=""
                        TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       FontSize="12" />
+                       FontSize="12"
+                       AutomationProperties.LiveSetting="Polite" />
 
             <!-- Export log -->
             <StackPanel Spacing="6">
@@ -97,7 +109,9 @@
                     <Button Content="Clear"
                             Grid.Column="1"
                             Click="ClearLogBtn_Click"
-                            Style="{StaticResource DefaultButtonStyle}" />
+                            Style="{StaticResource DefaultButtonStyle}"
+                            AutomationProperties.Name="Clear export log"
+                            AutomationProperties.HelpText="Removes all log entries and resets the export status" />
                 </Grid>
 
                 <ScrollViewer x:Name="LogScroll"

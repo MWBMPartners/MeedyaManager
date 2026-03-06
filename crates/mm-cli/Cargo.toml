@@ -55,6 +55,9 @@ dirs = { workspace = true }
 # Timestamp formatting for watcher events and reports
 chrono = { workspace = true }
 
+# Internationalisation — initialise gettext locale at startup
+gettextrs = { workspace = true }
+
 [dev-dependencies]
 # Temporary directories/files for integration tests
 tempfile = { workspace = true }

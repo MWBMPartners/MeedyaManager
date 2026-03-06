@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  (C) 2025-2026 MWBM Partners Ltd
+  MeedyaManager — Windows (WinUI 3) string resources — English (United States)
+
+  This file contains all user-visible strings for the MeedyaManager Windows app.
+  Strings are keyed by a dot-separated identifier (Page.Context.Name).
+
+  To add a new language:
+    1. Create windows/MeedyaManager/Strings/<lang-tag>/Resources.resw
+       (e.g. Strings/fr-FR/Resources.resw for French)
+    2. Copy all <data> elements from this file into the new file.
+    3. Translate the <value> text for each key.
+    4. WinUI 3 / ResourceLoader will pick up the correct locale automatically.
+
+  Usage in code-behind (C#):
+    using Windows.ApplicationModel.Resources;
+    private static readonly ResourceLoader _res = new();
+    string label = _res.GetString("Scan/Folder/Label");
+
+  Usage in XAML:
+    x:Uid="Scan_Button_Scan"   (maps to Scan.Button.Scan.Content / .Text etc.)
+-->
+<root>
+
+  <!--
+    Schema information — do not remove; required by Visual Studio and ResGen.
+  -->
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+
+  <!-- ===================================================================
+       Scan page
+       =================================================================== -->
+
+  <data name="Scan.Folder.Label" xml:space="preserve">
+    <value>Source folder path</value>
+    <comment>Label for the source folder path entry on the Scan page</comment>
+  </data>
+
+  <data name="Scan.Folder.Placeholder" xml:space="preserve">
+    <value>Drag a folder here or paste a path</value>
+    <comment>Placeholder text for the source folder TextBox</comment>
+  </data>
+
+  <data name="Scan.Template.Label" xml:space="preserve">
+    <value>Rename template</value>
+    <comment>Label for the rename template TextBox</comment>
+  </data>
+
+  <data name="Scan.Template.Placeholder" xml:space="preserve">
+    <value>e.g. &lt;Artist&gt; - &lt;Title&gt;</value>
+    <comment>Placeholder text for the rename template TextBox</comment>
+  </data>
+
+  <data name="Scan.Button.Browse" xml:space="preserve">
+    <value>Browse…</value>
+    <comment>Button that opens the folder picker</comment>
+  </data>
+
+  <data name="Scan.Button.Scan" xml:space="preserve">
+    <value>Scan</value>
+    <comment>Button that starts a folder scan</comment>
+  </data>
+
+  <data name="Scan.Button.Execute" xml:space="preserve">
+    <value>Execute Renames</value>
+    <comment>Button that applies the rename preview to disk</comment>
+  </data>
+
+  <data name="Scan.Status.Idle" xml:space="preserve">
+    <value>Idle</value>
+    <comment>Status shown when no scan is active</comment>
+  </data>
+
+  <!-- ===================================================================
+       Metadata page
+       =================================================================== -->
+
+  <data name="Metadata.Button.Open" xml:space="preserve">
+    <value>Open File</value>
+    <comment>Button to open a media file for metadata editing</comment>
+  </data>
+
+  <data name="Metadata.Button.Save" xml:space="preserve">
+    <value>Save</value>
+    <comment>Button to write edited metadata back to the file</comment>
+  </data>
+
+  <data name="Metadata.Button.Revert" xml:space="preserve">
+    <value>Revert</value>
+    <comment>Button to discard unsaved metadata changes</comment>
+  </data>
+
+  <!-- ===================================================================
+       Lookup page
+       =================================================================== -->
+
+  <data name="Lookup.Query.Placeholder" xml:space="preserve">
+    <value>Enter a title to search…</value>
+    <comment>Placeholder for the provider search query TextBox</comment>
+  </data>
+
+  <data name="Lookup.Button.Search" xml:space="preserve">
+    <value>Search</value>
+    <comment>Button to submit a metadata provider lookup query</comment>
+  </data>
+
+  <data name="Lookup.Button.Apply" xml:space="preserve">
+    <value>Apply</value>
+    <comment>Button to apply the selected lookup result to the open file</comment>
+  </data>
+
+  <data name="Lookup.Button.Clear" xml:space="preserve">
+    <value>Clear</value>
+    <comment>Button to clear lookup results</comment>
+  </data>
+
+  <!-- ===================================================================
+       Rules page
+       =================================================================== -->
+
+  <data name="Rules.Template.Placeholder" xml:space="preserve">
+    <value>e.g. &lt;Artist&gt; - &lt;Title&gt;</value>
+    <comment>Placeholder text for the rename template validator TextBox</comment>
+  </data>
+
+  <data name="Rules.RuleName.Placeholder" xml:space="preserve">
+    <value>e.g. Music Rule</value>
+    <comment>Placeholder text for the rule name TextBox</comment>
+  </data>
+
+  <!-- ===================================================================
+       Cloud page
+       =================================================================== -->
+
+  <data name="Cloud.Button.Connect" xml:space="preserve">
+    <value>Connect</value>
+    <comment>Button to connect a cloud storage provider</comment>
+  </data>
+
+  <data name="Cloud.Button.Disconnect" xml:space="preserve">
+    <value>Disconnect</value>
+    <comment>Button to disconnect a cloud storage provider</comment>
+  </data>
+
+  <data name="Cloud.Button.ClearLog" xml:space="preserve">
+    <value>Clear Log</value>
+    <comment>Button to clear the cloud event log</comment>
+  </data>
+
+  <data name="Cloud.Status.NotConnected" xml:space="preserve">
+    <value>Not Connected</value>
+    <comment>Status text for a cloud provider that is not authenticated</comment>
+  </data>
+
+  <data name="Cloud.Status.Syncing" xml:space="preserve">
+    <value>Syncing…</value>
+    <comment>Status text shown while a cloud provider is synchronising</comment>
+  </data>
+
+  <data name="Cloud.Status.Synced" xml:space="preserve">
+    <value>Synced</value>
+    <comment>Status text shown after a successful cloud sync</comment>
+  </data>
+
+  <data name="Cloud.Status.ComingSoon" xml:space="preserve">
+    <value>Coming Soon</value>
+    <comment>Status text for cloud providers not yet implemented</comment>
+  </data>
+
+  <!-- ===================================================================
+       Export page
+       =================================================================== -->
+
+  <data name="Export.Button.Export" xml:space="preserve">
+    <value>Export Library</value>
+    <comment>Button to start a database export</comment>
+  </data>
+
+  <data name="Export.Button.Schema" xml:space="preserve">
+    <value>Show Schema DDL</value>
+    <comment>Button to display the schema SQL in the export log</comment>
+  </data>
+
+  <data name="Export.Button.ClearLog" xml:space="preserve">
+    <value>Clear Log</value>
+    <comment>Button to clear the export log</comment>
+  </data>
+
+  <!-- ===================================================================
+       Settings page
+       =================================================================== -->
+
+  <data name="Settings.Button.Save" xml:space="preserve">
+    <value>Save Settings</value>
+    <comment>Button to persist the current settings to disk</comment>
+  </data>
+
+  <data name="Settings.Button.OpenFolder" xml:space="preserve">
+    <value>Open Folder</value>
+    <comment>Button to open the config directory in Explorer</comment>
+  </data>
+
+  <data name="Settings.Button.CopyPath" xml:space="preserve">
+    <value>Copy Path</value>
+    <comment>Button to copy the config file path to the clipboard</comment>
+  </data>
+
+  <data name="Settings.Status.Saved" xml:space="preserve">
+    <value>Settings saved.</value>
+    <comment>Status shown after settings are saved successfully</comment>
+  </data>
+
+  <!-- ===================================================================
+       Server page
+       =================================================================== -->
+
+  <data name="Server.Button.Start" xml:space="preserve">
+    <value>Start Server</value>
+    <comment>Button to start the HTTPS media server</comment>
+  </data>
+
+  <data name="Server.Button.Stop" xml:space="preserve">
+    <value>Stop Server</value>
+    <comment>Button to stop the running HTTPS media server</comment>
+  </data>
+
+  <data name="Server.Button.Routes" xml:space="preserve">
+    <value>Show Routes</value>
+    <comment>Button to display the HTTP route table in the log</comment>
+  </data>
+
+  <data name="Server.Button.ClearLog" xml:space="preserve">
+    <value>Clear Log</value>
+    <comment>Button to clear the server access log</comment>
+  </data>
+
+  <data name="Server.Status.Stopped" xml:space="preserve">
+    <value>Status: stopped</value>
+    <comment>Status label when the server is not running</comment>
+  </data>
+
+  <data name="Server.Status.Running" xml:space="preserve">
+    <value>Status: running — {0}</value>
+    <comment>Status label when the server is running; {0} = bind address</comment>
+  </data>
+
+  <!-- ===================================================================
+       Common / shared
+       =================================================================== -->
+
+  <data name="Common.Button.Cancel" xml:space="preserve">
+    <value>Cancel</value>
+    <comment>Generic Cancel button label</comment>
+  </data>
+
+  <data name="Common.Button.Close" xml:space="preserve">
+    <value>Close</value>
+    <comment>Generic Close button label</comment>
+  </data>
+
+  <data name="Common.Error.Generic" xml:space="preserve">
+    <value>An error occurred: {0}</value>
+    <comment>Generic error message shown in status labels; {0} = error detail</comment>
+  </data>
+
+</root>

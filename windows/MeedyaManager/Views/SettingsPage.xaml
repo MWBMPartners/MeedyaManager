@@ -21,7 +21,8 @@
                 x:Name="DryRunToggle"
                 Header="Dry-run mode"
                 OffContent="Renames are written to disk"
-                OnContent="Renames are previewed only (no file changes)" />
+                OnContent="Renames are previewed only (no file changes)"
+                AutomationProperties.HelpText="When on, renames are previewed only — no changes are written to disk" />
 
             <!-- ── Watching ───────────────────────────────────────────────── -->
             <TextBlock Text="Watching" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -31,7 +32,8 @@
                 Header="Recursive scan"
                 OffContent="Top-level files only"
                 OnContent="Include sub-directories"
-                IsOn="True" />
+                IsOn="True"
+                AutomationProperties.HelpText="When on, includes subdirectories when scanning a folder" />
 
             <NumberBox
                 x:Name="DebounceBox"
@@ -40,7 +42,9 @@
                 Minimum="50"
                 Maximum="5000"
                 SpinButtonPlacementMode="Inline"
-                SmallChange="50" />
+                SmallChange="50"
+                AutomationProperties.Name="Debounce interval in milliseconds"
+                AutomationProperties.HelpText="Milliseconds to wait before processing a file-system event. Range: 50 to 5000." />
 
             <!-- ── Logging ────────────────────────────────────────────────── -->
             <TextBlock Text="Logging" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -48,7 +52,9 @@
             <ComboBox
                 x:Name="LogLevelBox"
                 Header="Log level"
-                HorizontalAlignment="Stretch">
+                HorizontalAlignment="Stretch"
+                AutomationProperties.Name="Log level"
+                AutomationProperties.HelpText="Controls the verbosity of structured log output">
                 <x:String>error</x:String>
                 <x:String>warn</x:String>
                 <x:String>info</x:String>
@@ -61,7 +67,8 @@
                 Header="Redact PII in logs"
                 OffContent="File paths and tags are logged as-is"
                 OnContent="File paths and tags replaced with [REDACTED]"
-                IsOn="True" />
+                IsOn="True"
+                AutomationProperties.HelpText="When on, replaces file paths and tag values with REDACTED in log output" />
 
             <!-- ── Config File ────────────────────────────────────────────── -->
             <TextBlock Text="Config File" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -83,12 +90,16 @@
                 <Button
                     Grid.Column="1"
                     Content="Open Folder"
-                    Click="OpenFolderButton_Click" />
+                    Click="OpenFolderButton_Click"
+                    AutomationProperties.Name="Open config folder"
+                    AutomationProperties.HelpText="Opens the folder containing the settings file in File Explorer" />
 
                 <Button
                     Grid.Column="2"
                     Content="Copy Path"
-                    Click="CopyPathButton_Click" />
+                    Click="CopyPathButton_Click"
+                    AutomationProperties.Name="Copy config file path"
+                    AutomationProperties.HelpText="Copies the settings file path to the clipboard" />
             </Grid>
 
             <!-- Raw config preview -->
@@ -121,7 +132,9 @@
                     x:Name="SaveButton"
                     Content="Save Settings"
                     Style="{StaticResource AccentButtonStyle}"
-                    Click="SaveButton_Click" />
+                    Click="SaveButton_Click"
+                    AutomationProperties.Name="Save settings"
+                    AutomationProperties.HelpText="Writes the current settings to the config file on disk" />
             </StackPanel>
 
             <!-- Core version -->

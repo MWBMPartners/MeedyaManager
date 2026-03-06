@@ -1,0 +1,229 @@
+# MeedyaManager — English (United States) message catalogue
+# Copyright (C) 2025-2026 MWBM Partners Ltd
+# License: GPL-2.0-or-later
+#
+# This is the English source/reference catalogue.
+# All msgstr values are left empty — gettext falls back to the msgid (English)
+# when the msgstr is empty, so no translation is needed for the source language.
+#
+# To add a new language:
+#   1. Copy this file to locales/<lang>/LC_MESSAGES/meedyamanager.po
+#   2. Fill in the msgstr values with your translations
+#   3. Compile: msgfmt -o meedyamanager.mo meedyamanager.po
+#   4. Place the .mo file in the appropriate locale directory
+#
+# See locales/TRANSLATORS.md for full instructions.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: MeedyaManager 1.1.0\n"
+"Report-Msgid-Bugs-To: dev@mwbm.co.uk\n"
+"POT-Creation-Date: 2026-03-06\n"
+"PO-Revision-Date: 2026-03-06\n"
+"Last-Translator: MWBM Partners Ltd <dev@mwbm.co.uk>\n"
+"Language-Team: English\n"
+"Language: en_US\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# ---------------------------------------------------------------------------
+# CLI — General messages
+# ---------------------------------------------------------------------------
+
+msgid "Failed to initialise: %s"
+msgstr ""
+
+msgid "Scan complete: %d file(s) found"
+msgstr ""
+
+msgid "No media files found in %s"
+msgstr ""
+
+msgid "Dry-run mode: no files will be modified"
+msgstr ""
+
+msgid "Rename complete: %d file(s) renamed"
+msgstr ""
+
+msgid "Error reading file: %s"
+msgstr ""
+
+msgid "Error writing file: %s"
+msgstr ""
+
+msgid "Configuration saved to %s"
+msgstr ""
+
+msgid "Configuration loaded from %s"
+msgstr ""
+
+msgid "Provider lookup: %d result(s) found"
+msgstr ""
+
+msgid "Watching %d directory(ies) for changes"
+msgstr ""
+
+msgid "Server started on %s"
+msgstr ""
+
+msgid "Server stopped"
+msgstr ""
+
+msgid "Export complete: %d row(s) inserted"
+msgstr ""
+
+# ---------------------------------------------------------------------------
+# GTK4 Linux UI — Scan panel
+# ---------------------------------------------------------------------------
+
+msgid "Source folder path"
+msgstr ""
+
+msgid "Browse for folder"
+msgstr ""
+
+msgid "Rename template"
+msgstr ""
+
+msgid "Include sub-folders"
+msgstr ""
+
+msgid "Scan folder"
+msgstr ""
+
+msgid "Execute renames"
+msgstr ""
+
+msgid "Scan status"
+msgstr ""
+
+# ---------------------------------------------------------------------------
+# GTK4 Linux UI — Metadata panel
+# ---------------------------------------------------------------------------
+
+msgid "Selected file path"
+msgstr ""
+
+msgid "Open file"
+msgstr ""
+
+msgid "Save metadata"
+msgstr ""
+
+msgid "Revert changes"
+msgstr ""
+
+msgid "Metadata status"
+msgstr ""
+
+# ---------------------------------------------------------------------------
+# GTK4 Linux UI — Lookup panel
+# ---------------------------------------------------------------------------
+
+msgid "Search query"
+msgstr ""
+
+msgid "Artist"
+msgstr ""
+
+msgid "Search providers"
+msgstr ""
+
+msgid "Apply metadata"
+msgstr ""
+
+msgid "Clear results"
+msgstr ""
+
+msgid "Lookup status"
+msgstr ""
+
+# ---------------------------------------------------------------------------
+# GTK4 Linux UI — Cloud panel
+# ---------------------------------------------------------------------------
+
+msgid "Connect %s"
+msgstr ""
+
+msgid "Disconnect %s"
+msgstr ""
+
+msgid "Clear event log"
+msgstr ""
+
+msgid "Cloud storage event log"
+msgstr ""
+
+# ---------------------------------------------------------------------------
+# GTK4 Linux UI — Export panel
+# ---------------------------------------------------------------------------
+
+msgid "Database backend"
+msgstr ""
+
+msgid "Connection string"
+msgstr ""
+
+msgid "Table prefix"
+msgstr ""
+
+msgid "Show schema DDL"
+msgstr ""
+
+msgid "Export library"
+msgstr ""
+
+msgid "Export status"
+msgstr ""
+
+# ---------------------------------------------------------------------------
+# GTK4 Linux UI — Settings panel
+# ---------------------------------------------------------------------------
+
+msgid "Open config folder"
+msgstr ""
+
+msgid "Copy config file path"
+msgstr ""
+
+msgid "Debounce interval in milliseconds"
+msgstr ""
+
+msgid "Log level"
+msgstr ""
+
+msgid "Save settings"
+msgstr ""
+
+msgid "Settings saved."
+msgstr ""
+
+msgid "Save failed: %s"
+msgstr ""
+
+# ---------------------------------------------------------------------------
+# GTK4 Linux UI — Server panel
+# ---------------------------------------------------------------------------
+
+msgid "Start server"
+msgstr ""
+
+msgid "Stop server"
+msgstr ""
+
+msgid "Show routes"
+msgstr ""
+
+msgid "Clear access log"
+msgstr ""
+
+msgid "Server status: stopped"
+msgstr ""
+
+msgid "Server status: starting"
+msgstr ""
+
+msgid "Server status: running on %s"
+msgstr ""

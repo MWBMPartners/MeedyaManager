@@ -53,9 +53,13 @@ struct LookupView: View {
             Section {
                 TextField("Track / show / podcast title", text: $model.query)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Search query")
+                    .accessibilityHint("Enter a track title, TV show, or podcast name to search for")
 
                 TextField("Artist (optional)", text: $model.artistHint)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Artist hint (optional)")
+                    .accessibilityHint("Narrows results to a specific artist or creator")
 
                 HStack {
                     Spacer()
@@ -65,6 +69,8 @@ struct LookupView: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return)
                     .disabled(model.isSearching || model.query.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityLabel("Search providers")
+                    .accessibilityHint("Queries all selected metadata providers for matching results")
 
                     if model.isSearching {
                         ProgressView()
@@ -160,12 +166,16 @@ struct LookupView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .accessibilityLabel("Lookup status: \(model.statusMessage)")
+                .accessibilityLiveRegion(.polite)
 
             Spacer()
 
             Button("Clear") { model.clear() }
                 .buttonStyle(.borderless)
                 .disabled(model.results.isEmpty && model.query.isEmpty)
+                .accessibilityLabel("Clear results")
+                .accessibilityHint("Clears search results and resets the query fields")
 
             Button("Apply to File") {
                 // Full apply-to-file requires the MetadataPanel to be open
@@ -183,6 +193,8 @@ struct LookupView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(model.selected == nil)
+            .accessibilityLabel("Apply result to file")
+            .accessibilityHint("Copies the selected result's tags to the currently open file in the Metadata tab")
         }
         .padding(12)
     }

@@ -37,6 +37,7 @@ use adw::prelude::*;
 use mm_core::config::AppConfig;
 
 use crate::state::SettingsSnapshot;
+use crate::ui::accessibility;
 
 /// The Settings panel.
 pub struct SettingsPanel {
@@ -81,6 +82,8 @@ impl SettingsPanel {
             .label("Open Folder")
             .margin_end(4)
             .build();
+        accessibility::set_label(&open_folder_btn, "Open config folder");
+        accessibility::set_description(&open_folder_btn, "Opens the folder containing the settings file in the file manager.");
         {
             let dir = config_dir.clone();
             open_folder_btn.connect_clicked(move |_| {
@@ -95,6 +98,8 @@ impl SettingsPanel {
         let copy_path_btn = gtk::Button::builder()
             .label("Copy Path")
             .build();
+        accessibility::set_label(&copy_path_btn, "Copy config file path");
+        accessibility::set_description(&copy_path_btn, "Copies the settings file path to the clipboard.");
         {
             let path = config_path.clone();
             copy_path_btn.connect_clicked(move |btn| {
@@ -164,6 +169,8 @@ impl SettingsPanel {
             50.0, 5000.0, 50.0, 100.0, 0.0,
         );
         let debounce_spin = gtk::SpinButton::new(Some(&debounce_adj), 50.0, 0);
+        accessibility::set_label(&debounce_spin, "Debounce interval in milliseconds");
+        accessibility::set_description(&debounce_spin, "Milliseconds to wait before processing a file-system event. Range: 50 to 5000.");
 
         {
             let snap = Rc::clone(&snapshot);
@@ -188,6 +195,8 @@ impl SettingsPanel {
         // ------------------------------------------------------------------
 
         let level_combo = gtk::DropDown::from_strings(&["trace", "debug", "info", "warn", "error"]);
+        accessibility::set_label(&level_combo, "Log level");
+        accessibility::set_description(&level_combo, "Controls the verbosity of structured log output.");
         let current_level_idx = match snapshot.borrow().log_level.as_str() {
             "trace" => 0u32,
             "debug" => 1,
@@ -283,6 +292,8 @@ impl SettingsPanel {
             .margin_end(12)
             .margin_bottom(12)
             .build();
+        accessibility::set_label(&save_btn, "Save settings");
+        accessibility::set_description(&save_btn, "Writes the current settings to the config file on disk.");
 
         {
             let snap     = Rc::clone(&snapshot);

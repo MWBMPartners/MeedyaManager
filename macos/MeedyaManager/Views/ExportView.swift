@@ -141,6 +141,8 @@ struct ExportView: View {
                         }
                         .labelsHidden()
                         .frame(width: 150)
+                        .accessibilityLabel("Database backend")
+                        .accessibilityHint("Select the database engine to export your library to")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -160,6 +162,8 @@ struct ExportView: View {
                                 RoundedRectangle(cornerRadius: 4)
                                     .stroke(.separator, lineWidth: 0.5)
                             )
+                            .accessibilityLabel("Connection string")
+                            .accessibilityHint("Enter the DSN connection string for the selected database backend")
 
                         Text(model.backend.exampleDSN)
                             .font(.caption2)
@@ -180,6 +184,8 @@ struct ExportView: View {
                         TextField("mm_", text: $model.tablePrefix)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 100)
+                            .accessibilityLabel("Table prefix")
+                            .accessibilityHint("Prefix applied to all created database tables")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -198,6 +204,8 @@ struct ExportView: View {
                                 .monospacedDigit()
                                 .frame(width: 60, alignment: .trailing)
                         }
+                        .accessibilityLabel("Batch size")
+                        .accessibilityHint("Number of rows inserted per database transaction")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -212,6 +220,8 @@ struct ExportView: View {
                         }
                         Spacer()
                         Toggle("", isOn: $model.dryRun).labelsHidden().toggleStyle(.switch)
+                            .accessibilityLabel("Dry run")
+                            .accessibilityHint("When on, previews the export without writing any data to the database")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -221,6 +231,8 @@ struct ExportView: View {
                 HStack(spacing: 8) {
                     Button("Show Schema DDL") { model.showSchema() }
                         .buttonStyle(.bordered)
+                        .accessibilityLabel("Show schema DDL")
+                        .accessibilityHint("Displays the database schema SQL statements in the export log")
 
                     Spacer()
 
@@ -229,6 +241,8 @@ struct ExportView: View {
                     Button("Export Library") { model.runExport() }
                         .buttonStyle(.borderedProminent)
                         .disabled(model.isExporting)
+                        .accessibilityLabel("Export library")
+                        .accessibilityHint("Exports your media library to the configured database backend")
                 }
                 .padding(.bottom, 8)
 
@@ -238,6 +252,8 @@ struct ExportView: View {
                         .font(.caption)
                         .foregroundStyle(model.exportStatus == "error" ? .red : .green)
                         .padding(.bottom, 6)
+                        .accessibilityLabel("Export result: \(model.resultMessage)")
+                        .accessibilityLiveRegion(.polite)
                 }
 
                 // ── Log ────────────────────────────────────────────────────
@@ -271,6 +287,8 @@ struct ExportView: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                         .controlSize(.small)
+                        .accessibilityLabel("Clear export log")
+                        .accessibilityHint("Removes all log entries and resets the export status")
                 }
                 .padding(.bottom, 20)
             }

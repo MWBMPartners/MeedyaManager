@@ -49,6 +49,9 @@ pub mod health;
 /// Unified error types for the core crate
 pub mod error;
 
+/// Internationalisation — gettext initialisation and locale helpers
+pub mod i18n;
+
 #[cfg(test)]
 mod tests {
     #[test]
