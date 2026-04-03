@@ -14,7 +14,9 @@
 //   - `RETURNING` clause available in MariaDB 10.5+ (not used here for compat)
 
 use crate::schema::SchemaBuilder;
-use crate::traits::{DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent};
+use crate::traits::{
+    DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent,
+};
 
 // ---------------------------------------------------------------------------
 // MariaDbExporter
@@ -87,7 +89,9 @@ impl MariaDbExporter {
 impl DatabaseExporter for MariaDbExporter {
     type Config = ExportConfig;
 
-    fn dialect(&self) -> DbDialect { DbDialect::MariaDb }
+    fn dialect(&self) -> DbDialect {
+        DbDialect::MariaDb
+    }
 
     async fn ensure_schema(&self) -> Result<(), ExportError> {
         for stmt in self.schema_ddl() {
@@ -100,10 +104,16 @@ impl DatabaseExporter for MariaDbExporter {
 
     async fn export_file(&self, row: &ExportRow) -> Result<(), ExportError> {
         if row.file_hash.is_empty() {
-            return Err(ExportError::RowFailed { path: row.path.clone(), message: "file_hash required".into() });
+            return Err(ExportError::RowFailed {
+                path: row.path.clone(),
+                message: "file_hash required".into(),
+            });
         }
         if row.path.is_empty() {
-            return Err(ExportError::RowFailed { path: String::new(), message: "path required".into() });
+            return Err(ExportError::RowFailed {
+                path: String::new(),
+                message: "path required".into(),
+            });
         }
         let _ = self.upsert_file_sql();
         let _ = self.replace_tags_sql();
@@ -114,8 +124,8 @@ impl DatabaseExporter for MariaDbExporter {
         let mut stats = ExportStats::default();
         for row in rows {
             match self.export_file(row).await {
-                Ok(())  => stats.inserted += 1,
-                Err(_)  => stats.errors   += 1,
+                Ok(()) => stats.inserted += 1,
+                Err(_) => stats.errors += 1,
             }
         }
         Ok(stats)
@@ -129,7 +139,9 @@ impl DatabaseExporter for MariaDbExporter {
         Ok(())
     }
 
-    async fn disconnect(self) -> Result<(), ExportError> { Ok(()) }
+    async fn disconnect(self) -> Result<(), ExportError> {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -145,10 +157,14 @@ mod tests {
     }
 
     #[test]
-    fn dialect_is_mariadb() { assert_eq!(exporter().dialect(), DbDialect::MariaDb); }
+    fn dialect_is_mariadb() {
+        assert_eq!(exporter().dialect(), DbDialect::MariaDb);
+    }
 
     #[test]
-    fn dialect_differs_from_mysql() { assert_ne!(exporter().dialect(), DbDialect::MySql); }
+    fn dialect_differs_from_mysql() {
+        assert_ne!(exporter().dialect(), DbDialect::MySql);
+    }
 
     #[test]
     fn new_rejects_empty_dsn() {
@@ -176,7 +192,10 @@ mod tests {
 
     #[tokio::test]
     async fn export_batch_success() {
-        let rows = vec![ExportRow::new("/x.mp3", "x.mp3", "h1"), ExportRow::new("/y.mp3", "y.mp3", "h2")];
+        let rows = vec![
+            ExportRow::new("/x.mp3", "x.mp3", "h1"),
+            ExportRow::new("/y.mp3", "y.mp3", "h2"),
+        ];
         let stats = exporter().export_batch(&rows).await.unwrap();
         assert_eq!(stats.inserted, 2);
         assert!(stats.is_clean());
@@ -184,11 +203,19 @@ mod tests {
 
     #[tokio::test]
     async fn record_rename_empty_hash_fails() {
-        let ev = RenameEvent { file_hash: String::new(), old_path: String::new(),
-            new_path: String::new(), rule_name: String::new(), dry_run: false, renamed_at: 0 };
+        let ev = RenameEvent {
+            file_hash: String::new(),
+            old_path: String::new(),
+            new_path: String::new(),
+            rule_name: String::new(),
+            dry_run: false,
+            renamed_at: 0,
+        };
         assert!(exporter().record_rename(&ev).await.is_err());
     }
 
     #[tokio::test]
-    async fn disconnect_ok() { assert!(exporter().disconnect().await.is_ok()); }
+    async fn disconnect_ok() {
+        assert!(exporter().disconnect().await.is_ok());
+    }
 }

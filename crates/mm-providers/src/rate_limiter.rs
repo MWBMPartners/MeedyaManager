@@ -49,26 +49,26 @@ use crate::traits::ProviderError;
 /// Unknown providers default to 10 RPM (conservative).
 pub fn default_rpm_for(provider: &str) -> u32 {
     match provider.to_lowercase().as_str() {
-        "musicbrainz"   => 50,
-        "spotify"       => 100,
-        "apple_music" | "apple-music"   => 20,
-        "deezer"        => 50,
+        "musicbrainz" => 50,
+        "spotify" => 100,
+        "apple_music" | "apple-music" => 20,
+        "deezer" => 50,
         "youtube_music" | "youtube-music" => 10,
-        "amazon_music" | "amazon-music"  => 10,
-        "pandora"       => 10,
-        "tidal"         => 60,
-        "shazam"        => 10,
-        "iheart"        => 10,
-        "tmdb"          => 40,
+        "amazon_music" | "amazon-music" => 10,
+        "pandora" => 10,
+        "tidal" => 60,
+        "shazam" => 10,
+        "iheart" => 10,
+        "tmdb" => 40,
         "thetvdb" | "tvdb" => 30,
         "omdb" | "imdb" => 10,
         "apple_tv" | "apple-tv" => 20,
         "itunes_store" | "itunes" => 20,
         "apple_podcasts" | "apple-podcasts" => 20,
-        "isrc"          => 30,
-        "eidr"          => 10,
-        "iswc"          => 50,
-        _               => 10,
+        "isrc" => 30,
+        "eidr" => 10,
+        "iswc" => 50,
+        _ => 10,
     }
 }
 
@@ -103,8 +103,8 @@ impl ProviderRateLimiter {
         // Convert RPM to a per-second quota with burst = RPM/10 (minimum 1)
         let burst = NonZeroU32::new((requests_per_minute / 10).max(1)).unwrap();
         // Replenish `burst` tokens every 6 seconds (= burst * 10 tokens/minute ≈ RPM)
-        let quota = Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap())
-            .allow_burst(burst);
+        let quota =
+            Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap()).allow_burst(burst);
 
         Self {
             provider: provider.into(),
@@ -124,9 +124,11 @@ impl ProviderRateLimiter {
     ///
     /// Suitable for non-critical paths where the caller can decide to skip the request.
     pub fn check(&self) -> Result<(), ProviderError> {
-        self.limiter.check().map_err(|_| ProviderError::RateLimited {
-            provider: self.provider.clone(),
-        })
+        self.limiter
+            .check()
+            .map_err(|_| ProviderError::RateLimited {
+                provider: self.provider.clone(),
+            })
     }
 
     /// Async wait until a token is available, then return.
@@ -180,10 +182,25 @@ impl RateLimiterRegistry {
     /// Create a registry pre-populated with all 19 known providers at their default limits.
     pub fn with_all_providers() -> Self {
         let providers = [
-            "musicbrainz", "spotify", "apple_music", "deezer", "youtube_music",
-            "amazon_music", "pandora", "tidal", "shazam", "iheart",
-            "tmdb", "thetvdb", "omdb", "apple_tv", "itunes_store",
-            "apple_podcasts", "isrc", "eidr", "iswc",
+            "musicbrainz",
+            "spotify",
+            "apple_music",
+            "deezer",
+            "youtube_music",
+            "amazon_music",
+            "pandora",
+            "tidal",
+            "shazam",
+            "iheart",
+            "tmdb",
+            "thetvdb",
+            "omdb",
+            "apple_tv",
+            "itunes_store",
+            "apple_podcasts",
+            "isrc",
+            "eidr",
+            "iswc",
         ];
         let mut registry = Self::new();
         for p in providers {
@@ -204,7 +221,8 @@ impl RateLimiterRegistry {
     /// Register a provider with a custom RPM limit.
     pub fn register(&mut self, provider: &str, requests_per_minute: u32) {
         let key = provider.to_lowercase();
-        self.limiters.insert(key, ProviderRateLimiter::new(provider, requests_per_minute));
+        self.limiters
+            .insert(key, ProviderRateLimiter::new(provider, requests_per_minute));
     }
 
     /// Register a provider using its default RPM limit.

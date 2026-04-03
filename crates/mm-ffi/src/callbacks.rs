@@ -39,7 +39,7 @@ use crate::types::WatchEventFfi;
 /// UniFFI generates a Swift protocol and a concrete C-backed implementation
 /// from this trait definition, so Swift code can pass a class instance to
 /// `start_watch()` and receive events as method calls.
-#[uniffi::export(callback_interface)]
+#[uniffi::export(with_foreign)]
 pub trait WatchCallback: Send + Sync {
     /// Called when a file system event occurs in the watched directory.
     ///
@@ -63,7 +63,7 @@ pub trait WatchCallback: Send + Sync {
 ///
 /// Implement this in Swift/Kotlin to drive a progress bar or status text
 /// during a directory scan.
-#[uniffi::export(callback_interface)]
+#[uniffi::export(with_foreign)]
 pub trait ScanProgressCallback: Send + Sync {
     /// Called once for each file processed during a scan.
     ///

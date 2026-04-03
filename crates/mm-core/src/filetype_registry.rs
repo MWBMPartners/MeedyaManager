@@ -75,7 +75,9 @@ pub enum SubtitleKind {
 // ---------------------------------------------------------------------------
 
 /// Returns `true`; used as `#[serde(default = "default_true")]`.
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 /// Description of a single audio file format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -229,9 +231,7 @@ fn load_user_override() -> Option<String> {
     //   Linux/macOS: ~/.config
     //   Windows:     %APPDATA%  (e.g. C:\Users\User\AppData\Roaming)
     let config_root = dirs::config_dir()?;
-    let path = config_root
-        .join("meedyamanager")
-        .join("filetypes.json5");
+    let path = config_root.join("meedyamanager").join("filetypes.json5");
 
     std::fs::read_to_string(&path).ok()
 }
@@ -271,28 +271,40 @@ pub fn companion_formats() -> &'static [CompanionFormat] {
 /// or `None` if not recognised as an audio format (or if disabled).
 pub fn audio_format(ext: &str) -> Option<&'static AudioFormat> {
     let lower = ext.to_ascii_lowercase();
-    REGISTRY.audio.iter().find(|f| f.enabled && f.extension == lower)
+    REGISTRY
+        .audio
+        .iter()
+        .find(|f| f.enabled && f.extension == lower)
 }
 
 /// Return the `VideoFormat` for the given extension (case-insensitive),
 /// or `None` if not recognised as a video format (or if disabled).
 pub fn video_format(ext: &str) -> Option<&'static VideoFormat> {
     let lower = ext.to_ascii_lowercase();
-    REGISTRY.video.iter().find(|f| f.enabled && f.extension == lower)
+    REGISTRY
+        .video
+        .iter()
+        .find(|f| f.enabled && f.extension == lower)
 }
 
 /// Return the `SubtitleFormat` for the given extension (case-insensitive),
 /// or `None` if not a subtitle / lyrics / caption format (or if disabled).
 pub fn subtitle_format(ext: &str) -> Option<&'static SubtitleFormat> {
     let lower = ext.to_ascii_lowercase();
-    REGISTRY.subtitle.iter().find(|f| f.enabled && f.extension == lower)
+    REGISTRY
+        .subtitle
+        .iter()
+        .find(|f| f.enabled && f.extension == lower)
 }
 
 /// Return the `CompanionFormat` for the given extension (case-insensitive),
 /// or `None` if not a recognised companion format (or if disabled).
 pub fn companion_format(ext: &str) -> Option<&'static CompanionFormat> {
     let lower = ext.to_ascii_lowercase();
-    REGISTRY.companion.iter().find(|f| f.enabled && f.extension == lower)
+    REGISTRY
+        .companion
+        .iter()
+        .find(|f| f.enabled && f.extension == lower)
 }
 
 /// Return `true` if the extension belongs to an enabled audio format.
@@ -314,16 +326,32 @@ pub fn is_media(ext: &str) -> bool {
 pub fn mime_for_extension(ext: &str) -> Option<&'static str> {
     let lower = ext.to_ascii_lowercase();
 
-    if let Some(af) = REGISTRY.audio.iter().find(|f| f.enabled && f.extension == lower) {
+    if let Some(af) = REGISTRY
+        .audio
+        .iter()
+        .find(|f| f.enabled && f.extension == lower)
+    {
         return Some(af.mime_type.as_str());
     }
-    if let Some(vf) = REGISTRY.video.iter().find(|f| f.enabled && f.extension == lower) {
+    if let Some(vf) = REGISTRY
+        .video
+        .iter()
+        .find(|f| f.enabled && f.extension == lower)
+    {
         return Some(vf.mime_type.as_str());
     }
-    if let Some(sf) = REGISTRY.subtitle.iter().find(|f| f.enabled && f.extension == lower) {
+    if let Some(sf) = REGISTRY
+        .subtitle
+        .iter()
+        .find(|f| f.enabled && f.extension == lower)
+    {
         return sf.mime_type.as_deref();
     }
-    if let Some(cf) = REGISTRY.companion.iter().find(|f| f.enabled && f.extension == lower) {
+    if let Some(cf) = REGISTRY
+        .companion
+        .iter()
+        .find(|f| f.enabled && f.extension == lower)
+    {
         return cf.mime_type.as_deref();
     }
     None
@@ -363,38 +391,66 @@ mod tests {
 
     #[test]
     fn audio_extensions_are_unique() {
-        let mut exts: Vec<_> = audio_formats().iter().map(|f| f.extension.as_str()).collect();
+        let mut exts: Vec<_> = audio_formats()
+            .iter()
+            .map(|f| f.extension.as_str())
+            .collect();
         exts.sort_unstable();
         let original_len = exts.len();
         exts.dedup();
-        assert_eq!(exts.len(), original_len, "Duplicate audio extension detected");
+        assert_eq!(
+            exts.len(),
+            original_len,
+            "Duplicate audio extension detected"
+        );
     }
 
     #[test]
     fn video_extensions_are_unique() {
-        let mut exts: Vec<_> = video_formats().iter().map(|f| f.extension.as_str()).collect();
+        let mut exts: Vec<_> = video_formats()
+            .iter()
+            .map(|f| f.extension.as_str())
+            .collect();
         exts.sort_unstable();
         let original_len = exts.len();
         exts.dedup();
-        assert_eq!(exts.len(), original_len, "Duplicate video extension detected");
+        assert_eq!(
+            exts.len(),
+            original_len,
+            "Duplicate video extension detected"
+        );
     }
 
     #[test]
     fn subtitle_extensions_are_unique() {
-        let mut exts: Vec<_> = subtitle_formats().iter().map(|f| f.extension.as_str()).collect();
+        let mut exts: Vec<_> = subtitle_formats()
+            .iter()
+            .map(|f| f.extension.as_str())
+            .collect();
         exts.sort_unstable();
         let original_len = exts.len();
         exts.dedup();
-        assert_eq!(exts.len(), original_len, "Duplicate subtitle extension detected");
+        assert_eq!(
+            exts.len(),
+            original_len,
+            "Duplicate subtitle extension detected"
+        );
     }
 
     #[test]
     fn companion_extensions_are_unique() {
-        let mut exts: Vec<_> = companion_formats().iter().map(|f| f.extension.as_str()).collect();
+        let mut exts: Vec<_> = companion_formats()
+            .iter()
+            .map(|f| f.extension.as_str())
+            .collect();
         exts.sort_unstable();
         let original_len = exts.len();
         exts.dedup();
-        assert_eq!(exts.len(), original_len, "Duplicate companion extension detected");
+        assert_eq!(
+            exts.len(),
+            original_len,
+            "Duplicate companion extension detected"
+        );
     }
 
     // ── All extensions are lower-case ────────────────────────────────────────
@@ -402,16 +458,24 @@ mod tests {
     #[test]
     fn audio_extensions_are_lowercase() {
         for f in audio_formats() {
-            assert_eq!(f.extension, f.extension.to_ascii_lowercase(),
-                "Audio extension '{}' is not lower-case", f.extension);
+            assert_eq!(
+                f.extension,
+                f.extension.to_ascii_lowercase(),
+                "Audio extension '{}' is not lower-case",
+                f.extension
+            );
         }
     }
 
     #[test]
     fn video_extensions_are_lowercase() {
         for f in video_formats() {
-            assert_eq!(f.extension, f.extension.to_ascii_lowercase(),
-                "Video extension '{}' is not lower-case", f.extension);
+            assert_eq!(
+                f.extension,
+                f.extension.to_ascii_lowercase(),
+                "Video extension '{}' is not lower-case",
+                f.extension
+            );
         }
     }
 
@@ -485,7 +549,10 @@ mod tests {
     fn lookup_is_case_insensitive() {
         assert!(is_audio("MP3"), "Upper-case lookup should work for audio");
         assert!(is_video("MKV"), "Upper-case lookup should work for video");
-        assert!(companion_format("ZIP").is_some(), "Upper-case lookup should work for companions");
+        assert!(
+            companion_format("ZIP").is_some(),
+            "Upper-case lookup should work for companions"
+        );
     }
 
     // ── is_media helper ──────────────────────────────────────────────────────

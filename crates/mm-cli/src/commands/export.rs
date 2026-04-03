@@ -20,7 +20,7 @@ use serde::Serialize;
 // ─── Supported backends ─────────────────────────────────────────────────────
 
 /// Database backend options available for export.
-#[derive(Debug, Clone, PartialEq, clap::ValueEnum)]
+#[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
 pub enum BackendChoice {
     /// SQLite (local file or :memory:) — default, no server required
     Sqlite,
@@ -37,11 +37,11 @@ pub enum BackendChoice {
 impl std::fmt::Display for BackendChoice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BackendChoice::Sqlite   => write!(f, "SQLite"),
-            BackendChoice::Mysql    => write!(f, "MySQL"),
-            BackendChoice::Mariadb  => write!(f, "MariaDB"),
-            BackendChoice::Postgres => write!(f, "PostgreSQL"),
-            BackendChoice::Mssql    => write!(f, "SQL Server"),
+            Self::Sqlite => write!(f, "SQLite"),
+            Self::Mysql => write!(f, "MySQL"),
+            Self::Mariadb => write!(f, "MariaDB"),
+            Self::Postgres => write!(f, "PostgreSQL"),
+            Self::Mssql => write!(f, "SQL Server"),
         }
     }
 }
@@ -117,7 +117,7 @@ fn redact_dsn(dsn: &str) -> String {
     if dsn.starts_with("sqlite") || dsn.starts_with("server=") {
         // Keep just the first 40 chars to avoid leaking a full ADO string
         let truncated = &dsn[..dsn.len().min(40)];
-        return format!("{}…", truncated);
+        return format!("{truncated}…");
     }
     // For URL-style DSNs strip user:pass
     if let Some(at_pos) = dsn.find('@') {
@@ -173,19 +173,19 @@ pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
 
     // --show-schema: print DDL and exit without running the export
     if args.show_schema {
-        use mm_export::{ExportConfig, SchemaBuilder};
         use mm_export::DbDialect;
+        use mm_export::{ExportConfig, SchemaBuilder};
 
         let dialect = match backend {
-            BackendChoice::Sqlite   => DbDialect::Sqlite,
-            BackendChoice::Mysql    => DbDialect::MySql,
-            BackendChoice::Mariadb  => DbDialect::MariaDb,
+            BackendChoice::Sqlite => DbDialect::Sqlite,
+            BackendChoice::Mysql => DbDialect::MySql,
+            BackendChoice::Mariadb => DbDialect::MariaDb,
             BackendChoice::Postgres => DbDialect::Postgres,
-            BackendChoice::Mssql    => DbDialect::SqlServer,
+            BackendChoice::Mssql => DbDialect::SqlServer,
         };
         let mut cfg = ExportConfig::with_dsn(&args.db);
-        cfg.table_prefix  = args.prefix.clone();
-        cfg.batch_size    = args.batch_size;
+        args.prefix.clone_into(&mut cfg.table_prefix);
+        cfg.batch_size = args.batch_size;
 
         let builder = SchemaBuilder::new(dialect, &cfg);
         for (i, stmt) in builder.all_ddl().iter().enumerate() {
@@ -197,9 +197,11 @@ pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
 
     // Determine the scan path
     let scan_path = args.path.clone().unwrap_or_else(|| {
-        ctx.config.watch_paths.first()
-            .cloned()
-            .unwrap_or_else(|| ".".to_string())
+        ctx.config
+            .watch
+            .folders
+            .first()
+            .map_or_else(|| ".".to_string(), |p| p.to_string_lossy().into_owned())
     });
 
     // For M9 the actual DB write is behind the ExportConfig + backend structs.
@@ -215,9 +217,9 @@ pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
     use mm_export::{ExportConfig, ExportStats};
 
     let mut cfg = ExportConfig::with_dsn(&args.db);
-    cfg.table_prefix      = args.prefix.clone();
-    cfg.batch_size        = args.batch_size;
-    cfg.skip_schema_init  = args.skip_schema;
+    args.prefix.clone_into(&mut cfg.table_prefix);
+    cfg.batch_size = args.batch_size;
+    cfg.skip_schema_init = args.skip_schema;
 
     // Stub: simulate a scan of `scan_path` producing a fixed set of stats.
     // Real integration (scan → ExportRow → backend) is wired in full M9 CI.
@@ -226,36 +228,42 @@ pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
         ExportStats::default()
     } else {
         // M9 stub: simulate one successful batch
-        ExportStats { inserted: 0, updated: 0, skipped: 0, errors: 0, elapsed_ms: 0 }
+        ExportStats {
+            inserted: 0,
+            updated: 0,
+            skipped: 0,
+            errors: 0,
+            elapsed_ms: 0,
+        }
     };
 
     match ctx.output {
         OutputFormat::Json => {
             output::print_json(&ExportOutput {
-                backend:    backend.to_string(),
+                backend: backend.to_string(),
                 connection: redacted,
-                dry_run:    ctx.dry_run,
-                inserted:   stats.inserted,
-                updated:    stats.updated,
-                skipped:    stats.skipped,
-                errors:     stats.errors,
+                dry_run: ctx.dry_run,
+                inserted: stats.inserted,
+                updated: stats.updated,
+                skipped: stats.skipped,
+                errors: stats.errors,
                 elapsed_ms: stats.elapsed_ms,
             });
         }
         OutputFormat::Human => {
-            output::print_header(&format!("Export — {} → {}", scan_path, backend));
+            output::print_header(&format!("Export — {scan_path} → {backend}"));
 
             if ctx.dry_run {
                 output::print_warning("Dry-run mode: no database writes will occur.");
             }
 
             let rows = vec![
-                vec!["Backend".into(),     backend.to_string()],
-                vec!["Connection".into(),  redacted.clone()],
-                vec!["Scan path".into(),   scan_path.clone()],
+                vec!["Backend".into(), backend.to_string()],
+                vec!["Connection".into(), redacted],
+                vec!["Scan path".into(), scan_path],
                 vec!["Table prefix".into(), args.prefix.clone()],
-                vec!["Batch size".into(),  args.batch_size.to_string()],
-                vec!["Dry run".into(),     ctx.dry_run.to_string()],
+                vec!["Batch size".into(), args.batch_size.to_string()],
+                vec!["Dry run".into(), ctx.dry_run.to_string()],
             ];
             output::print_table(&["Setting", "Value"], &rows);
 
@@ -263,10 +271,10 @@ pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
                 println!();
                 let result_rows = vec![
                     vec!["Inserted".into(), stats.inserted.to_string()],
-                    vec!["Updated".into(),  stats.updated.to_string()],
-                    vec!["Skipped".into(),  stats.skipped.to_string()],
-                    vec!["Errors".into(),   stats.errors.to_string()],
-                    vec!["Elapsed".into(),  format!("{} ms", stats.elapsed_ms)],
+                    vec!["Updated".into(), stats.updated.to_string()],
+                    vec!["Skipped".into(), stats.skipped.to_string()],
+                    vec!["Errors".into(), stats.errors.to_string()],
+                    vec!["Elapsed".into(), format!("{} ms", stats.elapsed_ms)],
                 ];
                 output::print_table(&["Metric", "Value"], &result_rows);
 
@@ -294,8 +302,12 @@ mod tests {
 
     fn test_ctx(json: bool, dry_run: bool) -> CliContext {
         CliContext {
-            config:    mm_core::config::AppConfig::default(),
-            output:    if json { OutputFormat::Json } else { OutputFormat::Human },
+            config: mm_core::config::AppConfig::default(),
+            output: if json {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Human
+            },
             verbosity: 0,
             dry_run,
         }
@@ -303,11 +315,11 @@ mod tests {
 
     fn sqlite_args() -> ExportArgs {
         ExportArgs {
-            db:          "sqlite://:memory:".into(),
-            path:        Some("/music".into()),
-            backend:     BackendChoice::Sqlite,
-            prefix:      "mm_".into(),
-            batch_size:  500,
+            db: "sqlite://:memory:".into(),
+            path: Some("/music".into()),
+            backend: BackendChoice::Sqlite,
+            prefix: "mm_".into(),
+            batch_size: 500,
             skip_schema: false,
             show_schema: false,
         }
@@ -317,14 +329,23 @@ mod tests {
 
     #[test]
     fn detect_sqlite_default() {
-        assert_eq!(detect_backend("/home/user/lib.db"),         BackendChoice::Sqlite);
-        assert_eq!(detect_backend("sqlite:///home/user/lib.db"), BackendChoice::Sqlite);
+        assert_eq!(detect_backend("/home/user/lib.db"), BackendChoice::Sqlite);
+        assert_eq!(
+            detect_backend("sqlite:///home/user/lib.db"),
+            BackendChoice::Sqlite
+        );
     }
 
     #[test]
     fn detect_postgres() {
-        assert_eq!(detect_backend("postgres://u:p@host/db"),    BackendChoice::Postgres);
-        assert_eq!(detect_backend("postgresql://u:p@host/db"),  BackendChoice::Postgres);
+        assert_eq!(
+            detect_backend("postgres://u:p@host/db"),
+            BackendChoice::Postgres
+        );
+        assert_eq!(
+            detect_backend("postgresql://u:p@host/db"),
+            BackendChoice::Postgres
+        );
     }
 
     #[test]
@@ -334,7 +355,10 @@ mod tests {
 
     #[test]
     fn detect_mssql() {
-        assert_eq!(detect_backend("server=tcp:host,1433;database=d"), BackendChoice::Mssql);
+        assert_eq!(
+            detect_backend("server=tcp:host,1433;database=d"),
+            BackendChoice::Mssql
+        );
     }
 
     // --- redact_dsn ---
@@ -356,19 +380,22 @@ mod tests {
 
     #[test]
     fn backend_display_names() {
-        assert_eq!(BackendChoice::Sqlite.to_string(),   "SQLite");
-        assert_eq!(BackendChoice::Mysql.to_string(),    "MySQL");
-        assert_eq!(BackendChoice::Mariadb.to_string(),  "MariaDB");
+        assert_eq!(BackendChoice::Sqlite.to_string(), "SQLite");
+        assert_eq!(BackendChoice::Mysql.to_string(), "MySQL");
+        assert_eq!(BackendChoice::Mariadb.to_string(), "MariaDB");
         assert_eq!(BackendChoice::Postgres.to_string(), "PostgreSQL");
-        assert_eq!(BackendChoice::Mssql.to_string(),    "SQL Server");
+        assert_eq!(BackendChoice::Mssql.to_string(), "SQL Server");
     }
 
     // --- run() ---
 
     #[test]
     fn run_empty_dsn_returns_error() {
-        let ctx  = test_ctx(false, false);
-        let args = ExportArgs { db: "  ".into(), ..sqlite_args() };
+        let ctx = test_ctx(false, false);
+        let args = ExportArgs {
+            db: "  ".into(),
+            ..sqlite_args()
+        };
         assert_eq!(run(&ctx, &args).unwrap(), ExitCode::ERROR);
     }
 
@@ -392,7 +419,7 @@ mod tests {
 
     #[test]
     fn run_show_schema_exits_cleanly() {
-        let ctx  = test_ctx(false, false);
+        let ctx = test_ctx(false, false);
         let mut args = sqlite_args();
         args.show_schema = true;
         assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
@@ -400,9 +427,9 @@ mod tests {
 
     #[test]
     fn run_postgres_backend_succeeds() {
-        let ctx  = test_ctx(false, false);
+        let ctx = test_ctx(false, false);
         let args = ExportArgs {
-            db:      "postgres://admin:pass@localhost/meedya".into(),
+            db: "postgres://admin:pass@localhost/meedya".into(),
             backend: BackendChoice::Postgres,
             ..sqlite_args()
         };

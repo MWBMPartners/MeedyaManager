@@ -2,15 +2,19 @@
 //
 // MeedyaManager — Internationalisation (i18n) initialisation
 //
-// Sets up GNU gettext so that all translatable strings (wrapped in
+// On Linux, sets up GNU gettext so that all translatable strings (wrapped in
 // `gettextrs::gettext()` or the `t!()` convenience macro) are resolved
 // from the compiled .mo catalogue for the system locale.
+//
+// On macOS and Windows, this module provides a no-op `init()` — those
+// platforms use their native localisation frameworks (NSLocalizedString /
+// .resw resources) in their respective UI layers.
 //
 // Call `mm_core::i18n::init()` once — before any UI or user-visible text
 // is produced — in the entry point of each binary (mm-cli `main()`, and
 // mm-gtk `app::run()`).
 //
-// At runtime the function:
+// At runtime the function (Linux only):
 //   1. Detects the system locale via `setlocale(LC_ALL, "")`.
 //   2. Binds the "meedyamanager" text-domain to the locale directory.
 //   3. Forces UTF-8 codeset for consistent string encoding.
@@ -30,12 +34,21 @@
 //
 // See `locales/TRANSLATORS.md` for a full guide.
 
-use gettextrs::{bind_textdomain_codeset, bindtextdomain, setlocale, textdomain, LocaleCategory};
-
 /// GNU gettext text-domain identifier.  Must match the .mo filename stem.
+#[allow(dead_code)]
 const DOMAIN: &str = "meedyamanager";
 
+// ===========================================================================
+// Linux — real GNU gettext initialisation
+// ===========================================================================
+
+#[cfg(target_os = "linux")]
+use gettextrs::{LocaleCategory, bind_textdomain_codeset, bindtextdomain, setlocale, textdomain};
+
 /// Initialise the gettext i18n subsystem.
+///
+/// On Linux this binds the GNU gettext text-domain.  On macOS / Windows
+/// this is a no-op — native localisation is handled by the platform UI.
 ///
 /// Safe to call multiple times — subsequent calls are no-ops because gettext
 /// stores the domain binding in process-global state.
@@ -45,6 +58,7 @@ const DOMAIN: &str = "meedyamanager";
 /// Does **not** panic — all errors are logged at `warn` level and the
 /// function returns, leaving the application running with untranslated strings
 /// (English fallback from `msgid`s is always available).
+#[cfg(target_os = "linux")]
 pub fn init() {
     // Step 1 — activate the system locale (e.g. "fr_FR.UTF-8").
     // Passing an empty string tells gettext to read the LC_ALL / LANG env vars.
@@ -71,8 +85,24 @@ pub fn init() {
     tracing::debug!("i18n: initialised — domain={DOMAIN}, locale_dir={locale_dir}");
 }
 
+// ===========================================================================
+// macOS / Windows — no-op stub
+// ===========================================================================
+
+/// No-op on non-Linux platforms.  Native localisation is handled by the
+/// platform UI layer (NSLocalizedString on macOS, .resw on Windows).
+#[cfg(not(target_os = "linux"))]
+pub fn init() {
+    tracing::debug!("i18n: skipped (non-Linux platform — using native localisation)");
+}
+
+// ===========================================================================
+// Locale directory resolution (Linux only)
+// ===========================================================================
+
 /// Resolve the locale directory, preferring developer/Flatpak overrides
 /// over the system-wide path.
+#[cfg(target_os = "linux")]
 fn resolve_locale_dir() -> String {
     // (a) Explicit override — useful for development and CI
     if let Ok(dir) = std::env::var("MEEDYA_LOCALE_DIR") {
@@ -108,17 +138,18 @@ mod tests {
         assert!(!DOMAIN.is_empty());
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn resolve_locale_dir_returns_system_fallback_without_env() {
         // Clear any override that might be set in the test environment
         std::env::remove_var("MEEDYA_LOCALE_DIR");
         // Without MEEDYA_LOCALE_DIR set and without valid XDG_DATA_DIRS entries,
         // the function should return the system-wide fallback path.
-        // We only check it is a non-empty string (path existence is not required).
         let dir = resolve_locale_dir();
         assert!(!dir.is_empty());
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn resolve_locale_dir_honours_env_override() {
         std::env::set_var("MEEDYA_LOCALE_DIR", "/tmp/test-locales");

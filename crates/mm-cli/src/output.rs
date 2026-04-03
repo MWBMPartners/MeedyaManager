@@ -86,11 +86,11 @@ pub fn print_table(headers: &[&str], rows: &[Vec<String>]) {
             .map(|(i, cell)| {
                 // Pad cell to column width (use 0 if index out of range)
                 let width = widths.get(i).copied().unwrap_or(0);
-                format!("{:<width$}", cell, width = width)
+                format!("{cell:<width$}")
             })
             .collect::<Vec<_>>()
             .join("  ");
-        println!("{}", line);
+        println!("{line}");
     }
 }
 

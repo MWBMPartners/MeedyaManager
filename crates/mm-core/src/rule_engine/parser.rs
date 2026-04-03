@@ -16,8 +16,8 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
-use crate::error::{MmError, MmResult};
 use super::lexer::{Token, tokenize};
+use crate::error::{MmError, MmResult};
 
 // ───────────────────────────────────────────────────────────────────────────
 // Constants
@@ -43,10 +43,10 @@ pub enum Node {
         /// Function name (e.g. "If", "Pad", "Upper")
         name: String,
         /// Evaluated argument sub-trees (each arg is itself a Node)
-        args: Vec<Node>,
+        args: Vec<Self>,
     },
     /// An ordered sequence of sibling nodes (the root of a parsed template)
-    Sequence(Vec<Node>),
+    Sequence(Vec<Self>),
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -215,9 +215,7 @@ impl Parser {
 /// Uses `OnceLock` to compile only once across all calls.
 fn legacy_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r"\{([^}]+)\}").expect("legacy regex must compile")
-    })
+    RE.get_or_init(|| Regex::new(r"\{([^}]+)\}").expect("legacy regex must compile"))
 }
 
 /// Detect legacy `{placeholder}` patterns in a template string.
@@ -447,10 +445,7 @@ mod tests {
     fn legacy_syntax_no_error() {
         let node = parse_template("{artist}/{album}").unwrap();
         // Legacy braces are treated as literal text
-        assert_eq!(
-            node,
-            Node::Literal("{artist}/{album}".into())
-        );
+        assert_eq!(node, Node::Literal("{artist}/{album}".into()));
     }
 
     /// detect_legacy_syntax finds curly-brace placeholders
@@ -485,7 +480,7 @@ mod tests {
                     ])
                 );
             }
-            _ => panic!("expected FuncCall, got {:?}", node),
+            _ => panic!("expected FuncCall, got {node:?}"),
         }
     }
 
@@ -520,7 +515,7 @@ mod tests {
                 assert!(nodes.len() >= 5);
                 assert_eq!(nodes[0], Node::Tag("Album Artist".into()));
             }
-            _ => panic!("expected Sequence, got {:?}", node),
+            _ => panic!("expected Sequence, got {node:?}"),
         }
     }
 
@@ -576,10 +571,7 @@ mod tests {
                 assert_eq!(args.len(), 1);
                 assert_eq!(
                     args[0],
-                    Node::Sequence(vec![
-                        Node::Tag("First".into()),
-                        Node::Tag("Last".into()),
-                    ])
+                    Node::Sequence(vec![Node::Tag("First".into()), Node::Tag("Last".into()),])
                 );
             }
             _ => panic!("expected FuncCall"),

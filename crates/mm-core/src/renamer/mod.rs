@@ -47,9 +47,8 @@ const WINDOWS_INVALID_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?'
 
 /// Reserved filenames on Windows (case-insensitive)
 const WINDOWS_RESERVED_NAMES: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL",
-    "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+    "COM8", "COM9", "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
 /// Maximum filename length (conservative cross-platform limit)
@@ -138,9 +137,7 @@ pub fn sanitize_filename(name: &str, config: &SanitizeConfig) -> String {
 
     // Check for reserved Windows names
     let upper = trimmed.to_ascii_uppercase();
-    let trimmed = if config.windows_compatible
-        && WINDOWS_RESERVED_NAMES.contains(&upper.as_str())
-    {
+    let trimmed = if config.windows_compatible && WINDOWS_RESERVED_NAMES.contains(&upper.as_str()) {
         format!("{trimmed}_file")
     } else {
         trimmed
@@ -154,7 +151,7 @@ pub fn sanitize_filename(name: &str, config: &SanitizeConfig) -> String {
 
     // Truncate to max length while preserving extension
     if config.max_length > 0 && full.len() > config.max_length {
-        let ext_len = ext.map_or(0, |e| e.len());
+        let ext_len = ext.map_or(0, str::len);
         let max_stem = config.max_length.saturating_sub(ext_len);
         let truncated_stem: String = trimmed.chars().take(max_stem).collect();
         match ext {
@@ -170,10 +167,7 @@ pub fn sanitize_filename(name: &str, config: &SanitizeConfig) -> String {
 ///
 /// Replaces `{key}` placeholders in the template with values from the
 /// metadata map. Unknown keys are replaced with "Unknown".
-pub fn substitute_template(
-    template: &str,
-    metadata: &HashMap<String, String>,
-) -> String {
+pub fn substitute_template(template: &str, metadata: &HashMap<String, String>) -> String {
     let mut result = template.to_string();
     // Find all {key} placeholders and replace them
     for (key, value) in metadata {
@@ -228,8 +222,7 @@ pub fn simulate_rename(
         let destination = output_dir.join(parent_parts).join(&safe_name);
 
         // Detect conflicts
-        let conflict = destination.exists()
-            || destinations_seen.contains_key(&destination);
+        let conflict = destination.exists() || destinations_seen.contains_key(&destination);
         let unchanged = source == &destination;
 
         // Track this destination to detect intra-batch conflicts
@@ -243,7 +236,10 @@ pub fn simulate_rename(
         });
     }
 
-    let renamed = previews.iter().filter(|p| !p.unchanged && !p.conflict).count();
+    let renamed = previews
+        .iter()
+        .filter(|p| !p.unchanged && !p.conflict)
+        .count();
     let unchanged = previews.iter().filter(|p| p.unchanged).count();
     let conflicts = previews.iter().filter(|p| p.conflict).count();
 
@@ -277,13 +273,13 @@ pub fn simulate_rename_with_rules(
         let ctx = ctx_builder(source)?;
 
         // Try rules first, then fall back to the default template
-        let raw_path = if !rules.is_empty() {
+        let raw_path = if rules.is_empty() {
+            rule_engine::evaluate_template(default_template, &ctx)?
+        } else {
             match rule_engine::apply_rules(rules, &ctx)? {
                 Some(result) => result,
                 None => rule_engine::evaluate_template(default_template, &ctx)?,
             }
-        } else {
-            rule_engine::evaluate_template(default_template, &ctx)?
         };
 
         // Split template result into directory components and filename
@@ -311,8 +307,7 @@ pub fn simulate_rename_with_rules(
         let destination = output_dir.join(parent_parts).join(&safe_name);
 
         // Detect conflicts
-        let conflict = destination.exists()
-            || destinations_seen.contains_key(&destination);
+        let conflict = destination.exists() || destinations_seen.contains_key(&destination);
         let unchanged = source == &destination;
 
         // Track this destination to detect intra-batch conflicts
@@ -326,7 +321,10 @@ pub fn simulate_rename_with_rules(
         });
     }
 
-    let renamed = previews.iter().filter(|p| !p.unchanged && !p.conflict).count();
+    let renamed = previews
+        .iter()
+        .filter(|p| !p.unchanged && !p.conflict)
+        .count();
     let unchanged = previews.iter().filter(|p| p.unchanged).count();
     let conflicts = previews.iter().filter(|p| p.conflict).count();
 
@@ -357,9 +355,8 @@ pub fn execute_rename(preview: &RenamePreview) -> MmResult<()> {
 
     // Create parent directories
     if let Some(parent) = preview.destination.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            MmError::Rename(format!("cannot create directory: {e}"))
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| MmError::Rename(format!("cannot create directory: {e}")))?;
     }
 
     // Perform the rename
@@ -390,7 +387,10 @@ mod tests {
     #[test]
     fn sanitize_removes_windows_invalid_chars() {
         let config = SanitizeConfig::default();
-        assert_eq!(sanitize_filename("file<>name.mp3", &config), "file__name.mp3");
+        assert_eq!(
+            sanitize_filename("file<>name.mp3", &config),
+            "file__name.mp3"
+        );
         assert_eq!(sanitize_filename("file:name.mp3", &config), "file_name.mp3");
         assert_eq!(sanitize_filename("file|name.mp3", &config), "file_name.mp3");
     }
@@ -399,7 +399,10 @@ mod tests {
     fn sanitize_custom_replacements() {
         let mut config = SanitizeConfig::default();
         config.custom_replacements.insert(':', " -".to_string());
-        assert_eq!(sanitize_filename("Song: Title.mp3", &config), "Song - Title.mp3");
+        assert_eq!(
+            sanitize_filename("Song: Title.mp3", &config),
+            "Song - Title.mp3"
+        );
     }
 
     #[test]
@@ -426,14 +429,22 @@ mod tests {
     #[test]
     fn sanitize_control_characters() {
         let config = SanitizeConfig::default();
-        assert_eq!(sanitize_filename("file\x00name.mp3", &config), "file_name.mp3");
-        assert_eq!(sanitize_filename("file\tname.mp3", &config), "file_name.mp3");
+        assert_eq!(
+            sanitize_filename("file\x00name.mp3", &config),
+            "file_name.mp3"
+        );
+        assert_eq!(
+            sanitize_filename("file\tname.mp3", &config),
+            "file_name.mp3"
+        );
     }
 
     #[test]
     fn sanitize_truncates_long_names() {
-        let mut config = SanitizeConfig::default();
-        config.max_length = 20;
+        let config = SanitizeConfig {
+            max_length: 20,
+            ..Default::default()
+        };
         let long_name = "a".repeat(30) + ".mp3";
         let result = sanitize_filename(&long_name, &config);
         assert!(result.len() <= 20);
@@ -467,7 +478,7 @@ mod tests {
         let mut meta = HashMap::new();
         meta.insert("title".to_string(), "New Song".to_string());
 
-        let files = vec![(source.clone(), meta)];
+        let files = vec![(source, meta)];
         let config = SanitizeConfig::default();
         let summary = simulate_rename(&files, "{title}", dir.path(), &config).unwrap();
 

@@ -6,9 +6,10 @@
 # Check RustSec advisory database for known vulnerabilities
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
+# Scope: check all crates (workspace + transitive dependencies)
 vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
+unmaintained = "workspace"
+yanked = "workspace"
 
 [licenses]
 # Only allow licenses compatible with GPL-2.0-or-later

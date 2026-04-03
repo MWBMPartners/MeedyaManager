@@ -69,12 +69,14 @@ impl Default for WatcherConfig {
             debounce_ms: 500,
             include_extensions: Vec::new(),
             exclude_extensions: vec![
-                "tmp".into(), "part".into(), "crdownload".into(),
+                "tmp".into(),
+                "part".into(),
+                "crdownload".into(),
                 "download".into(),
             ],
             ignore_patterns: vec![
-                ".*".into(),       // Hidden files
-                "~*".into(),       // Temp files
+                ".*".into(), // Hidden files
+                "~*".into(), // Temp files
                 "Thumbs.db".into(),
                 ".DS_Store".into(),
                 "desktop.ini".into(),
@@ -112,14 +114,21 @@ pub fn should_ignore(path: &Path, config: &WatcherConfig) -> bool {
         .to_ascii_lowercase();
 
     // If include list is non-empty, only allow listed extensions
-    if !config.include_extensions.is_empty() {
-        if !config.include_extensions.iter().any(|e| e.to_ascii_lowercase() == ext) {
-            return true;
-        }
+    if !config.include_extensions.is_empty()
+        && !config
+            .include_extensions
+            .iter()
+            .any(|e| e.to_ascii_lowercase() == ext)
+    {
+        return true;
     }
 
     // Exclude listed extensions
-    if config.exclude_extensions.iter().any(|e| e.to_ascii_lowercase() == ext) {
+    if config
+        .exclude_extensions
+        .iter()
+        .any(|e| e.to_ascii_lowercase() == ext)
+    {
         return true;
     }
 
@@ -150,9 +159,7 @@ pub fn convert_event(event: &Event) -> Vec<WatchEvent> {
     }
 
     // Handle rename events (notify provides two paths)
-    if matches!(event.kind, EventKind::Modify(_))
-        && event.paths.len() == 2
-    {
+    if matches!(event.kind, EventKind::Modify(_)) && event.paths.len() == 2 {
         events.clear();
         events.push(WatchEvent::Renamed(
             event.paths[0].clone(),
@@ -175,10 +182,9 @@ pub fn start_watcher(
 
     // Create the notify watcher with debounce config
     let _debounce = Duration::from_millis(config.debounce_ms);
-    let notify_config = NotifyConfig::default()
-        .with_poll_interval(Duration::from_secs(2));
+    let notify_config = NotifyConfig::default().with_poll_interval(Duration::from_secs(2));
 
-    let watcher_tx = tx.clone();
+    let watcher_tx = tx;
     let mut watcher = RecommendedWatcher::new(
         move |result: Result<Event, notify::Error>| {
             match result {
@@ -193,11 +199,9 @@ pub fn start_watcher(
                             WatchEvent::Renamed(_, to) => to,
                         };
 
-                        if !should_ignore(path, &config_clone) {
-                            if watcher_tx.send(we).is_err() {
-                                // Receiver dropped — stop
-                                return;
-                            }
+                        if !should_ignore(path, &config_clone) && watcher_tx.send(we).is_err() {
+                            // Receiver dropped — stop
+                            return;
                         }
                     }
                 }
@@ -258,14 +262,11 @@ fn scan_directory(
     config: &WatcherConfig,
     files: &mut Vec<PathBuf>,
 ) -> MmResult<()> {
-    let entries = std::fs::read_dir(dir).map_err(|e| {
-        MmError::Watcher(format!("cannot read directory {}: {e}", dir.display()))
-    })?;
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| MmError::Watcher(format!("cannot read directory {}: {e}", dir.display())))?;
 
     for entry in entries {
-        let entry = entry.map_err(|e| {
-            MmError::Watcher(format!("directory entry error: {e}"))
-        })?;
+        let entry = entry.map_err(|e| MmError::Watcher(format!("directory entry error: {e}")))?;
         let path = entry.path();
 
         if path.is_dir() && recursive {
@@ -274,10 +275,8 @@ fn scan_directory(
             if !dirname.starts_with('.') {
                 scan_directory(&path, recursive, config, files)?;
             }
-        } else if path.is_file() {
-            if !should_ignore(&path, config) {
-                files.push(path);
-            }
+        } else if path.is_file() && !should_ignore(&path, config) {
+            files.push(path);
         }
     }
 
@@ -287,6 +286,7 @@ fn scan_directory(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use notify::event::EventAttributes;
     use std::fs;
     use tempfile::TempDir;
 
@@ -335,8 +335,10 @@ mod tests {
 
     #[test]
     fn include_filter_restricts_extensions() {
-        let mut config = WatcherConfig::default();
-        config.include_extensions = vec!["mp3".into(), "flac".into()];
+        let config = WatcherConfig {
+            include_extensions: vec!["mp3".into(), "flac".into()],
+            ..Default::default()
+        };
 
         assert!(!should_ignore(Path::new("song.mp3"), &config));
         assert!(!should_ignore(Path::new("track.FLAC"), &config));
@@ -349,7 +351,7 @@ mod tests {
         let event = Event {
             kind: EventKind::Create(notify::event::CreateKind::File),
             paths: vec![PathBuf::from("/test/file.mp3")],
-            attrs: Default::default(),
+            attrs: EventAttributes::default(),
         };
         let results = convert_event(&event);
         assert_eq!(results.len(), 1);
@@ -363,7 +365,7 @@ mod tests {
                 notify::event::DataChange::Content,
             )),
             paths: vec![PathBuf::from("/test/file.mp3")],
-            attrs: Default::default(),
+            attrs: EventAttributes::default(),
         };
         let results = convert_event(&event);
         assert_eq!(results.len(), 1);
@@ -375,7 +377,7 @@ mod tests {
         let event = Event {
             kind: EventKind::Remove(notify::event::RemoveKind::File),
             paths: vec![PathBuf::from("/test/file.mp3")],
-            attrs: Default::default(),
+            attrs: EventAttributes::default(),
         };
         let results = convert_event(&event);
         assert_eq!(results.len(), 1);

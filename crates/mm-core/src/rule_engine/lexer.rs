@@ -267,10 +267,7 @@ mod tests {
     #[test]
     fn tag_preserves_content() {
         let tokens = tokenize("<Album Artist>").unwrap();
-        assert_eq!(
-            tokens,
-            vec![Token::Tag("Album Artist".into()), Token::Eof]
-        );
+        assert_eq!(tokens, vec![Token::Tag("Album Artist".into()), Token::Eof]);
     }
 
     /// Function name token
@@ -366,10 +363,7 @@ mod tests {
     #[test]
     fn legacy_curly_brace() {
         let tokens = tokenize("{artist}").unwrap();
-        assert_eq!(
-            tokens,
-            vec![Token::Literal("{artist}".into()), Token::Eof]
-        );
+        assert_eq!(tokens, vec![Token::Literal("{artist}".into()), Token::Eof]);
     }
 
     /// Unclosed tag returns error
@@ -421,10 +415,7 @@ mod tests {
     #[test]
     fn unicode_tag_name() {
         let tokens = tokenize("<Künstler>").unwrap();
-        assert_eq!(
-            tokens,
-            vec![Token::Tag("Künstler".into()), Token::Eof]
-        );
+        assert_eq!(tokens, vec![Token::Tag("Künstler".into()), Token::Eof]);
     }
 
     /// Multiple consecutive tags with no separator
@@ -455,7 +446,7 @@ mod tests {
                 Token::Tag("Disc#".into()),
                 Token::RParen,
                 Token::Comma,
-                Token::QuotedLiteral("".into()),
+                Token::QuotedLiteral(String::new()),
                 Token::Comma,
                 Token::FuncName("Pad".into()),
                 Token::LParen,

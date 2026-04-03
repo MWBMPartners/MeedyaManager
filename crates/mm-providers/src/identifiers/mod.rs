@@ -45,8 +45,10 @@ pub fn validate_isrc(isrc: &str) -> bool {
 /// Validate ISWC format: `T-123456789-C` (T + 9 digits + check digit).
 /// Accepts the format with or without hyphens.
 pub fn validate_iswc(iswc: &str) -> bool {
-    let normalised: String = iswc.to_uppercase().chars()
-        .filter(|c| c.is_ascii_alphanumeric())
+    let normalised: String = iswc
+        .to_uppercase()
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
         .collect();
     // Must be exactly 11 chars: T + 9 digits + 1 check digit
     normalised.len() == 11
@@ -101,9 +103,14 @@ impl IsrcProvider {
         }
     }
 
-    fn parse_recordings(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
+    fn parse_recordings(
+        provider_name: &str,
+        body: &str,
+    ) -> Result<Vec<ProviderResult>, ProviderError> {
         #[derive(Deserialize)]
-        struct MbResponse { recordings: Vec<MbRecording> }
+        struct MbResponse {
+            recordings: Vec<MbRecording>,
+        }
         #[derive(Deserialize)]
         struct MbRecording {
             id: Option<String>,
@@ -115,92 +122,128 @@ impl IsrcProvider {
             length: Option<u64>,
         }
         #[derive(Deserialize)]
-        struct MbCredit { artist: Option<MbArtist> }
+        struct MbCredit {
+            artist: Option<MbArtist>,
+        }
         #[derive(Deserialize)]
-        struct MbArtist { name: Option<String> }
+        struct MbArtist {
+            name: Option<String>,
+        }
         #[derive(Deserialize)]
         struct MbRelease {
             title: Option<String>,
             date: Option<String>,
         }
 
-        let resp: MbResponse = serde_json::from_str(body)
-            .map_err(|e| parse_err("ISRC/MusicBrainz response", e))?;
+        let resp: MbResponse =
+            serde_json::from_str(body).map_err(|e| parse_err("ISRC/MusicBrainz response", e))?;
 
-        let results = resp.recordings.into_iter().map(|rec| {
-            let artist = rec.artist_credit.as_deref().map(|credits| {
-                credits.iter()
-                    .filter_map(|c| c.artist.as_ref()?.name.as_deref())
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            });
-            let first_release = rec.releases.as_deref().and_then(|r| r.first());
-            let album = first_release.and_then(|r| r.title.clone());
-            let year = first_release
-                .and_then(|r| r.date.as_deref())
-                .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
+        let results = resp
+            .recordings
+            .into_iter()
+            .map(|rec| {
+                let artist = rec.artist_credit.as_deref().map(|credits| {
+                    credits
+                        .iter()
+                        .filter_map(|c| c.artist.as_ref()?.name.as_deref())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                });
+                let first_release = rec.releases.as_deref().and_then(|r| r.first());
+                let album = first_release.and_then(|r| r.title.clone());
+                let year = first_release
+                    .and_then(|r| r.date.as_deref())
+                    .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
 
-            ProviderResult {
-                provider: provider_name.to_owned(),
-                provider_id: rec.id.unwrap_or_default(),
-                title: rec.title,
-                artist,
-                album,
-                year,
-                isrc: rec.isrcs.and_then(|v| v.into_iter().next()),
-                duration_secs: rec.length.map(|ms| ms as f64 / 1000.0),
-                ..Default::default()
-            }
-        }).collect();
+                ProviderResult {
+                    provider: provider_name.to_owned(),
+                    provider_id: rec.id.unwrap_or_default(),
+                    title: rec.title,
+                    artist,
+                    album,
+                    year,
+                    isrc: rec.isrcs.and_then(|v| v.into_iter().next()),
+                    duration_secs: rec.length.map(|ms| ms as f64 / 1000.0),
+                    ..Default::default()
+                }
+            })
+            .collect();
         Ok(results)
     }
 }
 
 impl MetadataProvider for IsrcProvider {
-    fn name(&self) -> &str { "isrc" }
-    fn capabilities(&self) -> &Capabilities { &self.capabilities }
-    fn is_enabled(&self) -> bool { !self.user_agent.is_empty() }
+    fn name(&self) -> &'static str {
+        "isrc"
+    }
+    fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+    fn is_enabled(&self) -> bool {
+        !self.user_agent.is_empty()
+    }
 
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-        if !self.is_enabled() {
-            return Err(ProviderError::Disabled("isrc".into()));
-        }
-
-        let isrc = query.isrc.as_deref().ok_or_else(|| ProviderError::NotSupported {
-            provider: "isrc".into(),
-            reason: "ISRC query requires an ISRC code".into(),
-        })?;
-
-        if !validate_isrc(isrc) {
-            return Err(ProviderError::Parse(format!("Invalid ISRC format: {isrc}")));
-        }
-
-        debug!(provider = "isrc", isrc = isrc, "Sending ISRC lookup request");
-
-        let url = format!("{}/ws/2/recording/", self.base_url);
-        let response = self.client
-            .get(&url)
-            // User-Agent is set at client level by crate::http::build_client()
-            .header("Accept", "application/json")
-            .query(&[
-                ("query", &format!("isrc:{isrc}")),
-                ("limit", &query.max_results.to_string()),
-                ("fmt", &"json".to_owned()),
-            ])
-            .send()
-            .await
-            .map_err(net_err)?;
-
-        if !response.status().is_success() {
-            let s = response.status();
-            if s.as_u16() == 503 {
-                return Err(ProviderError::RateLimited { provider: "isrc".into() });
+    fn search(
+        &self,
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.is_enabled() {
+                return Err(ProviderError::Disabled("isrc".into()));
             }
-            return Err(ProviderError::Network(format!("HTTP {s}")));
-        }
 
-        let body = response.text().await.map_err(net_err)?;
-        Self::parse_recordings("isrc", &body)
+            let isrc = query
+                .isrc
+                .as_deref()
+                .ok_or_else(|| ProviderError::NotSupported {
+                    provider: "isrc".into(),
+                    reason: "ISRC query requires an ISRC code".into(),
+                })?;
+
+            if !validate_isrc(isrc) {
+                return Err(ProviderError::Parse(format!("Invalid ISRC format: {isrc}")));
+            }
+
+            debug!(
+                provider = "isrc",
+                isrc = isrc,
+                "Sending ISRC lookup request"
+            );
+
+            let url = format!("{}/ws/2/recording/", self.base_url);
+            let response = self
+                .client
+                .get(&url)
+                // User-Agent is set at client level by crate::http::build_client()
+                .header("Accept", "application/json")
+                .query(&[
+                    ("query", &format!("isrc:{isrc}")),
+                    ("limit", &query.max_results.to_string()),
+                    ("fmt", &"json".to_owned()),
+                ])
+                .send()
+                .await
+                .map_err(net_err)?;
+
+            if !response.status().is_success() {
+                let s = response.status();
+                if s.as_u16() == 503 {
+                    return Err(ProviderError::RateLimited {
+                        provider: "isrc".into(),
+                    });
+                }
+                return Err(ProviderError::Network(format!("HTTP {s}")));
+            }
+
+            let body = response.text().await.map_err(net_err)?;
+            Self::parse_recordings("isrc", &body)
+        })
     }
 }
 
@@ -254,7 +297,10 @@ impl EidrProvider {
     ///
     /// EIDR returns XML, but the registry also offers JSON via Accept header.
     /// We request JSON for simplicity.
-    fn parse_eidr_json(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
+    fn parse_eidr_json(
+        provider_name: &str,
+        body: &str,
+    ) -> Result<Vec<ProviderResult>, ProviderError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "PascalCase")]
         struct EidrRecord {
@@ -269,24 +315,31 @@ impl EidrProvider {
         }
 
         #[derive(Deserialize)]
-        #[serde(rename_all = "PascalCase")]
-        struct EidrLocalizedName { value: Option<String> }
+        struct EidrLocalizedName {
+            value: Option<String>,
+        }
 
         #[derive(Deserialize)]
-        #[serde(rename_all = "PascalCase")]
-        struct EidrExtra { movie: Option<EidrMovie> }
+        struct EidrExtra {
+            movie: Option<EidrMovie>,
+        }
 
         #[derive(Deserialize)]
-        #[serde(rename_all = "PascalCase")]
-        struct EidrMovie { directors: Option<Vec<String>> }
+        struct EidrMovie {
+            directors: Option<Vec<String>>,
+        }
 
-        let record: EidrRecord = serde_json::from_str(body)
-            .map_err(|e| parse_err("EIDR response", e))?;
+        let record: EidrRecord =
+            serde_json::from_str(body).map_err(|e| parse_err("EIDR response", e))?;
 
-        let year = record.release_date.as_deref()
+        let year = record
+            .release_date
+            .as_deref()
             .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
 
-        let director = record.extra.as_ref()
+        let director = record
+            .extra
+            .as_ref()
             .and_then(|e| e.movie.as_ref())
             .and_then(|m| m.directors.as_deref())
             .and_then(|d| d.first())
@@ -296,7 +349,7 @@ impl EidrProvider {
             provider: provider_name.to_owned(),
             provider_id: record.id.clone().unwrap_or_default(),
             title: record.resource_name.and_then(|n| n.value),
-            artist: director,  // Director for film
+            artist: director, // Director for film
             year,
             eidr: record.id,
             ..Default::default()
@@ -307,48 +360,70 @@ impl EidrProvider {
 }
 
 impl MetadataProvider for EidrProvider {
-    fn name(&self) -> &str { "eidr" }
-    fn capabilities(&self) -> &Capabilities { &self.capabilities }
-    fn is_enabled(&self) -> bool { self.username.is_some() && self.password.is_some() }
+    fn name(&self) -> &'static str {
+        "eidr"
+    }
+    fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+    fn is_enabled(&self) -> bool {
+        self.username.is_some() && self.password.is_some()
+    }
 
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-        if !self.is_enabled() {
-            return Err(ProviderError::Disabled("eidr".into()));
-        }
-
-        let eidr = query.eidr.as_deref().ok_or_else(|| ProviderError::NotSupported {
-            provider: "eidr".into(),
-            reason: "EIDR query requires an EIDR DOI".into(),
-        })?;
-
-        if !validate_eidr(eidr) {
-            return Err(ProviderError::Parse(format!("Invalid EIDR format: {eidr}")));
-        }
-
-        debug!(provider = "eidr", eidr = eidr, "Sending EIDR lookup request");
-
-        let url = format!("{}/EIDR/object/{}", self.base_url, eidr);
-        let response = self.client
-            .get(&url)
-            .basic_auth(
-                self.username.as_deref().unwrap(),
-                self.password.as_deref(),
-            )
-            .header("Accept", "application/json")
-            .send()
-            .await
-            .map_err(net_err)?;
-
-        if !response.status().is_success() {
-            let s = response.status();
-            if s.as_u16() == 401 {
-                return Err(ProviderError::Auth("Invalid EIDR credentials".into()));
+    fn search(
+        &self,
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.is_enabled() {
+                return Err(ProviderError::Disabled("eidr".into()));
             }
-            return Err(ProviderError::Network(format!("HTTP {s}")));
-        }
 
-        let body = response.text().await.map_err(net_err)?;
-        Self::parse_eidr_json("eidr", &body)
+            let eidr = query
+                .eidr
+                .as_deref()
+                .ok_or_else(|| ProviderError::NotSupported {
+                    provider: "eidr".into(),
+                    reason: "EIDR query requires an EIDR DOI".into(),
+                })?;
+
+            if !validate_eidr(eidr) {
+                return Err(ProviderError::Parse(format!("Invalid EIDR format: {eidr}")));
+            }
+
+            debug!(
+                provider = "eidr",
+                eidr = eidr,
+                "Sending EIDR lookup request"
+            );
+
+            let url = format!("{}/EIDR/object/{}", self.base_url, eidr);
+            let response = self
+                .client
+                .get(&url)
+                .basic_auth(self.username.as_deref().unwrap(), self.password.as_deref())
+                .header("Accept", "application/json")
+                .send()
+                .await
+                .map_err(net_err)?;
+
+            if !response.status().is_success() {
+                let s = response.status();
+                if s.as_u16() == 401 {
+                    return Err(ProviderError::Auth("Invalid EIDR credentials".into()));
+                }
+                return Err(ProviderError::Network(format!("HTTP {s}")));
+            }
+
+            let body = response.text().await.map_err(net_err)?;
+            Self::parse_eidr_json("eidr", &body)
+        })
     }
 }
 
@@ -395,7 +470,9 @@ impl IswcProvider {
 
     fn parse_works(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
         #[derive(Deserialize)]
-        struct MbWorksResponse { works: Vec<MbWork> }
+        struct MbWorksResponse {
+            works: Vec<MbWork>,
+        }
         #[derive(Deserialize)]
         struct MbWork {
             id: Option<String>,
@@ -410,77 +487,110 @@ impl IswcProvider {
             artist: Option<MbRelArtist>,
         }
         #[derive(Deserialize)]
-        struct MbRelArtist { name: Option<String> }
+        struct MbRelArtist {
+            name: Option<String>,
+        }
 
-        let resp: MbWorksResponse = serde_json::from_str(body)
-            .map_err(|e| parse_err("ISWC/MusicBrainz response", e))?;
+        let resp: MbWorksResponse =
+            serde_json::from_str(body).map_err(|e| parse_err("ISWC/MusicBrainz response", e))?;
 
-        let results = resp.works.into_iter().map(|work| {
-            // Find the composer from relations
-            let composer = work.relations.as_deref().and_then(|rels| {
-                rels.iter()
-                    .find(|r| r.rel_type.as_deref() == Some("composer"))
-                    .and_then(|r| r.artist.as_ref()?.name.clone())
-            });
+        let results = resp
+            .works
+            .into_iter()
+            .map(|work| {
+                // Find the composer from relations
+                let composer = work.relations.as_deref().and_then(|rels| {
+                    rels.iter()
+                        .find(|r| r.rel_type.as_deref() == Some("composer"))
+                        .and_then(|r| r.artist.as_ref()?.name.clone())
+                });
 
-            ProviderResult {
-                provider: provider_name.to_owned(),
-                provider_id: work.id.unwrap_or_default(),
-                title: work.title,
-                artist: composer,
-                iswc: work.iswcs.and_then(|v| v.into_iter().next()),
-                ..Default::default()
-            }
-        }).collect();
+                ProviderResult {
+                    provider: provider_name.to_owned(),
+                    provider_id: work.id.unwrap_or_default(),
+                    title: work.title,
+                    artist: composer,
+                    iswc: work.iswcs.and_then(|v| v.into_iter().next()),
+                    ..Default::default()
+                }
+            })
+            .collect();
         Ok(results)
     }
 }
 
 impl MetadataProvider for IswcProvider {
-    fn name(&self) -> &str { "iswc" }
-    fn capabilities(&self) -> &Capabilities { &self.capabilities }
-    fn is_enabled(&self) -> bool { !self.user_agent.is_empty() }
+    fn name(&self) -> &'static str {
+        "iswc"
+    }
+    fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+    fn is_enabled(&self) -> bool {
+        !self.user_agent.is_empty()
+    }
 
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-        if !self.is_enabled() {
-            return Err(ProviderError::Disabled("iswc".into()));
-        }
-
-        let iswc = query.iswc.as_deref().ok_or_else(|| ProviderError::NotSupported {
-            provider: "iswc".into(),
-            reason: "ISWC query requires an ISWC code".into(),
-        })?;
-
-        if !validate_iswc(iswc) {
-            return Err(ProviderError::Parse(format!("Invalid ISWC format: {iswc}")));
-        }
-
-        debug!(provider = "iswc", iswc = iswc, "Sending ISWC lookup request");
-
-        let url = format!("{}/ws/2/work/", self.base_url);
-        let response = self.client
-            .get(&url)
-            // User-Agent is set at client level by crate::http::build_client()
-            .header("Accept", "application/json")
-            .query(&[
-                ("query", &format!("iswc:{iswc}")),
-                ("limit", &query.max_results.to_string()),
-                ("fmt", &"json".to_owned()),
-            ])
-            .send()
-            .await
-            .map_err(net_err)?;
-
-        if !response.status().is_success() {
-            let s = response.status();
-            if s.as_u16() == 503 {
-                return Err(ProviderError::RateLimited { provider: "iswc".into() });
+    fn search(
+        &self,
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.is_enabled() {
+                return Err(ProviderError::Disabled("iswc".into()));
             }
-            return Err(ProviderError::Network(format!("HTTP {s}")));
-        }
 
-        let body = response.text().await.map_err(net_err)?;
-        Self::parse_works("iswc", &body)
+            let iswc = query
+                .iswc
+                .as_deref()
+                .ok_or_else(|| ProviderError::NotSupported {
+                    provider: "iswc".into(),
+                    reason: "ISWC query requires an ISWC code".into(),
+                })?;
+
+            if !validate_iswc(iswc) {
+                return Err(ProviderError::Parse(format!("Invalid ISWC format: {iswc}")));
+            }
+
+            debug!(
+                provider = "iswc",
+                iswc = iswc,
+                "Sending ISWC lookup request"
+            );
+
+            let url = format!("{}/ws/2/work/", self.base_url);
+            let response = self
+                .client
+                .get(&url)
+                // User-Agent is set at client level by crate::http::build_client()
+                .header("Accept", "application/json")
+                .query(&[
+                    ("query", &format!("iswc:{iswc}")),
+                    ("limit", &query.max_results.to_string()),
+                    ("fmt", &"json".to_owned()),
+                ])
+                .send()
+                .await
+                .map_err(net_err)?;
+
+            if !response.status().is_success() {
+                let s = response.status();
+                if s.as_u16() == 503 {
+                    return Err(ProviderError::RateLimited {
+                        provider: "iswc".into(),
+                    });
+                }
+                return Err(ProviderError::Network(format!("HTTP {s}")));
+            }
+
+            let body = response.text().await.map_err(net_err)?;
+            Self::parse_works("iswc", &body)
+        })
     }
 }
 
@@ -616,17 +726,29 @@ mod tests {
     #[tokio::test]
     async fn isrc_provider_search_without_isrc_returns_not_supported() {
         let p = IsrcProvider::new("App/1.0");
-        let q = SearchQuery { query: "track".into(), max_results: 5, ..Default::default() };
-        assert!(matches!(p.search(&q).await, Err(ProviderError::NotSupported { .. })));
+        let q = SearchQuery {
+            query: "track".into(),
+            max_results: 5,
+            ..Default::default()
+        };
+        assert!(matches!(
+            p.search(q.clone()).await,
+            Err(ProviderError::NotSupported { .. })
+        ));
     }
 
     #[tokio::test]
     async fn isrc_provider_search_invalid_isrc_returns_parse_err() {
         let p = IsrcProvider::new("App/1.0");
-        let mut q = SearchQuery::default();
-        q.isrc = Some("BAD".into());
-        q.max_results = 5;
-        assert!(matches!(p.search(&q).await, Err(ProviderError::Parse(_))));
+        let q = SearchQuery {
+            isrc: Some("BAD".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        assert!(matches!(
+            p.search(q.clone()).await,
+            Err(ProviderError::Parse(_))
+        ));
     }
 
     // =========================================================================
@@ -675,7 +797,10 @@ mod tests {
         assert_eq!(results[0].title.as_deref(), Some("Inception"));
         assert_eq!(results[0].year, Some(2010));
         assert_eq!(results[0].artist.as_deref(), Some("Christopher Nolan"));
-        assert_eq!(results[0].eidr.as_deref(), Some("10.5240/AEBE-0317-CE0D-4943-5916-E"));
+        assert_eq!(
+            results[0].eidr.as_deref(),
+            Some("10.5240/AEBE-0317-CE0D-4943-5916-E")
+        );
     }
 
     // =========================================================================
@@ -728,7 +853,14 @@ mod tests {
     #[tokio::test]
     async fn iswc_provider_search_without_iswc_returns_not_supported() {
         let p = IswcProvider::new("App/1.0");
-        let q = SearchQuery { query: "track".into(), max_results: 5, ..Default::default() };
-        assert!(matches!(p.search(&q).await, Err(ProviderError::NotSupported { .. })));
+        let q = SearchQuery {
+            query: "track".into(),
+            max_results: 5,
+            ..Default::default()
+        };
+        assert!(matches!(
+            p.search(q.clone()).await,
+            Err(ProviderError::NotSupported { .. })
+        ));
     }
 }

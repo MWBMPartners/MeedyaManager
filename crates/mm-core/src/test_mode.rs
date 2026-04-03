@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
 use crate::error::{MmError, MmResult};
 
@@ -52,7 +52,7 @@ const MANIFEST_FILENAME: &str = "testmode_manifest.json";
 // ---------------------------------------------------------------------------
 
 /// A single entry in the test-mode file manifest.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TestModeEntry {
     /// Absolute path to the original (unmodified) file.
     pub original: PathBuf,
@@ -67,7 +67,7 @@ pub struct TestModeEntry {
 /// Stored as JSON at `<config_dir>/meedyamanager/testmode_manifest.json`.
 /// Tracks whether test mode is currently active and all files that have
 /// been written in test mode across all sessions.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TestModeManifest {
     /// Whether test mode is currently enabled.
     pub enabled: bool,
@@ -78,15 +78,7 @@ pub struct TestModeManifest {
     pub files: BTreeMap<String, TestModeEntry>,
 }
 
-impl Default for TestModeManifest {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            enabled_since: String::new(),
-            files: BTreeMap::new(),
-        }
-    }
-}
+// Default is derived — all fields default to false / empty.
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -108,8 +100,8 @@ pub fn test_mode_path(original: &Path) -> PathBuf {
         .map(|e| format!(".{}", e.to_string_lossy()));
 
     let new_name = match ext {
-        Some(ext) => format!("{}{}{}", stem, TEST_MODE_SUFFIX, ext),
-        None => format!("{}{}", stem, TEST_MODE_SUFFIX),
+        Some(ext) => format!("{stem}{TEST_MODE_SUFFIX}{ext}"),
+        None => format!("{stem}{TEST_MODE_SUFFIX}"),
     };
 
     let mut result = original.to_path_buf();
@@ -121,8 +113,7 @@ pub fn test_mode_path(original: &Path) -> PathBuf {
 /// indicating it is a test-mode copy.
 pub fn is_test_mode_copy(path: &Path) -> bool {
     path.file_stem()
-        .map(|s| s.to_string_lossy().ends_with(TEST_MODE_SUFFIX))
-        .unwrap_or(false)
+        .is_some_and(|s| s.to_string_lossy().ends_with(TEST_MODE_SUFFIX))
 }
 
 /// Strip the `_MeedyaManager` suffix from a test-mode copy path to recover
@@ -139,7 +130,7 @@ pub fn original_path_from_copy(copy_path: &Path) -> Option<PathBuf> {
         .extension()
         .map(|e| format!(".{}", e.to_string_lossy()));
     let new_name = match ext {
-        Some(ext) => format!("{}{}", original_stem, ext),
+        Some(ext) => format!("{original_stem}{ext}"),
         None => original_stem.to_string(),
     };
     let mut result = copy_path.to_path_buf();
@@ -153,9 +144,8 @@ pub fn original_path_from_copy(copy_path: &Path) -> Option<PathBuf> {
 
 /// Resolve the path to the test-mode manifest file.
 fn manifest_path() -> MmResult<PathBuf> {
-    let config_root = dirs::config_dir().ok_or_else(|| {
-        MmError::Config("cannot determine platform config directory".into())
-    })?;
+    let config_root = dirs::config_dir()
+        .ok_or_else(|| MmError::Config("cannot determine platform config directory".into()))?;
     Ok(config_root.join("meedyamanager").join(MANIFEST_FILENAME))
 }
 
@@ -203,12 +193,10 @@ fn save_manifest(manifest: &TestModeManifest) -> MmResult<()> {
     // Write atomically via temp file
     let tmp = path.with_extension("json.tmp");
     let json = serde_json::to_string_pretty(manifest)?;
-    std::fs::write(&tmp, json.as_bytes()).map_err(|e| {
-        MmError::Config(format!("failed to write manifest temp file: {e}"))
-    })?;
-    std::fs::rename(&tmp, &path).map_err(|e| {
-        MmError::Config(format!("failed to rename manifest temp file: {e}"))
-    })?;
+    std::fs::write(&tmp, json.as_bytes())
+        .map_err(|e| MmError::Config(format!("failed to write manifest temp file: {e}")))?;
+    std::fs::rename(&tmp, &path)
+        .map_err(|e| MmError::Config(format!("failed to rename manifest temp file: {e}")))?;
     debug!(path = %path.display(), "saved test mode manifest");
     Ok(())
 }
@@ -293,7 +281,7 @@ pub fn commit_files() -> MmResult<usize> {
     let mut manifest = load_manifest()?;
     let mut committed = 0usize;
 
-    for (_key, entry) in manifest.files.iter() {
+    for entry in manifest.files.values() {
         // Skip entries where the copy no longer exists (user may have
         // deleted it manually)
         if !entry.copy.exists() {
@@ -392,7 +380,10 @@ mod tests {
     fn test_mode_path_inserts_suffix_before_extension() {
         let p = Path::new("/music/albums/track.mp3");
         let result = test_mode_path(p);
-        assert_eq!(result, PathBuf::from("/music/albums/track_MeedyaManager.mp3"));
+        assert_eq!(
+            result,
+            PathBuf::from("/music/albums/track_MeedyaManager.mp3")
+        );
     }
 
     #[test]
@@ -484,9 +475,11 @@ mod tests {
 
     #[test]
     fn manifest_round_trip_serde() {
-        let mut m = TestModeManifest::default();
-        m.enabled = true;
-        m.enabled_since = "2026-03-06T12:00:00Z".into();
+        let mut m = TestModeManifest {
+            enabled: true,
+            enabled_since: "2026-03-06T12:00:00Z".into(),
+            ..Default::default()
+        };
         m.files.insert(
             "/music/track.mp3".into(),
             TestModeEntry {

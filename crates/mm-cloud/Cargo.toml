@@ -34,3 +34,6 @@ tracing = { workspace = true }
 
 # OAuth2 authentication flows for cloud provider authorization
 oauth2 = { workspace = true }
+
+[lints]
+workspace = true

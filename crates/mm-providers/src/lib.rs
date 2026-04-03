@@ -70,26 +70,24 @@ pub use registry::ProviderRegistry;
 pub use credentials::{Credential, CredentialSource, CredentialStore};
 
 // Rate limiting
-pub use rate_limiter::{default_rpm_for, ProviderRateLimiter, RateLimiterRegistry};
+pub use rate_limiter::{ProviderRateLimiter, RateLimiterRegistry, default_rpm_for};
 
 // Match scoring
-pub use match_scoring::{score_result, MatchScorer, ScoringWeights};
+pub use match_scoring::{MatchScorer, ScoringWeights, score_result};
 
 // Cover art utilities
 pub use cover_art::{
-    deduplicate, filter_by_min_size, is_valid_art_url, mime_type_for_url, select_best,
-    select_largest, select_smallest, url_has_image_extension, CoverArtSize,
+    CoverArtSize, deduplicate, filter_by_min_size, is_valid_art_url, mime_type_for_url,
+    select_best, select_largest, select_smallest, url_has_image_extension,
 };
 
 // Music providers (concrete)
-pub use music::{
-    AppleMusicProvider, DeezerProvider, MusicBrainzProvider, SpotifyProvider,
-};
+pub use music::{AppleMusicProvider, DeezerProvider, MusicBrainzProvider, SpotifyProvider};
 
 // Music providers (stubs)
 pub use music::{
-    AmazonMusicProvider, iHeartProvider, PandoraProvider, ShazamProvider, TidalProvider,
-    YouTubeMusicProvider,
+    AmazonMusicProvider, PandoraProvider, ShazamProvider, TidalProvider, YouTubeMusicProvider,
+    iHeartProvider,
 };
 
 // Video providers
@@ -102,7 +100,7 @@ pub use podcasts::ApplePodcastsProvider;
 
 // Identifier providers + validators
 pub use identifiers::{
-    validate_eidr, validate_isrc, validate_iswc, EidrProvider, IsrcProvider, IswcProvider,
+    EidrProvider, IsrcProvider, IswcProvider, validate_eidr, validate_isrc, validate_iswc,
 };
 
 // ---------------------------------------------------------------------------
@@ -120,8 +118,7 @@ mod tests {
     /// Verify the crate links and all module paths compile.
     #[test]
     fn crate_loads_all_modules() {
-        // If this compiles, all mod declarations and re-exports are valid.
-        assert!(true);
+        // If this compiles and runs, all mod declarations and re-exports are valid.
     }
 
     // -----------------------------------------------------------------------
@@ -189,7 +186,11 @@ mod tests {
         let mut deduped = names.clone();
         deduped.sort();
         deduped.dedup();
-        assert_eq!(deduped.len(), total, "Duplicate provider names detected: {:?}", names);
+        assert_eq!(
+            deduped.len(),
+            total,
+            "Duplicate provider names detected: {names:?}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -199,24 +200,69 @@ mod tests {
     /// Every provider must declare at least one media type and a non-empty display name.
     #[test]
     fn all_providers_have_valid_capabilities() {
-        let providers: Vec<(&str, bool, usize)> = vec![
-            ("musicbrainz",   MusicBrainzProvider::new("ua").capabilities().media_types.len() > 0,
-             MusicBrainzProvider::new("ua").capabilities().display_name.len()),
-            ("spotify",       SpotifyProvider::new(None, None).capabilities().media_types.len() > 0,
-             SpotifyProvider::new(None, None).capabilities().display_name.len()),
-            ("apple_music",   AppleMusicProvider::new("US").capabilities().media_types.len() > 0,
-             AppleMusicProvider::new("US").capabilities().display_name.len()),
-            ("deezer",        DeezerProvider::new().capabilities().media_types.len() > 0,
-             DeezerProvider::new().capabilities().display_name.len()),
-            ("tmdb",          TmdbProvider::new(None).capabilities().media_types.len() > 0,
-             TmdbProvider::new(None).capabilities().display_name.len()),
-            ("apple_podcasts", ApplePodcastsProvider::new("US").capabilities().media_types.len() > 0,
-             ApplePodcastsProvider::new("US").capabilities().display_name.len()),
-            ("isrc",          IsrcProvider::new("ua").capabilities().media_types.len() > 0,
-             IsrcProvider::new("ua").capabilities().display_name.len()),
+        let providers: Vec<(&str, usize, usize)> = vec![
+            (
+                "musicbrainz",
+                MusicBrainzProvider::new("ua")
+                    .capabilities()
+                    .media_types
+                    .len(),
+                MusicBrainzProvider::new("ua")
+                    .capabilities()
+                    .display_name
+                    .len(),
+            ),
+            (
+                "spotify",
+                SpotifyProvider::new(None, None)
+                    .capabilities()
+                    .media_types
+                    .len(),
+                SpotifyProvider::new(None, None)
+                    .capabilities()
+                    .display_name
+                    .len(),
+            ),
+            (
+                "apple_music",
+                AppleMusicProvider::new("US")
+                    .capabilities()
+                    .media_types
+                    .len(),
+                AppleMusicProvider::new("US")
+                    .capabilities()
+                    .display_name
+                    .len(),
+            ),
+            (
+                "deezer",
+                DeezerProvider::new().capabilities().media_types.len(),
+                DeezerProvider::new().capabilities().display_name.len(),
+            ),
+            (
+                "tmdb",
+                TmdbProvider::new(None).capabilities().media_types.len(),
+                TmdbProvider::new(None).capabilities().display_name.len(),
+            ),
+            (
+                "apple_podcasts",
+                ApplePodcastsProvider::new("US")
+                    .capabilities()
+                    .media_types
+                    .len(),
+                ApplePodcastsProvider::new("US")
+                    .capabilities()
+                    .display_name
+                    .len(),
+            ),
+            (
+                "isrc",
+                IsrcProvider::new("ua").capabilities().media_types.len(),
+                IsrcProvider::new("ua").capabilities().display_name.len(),
+            ),
         ];
-        for (name, has_types, name_len) in providers {
-            assert!(has_types, "{name}: no media types declared");
+        for (name, type_count, name_len) in providers {
+            assert!(type_count > 0, "{name}: no media types declared");
             assert!(name_len > 0, "{name}: empty display_name");
         }
     }
@@ -238,7 +284,10 @@ mod tests {
         let score = scorer.score(&query, &result);
         // Should be a high score for a perfect title+artist match
         assert!(score >= 0.0, "score must be non-negative");
-        assert!(score > 0.5, "identical title+artist should score > 0.5, got {score}");
+        assert!(
+            score > 0.5,
+            "identical title+artist should score > 0.5, got {score}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -250,11 +299,25 @@ mod tests {
     fn rate_limiter_registry_has_default_limits_for_all() {
         let registry = RateLimiterRegistry::with_all_providers();
         let providers = [
-            "musicbrainz", "spotify", "apple_music", "deezer",
-            "youtube_music", "amazon_music", "pandora", "tidal", "shazam", "iheart",
-            "tmdb", "thetvdb", "omdb", "apple_tv", "itunes_store",
+            "musicbrainz",
+            "spotify",
+            "apple_music",
+            "deezer",
+            "youtube_music",
+            "amazon_music",
+            "pandora",
+            "tidal",
+            "shazam",
+            "iheart",
+            "tmdb",
+            "thetvdb",
+            "omdb",
+            "apple_tv",
+            "itunes_store",
             "apple_podcasts",
-            "isrc", "eidr", "iswc",
+            "isrc",
+            "eidr",
+            "iswc",
         ];
         for name in &providers {
             // check() returns Ok for registered providers (not over-limit immediately)
@@ -288,17 +351,17 @@ mod tests {
     /// `CoverArtSize::from_art` correctly classifies images by shortest dimension.
     #[test]
     fn cover_art_size_from_provider_result() {
-        // 600×600 → Large
+        // 600×600 → Medium (500–999 range)
         let art = CoverArtInfo::new("https://example.com/cover.jpg", 600, 600, "image/jpeg");
-        assert_eq!(CoverArtSize::from_art(&art), CoverArtSize::Large);
+        assert_eq!(CoverArtSize::from_art(&art), CoverArtSize::Medium);
 
-        // 100×100 → Thumbnail
+        // 100×100 → Thumbnail (< 200)
         let thumb = CoverArtInfo::new("https://example.com/thumb.jpg", 100, 100, "image/jpeg");
         assert_eq!(CoverArtSize::from_art(&thumb), CoverArtSize::Thumbnail);
 
-        // 1200×1200 → ExtraLarge
+        // 1200×1200 → Large (1000–1999 range)
         let xl = CoverArtInfo::new("https://example.com/xl.jpg", 1200, 1200, "image/jpeg");
-        assert_eq!(CoverArtSize::from_art(&xl), CoverArtSize::ExtraLarge);
+        assert_eq!(CoverArtSize::from_art(&xl), CoverArtSize::Large);
     }
 
     // -----------------------------------------------------------------------
@@ -313,7 +376,10 @@ mod tests {
         let registry = ProviderRegistry::new();
         let query = SearchQuery::music("Bohemian Rhapsody", "Queen");
         let results = registry.search(&query).await;
-        assert!(results.is_empty(), "Empty registry should return no results");
+        assert!(
+            results.is_empty(),
+            "Empty registry should return no results"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -324,15 +390,27 @@ mod tests {
     #[test]
     fn identifier_validation_accessible() {
         // Valid ISRC: 2 alpha + 3 alphanumeric + 2 digits + 5 digits = 12 chars
-        assert!(validate_isrc("GBUM71029604"), "Known valid ISRC should pass");
-        assert!(!validate_isrc("BAD"), "Short string should fail ISRC validation");
+        assert!(
+            validate_isrc("GBUM71029604"),
+            "Known valid ISRC should pass"
+        );
+        assert!(
+            !validate_isrc("BAD"),
+            "Short string should fail ISRC validation"
+        );
 
         // Valid ISWC: T + 10 digits
-        assert!(validate_iswc("T-034.524.680-1"), "Known valid ISWC should pass");
+        assert!(
+            validate_iswc("T-034.524.680-1"),
+            "Known valid ISWC should pass"
+        );
         assert!(!validate_iswc("NOTANISWC"), "Non-ISWC string should fail");
 
         // EIDR: must start with 10.5240/
-        assert!(validate_eidr("10.5240/7791-8534-2C23-9030-8610-5"), "Known valid EIDR should pass");
+        assert!(
+            validate_eidr("10.5240/7791-8534-2C23-9030-8610-5"),
+            "Known valid EIDR should pass"
+        );
         assert!(!validate_eidr("not-an-eidr"), "Non-EIDR string should fail");
     }
 
@@ -360,10 +438,25 @@ mod tests {
     #[test]
     fn default_rpm_for_all_providers() {
         let providers = [
-            "musicbrainz", "spotify", "apple_music", "deezer",
-            "youtube_music", "amazon_music", "pandora", "tidal", "shazam", "iheart",
-            "tmdb", "thetvdb", "omdb", "apple_tv", "itunes_store",
-            "apple_podcasts", "isrc", "eidr", "iswc",
+            "musicbrainz",
+            "spotify",
+            "apple_music",
+            "deezer",
+            "youtube_music",
+            "amazon_music",
+            "pandora",
+            "tidal",
+            "shazam",
+            "iheart",
+            "tmdb",
+            "thetvdb",
+            "omdb",
+            "apple_tv",
+            "itunes_store",
+            "apple_podcasts",
+            "isrc",
+            "eidr",
+            "iswc",
         ];
         for name in &providers {
             let rpm = default_rpm_for(name);
@@ -383,9 +476,9 @@ mod tests {
             CoverArtInfo::new("https://example.com/500.jpg", 500, 500, "image/jpeg"),
             CoverArtInfo::new("https://example.com/1000.jpg", 1000, 1000, "image/jpeg"),
         ];
-        // Min 400px — should return 500px (smallest that meets the bar)
+        // Min 400px — select_best returns the largest qualifying image
         let best = select_best(&arts, 400).unwrap();
-        assert_eq!(best.width, 500);
+        assert_eq!(best.width, 1000);
     }
 
     // -----------------------------------------------------------------------

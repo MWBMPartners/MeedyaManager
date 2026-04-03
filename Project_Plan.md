@@ -461,14 +461,24 @@ MeedyaManager/
 | macos-latest (ARM) | stable | Same as above (mm-gtk excluded — GTK4 not available on macOS runners) |
 | windows-latest | stable | Same as above (mm-gtk excluded — GTK4 not available on Windows runners) |
 
+### Workspace Lint Configuration (v1.3.1)
+
+All 8 workspace crates share a unified lint configuration via `[workspace.lints]` in the root `Cargo.toml`:
+
+- **`clippy::pedantic`** and **`clippy::nursery`** enabled as warnings
+- **`unsafe_code`** warned (mm-ffi explicitly allows it for FFI boundary)
+- 25+ noisy lints explicitly allowed with documented rationale
+- Each crate inherits via `[lints] workspace = true`
+- CI enforces zero clippy warnings across all targets
+
 ### Verification Checklist (M0 Completion)
 
 - `cargo build --workspace` succeeds
 - `cargo test --workspace` passes (stub tests)
-- `cargo clippy --workspace -- -D warnings` is clean
+- `cargo clippy --workspace --all-targets` is clean (0 warnings with pedantic+nursery)
 - macOS: `xcodebuild build` succeeds
 - Windows: `dotnet build` succeeds
-- All 7 CI workflows pass (green baseline)
+- All 8 CI workflows pass (green baseline)
 
 ---
 

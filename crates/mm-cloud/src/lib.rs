@@ -68,16 +68,16 @@ pub use traits::ConflictResolution;
 /// User-configurable sync parameters.
 pub use traits::SyncConfig;
 
+pub use sync_manager::SyncEvent;
 /// Sync orchestrator and event log.
 pub use sync_manager::SyncManager;
-pub use sync_manager::SyncEvent;
 
+pub use dropbox::DropboxProvider;
+pub use google_drive::GoogleDriveProvider;
+pub use icloud::ICloudProvider;
+pub use mega::MegaProvider;
 /// Concrete provider implementations.
 pub use onedrive::OneDriveProvider;
-pub use google_drive::GoogleDriveProvider;
-pub use dropbox::DropboxProvider;
-pub use mega::MegaProvider;
-pub use icloud::ICloudProvider;
 
 // ---------------------------------------------------------------------------
 // Integration tests
@@ -148,7 +148,10 @@ mod tests {
     #[tokio::test]
     async fn mega_authenticate_unsupported() {
         let mut p = MegaProvider::new();
-        assert!(matches!(p.authenticate().await, Err(CloudError::Unsupported(_))));
+        assert!(matches!(
+            p.authenticate().await,
+            Err(CloudError::Unsupported(_))
+        ));
     }
 
     // ── iCloud stub integration ───────────────────────────────────────────────
@@ -161,7 +164,10 @@ mod tests {
     #[tokio::test]
     async fn icloud_authenticate_unsupported() {
         let mut p = ICloudProvider::new();
-        assert!(matches!(p.authenticate().await, Err(CloudError::Unsupported(_))));
+        assert!(matches!(
+            p.authenticate().await,
+            Err(CloudError::Unsupported(_))
+        ));
     }
 
     // ── SyncManager integration ───────────────────────────────────────────────
@@ -169,11 +175,11 @@ mod tests {
     #[test]
     fn sync_manager_registers_all_providers() {
         let mut mgr = SyncManager::new(SyncConfig::default());
-        assert!(mgr.register_provider("OneDrive",   "/Music"));
+        assert!(mgr.register_provider("OneDrive", "/Music"));
         assert!(mgr.register_provider("GoogleDrive", "/Media"));
-        assert!(mgr.register_provider("Dropbox",    "/Photos"));
-        assert!(mgr.register_provider("MEGA",       "/Videos"));
-        assert!(mgr.register_provider("iCloud",     "/iCloud"));
+        assert!(mgr.register_provider("Dropbox", "/Photos"));
+        assert!(mgr.register_provider("MEGA", "/Videos"));
+        assert!(mgr.register_provider("iCloud", "/iCloud"));
         assert_eq!(mgr.all_states().len(), 5);
     }
 
@@ -191,23 +197,27 @@ mod tests {
         let mut mgr = SyncManager::new(SyncConfig::default());
         mgr.register_provider("Dropbox", "/");
         let cs = ChangeSet {
-            added:   vec![CloudFile {
-                id:           "f1".into(),
-                name:         "track.mp3".into(),
-                path:         "/track.mp3".into(),
-                size:         Some(4096),
-                modified:     None,
-                is_folder:    false,
-                mime_type:    Some("audio/mpeg".into()),
-                hash:         None,
+            added: vec![CloudFile {
+                id: "f1".into(),
+                name: "track.mp3".into(),
+                path: "/track.mp3".into(),
+                size: Some(4096),
+                modified: None,
+                is_folder: false,
+                mime_type: Some("audio/mpeg".into()),
+                hash: None,
                 download_url: None,
             }],
             modified: vec![],
-            deleted:  vec![],
-            cursor:   "delta_1".into(),
+            deleted: vec![],
+            cursor: "delta_1".into(),
         };
         let events = mgr.process_changes("Dropbox", cs);
-        assert!(events.iter().any(|e| matches!(e, SyncEvent::FileAdded { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SyncEvent::FileAdded { .. }))
+        );
         assert_eq!(
             mgr.state("Dropbox").unwrap().cursor.as_deref(),
             Some("delta_1")

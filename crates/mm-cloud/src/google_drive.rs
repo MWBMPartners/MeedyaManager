@@ -9,11 +9,8 @@
 // API reference: https://developers.google.com/drive/api/v3/reference
 
 use std::path::Path;
-use std::time::SystemTime;
 
-use crate::traits::{
-    ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider,
-};
+use crate::traits::{ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider};
 
 // ---------------------------------------------------------------------------
 // GoogleDriveProvider
@@ -30,6 +27,7 @@ pub struct GoogleDriveProvider {
     /// OAuth 2.0 refresh token used to renew the access token.
     refresh_token: Option<String>,
     /// Google Cloud OAuth client ID.
+    #[allow(dead_code)]
     client_id: String,
     /// The Drive API base URL. Overridable for testing.
     api_base: String,
@@ -43,11 +41,11 @@ impl GoogleDriveProvider {
     /// Creates a new `GoogleDriveProvider` with the given OAuth client ID.
     pub fn new(client_id: impl Into<String>) -> Self {
         Self {
-            access_token:     None,
-            refresh_token:    None,
-            client_id:        client_id.into(),
-            api_base:         "https://www.googleapis.com/drive/v3".into(),
-            authenticated:    false,
+            access_token: None,
+            refresh_token: None,
+            client_id: client_id.into(),
+            api_base: "https://www.googleapis.com/drive/v3".into(),
+            authenticated: false,
             start_page_token: None,
         }
     }
@@ -58,7 +56,7 @@ impl GoogleDriveProvider {
         access_token: impl Into<String>,
         refresh_token: impl Into<String>,
     ) {
-        self.access_token  = Some(access_token.into());
+        self.access_token = Some(access_token.into());
         self.refresh_token = Some(refresh_token.into());
         self.authenticated = true;
     }
@@ -77,6 +75,7 @@ impl GoogleDriveProvider {
     }
 
     /// Constructs the `changes.list` URL using the current page token.
+    #[allow(dead_code)]
     fn changes_url(&self, page_token: &str) -> String {
         format!(
             "{}/changes?pageToken={}&fields=nextPageToken,newStartPageToken,changes(removed,file(id,name,size,modifiedTime,mimeType,md5Checksum))",
@@ -86,7 +85,7 @@ impl GoogleDriveProvider {
 }
 
 impl CloudProvider for GoogleDriveProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Google Drive"
     }
 
@@ -121,7 +120,7 @@ impl CloudProvider for GoogleDriveProvider {
         ))
     }
 
-    async fn list_files(&self, path: &str) -> Result<Vec<CloudFile>, CloudError> {
+    async fn list_files(&self, _path: &str) -> Result<Vec<CloudFile>, CloudError> {
         if !self.is_authenticated() {
             return Err(CloudError::Auth("not authenticated".into()));
         }
@@ -150,7 +149,7 @@ impl CloudProvider for GoogleDriveProvider {
         )))
     }
 
-    async fn upload_file(&self, src: &Path, dest_path: &str) -> Result<CloudFile, CloudError> {
+    async fn upload_file(&self, src: &Path, _dest_path: &str) -> Result<CloudFile, CloudError> {
         if !self.is_authenticated() {
             return Err(CloudError::Auth("not authenticated".into()));
         }
@@ -176,10 +175,10 @@ impl CloudProvider for GoogleDriveProvider {
     }
 
     async fn disconnect(&mut self) -> Result<(), CloudError> {
-        self.access_token     = None;
-        self.refresh_token    = None;
+        self.access_token = None;
+        self.refresh_token = None;
         self.start_page_token = None;
-        self.authenticated    = false;
+        self.authenticated = false;
         Ok(())
     }
 }
@@ -227,7 +226,10 @@ mod tests {
     #[tokio::test]
     async fn authenticate_returns_unsupported() {
         let mut p = unauthenticated();
-        assert!(matches!(p.authenticate().await, Err(CloudError::Unsupported(_))));
+        assert!(matches!(
+            p.authenticate().await,
+            Err(CloudError::Unsupported(_))
+        ));
     }
 
     #[tokio::test]

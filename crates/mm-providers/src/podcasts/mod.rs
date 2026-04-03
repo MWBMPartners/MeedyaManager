@@ -89,91 +89,128 @@ impl ApplePodcastsProvider {
         let resp: ItunesPodcastResponse = serde_json::from_str(body)
             .map_err(|e| ProviderError::Parse(format!("Apple Podcasts response: {e}")))?;
 
-        let results = resp.results.into_iter().map(|r| {
-            // Prefer 600px cover, fall back to 100px
-            let cover_art = {
-                let mut arts = Vec::new();
-                if let Some(url) = &r.artwork_url600 {
-                    arts.push(CoverArtInfo::new(url, 600, 600, "image/jpeg"));
+        let results = resp
+            .results
+            .into_iter()
+            .map(|r| {
+                // Prefer 600px cover, fall back to 100px
+                let cover_art = {
+                    let mut arts = Vec::new();
+                    if let Some(url) = &r.artwork_url600 {
+                        arts.push(CoverArtInfo::new(url, 600, 600, "image/jpeg"));
+                    }
+                    if let Some(url) = &r.artwork_url100 {
+                        arts.push(CoverArtInfo::new(url, 100, 100, "image/jpeg"));
+                    }
+                    arts
+                };
+
+                let year = r
+                    .release_date
+                    .as_deref()
+                    .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
+
+                let mut extra = std::collections::HashMap::new();
+                if let Some(feed) = &r.feed_url {
+                    extra.insert("feed_url".into(), feed.clone());
                 }
-                if let Some(url) = &r.artwork_url100 {
-                    arts.push(CoverArtInfo::new(url, 100, 100, "image/jpeg"));
+                if let Some(view_url) = &r.collection_view_url {
+                    extra.insert("podcast_url".into(), view_url.clone());
                 }
-                arts
-            };
+                if let Some(count) = r.track_count {
+                    extra.insert("episode_count".into(), count.to_string());
+                }
 
-            let year = r.release_date.as_deref()
-                .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
-
-            let mut extra = std::collections::HashMap::new();
-            if let Some(feed) = &r.feed_url {
-                extra.insert("feed_url".into(), feed.clone());
-            }
-            if let Some(view_url) = &r.collection_view_url {
-                extra.insert("podcast_url".into(), view_url.clone());
-            }
-            if let Some(count) = r.track_count {
-                extra.insert("episode_count".into(), count.to_string());
-            }
-
-            ProviderResult {
-                provider: provider_name.to_owned(),
-                provider_id: r.collection_id.map(|id| id.to_string()).unwrap_or_default(),
-                title: r.collection_name,       // Podcast name
-                artist: r.artist_name,          // Podcast author / network
-                genre: r.primary_genre_name,
-                year,
-                cover_art,
-                extra,
-                ..Default::default()
-            }
-        }).collect();
+                ProviderResult {
+                    provider: provider_name.to_owned(),
+                    provider_id: r.collection_id.map(|id| id.to_string()).unwrap_or_default(),
+                    title: r.collection_name, // Podcast name
+                    artist: r.artist_name,    // Podcast author / network
+                    genre: r.primary_genre_name,
+                    year,
+                    cover_art,
+                    extra,
+                    ..Default::default()
+                }
+            })
+            .collect();
 
         Ok(results)
     }
 }
 
 impl Default for ApplePodcastsProvider {
-    fn default() -> Self { Self::new("US") }
+    fn default() -> Self {
+        Self::new("US")
+    }
 }
 
 impl MetadataProvider for ApplePodcastsProvider {
-    fn name(&self) -> &str { "apple_podcasts" }
-    fn capabilities(&self) -> &Capabilities { &self.capabilities }
-    fn is_enabled(&self) -> bool { self.enabled }
+    fn name(&self) -> &'static str {
+        "apple_podcasts"
+    }
+    fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
 
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-        if !self.enabled {
-            return Err(ProviderError::Disabled("apple_podcasts".into()));
-        }
+    fn search(
+        &self,
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.enabled {
+                return Err(ProviderError::Disabled("apple_podcasts".into()));
+            }
 
-        let term = query.title.as_deref()
-            .or(query.artist.as_deref())
-            .unwrap_or(&query.query);
+            let term = query
+                .title
+                .as_deref()
+                .or(query.artist.as_deref())
+                .unwrap_or(&query.query);
 
-        debug!(provider = "apple_podcasts", term = term, "Sending iTunes podcast search request");
+            debug!(
+                provider = "apple_podcasts",
+                term = term,
+                "Sending iTunes podcast search request"
+            );
 
-        let url = format!("{}/search", self.base_url);
-        let response = self.client
-            .get(&url)
-            .query(&[
-                ("term", term),
-                ("media", "podcast"),
-                ("entity", "podcast"),
-                ("country", &self.country),
-                ("limit", &query.max_results.to_string()),
-            ])
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
+            let url = format!("{}/search", self.base_url);
+            let response = self
+                .client
+                .get(&url)
+                .query(&[
+                    ("term", term),
+                    ("media", "podcast"),
+                    ("entity", "podcast"),
+                    ("country", &self.country),
+                    ("limit", &query.max_results.to_string()),
+                ])
+                .send()
+                .await
+                .map_err(|e| ProviderError::Network(e.to_string()))?;
 
-        if !response.status().is_success() {
-            return Err(ProviderError::Network(format!("HTTP {}", response.status())));
-        }
+            if !response.status().is_success() {
+                return Err(ProviderError::Network(format!(
+                    "HTTP {}",
+                    response.status()
+                )));
+            }
 
-        let body = response.text().await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
-        Self::parse_podcasts("apple_podcasts", &body)
+            let body = response
+                .text()
+                .await
+                .map_err(|e| ProviderError::Network(e.to_string()))?;
+            Self::parse_podcasts("apple_podcasts", &body)
+        })
     }
 }
 
@@ -197,7 +234,11 @@ mod tests {
 
     #[test]
     fn apple_podcasts_no_auth_required() {
-        assert!(!ApplePodcastsProvider::new("US").capabilities().requires_auth);
+        assert!(
+            !ApplePodcastsProvider::new("US")
+                .capabilities()
+                .requires_auth
+        );
     }
 
     #[test]
@@ -209,7 +250,11 @@ mod tests {
 
     #[test]
     fn apple_podcasts_provides_cover_art() {
-        assert!(ApplePodcastsProvider::new("US").capabilities().provides_cover_art);
+        assert!(
+            ApplePodcastsProvider::new("US")
+                .capabilities()
+                .provides_cover_art
+        );
     }
 
     #[test]
@@ -240,7 +285,10 @@ mod tests {
         // Extra fields stored
         assert!(results[0].extra.contains_key("feed_url"));
         assert!(results[0].extra.contains_key("episode_count"));
-        assert_eq!(results[0].extra.get("episode_count").map(String::as_str), Some("2500"));
+        assert_eq!(
+            results[0].extra.get("episode_count").map(String::as_str),
+            Some("2500")
+        );
     }
 
     #[test]
@@ -265,7 +313,11 @@ mod tests {
             }]
         }"#;
         let results = ApplePodcastsProvider::parse_podcasts("apple_podcasts", json).unwrap();
-        let largest = results[0].cover_art.iter().max_by_key(|a| a.pixel_count()).unwrap();
+        let largest = results[0]
+            .cover_art
+            .iter()
+            .max_by_key(|a| a.pixel_count())
+            .unwrap();
         assert_eq!(largest.width, 600);
     }
 
@@ -287,7 +339,14 @@ mod tests {
     async fn apple_podcasts_search_disabled_returns_err() {
         let mut p = ApplePodcastsProvider::new("US");
         p.enabled = false;
-        let q = SearchQuery { query: "Test".into(), max_results: 5, ..Default::default() };
-        assert!(matches!(p.search(&q).await, Err(ProviderError::Disabled(_))));
+        let q = SearchQuery {
+            query: "Test".into(),
+            max_results: 5,
+            ..Default::default()
+        };
+        assert!(matches!(
+            p.search(q.clone()).await,
+            Err(ProviderError::Disabled(_))
+        ));
     }
 }

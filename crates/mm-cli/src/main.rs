@@ -146,7 +146,7 @@ async fn main() {
         Some(Commands::Config(ref args)) => commands::config_cmd::run(&ctx, args),
         Some(Commands::ReportBug(ref args)) => commands::report_bug::run(&ctx, args),
         Some(Commands::Export(ref args)) => commands::export::run(&ctx, args),
-        Some(Commands::Serve(ref args))   => commands::serve::run(&ctx, args),
+        Some(Commands::Serve(ref args)) => commands::serve::run(&ctx, args),
         Some(Commands::Service(ref args)) => commands::service_cmd::run(&ctx, args),
         None => {
             // No subcommand provided — print help

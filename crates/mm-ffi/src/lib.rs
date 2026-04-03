@@ -2,6 +2,10 @@
 //
 // MeedyaManager — Foreign Function Interface (FFI) Library
 //
+// Safety: This crate intentionally uses unsafe code for C FFI (#[no_mangle] extern "C")
+// and UniFFI generated bindings.  All unsafe blocks are audited and documented.
+#![allow(unsafe_code)]
+//
 // This crate bridges the Rust core (`mm-core`) to external language runtimes:
 //
 // ┌─────────────────────────────────────────────────────────────┐
@@ -74,13 +78,34 @@ mod tests {
     /// All error variants produce the expected Display string
     #[test]
     fn error_display_all_variants() {
-        assert_eq!(MmFfiError::Config("bad".into()).to_string(), "Configuration error: bad");
-        assert_eq!(MmFfiError::Io("not found".into()).to_string(), "I/O error: not found");
-        assert_eq!(MmFfiError::Metadata("unsupported".into()).to_string(), "Metadata error: unsupported");
-        assert_eq!(MmFfiError::Rename("conflict".into()).to_string(), "Rename error: conflict");
-        assert_eq!(MmFfiError::RuleEngine("bad token".into()).to_string(), "Rule engine error: bad token");
-        assert_eq!(MmFfiError::Watcher("permission".into()).to_string(), "Watcher error: permission");
-        assert_eq!(MmFfiError::Unknown("oops".into()).to_string(), "Unknown error: oops");
+        assert_eq!(
+            MmFfiError::Config("bad".into()).to_string(),
+            "Configuration error: bad"
+        );
+        assert_eq!(
+            MmFfiError::Io("not found".into()).to_string(),
+            "I/O error: not found"
+        );
+        assert_eq!(
+            MmFfiError::Metadata("unsupported".into()).to_string(),
+            "Metadata error: unsupported"
+        );
+        assert_eq!(
+            MmFfiError::Rename("conflict".into()).to_string(),
+            "Rename error: conflict"
+        );
+        assert_eq!(
+            MmFfiError::RuleEngine("bad token".into()).to_string(),
+            "Rule engine error: bad token"
+        );
+        assert_eq!(
+            MmFfiError::Watcher("permission".into()).to_string(),
+            "Watcher error: permission"
+        );
+        assert_eq!(
+            MmFfiError::Unknown("oops".into()).to_string(),
+            "Unknown error: oops"
+        );
     }
 
     /// MmFfiError converts from MmError correctly
@@ -101,7 +126,10 @@ mod tests {
     /// TagEntry stores key and value correctly
     #[test]
     fn tag_entry_fields() {
-        let entry = TagEntry { key: "artist".into(), value: "Pink Floyd".into() };
+        let entry = TagEntry {
+            key: "artist".into(),
+            value: "Pink Floyd".into(),
+        };
         assert_eq!(entry.key, "artist");
         assert_eq!(entry.value, "Pink Floyd");
     }
@@ -109,7 +137,10 @@ mod tests {
     /// TagEntry is Clone
     #[test]
     fn tag_entry_clone() {
-        let entry = TagEntry { key: "title".into(), value: "The Wall".into() };
+        let entry = TagEntry {
+            key: "title".into(),
+            value: "The Wall".into(),
+        };
         let cloned = entry.clone();
         assert_eq!(entry, cloned);
     }
@@ -226,8 +257,10 @@ mod tests {
         assert!(!v.is_empty(), "version string must not be empty");
         // Version must contain at least two dots (X.Y.Z semver)
         assert!(v.contains('.'), "version should be semver — got: {v}");
-        assert!(v.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false),
-            "version should start with a digit — got: {v}");
+        assert!(
+            v.chars().next().is_some_and(|c| c.is_ascii_digit()),
+            "version should start with a digit — got: {v}"
+        );
     }
 
     // --- validate_template ---
@@ -251,7 +284,10 @@ mod tests {
     #[test]
     fn validate_template_whitespace_only() {
         let result = uniffi_api::validate_template("   ".into());
-        assert!(!result.is_valid, "whitespace-only template should be invalid");
+        assert!(
+            !result.is_valid,
+            "whitespace-only template should be invalid"
+        );
     }
 
     // --- list_known_tags ---
@@ -261,7 +297,10 @@ mod tests {
     fn list_known_tags_non_empty() {
         let tags = uniffi_api::list_known_tags();
         assert!(!tags.is_empty(), "tag list must not be empty");
-        assert!(tags.contains(&"Artist".to_string()), "must contain 'Artist'");
+        assert!(
+            tags.contains(&"Artist".to_string()),
+            "must contain 'Artist'"
+        );
         assert!(tags.contains(&"Title".to_string()), "must contain 'Title'");
         assert!(tags.contains(&"Album".to_string()), "must contain 'Album'");
     }
@@ -278,11 +317,13 @@ mod tests {
         let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap() };
         // Version must contain a dot (X.Y.Z semver) and start with a digit
         assert!(s.contains('.'), "C API version should be semver — got: {s}");
-        assert!(s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false),
-            "C API version should start with a digit — got: {s}");
+        assert!(
+            s.chars().next().is_some_and(|c| c.is_ascii_digit()),
+            "C API version should start with a digit — got: {s}"
+        );
 
         // Free the allocated string to avoid memory leak in tests
-        unsafe { capi::mm_ffi_free_string(ptr as *mut std::os::raw::c_char) };
+        unsafe { capi::mm_ffi_free_string(ptr.cast_mut()) };
     }
 
     /// mm_ffi_validate_template returns JSON with is_valid:true for a valid template
@@ -293,9 +334,12 @@ mod tests {
         assert!(!ptr.is_null());
 
         let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap() };
-        assert!(s.contains("\"is_valid\":true"), "expected is_valid:true — got: {s}");
+        assert!(
+            s.contains("\"is_valid\":true"),
+            "expected is_valid:true — got: {s}"
+        );
 
-        unsafe { capi::mm_ffi_free_string(ptr as *mut std::os::raw::c_char) };
+        unsafe { capi::mm_ffi_free_string(ptr.cast_mut()) };
     }
 
     /// mm_ffi_validate_template returns is_valid:false for an empty template
@@ -306,9 +350,12 @@ mod tests {
         assert!(!ptr.is_null());
 
         let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap() };
-        assert!(s.contains("\"is_valid\":false"), "expected is_valid:false — got: {s}");
+        assert!(
+            s.contains("\"is_valid\":false"),
+            "expected is_valid:false — got: {s}"
+        );
 
-        unsafe { capi::mm_ffi_free_string(ptr as *mut std::os::raw::c_char) };
+        unsafe { capi::mm_ffi_free_string(ptr.cast_mut()) };
     }
 
     /// mm_ffi_validate_template handles a null pointer safely
@@ -318,9 +365,12 @@ mod tests {
         assert!(!ptr.is_null());
 
         let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap() };
-        assert!(s.contains("error"), "null input should produce an error — got: {s}");
+        assert!(
+            s.contains("error"),
+            "null input should produce an error — got: {s}"
+        );
 
-        unsafe { capi::mm_ffi_free_string(ptr as *mut std::os::raw::c_char) };
+        unsafe { capi::mm_ffi_free_string(ptr.cast_mut()) };
     }
 
     /// mm_ffi_free_string does not panic on null pointer
@@ -340,7 +390,7 @@ mod tests {
         assert!(s.starts_with('['), "should be a JSON array — got: {s}");
         assert!(s.contains("Artist"), "should contain 'Artist' — got: {s}");
 
-        unsafe { capi::mm_ffi_free_string(ptr as *mut std::os::raw::c_char) };
+        unsafe { capi::mm_ffi_free_string(ptr.cast_mut()) };
     }
 
     /// mm_ffi_config_path returns a non-null, non-empty path string
@@ -352,6 +402,6 @@ mod tests {
         let s = unsafe { std::ffi::CStr::from_ptr(ptr).to_str().unwrap() };
         assert!(!s.is_empty(), "config path must not be empty");
 
-        unsafe { capi::mm_ffi_free_string(ptr as *mut std::os::raw::c_char) };
+        unsafe { capi::mm_ffi_free_string(ptr.cast_mut()) };
     }
 }

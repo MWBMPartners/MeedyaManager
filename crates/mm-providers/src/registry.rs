@@ -105,7 +105,11 @@ impl ProviderRegistry {
             self.providers_for(mt)
         } else {
             // No type hint: query all enabled providers
-            self.providers.iter().filter(|p| p.is_enabled()).cloned().collect()
+            self.providers
+                .iter()
+                .filter(|p| p.is_enabled())
+                .cloned()
+                .collect()
         };
 
         if providers.is_empty() {
@@ -113,16 +117,24 @@ impl ProviderRegistry {
             return Vec::new();
         }
 
-        debug!(provider_count = providers.len(), query = &query.query, "Dispatching search");
+        debug!(
+            provider_count = providers.len(),
+            query = &query.query,
+            "Dispatching search"
+        );
 
         // Fan out to all providers concurrently, collecting results
         let mut merged: Vec<ProviderResult> = Vec::new();
         for provider in &providers {
             let p = Arc::clone(provider);
             let name = p.name().to_owned();
-            match p.search(query).await {
+            match p.search(query.clone()).await {
                 Ok(results) => {
-                    debug!(provider = &name, result_count = results.len(), "Provider returned results");
+                    debug!(
+                        provider = &name,
+                        result_count = results.len(),
+                        "Provider returned results"
+                    );
                     merged.extend(results);
                 }
                 Err(e) => {
@@ -159,7 +171,7 @@ impl ProviderRegistry {
         }
 
         provider
-            .search(query)
+            .search(query.clone())
             .await
             .map_err(|e| format!("Provider '{name}' failed: {e}"))
     }
@@ -177,7 +189,7 @@ impl std::fmt::Debug for ProviderRegistry {
         f.debug_struct("ProviderRegistry")
             .field("providers", &names)
             .field("enabled", &self.enabled_count())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -245,35 +257,54 @@ mod tests {
     }
 
     impl MetadataProvider for MockProvider {
-        fn name(&self) -> &str { &self.name }
+        fn name(&self) -> &str {
+            &self.name
+        }
 
         fn capabilities(&self) -> &Capabilities {
             // Leak to get a 'static reference (acceptable in tests)
             Box::leak(Box::new(self.make_capabilities()))
         }
 
-        fn is_enabled(&self) -> bool { self.enabled }
+        fn is_enabled(&self) -> bool {
+            self.enabled
+        }
 
-        async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-            if !self.enabled {
-                return Err(ProviderError::Disabled(self.name.clone()));
-            }
-            Ok(vec![ProviderResult {
-                provider: self.name.clone(),
-                provider_id: "mock-1".into(),
-                title: Some(self.result_title.clone()),
-                artist: query.artist.clone(),
-                score: 1.0,
-                ..Default::default()
-            }])
+        fn search(
+            &self,
+            query: SearchQuery,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                    + Send
+                    + '_,
+            >,
+        > {
+            Box::pin(async move {
+                if !self.enabled {
+                    return Err(ProviderError::Disabled(self.name.clone()));
+                }
+                Ok(vec![ProviderResult {
+                    provider: self.name.clone(),
+                    provider_id: "mock-1".into(),
+                    title: Some(self.result_title.clone()),
+                    artist: query.artist.clone(),
+                    score: 1.0,
+                    ..Default::default()
+                }])
+            })
         }
     }
 
     /// A provider that always fails with a network error.
-    struct FailingProvider { name: String }
+    struct FailingProvider {
+        name: String,
+    }
 
     impl MetadataProvider for FailingProvider {
-        fn name(&self) -> &str { &self.name }
+        fn name(&self) -> &str {
+            &self.name
+        }
         fn capabilities(&self) -> &Capabilities {
             Box::leak(Box::new(Capabilities {
                 media_types: vec![MediaType::Music],
@@ -287,9 +318,20 @@ mod tests {
                 homepage_url: "https://example.com".into(),
             }))
         }
-        fn is_enabled(&self) -> bool { true }
-        async fn search(&self, _query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-            Err(ProviderError::Network("connection refused".into()))
+        fn is_enabled(&self) -> bool {
+            true
+        }
+        fn search(
+            &self,
+            _query: SearchQuery,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                    + Send
+                    + '_,
+            >,
+        > {
+            Box::pin(async move { Err(ProviderError::Network("connection refused".into())) })
         }
     }
 
@@ -439,7 +481,9 @@ mod tests {
     #[tokio::test]
     async fn search_skips_failing_providers() {
         let mut r = ProviderRegistry::new();
-        r.register(FailingProvider { name: "failer".into() });
+        r.register(FailingProvider {
+            name: "failer".into(),
+        });
         r.register(MockProvider::music("good", "Good Track"));
 
         let query = SearchQuery::music("Track", "Artist");

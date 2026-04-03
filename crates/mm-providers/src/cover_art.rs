@@ -45,11 +45,11 @@ impl CoverArtSize {
         }
         let min_side = art.width.min(art.height);
         match min_side {
-            0..=199    => Self::Thumbnail,
-            200..=499  => Self::Small,
-            500..=999  => Self::Medium,
+            0..=199 => Self::Thumbnail,
+            200..=499 => Self::Small,
+            500..=999 => Self::Medium,
             1000..=1999 => Self::Large,
-            _           => Self::ExtraLarge,
+            _ => Self::ExtraLarge,
         }
     }
 }
@@ -57,12 +57,12 @@ impl CoverArtSize {
 impl std::fmt::Display for CoverArtSize {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CoverArtSize::Unknown    => write!(f, "unknown"),
-            CoverArtSize::Thumbnail  => write!(f, "thumbnail"),
-            CoverArtSize::Small      => write!(f, "small"),
-            CoverArtSize::Medium     => write!(f, "medium"),
-            CoverArtSize::Large      => write!(f, "large"),
-            CoverArtSize::ExtraLarge => write!(f, "extra-large"),
+            Self::Unknown => write!(f, "unknown"),
+            Self::Thumbnail => write!(f, "thumbnail"),
+            Self::Small => write!(f, "small"),
+            Self::Medium => write!(f, "medium"),
+            Self::Large => write!(f, "large"),
+            Self::ExtraLarge => write!(f, "extra-large"),
         }
     }
 }
@@ -94,12 +94,11 @@ pub fn select_best(arts: &[CoverArtInfo], min_side_px: u32) -> Option<&CoverArtI
         return None;
     }
     // First: look for an image that meets the minimum size
-    let qualifying: Vec<&CoverArtInfo> = arts
+    if let Some(best) = arts
         .iter()
         .filter(|a| a.width >= min_side_px && a.height >= min_side_px)
-        .collect();
-
-    if let Some(best) = qualifying.into_iter().max_by_key(|a| a.pixel_count()) {
+        .max_by_key(|a| a.pixel_count())
+    {
         return Some(best);
     }
 
@@ -131,7 +130,9 @@ pub fn filter_by_min_size(arts: &[CoverArtInfo], min_side_px: u32) -> Vec<&Cover
 ///   - It starts with `http://` or `https://`
 ///   - It is at least 10 characters long (prevents trivial truncations)
 pub fn is_valid_art_url(url: &str) -> bool {
-    if url.is_empty() { return false; }
+    if url.is_empty() {
+        return false;
+    }
     let has_scheme = url.starts_with("https://") || url.starts_with("http://");
     has_scheme && url.len() >= 10
 }
@@ -145,8 +146,10 @@ pub fn url_has_image_extension(url: &str) -> bool {
     let lower = url.to_lowercase();
     // Strip query string for extension check
     let path = lower.split('?').next().unwrap_or(&lower);
-    path.ends_with(".jpg") || path.ends_with(".jpeg")
-        || path.ends_with(".png") || path.ends_with(".webp")
+    path.ends_with(".jpg")
+        || path.ends_with(".jpeg")
+        || path.ends_with(".png")
+        || path.ends_with(".webp")
 }
 
 // ---------------------------------------------------------------------------
@@ -187,17 +190,24 @@ pub fn deduplicate(arts: Vec<CoverArtInfo>) -> Vec<CoverArtInfo> {
 // ---------------------------------------------------------------------------
 
 /// A wrapper that reverses the ordering for use with `.sort_by_key`.
+#[allow(dead_code)]
 struct Reverse<T: Ord>(T);
 
 impl<T: Ord> PartialEq for Reverse<T> {
-    fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }
 impl<T: Ord> Eq for Reverse<T> {}
 impl<T: Ord> PartialOrd for Reverse<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 impl<T: Ord> Ord for Reverse<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering { other.0.cmp(&self.0) }
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other.0.cmp(&self.0)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +363,9 @@ mod tests {
 
     #[test]
     fn url_no_extension_returns_false() {
-        assert!(!url_has_image_extension("https://cdn.example.com/signed/abc123"));
+        assert!(!url_has_image_extension(
+            "https://cdn.example.com/signed/abc123"
+        ));
     }
 
     // --- deduplicate ---

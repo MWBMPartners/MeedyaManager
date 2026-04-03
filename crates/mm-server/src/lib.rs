@@ -27,13 +27,16 @@ pub mod routes;
 
 // --- Convenience re-exports ---
 
-pub use auth::{AuthError, Claims, JwtService, LoginRequest, LoginResponse, ServerConfig, UserRole};
-pub use streaming::{MediaStreamer, RangeParser, StreamConfig, StreamError, StreamRequest, StreamResponse};
+pub use auth::{
+    AuthError, Claims, JwtService, LoginRequest, LoginResponse, ServerConfig, UserRole,
+};
 pub use routes::{
-    ApiResponse, HealthResponse, LibraryItem, LibraryResponse,
-    SearchQuery, ServerInfoResponse,
-    handle_health, handle_library, handle_library_item,
-    handle_login, handle_search, handle_server_info, handle_stream,
+    ApiResponse, HealthResponse, LibraryItem, LibraryResponse, SearchQuery, ServerInfoResponse,
+    handle_health, handle_library, handle_library_item, handle_login, handle_search,
+    handle_server_info, handle_stream,
+};
+pub use streaming::{
+    MediaStreamer, RangeParser, StreamConfig, StreamError, StreamRequest, StreamResponse,
 };
 
 // ---------------------------------------------------------------------------
@@ -54,7 +57,10 @@ mod tests {
     }
 
     fn validate(token: &str) -> Claims {
-        JwtService::new(SECRET, 3600).unwrap().validate(token).unwrap()
+        JwtService::new(SECRET, 3600)
+            .unwrap()
+            .validate(token)
+            .unwrap()
     }
 
     // ---- Auth integration ----
@@ -72,7 +78,10 @@ mod tests {
 
     #[test]
     fn login_handler_issues_valid_jwt() {
-        let req = LoginRequest { username: "alice".into(), password: "pw".into() };
+        let req = LoginRequest {
+            username: "alice".into(),
+            password: "pw".into(),
+        };
         let resp = handle_login(&req, SECRET, 3600).unwrap();
         let token = &resp.data.unwrap().token;
         // The token must be parseable by JwtService
@@ -94,7 +103,11 @@ mod tests {
     #[test]
     fn search_flow() {
         let claims = validate(&make_admin_token());
-        let q = SearchQuery { q: "rock".into(), limit: Some(10), page: Some(1) };
+        let q = SearchQuery {
+            q: "rock".into(),
+            limit: Some(10),
+            page: Some(1),
+        };
         let resp = handle_search(&claims, &q).unwrap();
         assert!(resp.ok);
         assert_eq!(resp.data.unwrap().per_page, 10);
@@ -133,13 +146,16 @@ mod tests {
         let streamer = MediaStreamer::new(StreamConfig {
             media_root: "/media".into(),
             ..StreamConfig::default()
-        }).unwrap();
+        })
+        .unwrap();
 
-        let resp = streamer.prepare_response(
-            "music/test.flac",
-            &StreamRequest::FromStart { start: 0 },
-            2_000_000,
-        ).unwrap();
+        let resp = streamer
+            .prepare_response(
+                "music/test.flac",
+                &StreamRequest::FromStart { start: 0 },
+                2_000_000,
+            )
+            .unwrap();
         assert_eq!(resp.status_code, 206);
         assert_eq!(resp.content_type, "audio/flac");
     }
@@ -169,8 +185,8 @@ mod tests {
         let mut cfg = ServerConfig::default();
         assert!(!cfg.is_valid());
         cfg.tls_cert_path = "/cert.pem".into();
-        cfg.tls_key_path  = "/key.pem".into();
-        cfg.jwt_secret    = "s3cr3t".into();
+        cfg.tls_key_path = "/key.pem".into();
+        cfg.jwt_secret = "s3cr3t".into();
         assert!(cfg.is_valid());
         assert_eq!(cfg.bind_addr(), "0.0.0.0:8443");
     }

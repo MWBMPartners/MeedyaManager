@@ -10,7 +10,7 @@ use crate::context::CliContext;
 use crate::output::{self, ExitCode, OutputFormat};
 use clap::{Args, Subcommand};
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ─── Command arguments ─────────────────────────────────────────────────────
 
@@ -132,9 +132,10 @@ fn run_show(ctx: &CliContext) -> anyhow::Result<i32> {
 /// Print the path to the configuration file.
 fn run_path(ctx: &CliContext) -> anyhow::Result<i32> {
     // Get the platform default settings path
-    let path = mm_core::config::AppConfig::default_settings_path()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "(unable to determine)".to_string());
+    let path = mm_core::config::AppConfig::default_settings_path().map_or_else(
+        |_| "(unable to determine)".to_string(),
+        |p| p.display().to_string(),
+    );
 
     let exists = std::path::Path::new(&path).exists();
 
@@ -207,16 +208,20 @@ fn run_init(ctx: &CliContext, custom_path: Option<&std::path::Path>) -> anyhow::
 ///
 /// The bundle includes the full `AppConfig` plus any custom `filetypes.json5`
 /// and `tags.json5` override files, packed into a single JSON file.
-fn run_export(ctx: &CliContext, output_path: &PathBuf) -> anyhow::Result<i32> {
+fn run_export(ctx: &CliContext, output_path: &Path) -> anyhow::Result<i32> {
     if ctx.dry_run {
-        println!("Dry-run: would export settings bundle to '{}'", output_path.display());
+        println!(
+            "Dry-run: would export settings bundle to '{}'",
+            output_path.display()
+        );
         return Ok(ExitCode::SUCCESS);
     }
 
     // Build the portable bundle from the current config + user override files
     let bundle = mm_core::settings_bundle::SettingsBundle::capture(ctx.config.clone());
 
-    bundle.export(output_path)
+    bundle
+        .export(output_path)
         .map_err(|e| anyhow::anyhow!("Failed to export settings bundle: {e}"))?;
 
     match ctx.output {
@@ -248,7 +253,7 @@ fn run_export(ctx: &CliContext, output_path: &PathBuf) -> anyhow::Result<i32> {
 // ─── Subcommand: import ─────────────────────────────────────────────────────
 
 /// Import a .mmprofile bundle, restoring all configuration files.
-fn run_import(ctx: &CliContext, profile_path: &PathBuf) -> anyhow::Result<i32> {
+fn run_import(ctx: &CliContext, profile_path: &Path) -> anyhow::Result<i32> {
     // Parse and validate the bundle
     let bundle = mm_core::settings_bundle::SettingsBundle::import(profile_path)
         .map_err(|e| anyhow::anyhow!("Failed to read settings bundle: {e}"))?;
@@ -262,14 +267,13 @@ fn run_import(ctx: &CliContext, profile_path: &PathBuf) -> anyhow::Result<i32> {
     }
 
     // Write all configuration files to their correct locations
-    let written = bundle.apply()
+    let written = bundle
+        .apply()
         .map_err(|e| anyhow::anyhow!("Failed to apply settings bundle: {e}"))?;
 
     match ctx.output {
         OutputFormat::Json => {
-            let paths: Vec<String> = written.iter()
-                .map(|p| p.display().to_string())
-                .collect();
+            let paths: Vec<String> = written.iter().map(|p| p.display().to_string()).collect();
             output::print_json(&serde_json::json!({
                 "action": "import",
                 "success": true,
@@ -339,8 +343,7 @@ fn run_test_mode(ctx: &CliContext, action: &str) -> anyhow::Result<i32> {
                     output::print_success("Test Mode disabled.");
                     if count > 0 {
                         println!(
-                            "  {} test-mode file(s) remain — use `meedya config test-mode commit` or `revert` to clean up.",
-                            count
+                            "  {count} test-mode file(s) remain — use `meedya config test-mode commit` or `revert` to clean up."
                         );
                     }
                 }
@@ -389,8 +392,7 @@ fn run_test_mode(ctx: &CliContext, action: &str) -> anyhow::Result<i32> {
 
             if ctx.dry_run {
                 println!(
-                    "Dry-run: would commit {} test-mode file(s) — delete originals, rename copies.",
-                    count
+                    "Dry-run: would commit {count} test-mode file(s) — delete originals, rename copies."
                 );
                 return Ok(ExitCode::SUCCESS);
             }
@@ -408,8 +410,7 @@ fn run_test_mode(ctx: &CliContext, action: &str) -> anyhow::Result<i32> {
                 }
                 OutputFormat::Human => {
                     output::print_success(&format!(
-                        "Committed {} test-mode file(s) — originals deleted, copies renamed.",
-                        committed
+                        "Committed {committed} test-mode file(s) — originals deleted, copies renamed."
                     ));
                 }
             }
@@ -435,8 +436,7 @@ fn run_test_mode(ctx: &CliContext, action: &str) -> anyhow::Result<i32> {
                 }
                 OutputFormat::Human => {
                     output::print_success(&format!(
-                        "Reverted — both originals and {} test-mode copies kept.",
-                        count
+                        "Reverted — both originals and {count} test-mode copies kept."
                     ));
                 }
             }
@@ -444,8 +444,7 @@ fn run_test_mode(ctx: &CliContext, action: &str) -> anyhow::Result<i32> {
         }
         _ => {
             output::print_error(&format!(
-                "Unknown test-mode action '{}'. Use: on, off, status, commit, revert",
-                action
+                "Unknown test-mode action '{action}'. Use: on, off, status, commit, revert"
             ));
             Ok(ExitCode::ERROR)
         }

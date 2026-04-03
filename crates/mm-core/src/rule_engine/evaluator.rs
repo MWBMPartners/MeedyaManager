@@ -146,21 +146,24 @@ impl<'a> EvalContext<'a> {
     fn resolve_virtual_tag(&self, vt: VirtualTag, display_name: &str) -> MmResult<String> {
         match vt {
             VirtualTag::Filename => match self.file_path {
-                Some(p) => Ok(p.file_stem()
+                Some(p) => Ok(p
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string()),
                 None => self.handle_missing(display_name),
             },
             VirtualTag::Extension => match self.file_path {
-                Some(p) => Ok(p.extension()
+                Some(p) => Ok(p
+                    .extension()
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string()),
                 None => self.handle_missing(display_name),
             },
             VirtualTag::Folder => match self.file_path {
-                Some(p) => Ok(p.parent()
+                Some(p) => Ok(p
+                    .parent()
                     .and_then(|p| p.file_name())
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
@@ -336,7 +339,10 @@ mod tests {
     fn make_multi_tags(pairs: &[(&str, &[&str])]) -> TagMap {
         let mut map = TagMap::new();
         for (k, vals) in pairs {
-            map.insert(k.to_string(), vals.iter().map(|v| v.to_string()).collect());
+            map.insert(
+                k.to_string(),
+                vals.iter().map(std::string::ToString::to_string).collect(),
+            );
         }
         map
     }
@@ -528,21 +534,15 @@ mod tests {
         // With artist
         let tags = make_tags(&[("artist", "Björk")]);
         let ctx = EvalContext::new(&tags);
-        let result = evaluate_template(
-            "$If($IsNull(<Artist>),\"Unknown\",<Artist>)",
-            &ctx,
-        )
-        .unwrap();
+        let result =
+            evaluate_template("$If($IsNull(<Artist>),\"Unknown\",<Artist>)", &ctx).unwrap();
         assert_eq!(result, "Björk");
 
         // Without artist
         let empty_tags = TagMap::new();
         let ctx = EvalContext::new(&empty_tags);
-        let result = evaluate_template(
-            "$If($IsNull(<Artist>),\"Unknown\",<Artist>)",
-            &ctx,
-        )
-        .unwrap();
+        let result =
+            evaluate_template("$If($IsNull(<Artist>),\"Unknown\",<Artist>)", &ctx).unwrap();
         assert_eq!(result, "Unknown");
     }
 
@@ -567,11 +567,8 @@ mod tests {
             ("title", "Another Brick in the Wall"),
         ]);
         let ctx = EvalContext::new(&tags);
-        let result = evaluate_template(
-            "<Artist>/<Album>/$Pad(<Track#>,\"2\") - <Title>",
-            &ctx,
-        )
-        .unwrap();
+        let result =
+            evaluate_template("<Artist>/<Album>/$Pad(<Track#>,\"2\") - <Title>", &ctx).unwrap();
         assert_eq!(result, "Pink Floyd/The Wall/05 - Another Brick in the Wall");
     }
 

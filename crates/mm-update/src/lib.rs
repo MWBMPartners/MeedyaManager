@@ -58,7 +58,7 @@ pub enum UpdateError {
 impl UpdateError {
     /// Returns `true` if the error is transient and worth retrying.
     pub fn is_retryable(&self) -> bool {
-        matches!(self, UpdateError::Network(_) | UpdateError::RateLimited { .. })
+        matches!(self, Self::Network(_) | Self::RateLimited { .. })
     }
 }
 
@@ -84,7 +84,9 @@ mod tests {
 
     #[test]
     fn update_error_rate_limited_is_retryable() {
-        let e = UpdateError::RateLimited { retry_after_secs: 60 };
+        let e = UpdateError::RateLimited {
+            retry_after_secs: 60,
+        };
         assert!(e.is_retryable());
     }
 
@@ -118,13 +120,13 @@ mod tests {
     #[test]
     fn release_info_round_trips_through_serde() {
         let info = ReleaseInfo {
-            tag:          "v0.9.0".into(),
-            version:      "0.9.0".into(),
-            name:         "MeedyaManager v0.9.0".into(),
-            changelog:    "Bug fixes and improvements".into(),
+            tag: "v0.9.0".into(),
+            version: "0.9.0".into(),
+            name: "MeedyaManager v0.9.0".into(),
+            changelog: "Bug fixes and improvements".into(),
             is_prerelease: false,
             published_at: "2026-03-10T12:00:00Z".into(),
-            release_url:  "https://github.com/example/releases/tag/v0.9.0".into(),
+            release_url: "https://github.com/example/releases/tag/v0.9.0".into(),
         };
         let json = serde_json::to_string(&info).unwrap();
         let back: ReleaseInfo = serde_json::from_str(&json).unwrap();

@@ -25,6 +25,7 @@
 - [JSON Schema Validation](#json-schema-validation)
 - [Apple Privacy Manifest](#apple-privacy-manifest-privacyinfoxcprivacy)
 - [App Store / TestFlight Distribution Checklist](#app-store--testflight-distribution-checklist)
+- [Workspace Lint Configuration](#workspace-lint-configuration)
 
 ---
 
@@ -939,3 +940,48 @@ Chrome OS can run Linux apps via Crostini.  Distribution options:
 1. **Flatpak via Flathub** — works out-of-box on Crostini (recommended)
 2. **Android APK** — would require a separate Android/Kotlin UI (not planned)
 3. **PWA** — the `mm-server` web UI could be wrapped as a PWA (future)
+
+---
+
+## Workspace Lint Configuration
+
+As of v1.3.1, the project uses Cargo's `[workspace.lints]` feature to share lint
+configuration across all 8 workspace crates.
+
+### How It Works
+
+1. **Root `Cargo.toml`** defines `[workspace.lints.clippy]` and `[workspace.lints.rust]`
+2. Each crate's `Cargo.toml` inherits via `[lints] workspace = true`
+3. CI runs `cargo clippy --workspace --all-targets` with zero warnings enforced
+
+### Lint Groups Enabled
+
+| Group | Level | Purpose |
+| ----- | ----- | ------- |
+| `clippy::pedantic` | warn | Stricter code quality checks beyond default clippy |
+| `clippy::nursery` | warn | Experimental lints catching common mistakes |
+
+### Allowed Lints (with rationale)
+
+Over 25 specific lints are allowed at the workspace level. Each has a documented
+rationale in `Cargo.toml`. Common categories:
+
+- **Noisy/low-value:** `module_name_repetitions`, `must_use_candidate`, `doc_markdown`
+- **Config struct patterns:** `struct_excessive_bools`, `too_many_lines`
+- **Numeric casts (audio/video metadata):** `cast_possible_truncation`, `cast_sign_loss`, `cast_precision_loss`
+- **FFI/test patterns:** `unsafe_code` (warn; mm-ffi explicitly allows)
+- **Style choices:** `items_after_statements`, `manual_let_else`, `match_same_arms`
+
+### Adding a New Lint Allow
+
+To allow a new lint workspace-wide:
+
+1. Add it to `[workspace.lints.clippy]` in root `Cargo.toml` with a comment explaining why
+2. Run `cargo clippy --workspace --all-targets` to verify 0 warnings
+3. Commit with a descriptive message
+
+### Per-Crate Overrides
+
+Individual crates can override workspace lints. For example, `mm-ffi` uses
+`#![allow(unsafe_code)]` because FFI requires unsafe code by nature.
+Test modules use `#[allow(unsafe_code)]` for `set_var`/`remove_var` (unsafe in Edition 2024).

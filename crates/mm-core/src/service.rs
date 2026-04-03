@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::error::{MmError, MmResult};
 
@@ -51,10 +51,10 @@ pub enum ServiceStatus {
 impl std::fmt::Display for ServiceStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Running      => write!(f, "running"),
-            Self::Stopped      => write!(f, "stopped"),
+            Self::Running => write!(f, "running"),
+            Self::Stopped => write!(f, "stopped"),
             Self::NotInstalled => write!(f, "not-installed"),
-            Self::Unknown      => write!(f, "unknown"),
+            Self::Unknown => write!(f, "unknown"),
         }
     }
 }
@@ -64,6 +64,7 @@ impl std::fmt::Display for ServiceStatus {
 // ---------------------------------------------------------------------------
 
 /// Service identifier used on all platforms.
+#[allow(dead_code)]
 const SERVICE_NAME: &str = "meedyamanager";
 
 /// Reverse-DNS bundle identifier (macOS launchd).
@@ -86,7 +87,10 @@ const LAUNCHD_LABEL: &str = "com.mwbm.meedyamanager";
 /// Returns an error if the unit/plist cannot be written or the OS command
 /// to register the service fails.
 pub fn install_service(bin_path: &Path) -> MmResult<()> {
-    info!("service: installing for platform '{}'", std::env::consts::OS);
+    info!(
+        "service: installing for platform '{}'",
+        std::env::consts::OS
+    );
     platform::install(bin_path)
 }
 
@@ -195,10 +199,12 @@ mod platform {
     }
 
     pub fn install(bin_path: &Path) -> MmResult<()> {
-        let unit_dir = unit_dir()
-            .ok_or_else(|| MmError::Config("cannot determine systemd user unit directory".into()))?;
-        let unit_file = unit_file()
-            .ok_or_else(|| MmError::Config("cannot determine systemd user unit file path".into()))?;
+        let unit_dir = unit_dir().ok_or_else(|| {
+            MmError::Config("cannot determine systemd user unit directory".into())
+        })?;
+        let unit_file = unit_file().ok_or_else(|| {
+            MmError::Config("cannot determine systemd user unit file path".into())
+        })?;
 
         // Ensure the systemd user directory exists
         std::fs::create_dir_all(&unit_dir)
@@ -254,10 +260,10 @@ mod platform {
             return ServiceStatus::Unknown;
         };
         match out.trim() {
-            "active"   => ServiceStatus::Running,
+            "active" => ServiceStatus::Running,
             "inactive" => ServiceStatus::Stopped,
-            "failed"   => ServiceStatus::Stopped,
-            _          => {
+            "failed" => ServiceStatus::Stopped,
+            _ => {
                 // "Unit ... not found" → not installed
                 if out.contains("not found") || out.contains("not-found") {
                     ServiceStatus::NotInstalled
@@ -331,7 +337,7 @@ mod platform {
 </plist>
 "#,
             label = LAUNCHD_LABEL,
-            bin   = bin_path.display()
+            bin = bin_path.display()
         )
     }
 
@@ -391,13 +397,17 @@ mod platform {
         // present and non-zero when the service is running.
         if out.contains("\"PID\"") {
             // Extract PID value — if it's not 0 the service is running
-            let running = out.lines()
+            let running = out
+                .lines()
                 .find(|l| l.contains("\"PID\""))
                 .and_then(|l| l.split_whitespace().last())
                 .and_then(|v| v.trim_matches(|c| c == ',' || c == ';').parse::<u32>().ok())
-                .map(|pid| pid > 0)
-                .unwrap_or(false);
-            if running { ServiceStatus::Running } else { ServiceStatus::Stopped }
+                .is_some_and(|pid| pid > 0);
+            if running {
+                ServiceStatus::Running
+            } else {
+                ServiceStatus::Stopped
+            }
         } else {
             ServiceStatus::Stopped
         }
@@ -418,18 +428,24 @@ mod platform {
         let bin_str = bin_path.to_string_lossy();
         let bin_cmd = format!("{bin_str} watch --organize");
 
-        run_cmd("sc", &[
-            "create", SERVICE_NAME,
-            "binPath=", &bin_cmd,
-            "DisplayName=", DISPLAY_NAME,
-            "start=", "auto",  // auto-start at boot/login
-            "type=", "own",
-        ])?;
+        run_cmd(
+            "sc",
+            &[
+                "create",
+                SERVICE_NAME,
+                "binPath=",
+                &bin_cmd,
+                "DisplayName=",
+                DISPLAY_NAME,
+                "start=",
+                "auto", // auto-start at boot/login
+                "type=",
+                "own",
+            ],
+        )?;
 
         // Set the description
-        run_cmd("sc", &[
-            "description", SERVICE_NAME, DESCRIPTION,
-        ])?;
+        run_cmd("sc", &["description", SERVICE_NAME, DESCRIPTION])?;
 
         info!("service: Windows service '{}' registered", SERVICE_NAME);
         Ok(())
@@ -471,16 +487,24 @@ mod platform {
     use super::*;
 
     pub fn install(_bin_path: &Path) -> MmResult<()> {
-        Err(MmError::Config("background service not supported on this platform".into()))
+        Err(MmError::Config(
+            "background service not supported on this platform".into(),
+        ))
     }
     pub fn uninstall() -> MmResult<()> {
-        Err(MmError::Config("background service not supported on this platform".into()))
+        Err(MmError::Config(
+            "background service not supported on this platform".into(),
+        ))
     }
     pub fn start() -> MmResult<()> {
-        Err(MmError::Config("background service not supported on this platform".into()))
+        Err(MmError::Config(
+            "background service not supported on this platform".into(),
+        ))
     }
     pub fn stop() -> MmResult<()> {
-        Err(MmError::Config("background service not supported on this platform".into()))
+        Err(MmError::Config(
+            "background service not supported on this platform".into(),
+        ))
     }
     pub fn status() -> ServiceStatus {
         ServiceStatus::Unknown
@@ -497,10 +521,10 @@ mod tests {
 
     #[test]
     fn service_status_display() {
-        assert_eq!(ServiceStatus::Running.to_string(),      "running");
-        assert_eq!(ServiceStatus::Stopped.to_string(),      "stopped");
+        assert_eq!(ServiceStatus::Running.to_string(), "running");
+        assert_eq!(ServiceStatus::Stopped.to_string(), "stopped");
         assert_eq!(ServiceStatus::NotInstalled.to_string(), "not-installed");
-        assert_eq!(ServiceStatus::Unknown.to_string(),      "unknown");
+        assert_eq!(ServiceStatus::Unknown.to_string(), "unknown");
     }
 
     #[test]

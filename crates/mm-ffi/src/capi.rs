@@ -3,7 +3,7 @@
 // MeedyaManager — C API for Windows P/Invoke interop
 //
 // All functions in this module are exported with C linkage (`extern "C"`) and
-// marked `#[no_mangle]` so cbindgen can generate the matching C header and
+// marked `#[unsafe(no_mangle)]` so cbindgen can generate the matching C header and
 // C# can call them via P/Invoke.
 //
 // API conventions:
@@ -21,11 +21,9 @@
 // cbindgen will generate declarations for all `pub unsafe extern "C"` functions
 // in this module into `include/mm_ffi.h` at build time.
 
-use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
-use std::path::PathBuf;
 
-use crate::types::{MmFfiError, RenamePreviewFfi, TagEntry, ValidationResult};
+use crate::types::{MmFfiError, TagEntry};
 use crate::uniffi_api;
 
 // ---------------------------------------------------------------------------
@@ -39,7 +37,7 @@ use crate::uniffi_api;
 ///
 /// # Safety
 /// `ptr` must be null or a pointer returned by an `mm_ffi_*` function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mm_ffi_free_string(ptr: *mut c_char) {
     // Null check — do nothing for null pointers
     if ptr.is_null() {
@@ -59,7 +57,7 @@ pub unsafe extern "C" fn mm_ffi_free_string(ptr: *mut c_char) {
 /// Caller must free the returned pointer with `mm_ffi_free_string`.
 ///
 /// Example return value: `"0.5.0"`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn mm_ffi_version() -> *const c_char {
     // Allocate the version string and transfer ownership to the caller
     alloc_cstring(env!("CARGO_PKG_VERSION"))
@@ -72,7 +70,7 @@ pub extern "C" fn mm_ffi_version() -> *const c_char {
 /// Return the platform-specific path to `settings.json5` as a C string.
 ///
 /// Caller must free with `mm_ffi_free_string`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn mm_ffi_config_path() -> *const c_char {
     alloc_cstring(&uniffi_api::config_path())
 }
@@ -82,7 +80,7 @@ pub extern "C" fn mm_ffi_config_path() -> *const c_char {
 /// On success: JSON object of the config.
 /// On failure: `{"error":"<message>"}`.
 /// Caller must free with `mm_ffi_free_string`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn mm_ffi_config_load() -> *const c_char {
     let result = uniffi_api::config_load();
     result_to_cstring(result)
@@ -104,18 +102,18 @@ pub extern "C" fn mm_ffi_config_load() -> *const c_char {
 ///
 /// # Safety
 /// `directory` and `template` must be non-null, valid UTF-8 C strings.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mm_ffi_scan_directory(
     directory: *const c_char,
     template: *const c_char,
     recursive: bool,
 ) -> *const c_char {
     // Safely convert C strings to Rust strings (return error JSON on null/invalid UTF-8)
-    let dir = match cstr_to_string(directory) {
+    let dir = match unsafe { cstr_to_string(directory) } {
         Some(s) => s,
         None => return alloc_error_json("directory parameter is null or invalid UTF-8"),
     };
-    let tmpl = match cstr_to_string(template) {
+    let tmpl = match unsafe { cstr_to_string(template) } {
         Some(s) => s,
         None => return alloc_error_json("template parameter is null or invalid UTF-8"),
     };
@@ -146,9 +144,9 @@ pub unsafe extern "C" fn mm_ffi_scan_directory(
 ///
 /// # Safety
 /// `path` must be a non-null, valid UTF-8 C string.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mm_ffi_get_metadata(path: *const c_char) -> *const c_char {
-    let p = match cstr_to_string(path) {
+    let p = match unsafe { cstr_to_string(path) } {
         Some(s) => s,
         None => return alloc_error_json("path parameter is null or invalid UTF-8"),
     };
@@ -171,16 +169,16 @@ pub unsafe extern "C" fn mm_ffi_get_metadata(path: *const c_char) -> *const c_ch
 ///
 /// # Safety
 /// `path` and `tags_json` must be non-null, valid UTF-8 C strings.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mm_ffi_write_metadata(
     path: *const c_char,
     tags_json: *const c_char,
 ) -> *const c_char {
-    let p = match cstr_to_string(path) {
+    let p = match unsafe { cstr_to_string(path) } {
         Some(s) => s,
         None => return alloc_error_json("path parameter is null or invalid UTF-8"),
     };
-    let json = match cstr_to_string(tags_json) {
+    let json = match unsafe { cstr_to_string(tags_json) } {
         Some(s) => s,
         None => return alloc_error_json("tags_json parameter is null or invalid UTF-8"),
     };
@@ -205,16 +203,16 @@ pub unsafe extern "C" fn mm_ffi_write_metadata(
 ///
 /// # Safety
 /// `path` and `tag_key` must be non-null, valid UTF-8 C strings.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mm_ffi_remove_tag(
     path: *const c_char,
     tag_key: *const c_char,
 ) -> *const c_char {
-    let p = match cstr_to_string(path) {
+    let p = match unsafe { cstr_to_string(path) } {
         Some(s) => s,
         None => return alloc_error_json("path is null or invalid UTF-8"),
     };
-    let key = match cstr_to_string(tag_key) {
+    let key = match unsafe { cstr_to_string(tag_key) } {
         Some(s) => s,
         None => return alloc_error_json("tag_key is null or invalid UTF-8"),
     };
@@ -237,9 +235,9 @@ pub unsafe extern "C" fn mm_ffi_remove_tag(
 ///
 /// # Safety
 /// `template` must be a non-null, valid UTF-8 C string.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mm_ffi_validate_template(template: *const c_char) -> *const c_char {
-    let tmpl = match cstr_to_string(template) {
+    let tmpl = match unsafe { cstr_to_string(template) } {
         Some(s) => s,
         None => return alloc_error_json("template is null or invalid UTF-8"),
     };
@@ -260,16 +258,16 @@ pub unsafe extern "C" fn mm_ffi_validate_template(template: *const c_char) -> *c
 ///
 /// # Safety
 /// `template` and `tags_json` must be non-null, valid UTF-8 C strings.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn mm_ffi_apply_template(
     template: *const c_char,
     tags_json: *const c_char,
 ) -> *const c_char {
-    let tmpl = match cstr_to_string(template) {
+    let tmpl = match unsafe { cstr_to_string(template) } {
         Some(s) => s,
         None => return alloc_error_json("template is null or invalid UTF-8"),
     };
-    let json = match cstr_to_string(tags_json) {
+    let json = match unsafe { cstr_to_string(tags_json) } {
         Some(s) => s,
         None => return alloc_error_json("tags_json is null or invalid UTF-8"),
     };
@@ -295,7 +293,7 @@ pub unsafe extern "C" fn mm_ffi_apply_template(
 ///
 /// Example: `["Artist","Title","Album","Year",...]`
 /// Caller must free with `mm_ffi_free_string`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn mm_ffi_list_known_tags() -> *const c_char {
     let tags = uniffi_api::list_known_tags();
     match serde_json::to_string(&tags) {
@@ -345,7 +343,7 @@ unsafe fn cstr_to_string(ptr: *const c_char) -> Option<String> {
     unsafe { CStr::from_ptr(ptr) }
         .to_str()
         .ok()
-        .map(|s| s.to_owned())
+        .map(std::borrow::ToOwned::to_owned)
 }
 
 /// Convenience: convert a Result<String, MmFfiError> to a C string.

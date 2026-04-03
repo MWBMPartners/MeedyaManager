@@ -32,3 +32,6 @@ semver   = { workspace = true }
 # HTTP mocking for deterministic API tests
 wiremock = { workspace = true }
 tokio    = { workspace = true }
+
+[lints]
+workspace = true

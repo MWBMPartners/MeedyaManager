@@ -123,7 +123,10 @@ mod tests {
     #[test]
     fn result_type_alias() {
         let ok: MmResult<i32> = Ok(42);
-        assert_eq!(ok.unwrap(), 42);
+        match ok {
+            Ok(val) => assert_eq!(val, 42),
+            Err(e) => panic!("expected Ok, got {e}"),
+        }
 
         let err: MmResult<i32> = Err(MmError::Config("bad".into()));
         assert!(err.is_err());
@@ -133,7 +136,7 @@ mod tests {
     #[test]
     fn error_debug_format() {
         let err = MmError::Config("test".into());
-        let debug = format!("{:?}", err);
+        let debug = format!("{err:?}");
         assert!(debug.contains("Config"));
     }
 }

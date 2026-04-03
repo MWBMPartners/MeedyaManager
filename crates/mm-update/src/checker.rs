@@ -11,11 +11,11 @@
 //   GET https://api.github.com/repos/{owner}/{repo}/releases  (if prerelease enabled)
 
 use semver::Version;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::{
-    release::{GitHubRelease, ReleaseInfo},
     UpdateError,
+    release::{GitHubRelease, ReleaseInfo},
 };
 
 // ---------------------------------------------------------------------------
@@ -46,11 +46,11 @@ impl UpdateChecker {
             .map_err(|e| UpdateError::VersionParse(e.to_string()))?;
 
         Ok(Self {
-            current_version:    version,
-            owner:              "MWBMPartners".into(),
-            repo:               "MeedyaManager".into(),
+            current_version: version,
+            owner: "MWBMPartners".into(),
+            repo: "MeedyaManager".into(),
             include_prerelease: false,
-            api_base:           "https://api.github.com".into(),
+            api_base: "https://api.github.com".into(),
         })
     }
 
@@ -127,8 +127,8 @@ impl UpdateChecker {
         }
 
         let candidate_str = release.tag_name.trim_start_matches('v');
-        let candidate = Version::parse(candidate_str)
-            .map_err(|e| UpdateError::VersionParse(e.to_string()))?;
+        let candidate =
+            Version::parse(candidate_str).map_err(|e| UpdateError::VersionParse(e.to_string()))?;
 
         if self.is_newer(&candidate) {
             info!(

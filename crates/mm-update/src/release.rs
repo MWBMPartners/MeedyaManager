@@ -37,7 +37,7 @@ pub struct GitHubRelease {
 
 /// Parsed release information returned to callers after fetching the
 /// latest release from the GitHub API.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReleaseInfo {
     /// Raw tag string as returned by GitHub (e.g. `"v0.9.0"`).
     pub tag: String,
@@ -60,10 +60,11 @@ impl ReleaseInfo {
     pub fn from_github(r: &GitHubRelease) -> Self {
         // Strip the leading 'v' from the tag to get the bare semver string.
         let version = r.tag_name.trim_start_matches('v').to_string();
-        let name    = r.name.clone().unwrap_or_else(|| r.tag_name.clone());
+        let name = r.name.clone().unwrap_or_else(|| r.tag_name.clone());
 
         // Truncate the body to avoid overwhelming the UI.
-        let changelog = r.body
+        let changelog = r
+            .body
             .as_deref()
             .unwrap_or("")
             .chars()
@@ -71,13 +72,13 @@ impl ReleaseInfo {
             .collect::<String>();
 
         Self {
-            tag:          r.tag_name.clone(),
+            tag: r.tag_name.clone(),
             version,
             name,
             changelog,
             is_prerelease: r.prerelease,
-            published_at:  r.published_at.clone().unwrap_or_default(),
-            release_url:   r.html_url.clone(),
+            published_at: r.published_at.clone().unwrap_or_default(),
+            release_url: r.html_url.clone(),
         }
     }
 }
@@ -92,13 +93,13 @@ mod tests {
 
     fn sample_gh_release() -> GitHubRelease {
         GitHubRelease {
-            tag_name:     "v0.9.0".into(),
-            name:         Some("MeedyaManager v0.9.0".into()),
-            body:         Some("## What's new\n- Feature A\n- Feature B".into()),
-            draft:        false,
-            prerelease:   false,
+            tag_name: "v0.9.0".into(),
+            name: Some("MeedyaManager v0.9.0".into()),
+            body: Some("## What's new\n- Feature A\n- Feature B".into()),
+            draft: false,
+            prerelease: false,
             published_at: Some("2026-03-10T12:00:00Z".into()),
-            html_url:     "https://github.com/MWBMPartners/MeedyaManager/releases/tag/v0.9.0".into(),
+            html_url: "https://github.com/MWBMPartners/MeedyaManager/releases/tag/v0.9.0".into(),
         }
     }
 

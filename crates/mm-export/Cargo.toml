@@ -35,3 +35,6 @@ sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "mysql", "postgres
 # SQL Server (TDS protocol) driver via Tiberius with TLS
 # Note: tiberius rustls feature has compatibility issues; using vendored-openssl instead
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "chrono"] }
+
+[lints]
+workspace = true

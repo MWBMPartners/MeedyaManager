@@ -20,9 +20,9 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::metadata::{
-    TAG_ALBUM, TAG_ALBUM_ARTIST, TAG_ARTIST, TAG_BARCODE, TAG_BPM, TAG_CATALOG_NUMBER,
-    TAG_COMMENT, TAG_COMPILATION, TAG_COMPOSER, TAG_DISC_NUMBER, TAG_DISC_TOTAL, TAG_GENRE,
-    TAG_ISRC, TAG_LABEL, TAG_LYRICS, TAG_TITLE, TAG_TRACK_NUMBER, TAG_TRACK_TOTAL, TAG_YEAR,
+    TAG_ALBUM, TAG_ALBUM_ARTIST, TAG_ARTIST, TAG_BARCODE, TAG_BPM, TAG_CATALOG_NUMBER, TAG_COMMENT,
+    TAG_COMPILATION, TAG_COMPOSER, TAG_DISC_NUMBER, TAG_DISC_TOTAL, TAG_GENRE, TAG_ISRC, TAG_LABEL,
+    TAG_LYRICS, TAG_TITLE, TAG_TRACK_NUMBER, TAG_TRACK_TOTAL, TAG_YEAR,
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -115,8 +115,14 @@ fn registry() -> &'static HashMap<String, TagKind> {
         map.insert("isrc".into(), TagKind::Metadata(TAG_ISRC));
         map.insert("barcode".into(), TagKind::Metadata(TAG_BARCODE));
         map.insert("catalog#".into(), TagKind::Metadata(TAG_CATALOG_NUMBER));
-        map.insert("catalognumber".into(), TagKind::Metadata(TAG_CATALOG_NUMBER));
-        map.insert("catalog number".into(), TagKind::Metadata(TAG_CATALOG_NUMBER));
+        map.insert(
+            "catalognumber".into(),
+            TagKind::Metadata(TAG_CATALOG_NUMBER),
+        );
+        map.insert(
+            "catalog number".into(),
+            TagKind::Metadata(TAG_CATALOG_NUMBER),
+        );
         map.insert("label".into(), TagKind::Metadata(TAG_LABEL));
         map.insert("compilation".into(), TagKind::Metadata(TAG_COMPILATION));
         map.insert("bpm".into(), TagKind::Metadata(TAG_BPM));
@@ -130,8 +136,14 @@ fn registry() -> &'static HashMap<String, TagKind> {
         map.insert("sortartist".into(), TagKind::Metadata("sort_artist"));
         map.insert("sort album".into(), TagKind::Metadata("sort_album"));
         map.insert("sortalbum".into(), TagKind::Metadata("sort_album"));
-        map.insert("sort album artist".into(), TagKind::Metadata("sort_album_artist"));
-        map.insert("sortalbumartist".into(), TagKind::Metadata("sort_album_artist"));
+        map.insert(
+            "sort album artist".into(),
+            TagKind::Metadata("sort_album_artist"),
+        );
+        map.insert(
+            "sortalbumartist".into(),
+            TagKind::Metadata("sort_album_artist"),
+        );
         map.insert("sort composer".into(), TagKind::Metadata("sort_composer"));
         map.insert("sortcomposer".into(), TagKind::Metadata("sort_composer"));
         map.insert("grouping".into(), TagKind::Metadata("grouping"));
@@ -159,22 +171,58 @@ fn registry() -> &'static HashMap<String, TagKind> {
         map.insert("file path".into(), TagKind::Virtual(VirtualTag::FullPath));
         map.insert("filepath".into(), TagKind::Virtual(VirtualTag::FullPath));
         map.insert("duration".into(), TagKind::Virtual(VirtualTag::Duration));
-        map.insert("duration secs".into(), TagKind::Virtual(VirtualTag::DurationSecs));
-        map.insert("durationsecs".into(), TagKind::Virtual(VirtualTag::DurationSecs));
+        map.insert(
+            "duration secs".into(),
+            TagKind::Virtual(VirtualTag::DurationSecs),
+        );
+        map.insert(
+            "durationsecs".into(),
+            TagKind::Virtual(VirtualTag::DurationSecs),
+        );
         map.insert("bitrate".into(), TagKind::Virtual(VirtualTag::BitrateKbps));
-        map.insert("sample rate".into(), TagKind::Virtual(VirtualTag::SampleRateHz));
-        map.insert("samplerate".into(), TagKind::Virtual(VirtualTag::SampleRateHz));
+        map.insert(
+            "sample rate".into(),
+            TagKind::Virtual(VirtualTag::SampleRateHz),
+        );
+        map.insert(
+            "samplerate".into(),
+            TagKind::Virtual(VirtualTag::SampleRateHz),
+        );
         map.insert("channels".into(), TagKind::Virtual(VirtualTag::Channels));
         map.insert("bit depth".into(), TagKind::Virtual(VirtualTag::BitDepth));
         map.insert("bitdepth".into(), TagKind::Virtual(VirtualTag::BitDepth));
-        map.insert("media class".into(), TagKind::Virtual(VirtualTag::MediaClass));
-        map.insert("mediaclass".into(), TagKind::Virtual(VirtualTag::MediaClass));
-        map.insert("media group".into(), TagKind::Virtual(VirtualTag::MediaGroup));
-        map.insert("mediagroup".into(), TagKind::Virtual(VirtualTag::MediaGroup));
-        map.insert("media format".into(), TagKind::Virtual(VirtualTag::MediaFormat));
-        map.insert("mediaformat".into(), TagKind::Virtual(VirtualTag::MediaFormat));
-        map.insert("media quality".into(), TagKind::Virtual(VirtualTag::MediaQuality));
-        map.insert("mediaquality".into(), TagKind::Virtual(VirtualTag::MediaQuality));
+        map.insert(
+            "media class".into(),
+            TagKind::Virtual(VirtualTag::MediaClass),
+        );
+        map.insert(
+            "mediaclass".into(),
+            TagKind::Virtual(VirtualTag::MediaClass),
+        );
+        map.insert(
+            "media group".into(),
+            TagKind::Virtual(VirtualTag::MediaGroup),
+        );
+        map.insert(
+            "mediagroup".into(),
+            TagKind::Virtual(VirtualTag::MediaGroup),
+        );
+        map.insert(
+            "media format".into(),
+            TagKind::Virtual(VirtualTag::MediaFormat),
+        );
+        map.insert(
+            "mediaformat".into(),
+            TagKind::Virtual(VirtualTag::MediaFormat),
+        );
+        map.insert(
+            "media quality".into(),
+            TagKind::Virtual(VirtualTag::MediaQuality),
+        );
+        map.insert(
+            "mediaquality".into(),
+            TagKind::Virtual(VirtualTag::MediaQuality),
+        );
 
         map
     })
@@ -232,10 +280,8 @@ pub fn registry_size() -> usize {
 /// statically registered tags and their aliases.
 pub fn all_tags() -> Vec<(String, TagKind)> {
     let reg = registry();
-    let mut entries: Vec<(String, TagKind)> = reg
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+    let mut entries: Vec<(String, TagKind)> =
+        reg.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     // Sort alphabetically by display name for deterministic output
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     entries
@@ -432,9 +478,20 @@ mod tests {
     #[test]
     fn all_virtual_tags_registered() {
         let virtual_tags = [
-            "Filename", "Extension", "Folder", "FullPath", "Duration",
-            "DurationSecs", "Bitrate", "SampleRate", "Channels", "BitDepth",
-            "MediaClass", "MediaGroup", "MediaFormat", "MediaQuality",
+            "Filename",
+            "Extension",
+            "Folder",
+            "FullPath",
+            "Duration",
+            "DurationSecs",
+            "Bitrate",
+            "SampleRate",
+            "Channels",
+            "BitDepth",
+            "MediaClass",
+            "MediaGroup",
+            "MediaFormat",
+            "MediaQuality",
         ];
         for name in virtual_tags {
             assert!(

@@ -13,9 +13,7 @@
 
 use std::path::Path;
 
-use crate::traits::{
-    ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider,
-};
+use crate::traits::{ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider};
 
 // ---------------------------------------------------------------------------
 // MegaProvider
@@ -33,7 +31,9 @@ pub struct MegaProvider {
 impl MegaProvider {
     /// Creates a new `MegaProvider` stub.
     pub fn new() -> Self {
-        Self { authenticated: false }
+        Self {
+            authenticated: false,
+        }
     }
 }
 
@@ -44,7 +44,7 @@ impl Default for MegaProvider {
 }
 
 impl CloudProvider for MegaProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "MEGA"
     }
 
@@ -125,7 +125,10 @@ mod tests {
     #[tokio::test]
     async fn authenticate_returns_unsupported() {
         let mut p = MegaProvider::new();
-        assert!(matches!(p.authenticate().await, Err(CloudError::Unsupported(_))));
+        assert!(matches!(
+            p.authenticate().await,
+            Err(CloudError::Unsupported(_))
+        ));
     }
 
     #[tokio::test]

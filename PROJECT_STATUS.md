@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | Post-M10 — v1.3.0 enhancements — **Complete** |
-| **Overall Progress** | **100%** core milestones complete; cross-cutting enhancements complete |
-| **Latest Version** | `v1.3.0` |
+| **Current Milestone** | Post-M10 — v1.3.1 code quality — **Complete** |
+| **Overall Progress** | **100%** core milestones complete; cross-cutting enhancements + lint hardening complete |
+| **Latest Version** | `v1.3.1` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -361,6 +361,7 @@
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-03-06 | **v1.3.1 — Workspace Lint Configuration** — Added `[workspace.lints]` with pedantic+nursery clippy groups across all 8 crates. Resolved all warnings (600+ auto-fixes, 17 manual fixes). Zero clippy warnings, 1,234 tests passing. Issue #129. |
 | 2026-03-05 | **M10 Complete** (`v1.0.0`) — Secure Media Server: `mm-server` crate (JWT/HS256, RFC 7233 range streaming, REST API handler stubs), `meedya serve` CLI command, Server tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~1076 → ~1166 total) |
 | 2026-03-05 | **M9 Complete** (`v0.10.0`) — Database Export: `mm-export` crate (`DatabaseExporter` trait, 5 backends, `SchemaBuilder` DDL), `meedya export` CLI command, Export tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~986 → ~1076 total) |
 | 2026-03-05 | **M8 Complete** (`v0.9.0`) — Packaging & Public Beta: `mm-update` crate (UpdateChecker, semver), Flatpak/Snap/AppImage/.deb manifests, macOS entitlements + DMG script, WinGet manifest, update notification UI (GTK4 AdwBanner, macOS Updates section, Windows InfoBar); ~30 new tests (~956 → ~986 total) |
@@ -379,4 +380,4 @@
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/changelog.md](docs/changelog.md).*
 >
-> *Last updated: 2026-03-05 (M10 complete — Secure Media Server + Public Release v1.0.0)*
+> *Last updated: 2026-03-06 (v1.3.1 — Workspace lint configuration & code quality hardening)*

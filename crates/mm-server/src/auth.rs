@@ -13,9 +13,7 @@
 //   LoginResponse — JSON body returned on successful login
 //   AuthMiddleware — tower middleware that validates Bearer tokens
 
-use jsonwebtoken::{
-    decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation,
-};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
@@ -50,13 +48,13 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            bind_address:    "0.0.0.0".into(),
-            port:            8443,
-            tls_cert_path:   String::new(),
-            tls_key_path:    String::new(),
-            jwt_secret:      String::new(),
+            bind_address: "0.0.0.0".into(),
+            port: 8443,
+            tls_cert_path: String::new(),
+            tls_key_path: String::new(),
+            jwt_secret: String::new(),
             jwt_expiry_secs: 86_400,
-            cors_origins:    Vec::new(),
+            cors_origins: Vec::new(),
             max_connections: 1000,
             request_logging: true,
         }
@@ -96,9 +94,9 @@ pub enum UserRole {
 impl std::fmt::Display for UserRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UserRole::Admin    => write!(f, "admin"),
-            UserRole::User     => write!(f, "user"),
-            UserRole::ReadOnly => write!(f, "readonly"),
+            Self::Admin => write!(f, "admin"),
+            Self::User => write!(f, "user"),
+            Self::ReadOnly => write!(f, "readonly"),
         }
     }
 }
@@ -106,12 +104,12 @@ impl std::fmt::Display for UserRole {
 impl UserRole {
     /// Returns `true` if this role can access streaming endpoints.
     pub fn can_stream(&self) -> bool {
-        matches!(self, UserRole::Admin | UserRole::User)
+        matches!(self, Self::Admin | Self::User)
     }
 
     /// Returns `true` if this role can access admin-only endpoints.
     pub fn is_admin(&self) -> bool {
-        matches!(self, UserRole::Admin)
+        matches!(self, Self::Admin)
     }
 }
 
@@ -161,7 +159,7 @@ impl Claims {
 // ---------------------------------------------------------------------------
 
 /// Failure modes for JWT authentication operations.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum AuthError {
     /// No `Authorization: Bearer <token>` header was present
     #[error("Missing authorisation header")]
@@ -250,9 +248,9 @@ impl JwtService {
             .as_secs();
 
         let claims = Claims {
-            sub:  username.to_string(),
-            exp:  now + self.expiry_secs,
-            iat:  now,
+            sub: username.to_string(),
+            exp: now + self.expiry_secs,
+            iat: now,
             role,
         };
 
@@ -269,15 +267,14 @@ impl JwtService {
         // Require `exp` claim — reject tokens without expiry
         validation.validate_exp = true;
 
-        let token_data = decode::<Claims>(token, &self.decoding_key, &validation)
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("expired") {
-                    AuthError::TokenExpired
-                } else {
-                    AuthError::InvalidToken(msg)
-                }
-            })?;
+        let token_data = decode::<Claims>(token, &self.decoding_key, &validation).map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("expired") {
+                AuthError::TokenExpired
+            } else {
+                AuthError::InvalidToken(msg)
+            }
+        })?;
 
         Ok(token_data.claims)
     }
@@ -327,9 +324,11 @@ mod tests {
 
     #[test]
     fn server_config_bind_addr() {
-        let mut cfg = ServerConfig::default();
-        cfg.bind_address = "127.0.0.1".into();
-        cfg.port = 9000;
+        let cfg = ServerConfig {
+            bind_address: "127.0.0.1".into(),
+            port: 9000,
+            ..Default::default()
+        };
         assert_eq!(cfg.bind_addr(), "127.0.0.1:9000");
     }
 
@@ -337,8 +336,8 @@ mod tests {
     fn server_config_is_valid_when_all_set() {
         let cfg = ServerConfig {
             tls_cert_path: "/etc/ssl/cert.pem".into(),
-            tls_key_path:  "/etc/ssl/key.pem".into(),
-            jwt_secret:    "my-secret".into(),
+            tls_key_path: "/etc/ssl/key.pem".into(),
+            jwt_secret: "my-secret".into(),
             ..ServerConfig::default()
         };
         assert!(cfg.is_valid());
@@ -366,8 +365,8 @@ mod tests {
 
     #[test]
     fn role_display_names() {
-        assert_eq!(UserRole::Admin.to_string(),    "admin");
-        assert_eq!(UserRole::User.to_string(),     "user");
+        assert_eq!(UserRole::Admin.to_string(), "admin");
+        assert_eq!(UserRole::User.to_string(), "user");
         assert_eq!(UserRole::ReadOnly.to_string(), "readonly");
     }
 
@@ -423,7 +422,11 @@ mod tests {
 
     #[test]
     fn auth_error_display_messages() {
-        assert!(AuthError::MissingToken.to_string().contains("authorisation"));
+        assert!(
+            AuthError::MissingToken
+                .to_string()
+                .contains("authorisation")
+        );
         assert!(AuthError::TokenExpired.to_string().contains("expired"));
         assert!(AuthError::MissingSecret.to_string().contains("JWT secret"));
     }
@@ -438,7 +441,10 @@ mod tests {
 
     #[test]
     fn login_request_serialises() {
-        let req = LoginRequest { username: "alice".into(), password: "pass".into() };
+        let req = LoginRequest {
+            username: "alice".into(),
+            password: "pass".into(),
+        };
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"username\""));
         assert!(json.contains("alice"));
@@ -449,9 +455,9 @@ mod tests {
         let svc = svc();
         let token = svc.issue("carol", UserRole::ReadOnly).unwrap();
         let resp = LoginResponse {
-            token:      token.clone(),
-            expires_at: 9999999999,
-            role:       UserRole::ReadOnly,
+            token,
+            expires_at: 9_999_999_999,
+            role: UserRole::ReadOnly,
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"role\""));
@@ -460,7 +466,9 @@ mod tests {
 
     #[test]
     fn insufficient_permissions_error_shows_required_role() {
-        let e = AuthError::InsufficientPermissions { required: "admin".into() };
+        let e = AuthError::InsufficientPermissions {
+            required: "admin".into(),
+        };
         assert!(e.to_string().contains("admin"));
     }
 }

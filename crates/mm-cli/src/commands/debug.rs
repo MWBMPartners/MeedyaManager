@@ -238,7 +238,7 @@ fn render_human(
 
         let rows: Vec<Vec<String>> = sorted_tags
             .iter()
-            .map(|(key, values)| vec![key.to_string(), mm_core::metadata::join_multi_value(values)])
+            .map(|(key, values)| vec![(*key).clone(), mm_core::metadata::join_multi_value(values)])
             .collect();
         output::print_table(&["Tag", "Value"], &rows);
     }

@@ -177,20 +177,20 @@ impl From<MmError> for MmFfiError {
     /// boundary, mapping internal errors to their closest FFI variant.
     fn from(err: MmError) -> Self {
         match err {
-            MmError::Config(msg) => MmFfiError::Config(msg),
-            MmError::Watcher(msg) => MmFfiError::Watcher(msg),
-            MmError::RuleEngine(msg) => MmFfiError::RuleEngine(msg),
-            MmError::Metadata(msg) => MmFfiError::Metadata(msg),
-            MmError::Rename(msg) => MmFfiError::Rename(msg),
-            MmError::Io(e) => MmFfiError::Io(e.to_string()),
+            MmError::Config(msg) => Self::Config(msg),
+            MmError::Watcher(msg) => Self::Watcher(msg),
+            MmError::RuleEngine(msg) => Self::RuleEngine(msg),
+            MmError::Metadata(msg) => Self::Metadata(msg),
+            MmError::Rename(msg) => Self::Rename(msg),
+            MmError::Io(e) => Self::Io(e.to_string()),
             // Lofty errors surfaced as Metadata errors across the boundary
-            MmError::Lofty(e) => MmFfiError::Metadata(e.to_string()),
+            MmError::Lofty(e) => Self::Metadata(e.to_string()),
             // Serde errors surfaced as Config errors (typically JSON5 parse failures)
-            MmError::Serde(e) => MmFfiError::Config(e.to_string()),
+            MmError::Serde(e) => Self::Config(e.to_string()),
             // Notify errors surfaced as Watcher errors
-            MmError::Notify(e) => MmFfiError::Watcher(e.to_string()),
+            MmError::Notify(e) => Self::Watcher(e.to_string()),
             // All other variants fall into Unknown
-            other => MmFfiError::Unknown(other.to_string()),
+            other => Self::Unknown(other.to_string()),
         }
     }
 }

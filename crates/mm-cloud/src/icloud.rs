@@ -14,9 +14,7 @@
 
 use std::path::Path;
 
-use crate::traits::{
-    ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider,
-};
+use crate::traits::{ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider};
 
 // ---------------------------------------------------------------------------
 // ICloudProvider
@@ -36,7 +34,9 @@ pub struct ICloudProvider {
 impl ICloudProvider {
     /// Creates a new `ICloudProvider` stub.
     pub fn new() -> Self {
-        Self { authenticated: false }
+        Self {
+            authenticated: false,
+        }
     }
 
     /// Returns `true` if currently running on macOS (checked at runtime).
@@ -53,7 +53,7 @@ impl Default for ICloudProvider {
 }
 
 impl CloudProvider for ICloudProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "iCloud Drive"
     }
 
@@ -97,15 +97,21 @@ impl CloudProvider for ICloudProvider {
     }
 
     async fn get_file(&self, _id: &str) -> Result<CloudFile, CloudError> {
-        Err(CloudError::Unsupported("iCloud not implemented in Rust layer".into()))
+        Err(CloudError::Unsupported(
+            "iCloud not implemented in Rust layer".into(),
+        ))
     }
 
     async fn download_file(&self, _file: &CloudFile, _dest: &Path) -> Result<(), CloudError> {
-        Err(CloudError::Unsupported("iCloud not implemented in Rust layer".into()))
+        Err(CloudError::Unsupported(
+            "iCloud not implemented in Rust layer".into(),
+        ))
     }
 
     async fn upload_file(&self, _src: &Path, _dest_path: &str) -> Result<CloudFile, CloudError> {
-        Err(CloudError::Unsupported("iCloud not implemented in Rust layer".into()))
+        Err(CloudError::Unsupported(
+            "iCloud not implemented in Rust layer".into(),
+        ))
     }
 
     async fn watch_changes(
@@ -113,7 +119,9 @@ impl CloudProvider for ICloudProvider {
         _path: &str,
         _cursor: Option<&str>,
     ) -> Result<ChangeSet, CloudError> {
-        Err(CloudError::Unsupported("iCloud not implemented in Rust layer".into()))
+        Err(CloudError::Unsupported(
+            "iCloud not implemented in Rust layer".into(),
+        ))
     }
 
     async fn disconnect(&mut self) -> Result<(), CloudError> {
@@ -151,7 +159,10 @@ mod tests {
     async fn authenticate_returns_unsupported_on_non_macos() {
         // On CI (Linux/Windows) this will always return Unsupported.
         let mut p = ICloudProvider::new();
-        assert!(matches!(p.authenticate().await, Err(CloudError::Unsupported(_))));
+        assert!(matches!(
+            p.authenticate().await,
+            Err(CloudError::Unsupported(_))
+        ));
     }
 
     #[tokio::test]

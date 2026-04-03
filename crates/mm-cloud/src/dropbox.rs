@@ -9,11 +9,8 @@
 // API reference: https://www.dropbox.com/developers/documentation/http/documentation
 
 use std::path::Path;
-use std::time::SystemTime;
 
-use crate::traits::{
-    ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider,
-};
+use crate::traits::{ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider};
 
 // ---------------------------------------------------------------------------
 // DropboxProvider
@@ -31,10 +28,13 @@ pub struct DropboxProvider {
     /// Long-lived refresh token for token renewal.
     refresh_token: Option<String>,
     /// Dropbox app key (client ID).
+    #[allow(dead_code)]
     app_key: String,
     /// Metadata API base URL. Overridable for testing.
+    #[allow(dead_code)]
     api_base: String,
     /// Content API base URL. Overridable for testing.
+    #[allow(dead_code)]
     content_api_base: String,
     /// Whether the token is currently valid.
     authenticated: bool,
@@ -44,12 +44,12 @@ impl DropboxProvider {
     /// Creates a new `DropboxProvider` with the given Dropbox app key.
     pub fn new(app_key: impl Into<String>) -> Self {
         Self {
-            access_token:     None,
-            refresh_token:    None,
-            app_key:          app_key.into(),
-            api_base:         "https://api.dropboxapi.com/2".into(),
+            access_token: None,
+            refresh_token: None,
+            app_key: app_key.into(),
+            api_base: "https://api.dropboxapi.com/2".into(),
             content_api_base: "https://content.dropboxapi.com/2".into(),
-            authenticated:    false,
+            authenticated: false,
         }
     }
 
@@ -59,7 +59,7 @@ impl DropboxProvider {
         access_token: impl Into<String>,
         refresh_token: impl Into<String>,
     ) {
-        self.access_token  = Some(access_token.into());
+        self.access_token = Some(access_token.into());
         self.refresh_token = Some(refresh_token.into());
         self.authenticated = true;
     }
@@ -85,7 +85,7 @@ impl DropboxProvider {
 }
 
 impl CloudProvider for DropboxProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Dropbox"
     }
 
@@ -149,7 +149,7 @@ impl CloudProvider for DropboxProvider {
         )))
     }
 
-    async fn upload_file(&self, src: &Path, dest_path: &str) -> Result<CloudFile, CloudError> {
+    async fn upload_file(&self, src: &Path, _dest_path: &str) -> Result<CloudFile, CloudError> {
         if !self.is_authenticated() {
             return Err(CloudError::Auth("not authenticated".into()));
         }
@@ -181,7 +181,7 @@ impl CloudProvider for DropboxProvider {
 
     async fn disconnect(&mut self) -> Result<(), CloudError> {
         // Production: POST /auth/token/revoke to invalidate the token server-side.
-        self.access_token  = None;
+        self.access_token = None;
         self.refresh_token = None;
         self.authenticated = false;
         Ok(())
@@ -231,7 +231,10 @@ mod tests {
     #[tokio::test]
     async fn authenticate_returns_unsupported() {
         let mut p = unauthenticated();
-        assert!(matches!(p.authenticate().await, Err(CloudError::Unsupported(_))));
+        assert!(matches!(
+            p.authenticate().await,
+            Err(CloudError::Unsupported(_))
+        ));
     }
 
     #[tokio::test]
@@ -261,7 +264,10 @@ mod tests {
 
     #[tokio::test]
     async fn watch_changes_with_cursor() {
-        let cs = authenticated().watch_changes("/", Some("cursor_abc")).await.unwrap();
+        let cs = authenticated()
+            .watch_changes("/", Some("cursor_abc"))
+            .await
+            .unwrap();
         assert!(cs.is_empty());
     }
 

@@ -170,13 +170,13 @@ fn run_tags(ctx: &CliContext) -> anyhow::Result<i32> {
                 .map(|(name, kind)| {
                     let kind_str = match kind {
                         mm_core::rule_engine::TagKind::Metadata(key) => {
-                            format!("Metadata ({})", key)
+                            format!("Metadata ({key})")
                         }
                         mm_core::rule_engine::TagKind::Virtual(vt) => {
-                            format!("Virtual ({:?})", vt)
+                            format!("Virtual ({vt:?})")
                         }
                         mm_core::rule_engine::TagKind::Custom(key) => {
-                            format!("Custom ({})", key)
+                            format!("Custom ({key})")
                         }
                     };
                     vec![name.clone(), kind_str]
@@ -266,7 +266,7 @@ fn run_legacy(ctx: &CliContext, template: &str) -> anyhow::Result<i32> {
         OutputFormat::Json => {
             let output = LegacyOutput {
                 template: template.to_string(),
-                legacy_keys: legacy_keys.clone(),
+                legacy_keys,
             };
             output::print_json(&output);
         }

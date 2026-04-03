@@ -38,11 +38,11 @@ pub enum DbDialect {
 impl fmt::Display for DbDialect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DbDialect::MySql      => write!(f, "MySQL"),
-            DbDialect::MariaDb    => write!(f, "MariaDB"),
-            DbDialect::Postgres   => write!(f, "PostgreSQL"),
-            DbDialect::Sqlite     => write!(f, "SQLite"),
-            DbDialect::SqlServer  => write!(f, "SQL Server"),
+            Self::MySql => write!(f, "MySQL"),
+            Self::MariaDb => write!(f, "MariaDB"),
+            Self::Postgres => write!(f, "PostgreSQL"),
+            Self::Sqlite => write!(f, "SQLite"),
+            Self::SqlServer => write!(f, "SQL Server"),
         }
     }
 }
@@ -56,22 +56,22 @@ impl fmt::Display for DbDialect {
 ///
 /// `file_hash` is a SHA-256 hex string used as the natural key for upserts so
 /// renaming a file does not duplicate its row.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExportRow {
     /// Absolute path to the media file at the time of export
-    pub path:        String,
+    pub path: String,
     /// Bare filename (without directory)
-    pub filename:    String,
+    pub filename: String,
     /// File size in bytes
-    pub file_size:   u64,
+    pub file_size: u64,
     /// SHA-256 hex digest of the file contents (natural upsert key)
-    pub file_hash:   String,
+    pub file_hash: String,
     /// Key–value map of audio/video metadata tags (title, artist, album, etc.)
-    pub tags:        HashMap<String, String>,
+    pub tags: HashMap<String, String>,
     /// MIME / media type string (e.g. `"audio/flac"`, `"video/mp4"`)
-    pub media_type:  String,
+    pub media_type: String,
     /// Duration in seconds (0 if unknown)
-    pub duration_s:  u32,
+    pub duration_s: u32,
     /// UTC Unix timestamp when the file was last modified on disk
     pub modified_at: i64,
 }
@@ -80,18 +80,18 @@ impl ExportRow {
     /// Create a minimal `ExportRow` with only the required fields set; all
     /// optional fields are set to their zero values.
     pub fn new(
-        path:      impl Into<String>,
-        filename:  impl Into<String>,
+        path: impl Into<String>,
+        filename: impl Into<String>,
         file_hash: impl Into<String>,
     ) -> Self {
         Self {
-            path:        path.into(),
-            filename:    filename.into(),
-            file_size:   0,
-            file_hash:   file_hash.into(),
-            tags:        HashMap::new(),
-            media_type:  String::new(),
-            duration_s:  0,
+            path: path.into(),
+            filename: filename.into(),
+            file_size: 0,
+            file_hash: file_hash.into(),
+            tags: HashMap::new(),
+            media_type: String::new(),
+            duration_s: 0,
             modified_at: 0,
         }
     }
@@ -103,7 +103,7 @@ impl ExportRow {
 
     /// Returns the value of a tag, if present.
     pub fn tag(&self, key: &str) -> Option<&str> {
-        self.tags.get(key).map(|s| s.as_str())
+        self.tags.get(key).map(std::string::String::as_str)
     }
 }
 
@@ -112,18 +112,18 @@ impl ExportRow {
 // ---------------------------------------------------------------------------
 
 /// Records that a file was renamed (or would be renamed in dry-run mode).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenameEvent {
     /// SHA-256 hex digest of the file (links back to `mm_files.file_hash`)
-    pub file_hash:  String,
+    pub file_hash: String,
     /// Absolute path before the rename
-    pub old_path:   String,
+    pub old_path: String,
     /// Absolute path after the rename
-    pub new_path:   String,
+    pub new_path: String,
     /// Name of the rule that triggered this rename (empty if manual)
-    pub rule_name:  String,
+    pub rule_name: String,
     /// `true` if this was a dry-run preview only; `false` if the rename executed
-    pub dry_run:    bool,
+    pub dry_run: bool,
     /// UTC Unix timestamp when the rename event was recorded
     pub renamed_at: i64,
 }
@@ -139,27 +139,27 @@ pub struct RenameEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportConfig {
     /// Database DSN / connection string (format varies by backend)
-    pub connection_string:  String,
+    pub connection_string: String,
     /// Maximum number of rows to upsert in a single batch transaction (default 500)
-    pub batch_size:         usize,
+    pub batch_size: usize,
     /// Schema / database name to use when creating tables (empty = use DSN default)
-    pub schema_name:        String,
+    pub schema_name: String,
     /// Table name prefix (default `"mm_"`)
-    pub table_prefix:       String,
+    pub table_prefix: String,
     /// When `true`, skip the `ensure_schema()` call — tables must already exist
-    pub skip_schema_init:   bool,
+    pub skip_schema_init: bool,
     /// Connection timeout in seconds (default 30)
-    pub connect_timeout_s:  u64,
+    pub connect_timeout_s: u64,
 }
 
 impl Default for ExportConfig {
     fn default() -> Self {
         Self {
             connection_string: String::new(),
-            batch_size:        500,
-            schema_name:       String::new(),
-            table_prefix:      "mm_".into(),
-            skip_schema_init:  false,
+            batch_size: 500,
+            schema_name: String::new(),
+            table_prefix: "mm_".into(),
+            skip_schema_init: false,
             connect_timeout_s: 30,
         }
     }
@@ -168,7 +168,10 @@ impl Default for ExportConfig {
 impl ExportConfig {
     /// Construct a config with just a connection string, using all other defaults.
     pub fn with_dsn(dsn: impl Into<String>) -> Self {
-        Self { connection_string: dsn.into(), ..Default::default() }
+        Self {
+            connection_string: dsn.into(),
+            ..Default::default()
+        }
     }
 
     /// Returns the fully-qualified table name for `suffix` (e.g. `"mm_files"`).
@@ -207,16 +210,16 @@ impl ExportConfig {
 // ---------------------------------------------------------------------------
 
 /// Aggregated counters produced by an export operation.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExportStats {
     /// Number of rows successfully inserted (new files)
-    pub inserted:   u64,
+    pub inserted: u64,
     /// Number of rows successfully updated (existing files with changed metadata)
-    pub updated:    u64,
+    pub updated: u64,
     /// Number of rows skipped because the hash matched and no fields changed
-    pub skipped:    u64,
+    pub skipped: u64,
     /// Number of rows that produced an error
-    pub errors:     u64,
+    pub errors: u64,
     /// Total elapsed time in milliseconds
     pub elapsed_ms: u64,
 }
@@ -238,11 +241,11 @@ impl ExportStats {
     }
 
     /// Merge `other` into `self` (accumulate multiple batch results).
-    pub fn merge(&mut self, other: &ExportStats) {
-        self.inserted   += other.inserted;
-        self.updated    += other.updated;
-        self.skipped    += other.skipped;
-        self.errors     += other.errors;
+    pub fn merge(&mut self, other: &Self) {
+        self.inserted += other.inserted;
+        self.updated += other.updated;
+        self.skipped += other.skipped;
+        self.errors += other.errors;
         self.elapsed_ms += other.elapsed_ms;
     }
 }
@@ -296,7 +299,7 @@ impl ExportError {
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
-            ExportError::ConnectionFailed { .. } | ExportError::BatchFailed { .. }
+            Self::ConnectionFailed { .. } | Self::BatchFailed { .. }
         )
     }
 }
@@ -320,13 +323,22 @@ pub trait DatabaseExporter {
     fn ensure_schema(&self) -> impl std::future::Future<Output = Result<(), ExportError>> + Send;
 
     /// Insert or update a single `ExportRow` (upsert on `file_hash`).
-    fn export_file(&self, row: &ExportRow) -> impl std::future::Future<Output = Result<(), ExportError>> + Send;
+    fn export_file(
+        &self,
+        row: &ExportRow,
+    ) -> impl std::future::Future<Output = Result<(), ExportError>> + Send;
 
     /// Upsert a slice of rows in a single transaction.
-    fn export_batch(&self, rows: &[ExportRow]) -> impl std::future::Future<Output = Result<ExportStats, ExportError>> + Send;
+    fn export_batch(
+        &self,
+        rows: &[ExportRow],
+    ) -> impl std::future::Future<Output = Result<ExportStats, ExportError>> + Send;
 
     /// Append a rename event to `mm_history`.
-    fn record_rename(&self, event: &RenameEvent) -> impl std::future::Future<Output = Result<(), ExportError>> + Send;
+    fn record_rename(
+        &self,
+        event: &RenameEvent,
+    ) -> impl std::future::Future<Output = Result<(), ExportError>> + Send;
 
     /// Gracefully close the connection pool.
     fn disconnect(self) -> impl std::future::Future<Output = Result<(), ExportError>> + Send;
@@ -343,15 +355,25 @@ mod tests {
     // --- DbDialect ---
 
     #[test]
-    fn dialect_display_mysql()     { assert_eq!(DbDialect::MySql.to_string(),     "MySQL"); }
+    fn dialect_display_mysql() {
+        assert_eq!(DbDialect::MySql.to_string(), "MySQL");
+    }
     #[test]
-    fn dialect_display_mariadb()   { assert_eq!(DbDialect::MariaDb.to_string(),   "MariaDB"); }
+    fn dialect_display_mariadb() {
+        assert_eq!(DbDialect::MariaDb.to_string(), "MariaDB");
+    }
     #[test]
-    fn dialect_display_postgres()  { assert_eq!(DbDialect::Postgres.to_string(),  "PostgreSQL"); }
+    fn dialect_display_postgres() {
+        assert_eq!(DbDialect::Postgres.to_string(), "PostgreSQL");
+    }
     #[test]
-    fn dialect_display_sqlite()    { assert_eq!(DbDialect::Sqlite.to_string(),    "SQLite"); }
+    fn dialect_display_sqlite() {
+        assert_eq!(DbDialect::Sqlite.to_string(), "SQLite");
+    }
     #[test]
-    fn dialect_display_sqlserver() { assert_eq!(DbDialect::SqlServer.to_string(), "SQL Server"); }
+    fn dialect_display_sqlserver() {
+        assert_eq!(DbDialect::SqlServer.to_string(), "SQL Server");
+    }
 
     #[test]
     fn dialect_equality() {
@@ -364,8 +386,8 @@ mod tests {
     #[test]
     fn export_row_new_minimal() {
         let row = ExportRow::new("/music/song.flac", "song.flac", "abc123");
-        assert_eq!(row.path,      "/music/song.flac");
-        assert_eq!(row.filename,  "song.flac");
+        assert_eq!(row.path, "/music/song.flac");
+        assert_eq!(row.filename, "song.flac");
         assert_eq!(row.file_hash, "abc123");
         assert_eq!(row.file_size, 0);
         assert!(!row.has_tags());
@@ -376,7 +398,7 @@ mod tests {
         let mut row = ExportRow::new("/a.mp3", "a.mp3", "hash1");
         row.tags.insert("title".into(), "Test".into());
         assert!(row.has_tags());
-        assert_eq!(row.tag("title"),  Some("Test"));
+        assert_eq!(row.tag("title"), Some("Test"));
         assert_eq!(row.tag("artist"), None);
     }
 
@@ -408,8 +430,8 @@ mod tests {
     #[test]
     fn export_config_table_name() {
         let cfg = ExportConfig::with_dsn("sqlite://:memory:");
-        assert_eq!(cfg.table_name("files"),   "mm_files");
-        assert_eq!(cfg.table_name("tags"),    "mm_tags");
+        assert_eq!(cfg.table_name("files"), "mm_files");
+        assert_eq!(cfg.table_name("tags"), "mm_tags");
         assert_eq!(cfg.table_name("history"), "mm_history");
     }
 
@@ -471,15 +493,27 @@ mod tests {
 
     #[test]
     fn export_stats_total_and_persisted() {
-        let s = ExportStats { inserted: 10, updated: 5, skipped: 3, errors: 2, elapsed_ms: 100 };
-        assert_eq!(s.total(),     20);
+        let s = ExportStats {
+            inserted: 10,
+            updated: 5,
+            skipped: 3,
+            errors: 2,
+            elapsed_ms: 100,
+        };
+        assert_eq!(s.total(), 20);
         assert_eq!(s.persisted(), 15);
         assert!(!s.is_clean());
     }
 
     #[test]
     fn export_stats_clean_run() {
-        let s = ExportStats { inserted: 7, updated: 2, skipped: 0, errors: 0, elapsed_ms: 50 };
+        let s = ExportStats {
+            inserted: 7,
+            updated: 2,
+            skipped: 0,
+            errors: 0,
+            elapsed_ms: 50,
+        };
         assert!(s.is_clean());
         assert_eq!(s.total(), 9);
     }
@@ -493,12 +527,24 @@ mod tests {
 
     #[test]
     fn export_stats_merge() {
-        let mut a = ExportStats { inserted: 5, updated: 2, skipped: 1, errors: 0, elapsed_ms: 30 };
-        let     b = ExportStats { inserted: 3, updated: 1, skipped: 0, errors: 1, elapsed_ms: 20 };
+        let mut a = ExportStats {
+            inserted: 5,
+            updated: 2,
+            skipped: 1,
+            errors: 0,
+            elapsed_ms: 30,
+        };
+        let b = ExportStats {
+            inserted: 3,
+            updated: 1,
+            skipped: 0,
+            errors: 1,
+            elapsed_ms: 20,
+        };
         a.merge(&b);
-        assert_eq!(a.inserted,   8);
-        assert_eq!(a.updated,    3);
-        assert_eq!(a.errors,     1);
+        assert_eq!(a.inserted, 8);
+        assert_eq!(a.updated, 3);
+        assert_eq!(a.errors, 1);
         assert_eq!(a.elapsed_ms, 50);
         assert!(!a.is_clean());
     }
@@ -513,22 +559,40 @@ mod tests {
 
     #[test]
     fn export_error_display_connection_failed() {
-        let e = ExportError::ConnectionFailed { dialect: DbDialect::MySql, message: "refused".into() };
+        let e = ExportError::ConnectionFailed {
+            dialect: DbDialect::MySql,
+            message: "refused".into(),
+        };
         assert!(e.to_string().contains("MySQL"));
         assert!(e.to_string().contains("refused"));
     }
 
     #[test]
     fn export_error_retryable() {
-        assert!(ExportError::ConnectionFailed { dialect: DbDialect::Sqlite, message: String::new() }.is_retryable());
-        assert!(ExportError::BatchFailed { count: 5, message: String::new() }.is_retryable());
+        assert!(
+            ExportError::ConnectionFailed {
+                dialect: DbDialect::Sqlite,
+                message: String::new()
+            }
+            .is_retryable()
+        );
+        assert!(
+            ExportError::BatchFailed {
+                count: 5,
+                message: String::new()
+            }
+            .is_retryable()
+        );
         assert!(!ExportError::Cancelled.is_retryable());
         assert!(!ExportError::SchemaInitFailed("x".into()).is_retryable());
     }
 
     #[test]
     fn export_error_unsupported() {
-        let e = ExportError::Unsupported { dialect: DbDialect::Sqlite, feature: "full-text search".into() };
+        let e = ExportError::Unsupported {
+            dialect: DbDialect::Sqlite,
+            feature: "full-text search".into(),
+        };
         assert!(e.to_string().contains("SQLite"));
         assert!(e.to_string().contains("full-text search"));
     }
@@ -538,11 +602,11 @@ mod tests {
     #[test]
     fn rename_event_fields() {
         let ev = RenameEvent {
-            file_hash:  "abc".into(),
-            old_path:   "/old/file.mp3".into(),
-            new_path:   "/new/file.mp3".into(),
-            rule_name:  "Music Rule".into(),
-            dry_run:    false,
+            file_hash: "abc".into(),
+            old_path: "/old/file.mp3".into(),
+            new_path: "/new/file.mp3".into(),
+            rule_name: "Music Rule".into(),
+            dry_run: false,
             renamed_at: 1_700_000_000,
         };
         assert!(!ev.dry_run);
@@ -553,8 +617,12 @@ mod tests {
     #[test]
     fn rename_event_dry_run_flag() {
         let ev = RenameEvent {
-            file_hash: String::new(), old_path: String::new(), new_path: String::new(),
-            rule_name: String::new(), dry_run: true, renamed_at: 0,
+            file_hash: String::new(),
+            old_path: String::new(),
+            new_path: String::new(),
+            rule_name: String::new(),
+            dry_run: true,
+            renamed_at: 0,
         };
         assert!(ev.dry_run);
     }

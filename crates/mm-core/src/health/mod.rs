@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-
 /// Status of an individual health check
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CheckStatus {
@@ -74,17 +73,26 @@ impl HealthReport {
 
     /// How many checks passed
     pub fn pass_count(&self) -> usize {
-        self.checks.iter().filter(|c| c.status == CheckStatus::Pass).count()
+        self.checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Pass)
+            .count()
     }
 
     /// How many checks have warnings
     pub fn warn_count(&self) -> usize {
-        self.checks.iter().filter(|c| c.status == CheckStatus::Warn).count()
+        self.checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Warn)
+            .count()
     }
 
     /// How many checks failed
     pub fn fail_count(&self) -> usize {
-        self.checks.iter().filter(|c| c.status == CheckStatus::Fail).count()
+        self.checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Fail)
+            .count()
     }
 
     /// Whether all checks passed (no warnings or failures)
@@ -105,7 +113,10 @@ pub fn check_config_file(path: &Path) -> CheckResult {
         return CheckResult {
             name: "Config file".into(),
             status: CheckStatus::Warn,
-            message: format!("Config file not found at {}. Using defaults.", path.display()),
+            message: format!(
+                "Config file not found at {}. Using defaults.",
+                path.display()
+            ),
         };
     }
 
@@ -178,7 +189,10 @@ pub fn check_disk_space(path: &Path, _min_bytes: u64) -> CheckResult {
         return CheckResult {
             name: "Disk space".into(),
             status: CheckStatus::Warn,
-            message: format!("Cannot check disk space: path does not exist: {}", path.display()),
+            message: format!(
+                "Cannot check disk space: path does not exist: {}",
+                path.display()
+            ),
         };
     }
 
@@ -196,9 +210,8 @@ pub fn check_disk_space(path: &Path, _min_bytes: u64) -> CheckResult {
 
 /// Check that the config directory is writable (for state and lock files)
 pub fn check_config_dir_writable() -> CheckResult {
-    let config_dir = dirs::config_dir()
-        .map(|d| d.join("MeedyaManager"))
-        .unwrap_or_else(|| PathBuf::from("."));
+    let config_dir =
+        dirs::config_dir().map_or_else(|| PathBuf::from("."), |d| d.join("MeedyaManager"));
 
     // Try to create the directory if it doesn't exist
     if let Err(e) = std::fs::create_dir_all(&config_dir) {
@@ -212,7 +225,7 @@ pub fn check_config_dir_writable() -> CheckResult {
     // Try to write a test file
     let test_file = config_dir.join(".health_check_test");
     match std::fs::write(&test_file, "test") {
-        Ok(_) => {
+        Ok(()) => {
             let _ = std::fs::remove_file(&test_file);
             CheckResult {
                 name: "Config directory".into(),
@@ -229,10 +242,7 @@ pub fn check_config_dir_writable() -> CheckResult {
 }
 
 /// Run all health checks and return a consolidated report.
-pub fn run_health_checks(
-    config_path: &Path,
-    watch_folders: &[PathBuf],
-) -> HealthReport {
+pub fn run_health_checks(config_path: &Path, watch_folders: &[PathBuf]) -> HealthReport {
     let mut report = HealthReport::new();
 
     // Check config file
@@ -309,10 +319,26 @@ mod tests {
     #[test]
     fn health_report_counts() {
         let mut report = HealthReport::new();
-        report.add(CheckResult { name: "a".into(), status: CheckStatus::Pass, message: "".into() });
-        report.add(CheckResult { name: "b".into(), status: CheckStatus::Pass, message: "".into() });
-        report.add(CheckResult { name: "c".into(), status: CheckStatus::Warn, message: "".into() });
-        report.add(CheckResult { name: "d".into(), status: CheckStatus::Fail, message: "".into() });
+        report.add(CheckResult {
+            name: "a".into(),
+            status: CheckStatus::Pass,
+            message: String::new(),
+        });
+        report.add(CheckResult {
+            name: "b".into(),
+            status: CheckStatus::Pass,
+            message: String::new(),
+        });
+        report.add(CheckResult {
+            name: "c".into(),
+            status: CheckStatus::Warn,
+            message: String::new(),
+        });
+        report.add(CheckResult {
+            name: "d".into(),
+            status: CheckStatus::Fail,
+            message: String::new(),
+        });
 
         assert_eq!(report.pass_count(), 2);
         assert_eq!(report.warn_count(), 1);
@@ -401,10 +427,7 @@ mod tests {
 
     #[test]
     fn run_health_checks_with_missing_config() {
-        let report = run_health_checks(
-            Path::new("/nonexistent/settings.json5"),
-            &[],
-        );
+        let report = run_health_checks(Path::new("/nonexistent/settings.json5"), &[]);
         assert!(report.warn_count() >= 2); // Missing config + no watch folders
     }
 

@@ -25,10 +25,13 @@ regex = { workspace = true }
 dotenvy = { workspace = true }
 dirs = { workspace = true }
 chrono = { workspace = true }
-gettextrs = { workspace = true }
 sha2 = { workspace = true }
 uuid = { workspace = true }
 semver = { workspace = true }
+
+# GNU gettext bindings — Linux only (requires libintl system library)
+[target.'cfg(target_os = "linux")'.dependencies]
+gettextrs = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
@@ -39,3 +42,6 @@ winapi = { version = "0.3", features = ["processthreadsapi", "handleapi", "errha
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

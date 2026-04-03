@@ -59,16 +59,13 @@ pub enum CloudError {
 impl CloudError {
     /// Returns `true` if the error is transient and the operation should be retried.
     pub fn is_retryable(&self) -> bool {
-        matches!(
-            self,
-            CloudError::Network(_) | CloudError::RateLimited { .. }
-        )
+        matches!(self, Self::Network(_) | Self::RateLimited { .. })
     }
 
     /// Returns the number of seconds to wait before retrying, if known.
     pub fn retry_after_secs(&self) -> Option<u64> {
         match self {
-            CloudError::RateLimited { retry_after } => Some(*retry_after),
+            Self::RateLimited { retry_after } => Some(*retry_after),
             _ => None,
         }
     }
@@ -79,7 +76,7 @@ impl CloudError {
 // ---------------------------------------------------------------------------
 
 /// Metadata for a single file or folder returned by a cloud provider.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloudFile {
     /// Provider-specific unique file/folder identifier.
     pub id: String,
@@ -111,7 +108,7 @@ impl CloudFile {
         std::path::Path::new(&self.name)
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase())
+            .map(str::to_lowercase)
             .unwrap_or_default()
     }
 
@@ -120,10 +117,29 @@ impl CloudFile {
         // Audio, video, image, and e-book extensions we care about.
         matches!(
             self.extension().as_str(),
-            "mp3" | "flac" | "m4a" | "aac" | "ogg" | "opus" | "wav" | "wma"
-                | "mp4" | "mkv" | "avi" | "mov" | "wmv" | "m4v" | "webm"
-                | "jpg" | "jpeg" | "png" | "gif" | "webp"
-                | "epub" | "pdf" | "mobi"
+            "mp3"
+                | "flac"
+                | "m4a"
+                | "aac"
+                | "ogg"
+                | "opus"
+                | "wav"
+                | "wma"
+                | "mp4"
+                | "mkv"
+                | "avi"
+                | "mov"
+                | "wmv"
+                | "m4v"
+                | "webm"
+                | "jpg"
+                | "jpeg"
+                | "png"
+                | "gif"
+                | "webp"
+                | "epub"
+                | "pdf"
+                | "mobi"
         )
     }
 }
@@ -133,6 +149,7 @@ impl CloudFile {
 // ---------------------------------------------------------------------------
 
 /// The set of incremental changes detected since the last sync cursor.
+///
 /// Providers that support delta APIs (OneDrive, Google Drive, Dropbox) fill
 /// this from their native delta/changes endpoint; polling-only providers
 /// re-compute it by diffing full directory listings.
@@ -214,7 +231,7 @@ impl CloudCapabilities {
 // ---------------------------------------------------------------------------
 
 /// High-level state of a cloud provider connection.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncStatus {
     /// Not yet connected or authenticated.
     NotConnected,
@@ -231,11 +248,11 @@ pub enum SyncStatus {
 impl fmt::Display for SyncStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SyncStatus::NotConnected => write!(f, "Not Connected"),
-            SyncStatus::Synced      => write!(f, "Synced"),
-            SyncStatus::Syncing     => write!(f, "Syncing…"),
-            SyncStatus::Conflict    => write!(f, "Conflict"),
-            SyncStatus::Error(msg)  => write!(f, "Error: {msg}"),
+            Self::NotConnected => write!(f, "Not Connected"),
+            Self::Synced => write!(f, "Synced"),
+            Self::Syncing => write!(f, "Syncing…"),
+            Self::Conflict => write!(f, "Conflict"),
+            Self::Error(msg) => write!(f, "Error: {msg}"),
         }
     }
 }
@@ -267,13 +284,13 @@ impl SyncState {
     /// Creates a fresh `SyncState` with `NotConnected` status for the given provider.
     pub fn new(provider: impl Into<String>, root_path: impl Into<String>) -> Self {
         Self {
-            provider:      provider.into(),
-            status:        SyncStatus::NotConnected,
-            last_sync:     None,
-            files_synced:  0,
+            provider: provider.into(),
+            status: SyncStatus::NotConnected,
+            last_sync: None,
+            files_synced: 0,
             files_pending: 0,
-            cursor:        None,
-            root_path:     root_path.into(),
+            cursor: None,
+            root_path: root_path.into(),
         }
     }
 }
@@ -283,7 +300,7 @@ impl SyncState {
 // ---------------------------------------------------------------------------
 
 /// Strategy to apply when a local and remote file have both been modified.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ConflictResolution {
     /// Always keep the local version; overwrite the remote copy.
     LocalWins,
@@ -292,22 +309,17 @@ pub enum ConflictResolution {
     /// Keep both versions by suffixing the local copy with a timestamp.
     KeepBoth,
     /// Pause and surface the conflict to the user for manual resolution.
+    #[default]
     Ask,
-}
-
-impl Default for ConflictResolution {
-    fn default() -> Self {
-        Self::Ask
-    }
 }
 
 impl fmt::Display for ConflictResolution {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConflictResolution::LocalWins  => write!(f, "Local wins"),
-            ConflictResolution::RemoteWins => write!(f, "Remote wins"),
-            ConflictResolution::KeepBoth   => write!(f, "Keep both"),
-            ConflictResolution::Ask        => write!(f, "Ask me"),
+            Self::LocalWins => write!(f, "Local wins"),
+            Self::RemoteWins => write!(f, "Remote wins"),
+            Self::KeepBoth => write!(f, "Keep both"),
+            Self::Ask => write!(f, "Ask me"),
         }
     }
 }
@@ -334,18 +346,31 @@ pub struct SyncConfig {
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
-            poll_interval_secs:  60,
+            poll_interval_secs: 60,
             max_concurrent_syncs: 2,
             conflict_resolution: ConflictResolution::Ask,
             media_extensions: vec![
                 // Audio
-                "mp3".into(), "flac".into(), "m4a".into(), "aac".into(),
-                "ogg".into(), "opus".into(), "wav".into(), "wma".into(),
+                "mp3".into(),
+                "flac".into(),
+                "m4a".into(),
+                "aac".into(),
+                "ogg".into(),
+                "opus".into(),
+                "wav".into(),
+                "wma".into(),
                 // Video
-                "mp4".into(), "mkv".into(), "avi".into(), "mov".into(),
-                "wmv".into(), "m4v".into(), "webm".into(),
+                "mp4".into(),
+                "mkv".into(),
+                "avi".into(),
+                "mov".into(),
+                "wmv".into(),
+                "m4v".into(),
+                "webm".into(),
                 // E-books / documents
-                "epub".into(), "pdf".into(), "mobi".into(),
+                "epub".into(),
+                "pdf".into(),
+                "mobi".into(),
             ],
             max_files_per_cycle: 500,
         }
@@ -378,36 +403,43 @@ pub trait CloudProvider: Send + Sync {
     fn capabilities(&self) -> CloudCapabilities;
 
     /// Performs the OAuth / API-key authentication flow and stores the token.
-    fn authenticate(&mut self)
-        -> impl Future<Output = Result<(), CloudError>> + Send;
+    fn authenticate(&mut self) -> impl Future<Output = Result<(), CloudError>> + Send;
 
     /// Refreshes an expired access token using the stored refresh token.
-    fn refresh_token(&mut self)
-        -> impl Future<Output = Result<(), CloudError>> + Send;
+    fn refresh_token(&mut self) -> impl Future<Output = Result<(), CloudError>> + Send;
 
     /// Lists all files (recursively) under the given cloud path.
-    fn list_files(&self, path: &str)
-        -> impl Future<Output = Result<Vec<CloudFile>, CloudError>> + Send;
+    fn list_files(
+        &self,
+        path: &str,
+    ) -> impl Future<Output = Result<Vec<CloudFile>, CloudError>> + Send;
 
     /// Fetches metadata for a single file by its provider-specific ID.
-    fn get_file(&self, id: &str)
-        -> impl Future<Output = Result<CloudFile, CloudError>> + Send;
+    fn get_file(&self, id: &str) -> impl Future<Output = Result<CloudFile, CloudError>> + Send;
 
     /// Downloads the content of `file` and writes it to `dest` on disk.
-    fn download_file(&self, file: &CloudFile, dest: &Path)
-        -> impl Future<Output = Result<(), CloudError>> + Send;
+    fn download_file(
+        &self,
+        file: &CloudFile,
+        dest: &Path,
+    ) -> impl Future<Output = Result<(), CloudError>> + Send;
 
     /// Uploads the file at `src` to `dest_path` in the cloud storage.
-    fn upload_file(&self, src: &Path, dest_path: &str)
-        -> impl Future<Output = Result<CloudFile, CloudError>> + Send;
+    fn upload_file(
+        &self,
+        src: &Path,
+        dest_path: &str,
+    ) -> impl Future<Output = Result<CloudFile, CloudError>> + Send;
 
     /// Returns changes since the given `cursor` (or the full listing if `None`).
-    fn watch_changes(&self, path: &str, cursor: Option<&str>)
-        -> impl Future<Output = Result<ChangeSet, CloudError>> + Send;
+    fn watch_changes(
+        &self,
+        path: &str,
+        cursor: Option<&str>,
+    ) -> impl Future<Output = Result<ChangeSet, CloudError>> + Send;
 
     /// Revokes stored tokens and resets the provider to an unauthenticated state.
-    fn disconnect(&mut self)
-        -> impl Future<Output = Result<(), CloudError>> + Send;
+    fn disconnect(&mut self) -> impl Future<Output = Result<(), CloudError>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -461,14 +493,14 @@ mod tests {
 
     fn make_file(name: &str) -> CloudFile {
         CloudFile {
-            id:           name.to_string(),
-            name:         name.to_string(),
-            path:         format!("/Music/{name}"),
-            size:         Some(4_096),
-            modified:     None,
-            is_folder:    false,
-            mime_type:    Some("audio/mpeg".into()),
-            hash:         None,
+            id: name.to_string(),
+            name: name.to_string(),
+            path: format!("/Music/{name}"),
+            size: Some(4_096),
+            modified: None,
+            is_folder: false,
+            mime_type: Some("audio/mpeg".into()),
+            hash: None,
             download_url: None,
         }
     }
@@ -482,9 +514,15 @@ mod tests {
     #[test]
     fn extension_returns_empty_for_folder() {
         let f = CloudFile {
-            id: "dir1".into(), name: "Music".into(), path: "/Music".into(),
-            size: None, modified: None, is_folder: true,
-            mime_type: None, hash: None, download_url: None,
+            id: "dir1".into(),
+            name: "Music".into(),
+            path: "/Music".into(),
+            size: None,
+            modified: None,
+            is_folder: true,
+            mime_type: None,
+            hash: None,
+            download_url: None,
         };
         assert_eq!(f.extension(), "");
     }
@@ -521,10 +559,10 @@ mod tests {
     #[test]
     fn changeset_total_counts_all_variants() {
         let cs = ChangeSet {
-            added:    vec![make_file("a.mp3"), make_file("b.mp3")],
+            added: vec![make_file("a.mp3"), make_file("b.mp3")],
             modified: vec![make_file("c.mp3")],
-            deleted:  vec!["d".into()],
-            cursor:   "tok123".into(),
+            deleted: vec!["d".into()],
+            cursor: "tok123".into(),
         };
         assert!(!cs.is_empty());
         assert_eq!(cs.total_changes(), 4);

@@ -153,7 +153,9 @@ struct TagRegistryData {
 // ---------------------------------------------------------------------------
 
 /// Returns `true`; used as `#[serde(default = "default_true")]`.
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 /// The singleton registry, initialised once on first access.
 static REGISTRY: LazyLock<TagRegistryData> = LazyLock::new(|| {
@@ -218,7 +220,10 @@ pub fn tag_by_id(id: &str) -> Option<&'static TagDefinition> {
 /// Returns `None` if no enabled standard tag has that display name.
 pub fn tag_by_name(name: &str) -> Option<&'static TagDefinition> {
     let lower = name.to_ascii_lowercase();
-    REGISTRY.tags.iter().find(|t| t.enabled && t.name.to_ascii_lowercase() == lower)
+    REGISTRY
+        .tags
+        .iter()
+        .find(|t| t.enabled && t.name.to_ascii_lowercase() == lower)
 }
 
 /// Return the `CustomTagDefinition` whose `id` matches (case-insensitive).
@@ -239,7 +244,8 @@ pub fn custom_tag_by_id(id: &str) -> Option<&'static CustomTagDefinition> {
 /// - The tag picker in the rename-rule builder UI
 /// - The FFI layer (`uniffi_api::list_known_tags`, `mm_ffi_list_known_tags`)
 pub fn known_template_tags() -> Vec<String> {
-    let mut names: Vec<String> = REGISTRY.tags
+    let mut names: Vec<String> = REGISTRY
+        .tags
         .iter()
         .filter(|t| t.enabled)
         .map(|t| t.name.clone())
@@ -253,7 +259,8 @@ pub fn known_template_tags() -> Vec<String> {
 ///
 /// Useful for building grouped tag pickers in the UI.
 pub fn known_template_tags_for_category(category: &TagCategory) -> Vec<String> {
-    let mut names: Vec<String> = REGISTRY.tags
+    let mut names: Vec<String> = REGISTRY
+        .tags
         .iter()
         .filter(|t| t.enabled && &t.category == category)
         .map(|t| t.name.clone())
@@ -264,7 +271,8 @@ pub fn known_template_tags_for_category(category: &TagCategory) -> Vec<String> {
 
 /// Return a sorted list of all custom tag template names.
 pub fn known_custom_template_tags() -> Vec<String> {
-    let mut names: Vec<String> = REGISTRY.custom
+    let mut names: Vec<String> = REGISTRY
+        .custom
         .iter()
         .filter(|t| t.enabled)
         .map(|t| t.name.clone())
@@ -373,7 +381,10 @@ mod tests {
         let tags = known_template_tags();
         let mut sorted = tags.clone();
         sorted.sort_unstable();
-        assert_eq!(tags, sorted, "known_template_tags() must return a sorted list");
+        assert_eq!(
+            tags, sorted,
+            "known_template_tags() must return a sorted list"
+        );
     }
 
     #[test]
@@ -381,7 +392,11 @@ mod tests {
         let tags = known_template_tags();
         let mut deduped = tags.clone();
         deduped.dedup();
-        assert_eq!(tags.len(), deduped.len(), "no duplicate names in template tag list");
+        assert_eq!(
+            tags.len(),
+            deduped.len(),
+            "no duplicate names in template tag list"
+        );
     }
 
     // ── Category filter ──────────────────────────────────────────────────────
@@ -441,8 +456,10 @@ mod tests {
     fn custom_tags_empty_by_default() {
         // The built-in tags.json5 ships with an empty custom array.
         // Users populate it in their override file.
-        assert!(custom_tag_definitions().is_empty(),
-            "built-in custom tag list should be empty — users add their own");
+        assert!(
+            custom_tag_definitions().is_empty(),
+            "built-in custom tag list should be empty — users add their own"
+        );
     }
 
     // ── All known template tags ──────────────────────────────────────────────

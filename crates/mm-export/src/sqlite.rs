@@ -13,7 +13,9 @@
 //                  unique constraint is never violated.
 
 use crate::schema::SchemaBuilder;
-use crate::traits::{DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent};
+use crate::traits::{
+    DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent,
+};
 
 // ---------------------------------------------------------------------------
 // SqliteExporter
@@ -41,7 +43,10 @@ impl SqliteExporter {
                 "SQLite DSN must be a file path or ':memory:'".into(),
             ));
         }
-        Ok(Self { config, connected: false })
+        Ok(Self {
+            config,
+            connected: false,
+        })
     }
 
     /// Returns the dialect-specific DDL for this exporter's schema.
@@ -113,13 +118,13 @@ impl DatabaseExporter for SqliteExporter {
         // Stub: validate that required fields are present.
         if row.file_hash.is_empty() {
             return Err(ExportError::RowFailed {
-                path:    row.path.clone(),
+                path: row.path.clone(),
                 message: "file_hash must not be empty".into(),
             });
         }
         if row.path.is_empty() {
             return Err(ExportError::RowFailed {
-                path:    String::new(),
+                path: String::new(),
                 message: "path must not be empty".into(),
             });
         }
@@ -132,11 +137,14 @@ impl DatabaseExporter for SqliteExporter {
     async fn export_batch(&self, rows: &[ExportRow]) -> Result<ExportStats, ExportError> {
         // Production: wrap rows in a single SQLite transaction.
         // Stub: delegate to export_file() for each row, counting results.
-        let mut stats = ExportStats { elapsed_ms: 0, ..Default::default() };
+        let mut stats = ExportStats {
+            elapsed_ms: 0,
+            ..Default::default()
+        };
         for row in rows {
             match self.export_file(row).await {
-                Ok(())  => stats.inserted += 1, // treat every row as "new" in stub
-                Err(_)  => stats.errors   += 1,
+                Ok(()) => stats.inserted += 1, // treat every row as "new" in stub
+                Err(_) => stats.errors += 1,
             }
         }
         Ok(stats)
@@ -191,7 +199,9 @@ mod tests {
     fn schema_ddl_has_three_statements() {
         let ddl = exporter().schema_ddl();
         assert_eq!(ddl.len(), 3);
-        for stmt in &ddl { assert!(!stmt.is_empty()); }
+        for stmt in &ddl {
+            assert!(!stmt.is_empty());
+        }
     }
 
     #[test]
@@ -247,28 +257,28 @@ mod tests {
         ];
         let stats = exporter().export_batch(&rows).await.unwrap();
         assert_eq!(stats.inserted, 3);
-        assert_eq!(stats.errors,   0);
+        assert_eq!(stats.errors, 0);
     }
 
     #[tokio::test]
     async fn export_batch_counts_errors() {
         let rows = vec![
             ExportRow::new("/good.mp3", "good.mp3", "h1"),
-            ExportRow::new("/bad.mp3",  "bad.mp3",  ""),   // empty hash → error
+            ExportRow::new("/bad.mp3", "bad.mp3", ""), // empty hash → error
         ];
         let stats = exporter().export_batch(&rows).await.unwrap();
         assert_eq!(stats.inserted, 1);
-        assert_eq!(stats.errors,   1);
+        assert_eq!(stats.errors, 1);
     }
 
     #[tokio::test]
     async fn record_rename_valid_event() {
         let ev = RenameEvent {
-            file_hash:  "abc".into(),
-            old_path:   "/old.mp3".into(),
-            new_path:   "/new.mp3".into(),
-            rule_name:  "Rule A".into(),
-            dry_run:    false,
+            file_hash: "abc".into(),
+            old_path: "/old.mp3".into(),
+            new_path: "/new.mp3".into(),
+            rule_name: "Rule A".into(),
+            dry_run: false,
             renamed_at: 0,
         };
         assert!(exporter().record_rename(&ev).await.is_ok());
@@ -277,8 +287,12 @@ mod tests {
     #[tokio::test]
     async fn record_rename_empty_hash_fails() {
         let ev = RenameEvent {
-            file_hash: String::new(), old_path: String::new(), new_path: String::new(),
-            rule_name: String::new(), dry_run: false, renamed_at: 0,
+            file_hash: String::new(),
+            old_path: String::new(),
+            new_path: String::new(),
+            rule_name: String::new(),
+            dry_run: false,
+            renamed_at: 0,
         };
         assert!(exporter().record_rename(&ev).await.is_err());
     }

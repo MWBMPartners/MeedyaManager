@@ -15,18 +15,23 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use mm_core::classify;
 use mm_core::config::AppConfig;
 use mm_core::metadata::{self, TagMap};
 use mm_core::renamer::{self, SanitizeConfig};
-use mm_core::rule_engine::{self, evaluator::{EvalContext, evaluate_template}};
+use mm_core::rule_engine::{
+    self,
+    evaluator::{EvalContext, evaluate_template},
+};
 use mm_core::watcher::{self, WatchEvent, WatcherConfig};
 
 use crate::callbacks::WatchCallback;
-use crate::types::{AudioPropertiesFfi, MmFfiError, RenamePreviewFfi, TagEntry, ValidationResult, WatchEventFfi};
+use crate::types::{
+    AudioPropertiesFfi, MmFfiError, RenamePreviewFfi, TagEntry, ValidationResult, WatchEventFfi,
+};
 
 // ---------------------------------------------------------------------------
 // Version
@@ -51,8 +56,10 @@ pub fn mm_version() -> String {
 #[uniffi::export]
 pub fn config_path() -> String {
     dirs::config_dir()
-        .map(|d| d.join("MeedyaManager").join("settings.json5"))
-        .unwrap_or_else(|| PathBuf::from("settings.json5"))
+        .map_or_else(
+            || PathBuf::from("settings.json5"),
+            |d| d.join("MeedyaManager").join("settings.json5"),
+        )
         .to_string_lossy()
         .into_owned()
 }
@@ -64,11 +71,9 @@ pub fn config_path() -> String {
 #[uniffi::export]
 pub fn config_load() -> Result<String, MmFfiError> {
     // AppConfig::load() reads from the platform config dir (no arguments)
-    let config = AppConfig::load()
-        .map_err(MmFfiError::from)?;
+    let config = AppConfig::load().map_err(MmFfiError::from)?;
 
-    serde_json::to_string_pretty(&config)
-        .map_err(|e| MmFfiError::Config(e.to_string()))
+    serde_json::to_string_pretty(&config).map_err(|e| MmFfiError::Config(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -92,8 +97,8 @@ pub fn scan_directory(
     let dir_path = PathBuf::from(&directory);
 
     // Collect paths of all recognised media files in the directory
-    let media_files = collect_media_files(&dir_path, recursive)
-        .map_err(|e| MmFfiError::Io(e.to_string()))?;
+    let media_files =
+        collect_media_files(&dir_path, recursive).map_err(|e| MmFfiError::Io(e.to_string()))?;
 
     // For each file: read metadata, flatten to HashMap<String, String>, collect
     let files_with_tags: Vec<(PathBuf, HashMap<String, String>)> = media_files
@@ -101,7 +106,7 @@ pub fn scan_directory(
         .map(|path| {
             // Read tags; use empty map for files that cannot be read
             let flat = metadata::extract_tags(&path)
-                .map(|tag_map| flatten_tag_map(tag_map))
+                .map(flatten_tag_map)
                 .unwrap_or_default();
             (path, flat)
         })
@@ -116,13 +121,8 @@ pub fn scan_directory(
     let sanitize_cfg = SanitizeConfig::default();
 
     // Simulate renames using the renamer module
-    let summary = renamer::simulate_rename(
-        &files_with_tags,
-        &template,
-        &dir_path,
-        &sanitize_cfg,
-    )
-    .map_err(MmFfiError::from)?;
+    let summary = renamer::simulate_rename(&files_with_tags, &template, &dir_path, &sanitize_cfg)
+        .map_err(MmFfiError::from)?;
 
     // Convert mm-core RenamePreview to FFI-safe RenamePreviewFfi
     let mut previews: Vec<RenamePreviewFfi> = summary
@@ -155,8 +155,7 @@ pub fn execute_renames(previews: Vec<RenamePreviewFfi>) -> Result<u32, MmFfiErro
 
         // Ensure destination directory exists (handles sub-directory templates)
         if let Some(parent) = dst.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| MmFfiError::Io(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| MmFfiError::Io(e.to_string()))?;
         }
 
         // Perform the rename
@@ -182,8 +181,7 @@ pub fn get_metadata(path: String) -> Result<Vec<TagEntry>, MmFfiError> {
     let file_path = PathBuf::from(&path);
 
     // Extract the multi-value TagMap from the file
-    let tag_map = metadata::extract_tags(&file_path)
-        .map_err(MmFfiError::from)?;
+    let tag_map = metadata::extract_tags(&file_path).map_err(MmFfiError::from)?;
 
     // Flatten: join Vec<String> values with "; " and build sorted TagEntry list
     let mut entries: Vec<TagEntry> = tag_map
@@ -215,17 +213,24 @@ pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiErro
         .into_iter()
         .map(|e| {
             // Split on "; " to reconstruct multi-value vectors
-            let values = e.value
+            let values = e
+                .value
                 .split("; ")
                 .filter(|s| !s.is_empty())
-                .map(|s| s.to_owned())
+                .map(std::borrow::ToOwned::to_owned)
                 .collect::<Vec<_>>();
-            (e.key, if values.is_empty() { vec![e.value] } else { values })
+            (
+                e.key,
+                if values.is_empty() {
+                    vec![e.value]
+                } else {
+                    values
+                },
+            )
         })
         .collect();
 
-    metadata::write_tags(&file_path, &tag_map)
-        .map_err(MmFfiError::from)
+    metadata::write_tags(&file_path, &tag_map).map_err(MmFfiError::from)
 }
 
 /// Remove a single tag field from a media file.
@@ -235,8 +240,7 @@ pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiErro
 #[uniffi::export]
 pub fn remove_tag(path: String, tag_key: String) -> Result<(), MmFfiError> {
     let file_path = PathBuf::from(&path);
-    metadata::remove_tag(&file_path, &tag_key)
-        .map_err(MmFfiError::from)
+    metadata::remove_tag(&file_path, &tag_key).map_err(MmFfiError::from)
 }
 
 /// Read audio technical properties from a media file.
@@ -246,8 +250,7 @@ pub fn remove_tag(path: String, tag_key: String) -> Result<(), MmFfiError> {
 #[uniffi::export]
 pub fn get_audio_properties(path: String) -> Result<AudioPropertiesFfi, MmFfiError> {
     let file_path = PathBuf::from(&path);
-    let props = metadata::extract_audio_properties(&file_path)
-        .map_err(MmFfiError::from)?;
+    let props = metadata::extract_audio_properties(&file_path).map_err(MmFfiError::from)?;
 
     // Determine codec and lossless flag from the file extension via classify
     let (codec, is_lossless) = file_path
@@ -321,17 +324,13 @@ pub fn validate_template(template: String) -> ValidationResult {
 #[uniffi::export]
 pub fn apply_template(template: String, tags: Vec<TagEntry>) -> Result<String, MmFfiError> {
     // Convert Vec<TagEntry> → TagMap for EvalContext
-    let tag_map: TagMap = tags
-        .into_iter()
-        .map(|e| (e.key, vec![e.value]))
-        .collect();
+    let tag_map: TagMap = tags.into_iter().map(|e| (e.key, vec![e.value])).collect();
 
     // Build an evaluation context from the tag map
     let ctx = EvalContext::new(&tag_map);
 
     // Parse + evaluate the template
-    evaluate_template(&template, &ctx)
-        .map_err(MmFfiError::from)
+    evaluate_template(&template, &ctx).map_err(MmFfiError::from)
 }
 
 /// List all tag display names that MeedyaManager recognises.
@@ -388,10 +387,7 @@ static NEXT_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
 /// Events are delivered to `callback` from a background thread.
 /// Returns a handle ID to pass to `stop_watch` when done.
 #[uniffi::export]
-pub fn start_watch(
-    directory: String,
-    callback: Arc<dyn WatchCallback>,
-) -> Result<u64, MmFfiError> {
+pub fn start_watch(directory: String, callback: Arc<dyn WatchCallback>) -> Result<u64, MmFfiError> {
     let dir_path = PathBuf::from(&directory);
 
     // Build a WatcherConfig for the target directory
@@ -402,8 +398,7 @@ pub fn start_watch(
     };
 
     // Start the channel-based watcher from mm-core
-    let (watcher, receiver) = watcher::start_watcher(&config)
-        .map_err(MmFfiError::from)?;
+    let (watcher, receiver) = watcher::start_watcher(&config).map_err(MmFfiError::from)?;
 
     // Assign a unique ID for this watcher instance
     let handle_id = NEXT_HANDLE_ID.fetch_add(1, Ordering::SeqCst);
@@ -422,10 +417,13 @@ pub fn start_watch(
     });
 
     // Store the handle so stop_watch can find and drop it
-    WATCHERS.lock().unwrap().insert(handle_id, ActiveWatcher {
-        _watcher: watcher,
-        thread: Some(thread),
-    });
+    WATCHERS.lock().unwrap().insert(
+        handle_id,
+        ActiveWatcher {
+            _watcher: watcher,
+            thread: Some(thread),
+        },
+    );
 
     Ok(handle_id)
 }
@@ -449,10 +447,7 @@ pub fn stop_watch(handle_id: u64) {
 ///
 /// Uses the classify module to determine if each file is a recognised
 /// media format. Other file types (documents, archives, etc.) are skipped.
-pub(crate) fn collect_media_files(
-    dir: &PathBuf,
-    recursive: bool,
-) -> std::io::Result<Vec<PathBuf>> {
+pub(crate) fn collect_media_files(dir: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     collect_media_files_inner(dir, recursive, &mut paths)?;
     Ok(paths)
@@ -478,12 +473,11 @@ fn collect_media_files_inner(
             let is_media = path
                 .extension()
                 .and_then(|e| e.to_str())
-                .map(|ext| {
+                .is_some_and(|ext| {
                     let c = classify::classify_by_extension(ext);
                     // Include Audio and Video files only; skip Image/Document/Archive
                     matches!(c.group, MediaGroup::Audio | MediaGroup::Video)
-                })
-                .unwrap_or(false);
+                });
 
             if is_media {
                 out.push(path);

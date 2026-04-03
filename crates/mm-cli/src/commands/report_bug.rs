@@ -66,9 +66,10 @@ pub fn run(ctx: &CliContext, args: &ReportBugArgs) -> anyhow::Result<i32> {
     };
 
     // ── 2. Get config file path ─────────────────────────────────────────
-    let config_path = mm_core::config::AppConfig::default_settings_path()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "(unable to determine)".to_string());
+    let config_path = mm_core::config::AppConfig::default_settings_path().map_or_else(
+        |_| "(unable to determine)".to_string(),
+        |p| p.display().to_string(),
+    );
 
     // ── 3. Get watch folders from config ────────────────────────────────
     let watch_folders: Vec<String> = ctx
@@ -105,27 +106,21 @@ pub fn run(ctx: &CliContext, args: &ReportBugArgs) -> anyhow::Result<i32> {
         let log_file = log_dir.join("meedya.log");
 
         if log_file.exists() {
-            match std::fs::read_to_string(&log_file) {
-                Ok(contents) => {
-                    // Take last 200 lines
-                    let lines: Vec<String> = contents
-                        .lines()
-                        .rev()
-                        .take(200)
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev()
-                        .map(|s| s.to_string())
-                        .collect();
-                    Some(lines)
-                }
-                Err(_) => {
-                    output::print_warning(&format!(
-                        "Could not read log file: {}",
-                        log_file.display()
-                    ));
-                    None
-                }
+            if let Ok(contents) = std::fs::read_to_string(&log_file) {
+                // Take last 200 lines
+                let lines: Vec<String> = contents
+                    .lines()
+                    .rev()
+                    .take(200)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(std::string::ToString::to_string)
+                    .collect();
+                Some(lines)
+            } else {
+                output::print_warning(&format!("Could not read log file: {}", log_file.display()));
+                None
             }
         } else {
             output::print_warning("No log file found");

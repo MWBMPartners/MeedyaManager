@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use tracing::Level;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 use crate::error::{MmError, MmResult};
 
@@ -78,9 +78,8 @@ pub fn init_logging(config: &LogConfig) -> MmResult<()> {
     // File layer: JSON structured output
     let file_layer = if config.file {
         // Create log directory
-        std::fs::create_dir_all(&config.log_dir).map_err(|e| {
-            MmError::Logging(format!("cannot create log directory: {e}"))
-        })?;
+        std::fs::create_dir_all(&config.log_dir)
+            .map_err(|e| MmError::Logging(format!("cannot create log directory: {e}")))?;
 
         // Create log file with date-based name
         let date = chrono::Utc::now().format("%Y-%m-%d");
@@ -89,9 +88,7 @@ pub fn init_logging(config: &LogConfig) -> MmResult<()> {
             .create(true)
             .append(true)
             .open(&log_path)
-            .map_err(|e| {
-                MmError::Logging(format!("cannot open log file: {e}"))
-            })?;
+            .map_err(|e| MmError::Logging(format!("cannot open log file: {e}")))?;
 
         Some(
             tracing_subscriber::fmt::layer()
@@ -171,7 +168,7 @@ pub fn hash_string(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     let result = hasher.finalize();
-    format!("{:x}", result)[..8].to_string()
+    format!("{result:x}")[..8].to_string()
 }
 
 /// Parse a log level string into a tracing Level.
@@ -195,7 +192,7 @@ mod tests {
         if let Some(home) = dirs::home_dir() {
             let path = home.join("Music").join("song.mp3");
             let redacted = redact_path(&path, false);
-            assert!(redacted.starts_with("~"));
+            assert!(redacted.starts_with('~'));
             assert!(redacted.contains("Music"));
             assert!(redacted.contains("song.mp3"));
         }
@@ -206,7 +203,7 @@ mod tests {
         if let Some(home) = dirs::home_dir() {
             let path = home.join("Music").join("secret_song.mp3");
             let redacted = redact_path(&path, true);
-            assert!(redacted.starts_with("~"));
+            assert!(redacted.starts_with('~'));
             assert!(!redacted.contains("secret_song"));
         }
     }

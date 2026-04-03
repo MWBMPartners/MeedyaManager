@@ -112,7 +112,8 @@ uuid = { version = "1", features = ["v4"] }
 libc = "0.2"
 
 # Internationalisation — GNU gettext bindings for translatable strings
-gettextrs = "0.15"
+# Package name on crates.io is "gettext-rs"; lib name is "gettextrs"
+gettextrs = { version = "0.7", package = "gettext-rs" }
 
 # Semantic version comparison (mm-update)
 semver = { version = "1", features = ["serde"] }
@@ -120,6 +121,55 @@ semver = { version = "1", features = ["serde"] }
 # Testing
 wiremock = "0.6"
 tempfile = "3"
+
+# ---------------------------------------------------------------------------
+# Workspace-wide lint configuration — all crates inherit via lints.workspace = true
+# ---------------------------------------------------------------------------
+[workspace.lints.clippy]
+# Enable pedantic and nursery lint groups as warnings for code quality
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# Allow noisy pedantic lints that don't improve code quality in this project
+module_name_repetitions = "allow"       # e.g. MmError in mm_core::error
+missing_errors_doc = "allow"            # We use detailed comments instead
+missing_panics_doc = "allow"            # We use detailed comments instead
+must_use_candidate = "allow"            # Too noisy for internal APIs
+struct_excessive_bools = "allow"        # Config structs legitimately need multiple bools
+doc_markdown = "allow"                  # Product names, env vars don't need backticks
+too_many_lines = "allow"               # Complex match arms in classify/tag_registry
+wildcard_imports = "allow"              # Used in test modules
+cognitive_complexity = "allow"           # Complex parser/evaluator logic is inherent
+option_if_let_else = "allow"            # Often less readable than if-let
+redundant_pub_crate = "allow"           # Explicit pub(crate) is clearer
+significant_drop_tightening = "allow"   # False positives with lock guards
+return_self_not_must_use = "allow"      # Builder pattern methods don't need #[must_use]
+missing_const_for_fn = "allow"          # Many functions can't be const in practice
+cast_possible_truncation = "allow"      # Numeric casts in audio/video metadata are intentional
+cast_sign_loss = "allow"                # Ditto — metadata values are always positive in practice
+cast_precision_loss = "allow"           # u64→f64 for display/progress calculations is acceptable
+cast_possible_wrap = "allow"            # PID casts (u32→i32) are safe on all supported platforms
+items_after_statements = "allow"        # Helper functions inside test blocks are idiomatic
+match_same_arms = "allow"              # Explicit arms improve readability in classify/registry
+float_cmp = "allow"                     # Audio duration/bitrate comparisons are exact-value checks
+trivially_copy_pass_by_ref = "allow"    # Small types passed by ref for API consistency
+needless_pass_by_value = "allow"        # Some pass-by-value is required for trait bounds
+unnecessary_wraps = "allow"             # Result returns kept for future error handling paths
+let_and_return = "allow"               # Named return values improve readability
+or_fun_call = "allow"                   # unwrap_or(String::new()) is more readable than alternatives
+map_unwrap_or = "allow"                 # map().unwrap_or() is often clearer than map_or()
+redundant_else = "allow"                # Explicit else blocks can improve readability
+iter_without_into_iter = "allow"        # Not all iterables need IntoIterator
+manual_let_else = "allow"              # if-let can be clearer than let-else in some contexts
+clone_on_ref_ptr = "allow"              # Arc::clone() vs .clone() is a style choice
+implicit_hasher = "allow"               # HashMap<K,V> in APIs is fine; no need for BuildHasher
+ref_option = "allow"                    # &Option<T> in trait methods matches existing APIs
+case_sensitive_file_extension_comparisons = "allow" # Extensions in our registry are always lowercase
+trait_duplication_in_bounds = "allow"   # False positive with serde derive macros
+
+[workspace.lints.rust]
+# Warn on unsafe code — mm-ffi allows it explicitly via #![allow(unsafe_code)]
+unsafe_code = "warn"
 
 # ---------------------------------------------------------------------------
 # Build profiles

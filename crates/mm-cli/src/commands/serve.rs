@@ -17,7 +17,7 @@
 use crate::context::CliContext;
 use crate::output::{self, ExitCode, OutputFormat};
 use clap::Args;
-use mm_server::{ServerConfig, JwtService, UserRole};
+use mm_server::{JwtService, ServerConfig};
 use serde::Serialize;
 
 // ─── Command arguments ────────────────────────────────────────────────────
@@ -89,44 +89,64 @@ struct ServeOutput {
 
 /// All HTTP endpoints exposed by the media server.
 const ROUTES: &[(&str, &str, &str)] = &[
-    ("GET",  "/health",           "Liveness probe — no authentication required"),
-    ("POST", "/auth/login",       "Authenticate and receive a JWT"),
-    ("GET",  "/api/library",      "List all media files (paginated)"),
-    ("GET",  "/api/library/:id",  "Single file metadata by ID"),
-    ("GET",  "/api/search",       "Search library by title/artist/album/?q=..."),
-    ("GET",  "/stream/:id",       "Stream media file (Range requests supported)"),
-    ("GET",  "/api/export/status","Database export status (Admin only)"),
-    ("GET",  "/api/server/info",  "Server version and configuration (Admin only)"),
+    (
+        "GET",
+        "/health",
+        "Liveness probe — no authentication required",
+    ),
+    ("POST", "/auth/login", "Authenticate and receive a JWT"),
+    ("GET", "/api/library", "List all media files (paginated)"),
+    ("GET", "/api/library/:id", "Single file metadata by ID"),
+    (
+        "GET",
+        "/api/search",
+        "Search library by title/artist/album/?q=...",
+    ),
+    (
+        "GET",
+        "/stream/:id",
+        "Stream media file (Range requests supported)",
+    ),
+    (
+        "GET",
+        "/api/export/status",
+        "Database export status (Admin only)",
+    ),
+    (
+        "GET",
+        "/api/server/info",
+        "Server version and configuration (Admin only)",
+    ),
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 /// Build a `ServerConfig` from CLI args + context config, resolving overrides.
-pub fn build_server_config(ctx: &CliContext, args: &ServeArgs) -> ServerConfig {
-    // Start with defaults
-    let mut cfg = ServerConfig::default();
-
-    // Apply CLI overrides
-    cfg.bind_address = args.bind.clone();
-    cfg.port         = args.port;
+pub fn build_server_config(_ctx: &CliContext, args: &ServeArgs) -> ServerConfig {
+    // Start with defaults, then apply CLI overrides
+    let mut cfg = ServerConfig {
+        bind_address: args.bind.clone(),
+        port: args.port,
+        ..Default::default()
+    };
 
     // TLS paths: CLI > config file > empty
     if let Some(ref cert) = args.tls_cert {
-        cfg.tls_cert_path = cert.clone();
+        cert.clone_into(&mut cfg.tls_cert_path);
     }
     if let Some(ref key) = args.tls_key {
-        cfg.tls_key_path = key.clone();
+        key.clone_into(&mut cfg.tls_key_path);
     }
 
     // JWT secret: CLI arg > MM_JWT_SECRET env var > empty
     if let Some(ref secret) = args.jwt_secret {
-        cfg.jwt_secret = secret.clone();
+        secret.clone_into(&mut cfg.jwt_secret);
     } else if let Ok(env_secret) = std::env::var("MM_JWT_SECRET") {
         cfg.jwt_secret = env_secret;
     }
 
     // CORS origins
-    cfg.cors_origins = args.cors_origin.clone();
+    args.cors_origin.clone_into(&mut cfg.cors_origins);
 
     cfg
 }
@@ -162,8 +182,11 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
     // --show-routes: print route table and exit
     if args.show_routes {
         output::print_header("MeedyaManager Media Server — Routes");
-        let rows: Vec<Vec<String>> = ROUTES.iter()
-            .map(|(method, path, desc)| vec![method.to_string(), path.to_string(), desc.to_string()])
+        let rows: Vec<Vec<String>> = ROUTES
+            .iter()
+            .map(|(method, path, desc)| {
+                vec![method.to_string(), path.to_string(), desc.to_string()]
+            })
             .collect();
         output::print_table(&["Method", "Path", "Description"], &rows);
         return Ok(ExitCode::SUCCESS);
@@ -174,9 +197,11 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
 
     // Resolve media root
     let media_root = args.media_root.clone().unwrap_or_else(|| {
-        ctx.config.watch_paths.first()
-            .cloned()
-            .unwrap_or_else(|| ".".to_string())
+        ctx.config
+            .watch
+            .folders
+            .first()
+            .map_or_else(|| ".".to_string(), |p| p.to_string_lossy().into_owned())
     });
 
     let address = cfg.bind_addr();
@@ -191,21 +216,28 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
             match ctx.output {
                 OutputFormat::Json => {
                     output::print_json(&ServeOutput {
-                        started:      false,
-                        address:      address.clone(),
+                        started: false,
+                        address,
                         tls_enabled,
-                        cors_origins: cfg.cors_origins.clone(),
-                        media_root:   media_root.clone(),
-                        message:      "configuration valid".into(),
+                        cors_origins: cfg.cors_origins,
+                        media_root,
+                        message: "configuration valid".into(),
                     });
                 }
                 OutputFormat::Human => {
                     let rows = vec![
-                        vec!["Address".into(),    address.clone()],
-                        vec!["TLS".into(),        tls_enabled.to_string()],
+                        vec!["Address".into(), address],
+                        vec!["TLS".into(), tls_enabled.to_string()],
                         vec!["CORS origins".into(), cfg.cors_origins.len().to_string()],
-                        vec!["Media root".into(), media_root.clone()],
-                        vec!["JWT secret".into(), if cfg.jwt_secret.is_empty() { "not set".into() } else { "set (redacted)".into() }],
+                        vec!["Media root".into(), media_root],
+                        vec![
+                            "JWT secret".into(),
+                            if cfg.jwt_secret.is_empty() {
+                                "not set".into()
+                            } else {
+                                "set (redacted)".into()
+                            },
+                        ],
                     ];
                     output::print_table(&["Setting", "Value"], &rows);
                 }
@@ -224,7 +256,9 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
         for err in &errors {
             output::print_error(err);
         }
-        output::print_error("Fix the above errors before starting the server. Run `meedya serve --check-config` for details.");
+        output::print_error(
+            "Fix the above errors before starting the server. Run `meedya serve --check-config` for details.",
+        );
         return Ok(ExitCode::ERROR);
     }
 
@@ -238,12 +272,12 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
     match ctx.output {
         OutputFormat::Json => {
             output::print_json(&ServeOutput {
-                started:      true,
-                address:      address.clone(),
+                started: true,
+                address: address.clone(),
                 tls_enabled,
-                cors_origins: cfg.cors_origins.clone(),
-                media_root:   media_root.clone(),
-                message:      format!(
+                cors_origins: cfg.cors_origins,
+                media_root,
+                message: format!(
                     "MeedyaManager media server starting on {}://{}",
                     if tls_enabled { "https" } else { "http" },
                     address
@@ -254,23 +288,39 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
             output::print_header("MeedyaManager Media Server");
 
             if !tls_enabled {
-                output::print_warning("TLS is disabled — serving plain HTTP. NOT recommended for production.");
+                output::print_warning(
+                    "TLS is disabled — serving plain HTTP. NOT recommended for production.",
+                );
             }
 
             let rows = vec![
-                vec!["Address".into(), format!(
-                    "{}://{}",
-                    if tls_enabled { "https" } else { "http" },
-                    address
-                )],
-                vec!["TLS".into(),          if tls_enabled { "enabled" } else { "disabled (--no-tls)" }.into()],
-                vec!["Media root".into(),   media_root.clone()],
-                vec!["CORS origins".into(), if cfg.cors_origins.is_empty() {
-                    "none (cross-origin denied)".into()
-                } else {
-                    cfg.cors_origins.join(", ")
-                }],
-                vec!["JWT expiry".into(),   format!("{} s", cfg.jwt_expiry_secs)],
+                vec![
+                    "Address".into(),
+                    format!(
+                        "{}://{}",
+                        if tls_enabled { "https" } else { "http" },
+                        address
+                    ),
+                ],
+                vec![
+                    "TLS".into(),
+                    if tls_enabled {
+                        "enabled"
+                    } else {
+                        "disabled (--no-tls)"
+                    }
+                    .into(),
+                ],
+                vec!["Media root".into(), media_root],
+                vec![
+                    "CORS origins".into(),
+                    if cfg.cors_origins.is_empty() {
+                        "none (cross-origin denied)".into()
+                    } else {
+                        cfg.cors_origins.join(", ")
+                    },
+                ],
+                vec!["JWT expiry".into(), format!("{} s", cfg.jwt_expiry_secs)],
             ];
             output::print_table(&["Setting", "Value"], &rows);
 
@@ -288,7 +338,9 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
     // into the CLI. For now, simulate a running server.
     // Production code: axum::Server::bind(...).serve(router.into_make_service()).await
 
-    output::print_success("Server stub: exiting cleanly (full axum server wired in release build).");
+    output::print_success(
+        "Server stub: exiting cleanly (full axum server wired in release build).",
+    );
     Ok(ExitCode::SUCCESS)
 }
 
@@ -301,14 +353,14 @@ mod tests {
 
     fn default_args() -> ServeArgs {
         ServeArgs {
-            bind:        "0.0.0.0".into(),
-            port:        8443,
-            tls_cert:    Some("/etc/ssl/cert.pem".into()),
-            tls_key:     Some("/etc/ssl/key.pem".into()),
-            no_tls:      false,
-            jwt_secret:  Some("my-test-secret-16chars".into()),
+            bind: "0.0.0.0".into(),
+            port: 8443,
+            tls_cert: Some("/etc/ssl/cert.pem".into()),
+            tls_key: Some("/etc/ssl/key.pem".into()),
+            no_tls: false,
+            jwt_secret: Some("my-test-secret-16chars".into()),
             cors_origin: vec![],
-            media_root:  Some("/media".into()),
+            media_root: Some("/media".into()),
             show_routes: false,
             check_config: false,
         }
@@ -316,10 +368,14 @@ mod tests {
 
     fn test_ctx(json: bool) -> CliContext {
         CliContext {
-            config:    mm_core::config::AppConfig::default(),
-            output:    if json { OutputFormat::Json } else { OutputFormat::Human },
+            config: mm_core::config::AppConfig::default(),
+            output: if json {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Human
+            },
             verbosity: 0,
-            dry_run:   false,
+            dry_run: false,
         }
     }
 
@@ -358,17 +414,21 @@ mod tests {
 
     #[test]
     fn validate_missing_jwt_secret() {
-        let mut cfg = ServerConfig::default();
-        cfg.tls_cert_path = "/cert.pem".into();
-        cfg.tls_key_path  = "/key.pem".into();
+        let cfg = ServerConfig {
+            tls_cert_path: "/cert.pem".into(),
+            tls_key_path: "/key.pem".into(),
+            ..Default::default()
+        };
         let errors = validate_config(&cfg, false);
         assert!(errors.iter().any(|e| e.contains("JWT secret")));
     }
 
     #[test]
     fn validate_missing_tls_paths() {
-        let mut cfg = ServerConfig::default();
-        cfg.jwt_secret = "a-long-enough-secret".into();
+        let cfg = ServerConfig {
+            jwt_secret: "a-long-enough-secret".into(),
+            ..Default::default()
+        };
         let errors = validate_config(&cfg, false);
         assert!(errors.iter().any(|e| e.contains("certificate")));
         assert!(errors.iter().any(|e| e.contains("key")));
@@ -376,8 +436,10 @@ mod tests {
 
     #[test]
     fn validate_no_tls_skips_cert_key_check() {
-        let mut cfg = ServerConfig::default();
-        cfg.jwt_secret = "a-long-enough-secret".into();
+        let cfg = ServerConfig {
+            jwt_secret: "a-long-enough-secret".into(),
+            ..Default::default()
+        };
         // --no-tls: TLS paths not required
         let errors = validate_config(&cfg, true);
         assert!(!errors.iter().any(|e| e.contains("certificate")));
@@ -388,14 +450,20 @@ mod tests {
     #[test]
     fn run_show_routes_succeeds() {
         let ctx = test_ctx(false);
-        let args = ServeArgs { show_routes: true, ..default_args() };
+        let args = ServeArgs {
+            show_routes: true,
+            ..default_args()
+        };
         assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
     }
 
     #[test]
     fn run_check_config_valid_succeeds() {
         let ctx = test_ctx(false);
-        let args = ServeArgs { check_config: true, ..default_args() };
+        let args = ServeArgs {
+            check_config: true,
+            ..default_args()
+        };
         assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
     }
 
@@ -403,9 +471,9 @@ mod tests {
     fn run_check_config_invalid_returns_error() {
         let ctx = test_ctx(false);
         let args = ServeArgs {
-            tls_cert:    None,
-            tls_key:     None,
-            jwt_secret:  None, // also missing
+            tls_cert: None,
+            tls_key: None,
+            jwt_secret: None, // also missing
             check_config: true,
             ..default_args()
         };
@@ -438,9 +506,9 @@ mod tests {
     fn run_no_tls_mode_succeeds() {
         let ctx = test_ctx(false);
         let args = ServeArgs {
-            no_tls:   true,
+            no_tls: true,
             tls_cert: None,
-            tls_key:  None,
+            tls_key: None,
             ..default_args()
         };
         assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);

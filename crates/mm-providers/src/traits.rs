@@ -37,10 +37,10 @@ pub enum MediaType {
 impl std::fmt::Display for MediaType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MediaType::Music      => write!(f, "music"),
-            MediaType::Video      => write!(f, "video"),
-            MediaType::Podcast    => write!(f, "podcast"),
-            MediaType::Identifier => write!(f, "identifier"),
+            Self::Music => write!(f, "music"),
+            Self::Video => write!(f, "video"),
+            Self::Podcast => write!(f, "podcast"),
+            Self::Identifier => write!(f, "identifier"),
         }
     }
 }
@@ -87,7 +87,7 @@ pub enum ProviderError {
 impl ProviderError {
     /// Returns `true` for transient errors that may succeed on retry.
     pub fn is_retryable(&self) -> bool {
-        matches!(self, ProviderError::Network(_) | ProviderError::RateLimited { .. })
+        matches!(self, Self::Network(_) | Self::RateLimited { .. })
     }
 }
 
@@ -378,10 +378,19 @@ pub trait MetadataProvider: Send + Sync {
     fn is_enabled(&self) -> bool;
 
     /// Perform a metadata search and return ranked results.
+    ///
+    /// Takes `query` by value to avoid lifetime issues with the boxed future.
+    /// `SearchQuery` is `Clone`, so callers can `.clone()` if they need reuse.
     fn search(
         &self,
-        query: &SearchQuery,
-    ) -> impl std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>> + Send;
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    >;
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +420,12 @@ mod tests {
 
     #[test]
     fn media_type_serde_roundtrip() {
-        for variant in [MediaType::Music, MediaType::Video, MediaType::Podcast, MediaType::Identifier] {
+        for variant in [
+            MediaType::Music,
+            MediaType::Video,
+            MediaType::Podcast,
+            MediaType::Identifier,
+        ] {
             let json = serde_json::to_string(&variant).unwrap();
             let back: MediaType = serde_json::from_str(&json).unwrap();
             assert_eq!(back, variant);
@@ -428,7 +442,9 @@ mod tests {
 
     #[test]
     fn provider_error_rate_limited_display() {
-        let e = ProviderError::RateLimited { provider: "spotify".into() };
+        let e = ProviderError::RateLimited {
+            provider: "spotify".into(),
+        };
         let s = e.to_string();
         assert!(s.contains("spotify") && s.contains("Rate limit"));
     }
@@ -456,7 +472,12 @@ mod tests {
 
     #[test]
     fn provider_error_is_retryable_rate_limited() {
-        assert!(ProviderError::RateLimited { provider: "x".into() }.is_retryable());
+        assert!(
+            ProviderError::RateLimited {
+                provider: "x".into()
+            }
+            .is_retryable()
+        );
     }
 
     #[test]
@@ -464,7 +485,13 @@ mod tests {
         assert!(!ProviderError::Disabled("x".into()).is_retryable());
         assert!(!ProviderError::Auth("x".into()).is_retryable());
         assert!(!ProviderError::Parse("x".into()).is_retryable());
-        assert!(!ProviderError::NotSupported { provider: "x".into(), reason: "x".into() }.is_retryable());
+        assert!(
+            !ProviderError::NotSupported {
+                provider: "x".into(),
+                reason: "x".into()
+            }
+            .is_retryable()
+        );
     }
 
     // --- SearchQuery ---
@@ -544,8 +571,18 @@ mod tests {
     #[test]
     fn provider_result_best_cover_art_picks_largest() {
         let mut r = ProviderResult::default();
-        r.cover_art.push(CoverArtInfo::new("https://x.com/s.jpg", 300, 300, "image/jpeg"));
-        r.cover_art.push(CoverArtInfo::new("https://x.com/l.jpg", 1400, 1400, "image/jpeg"));
+        r.cover_art.push(CoverArtInfo::new(
+            "https://x.com/s.jpg",
+            300,
+            300,
+            "image/jpeg",
+        ));
+        r.cover_art.push(CoverArtInfo::new(
+            "https://x.com/l.jpg",
+            1400,
+            1400,
+            "image/jpeg",
+        ));
         let best = r.best_cover_art().unwrap();
         assert_eq!(best.width, 1400);
     }
@@ -554,6 +591,9 @@ mod tests {
     fn provider_result_extra_fields() {
         let mut r = ProviderResult::default();
         r.extra.insert("catalog_number".into(), "CAT-001".into());
-        assert_eq!(r.extra.get("catalog_number").map(String::as_str), Some("CAT-001"));
+        assert_eq!(
+            r.extra.get("catalog_number").map(String::as_str),
+            Some("CAT-001")
+        );
     }
 }

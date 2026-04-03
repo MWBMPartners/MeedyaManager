@@ -73,37 +73,37 @@ fn platform_string() -> &'static str {
         // Apple Silicon: M1/M2/M3/M4 — arm64 (aarch64)
         ("macos", "aarch64") => "macOS; Apple Silicon",
         // Intel Mac — x86_64
-        ("macos", "x86_64")  => "macOS; Intel",
+        ("macos", "x86_64") => "macOS; Intel",
         // Future Mac architectures
-        ("macos", _)         => "macOS",
+        ("macos", _) => "macOS",
 
         // ── Windows ────────────────────────────────────────────────────────
         // Standard 64-bit Windows (most common)
-        ("windows", "x86_64")  => "Windows; x64",
+        ("windows", "x86_64") => "Windows; x64",
         // Windows on ARM (Snapdragon X Elite, Surface Pro X, etc.)
         ("windows", "aarch64") => "Windows; ARM64",
         // 32-bit Windows (uncommon but possible)
-        ("windows", "x86")     => "Windows; x86",
+        ("windows", "x86") => "Windows; x86",
         // Other Windows architectures
-        ("windows", _)         => "Windows",
+        ("windows", _) => "Windows",
 
         // ── Linux ──────────────────────────────────────────────────────────
         // 64-bit Intel/AMD Linux (servers, workstations, most desktops)
-        ("linux", "x86_64")  => "Linux; x86_64",
+        ("linux", "x86_64") => "Linux; x86_64",
         // 64-bit ARM Linux — includes Raspberry Pi 4/5 (64-bit OS),
         // AWS Graviton, Ampere Altra, NVIDIA Jetson, Apple M-series VMs
         ("linux", "aarch64") => "Linux; ARM64",
         // 32-bit ARM Linux — includes Raspberry Pi OS 32-bit, older Pi models
-        ("linux", "arm")     => "Linux; ARM",
+        ("linux", "arm") => "Linux; ARM",
         // RISC-V 64-bit (HiFive Unleashed, Starfive VisionFive 2, etc.)
         ("linux", "riscv64") => "Linux; RISC-V",
         // Other Linux architectures (s390x, powerpc64, mips, etc.)
-        ("linux", _)         => "Linux",
+        ("linux", _) => "Linux",
 
         // ── FreeBSD / OpenBSD / NetBSD ─────────────────────────────────────
         ("freebsd", _) => "FreeBSD",
         ("openbsd", _) => "OpenBSD",
-        ("netbsd",  _) => "NetBSD",
+        ("netbsd", _) => "NetBSD",
 
         // ── Unknown / unsupported ─────────────────────────────────────────
         _ => "Unknown",
@@ -157,7 +157,10 @@ mod tests {
 
     #[test]
     fn platform_string_is_non_empty() {
-        assert!(!platform_string().is_empty(), "platform_string() must not be empty");
+        assert!(
+            !platform_string().is_empty(),
+            "platform_string() must not be empty"
+        );
     }
 
     #[test]

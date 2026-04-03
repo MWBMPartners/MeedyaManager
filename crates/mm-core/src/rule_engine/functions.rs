@@ -19,8 +19,8 @@ use std::sync::Mutex;
 
 use regex::Regex;
 
-use crate::error::{MmError, MmResult};
 use super::evaluator::EvalContext;
+use crate::error::{MmError, MmResult};
 
 // ───────────────────────────────────────────────────────────────────────────
 // Constants
@@ -46,19 +46,22 @@ fn regex_cache() -> &'static Mutex<HashMap<String, Regex>> {
 fn compile_regex(pattern: &str) -> MmResult<Regex> {
     // Try to get a cached copy first
     let cache = regex_cache();
-    let guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+    let guard = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(re) = guard.get(pattern) {
         return Ok(re.clone());
     }
     drop(guard); // release lock before compiling
 
     // Compile the pattern
-    let re = Regex::new(pattern).map_err(|e| {
-        MmError::RuleEngine(format!("invalid regex pattern '{pattern}': {e}"))
-    })?;
+    let re = Regex::new(pattern)
+        .map_err(|e| MmError::RuleEngine(format!("invalid regex pattern '{pattern}': {e}")))?;
 
     // Cache for future use
-    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     guard.insert(pattern.to_string(), re.clone());
 
     Ok(re)
@@ -166,7 +169,7 @@ fn func_if(args: &[String]) -> MmResult<String> {
     check_args("If", args, 2, 3)?;
     let condition = &args[0];
     let then_val = &args[1];
-    let else_val = args.get(2).map(|s| s.as_str()).unwrap_or("");
+    let else_val = args.get(2).map_or("", std::string::String::as_str);
     if is_truthy(condition) {
         Ok(then_val.clone())
     } else {
@@ -536,7 +539,7 @@ mod tests {
 
     /// Helper: build args from string slices
     fn args(vals: &[&str]) -> Vec<String> {
-        vals.iter().map(|s| s.to_string()).collect()
+        vals.iter().map(std::string::ToString::to_string).collect()
     }
 
     // ── $If ─────────────────────────────────────────────────────────
@@ -986,7 +989,12 @@ mod tests {
         let ctx = test_ctx();
         let result = eval_func("NonExistent", &args(&["a"]), &ctx);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown template function"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown template function")
+        );
     }
 
     #[test]

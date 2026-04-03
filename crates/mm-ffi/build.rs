@@ -24,7 +24,7 @@ fn main() {
     // Output: <workspace-root>/include/mm_ffi.h
     // The Windows C# project references this via a relative path.
     let workspace_root = PathBuf::from(&crate_dir)
-        .parent()              // crates/
+        .parent() // crates/
         .and_then(|p| p.parent()) // workspace root
         .expect("Could not resolve workspace root from CARGO_MANIFEST_DIR")
         .to_path_buf();
@@ -32,8 +32,7 @@ fn main() {
     let include_dir = workspace_root.join("include");
 
     // Create the include/ directory if needed
-    std::fs::create_dir_all(&include_dir)
-        .expect("Failed to create workspace include/ directory");
+    std::fs::create_dir_all(&include_dir).expect("Failed to create workspace include/ directory");
 
     let header_path = include_dir.join("mm_ffi.h");
 

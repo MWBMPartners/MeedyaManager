@@ -31,16 +31,16 @@ use crate::error::{MmError, MmResult};
 // Submodules
 // ───────────────────────────────────────────────────────────────────────────
 
+/// AST evaluator and EvalContext
+pub mod evaluator;
+/// Template function implementations (24 functions)
+pub mod functions;
 /// Template tokenizer — converts raw template strings into token streams
 pub mod lexer;
 /// Recursive descent parser — builds AST from token streams
 pub mod parser;
 /// Bidirectional tag name ↔ canonical key mappings
 pub mod tag_registry;
-/// Template function implementations (24 functions)
-pub mod functions;
-/// AST evaluator and EvalContext
-pub mod evaluator;
 
 // ───────────────────────────────────────────────────────────────────────────
 // Re-exports — the public API surface
@@ -48,7 +48,7 @@ pub mod evaluator;
 
 pub use evaluator::{EvalContext, MissingTagMode, evaluate, evaluate_template};
 pub use lexer::Token;
-pub use parser::{Node, parse_template, detect_legacy_syntax};
+pub use parser::{Node, detect_legacy_syntax, parse_template};
 pub use tag_registry::{TagKind, VirtualTag, lookup_tag};
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -283,7 +283,7 @@ mod tests {
             stop_on_match: false,
         };
         let cloned = rule.clone();
-        assert_eq!(format!("{:?}", rule), format!("{:?}", cloned));
+        assert_eq!(format!("{rule:?}"), format!("{:?}", cloned));
     }
 
     /// Rule serializes and deserializes

@@ -20,7 +20,7 @@ pub struct SchemaBuilder<'a> {
     /// Target database engine
     pub dialect: DbDialect,
     /// Export configuration (provides table prefix)
-    pub config:  &'a ExportConfig,
+    pub config: &'a ExportConfig,
 }
 
 impl<'a> SchemaBuilder<'a> {
@@ -110,7 +110,7 @@ CREATE TABLE {t} (
     /// Each row is one key–value metadata tag for a file.
     /// Foreign key `file_id` references `mm_files(id)`.
     pub fn tags_ddl(&self) -> String {
-        let t  = self.config.table_name("tags");
+        let t = self.config.table_name("tags");
         let ft = self.config.table_name("files");
         match self.dialect {
             DbDialect::SqlServer => format!(
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn files_ddl_mariadb_same_as_mysql() {
-        let mysql_ddl   = SchemaBuilder::new(DbDialect::MySql,   &cfg()).files_ddl();
+        let mysql_ddl = SchemaBuilder::new(DbDialect::MySql, &cfg()).files_ddl();
         let mariadb_ddl = SchemaBuilder::new(DbDialect::MariaDb, &cfg()).files_ddl();
         assert_eq!(mysql_ddl, mariadb_ddl);
     }
@@ -297,12 +297,19 @@ mod tests {
 
     #[test]
     fn history_ddl_all_dialects_contain_dry_run() {
-        for dialect in [DbDialect::Sqlite, DbDialect::MySql, DbDialect::MariaDb,
-                        DbDialect::Postgres, DbDialect::SqlServer]
-        {
+        for dialect in [
+            DbDialect::Sqlite,
+            DbDialect::MySql,
+            DbDialect::MariaDb,
+            DbDialect::Postgres,
+            DbDialect::SqlServer,
+        ] {
             let ddl = SchemaBuilder::new(dialect, &cfg()).history_ddl();
             assert!(ddl.contains("dry_run"), "missing dry_run in {dialect}");
-            assert!(ddl.contains("renamed_at"), "missing renamed_at in {dialect}");
+            assert!(
+                ddl.contains("renamed_at"),
+                "missing renamed_at in {dialect}"
+            );
         }
     }
 
@@ -310,7 +317,10 @@ mod tests {
     fn history_ddl_sqlite_no_foreign_key() {
         // mm_history references file_hash (string), not a FK to mm_files
         let ddl = SchemaBuilder::new(DbDialect::Sqlite, &cfg()).history_ddl();
-        assert!(!ddl.contains("REFERENCES"), "SQLite history should not have FK");
+        assert!(
+            !ddl.contains("REFERENCES"),
+            "SQLite history should not have FK"
+        );
     }
 
     // ---- all_ddl ----
@@ -327,9 +337,13 @@ mod tests {
 
     #[test]
     fn all_ddl_none_empty() {
-        for dialect in [DbDialect::Sqlite, DbDialect::MySql, DbDialect::MariaDb,
-                        DbDialect::Postgres, DbDialect::SqlServer]
-        {
+        for dialect in [
+            DbDialect::Sqlite,
+            DbDialect::MySql,
+            DbDialect::MariaDb,
+            DbDialect::Postgres,
+            DbDialect::SqlServer,
+        ] {
             let ddl = SchemaBuilder::new(dialect, &cfg()).all_ddl();
             for stmt in &ddl {
                 assert!(!stmt.is_empty(), "empty DDL for {dialect}");

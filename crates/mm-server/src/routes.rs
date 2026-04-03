@@ -45,12 +45,20 @@ pub struct ApiResponse<T: Serialize> {
 impl<T: Serialize> ApiResponse<T> {
     /// Create a successful response.
     pub fn ok(data: T) -> Self {
-        Self { ok: true, data: Some(data), error: None }
+        Self {
+            ok: true,
+            data: Some(data),
+            error: None,
+        }
     }
 
     /// Create an error response.
     pub fn err(message: impl Into<String>) -> ApiResponse<()> {
-        ApiResponse { ok: false, data: None, error: Some(message.into()) }
+        ApiResponse {
+            ok: false,
+            data: None,
+            error: Some(message.into()),
+        }
     }
 }
 
@@ -73,8 +81,8 @@ impl HealthResponse {
     /// Create a health response with the given version and start time.
     pub fn new(version: &str, uptime_start: u64) -> Self {
         Self {
-            status:      "ok".into(),
-            version:     version.to_string(),
+            status: "ok".into(),
+            version: version.to_string(),
             uptime_start,
         }
     }
@@ -85,7 +93,7 @@ impl HealthResponse {
 // ---------------------------------------------------------------------------
 
 /// A single media file summary in the library listing.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LibraryItem {
     /// Unique integer ID (maps to mm_files.id in the export schema)
     pub id: u64,
@@ -111,18 +119,18 @@ impl LibraryItem {
         Self {
             id,
             file_hash: file_hash.into(),
-            filename:  filename.into(),
-            path:      String::new(),
+            filename: filename.into(),
+            path: String::new(),
             media_type: String::new(),
             duration_s: 0,
-            file_size:  0,
-            tags:       std::collections::HashMap::new(),
+            file_size: 0,
+            tags: std::collections::HashMap::new(),
         }
     }
 
     /// Returns the value of a tag if present.
     pub fn tag(&self, key: &str) -> Option<&str> {
-        self.tags.get(key).map(|s| s.as_str())
+        self.tags.get(key).map(std::string::String::as_str)
     }
 }
 
@@ -142,12 +150,17 @@ pub struct LibraryResponse {
 impl LibraryResponse {
     /// Create a library response for a single page.
     pub fn new(items: Vec<LibraryItem>, total: u64, page: u32, per_page: u32) -> Self {
-        Self { total, page, per_page, items }
+        Self {
+            total,
+            page,
+            per_page,
+            items,
+        }
     }
 
     /// Returns `true` if there are more pages after this one.
     pub fn has_next_page(&self) -> bool {
-        let fetched_so_far = (self.page as u64) * (self.per_page as u64);
+        let fetched_so_far = u64::from(self.page) * u64::from(self.per_page);
         fetched_so_far < self.total
     }
 }
@@ -229,7 +242,9 @@ pub fn handle_login(
     use crate::auth::JwtService;
 
     if req.username.trim().is_empty() || req.password.trim().is_empty() {
-        return Err(AuthError::InvalidToken("username and password required".into()));
+        return Err(AuthError::InvalidToken(
+            "username and password required".into(),
+        ));
     }
 
     let svc = JwtService::new(jwt_secret, expiry_secs)?;
@@ -239,7 +254,7 @@ pub fn handle_login(
     let role = match req.username.as_str() {
         "admin" => UserRole::Admin,
         "guest" => UserRole::ReadOnly,
-        _       => UserRole::User,
+        _ => UserRole::User,
     };
 
     let now = std::time::SystemTime::now()
@@ -294,7 +309,9 @@ pub fn handle_search(
         return Err(AuthError::TokenExpired);
     }
     if !query.is_valid() {
-        return Err(AuthError::InvalidToken("search query must not be empty".into()));
+        return Err(AuthError::InvalidToken(
+            "search query must not be empty".into(),
+        ));
     }
     // Stub: return empty results
     let resp = LibraryResponse::new(vec![], 0, query.effective_page(), query.effective_limit());
@@ -311,7 +328,9 @@ pub fn handle_stream(
     file_size: u64,
 ) -> Result<StreamResponse, AuthError> {
     if !claims.can_stream() {
-        return Err(AuthError::InsufficientPermissions { required: "user".into() });
+        return Err(AuthError::InsufficientPermissions {
+            required: "user".into(),
+        });
     }
 
     // Parse Range header if present
@@ -325,24 +344,26 @@ pub fn handle_stream(
 
     match resolved {
         None => Ok(StreamResponse::full(0, content_type)),
-        Some((start, end)) if request.is_range_request() =>
-            Ok(StreamResponse::partial(start, end, file_size, content_type)),
-        Some(_) =>
-            Ok(StreamResponse::full(file_size, content_type)),
+        Some((start, end)) if request.is_range_request() => {
+            Ok(StreamResponse::partial(start, end, file_size, content_type))
+        }
+        Some(_) => Ok(StreamResponse::full(file_size, content_type)),
     }
 }
 
 /// Handle `GET /api/server/info` — requires Admin `Claims`.
 pub fn handle_server_info(claims: &Claims) -> Result<ApiResponse<ServerInfoResponse>, AuthError> {
     if !claims.is_admin() {
-        return Err(AuthError::InsufficientPermissions { required: "admin".into() });
+        return Err(AuthError::InsufficientPermissions {
+            required: "admin".into(),
+        });
     }
     Ok(ApiResponse::ok(ServerInfoResponse {
-        version:            env!("CARGO_PKG_VERSION").to_string(),
-        platform:           std::env::consts::OS.to_string(),
-        library_count:      0,
-        streaming_enabled:  true,
-        export_backend:     None,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        platform: std::env::consts::OS.to_string(),
+        library_count: 0,
+        streaming_enabled: true,
+        export_backend: None,
     }))
 }
 
@@ -390,7 +411,10 @@ mod tests {
 
     #[test]
     fn login_valid_user_returns_token() {
-        let req = LoginRequest { username: "alice".into(), password: "secret".into() };
+        let req = LoginRequest {
+            username: "alice".into(),
+            password: "secret".into(),
+        };
         let result = handle_login(&req, SECRET, 3600).unwrap();
         assert!(result.ok);
         let data = result.data.unwrap();
@@ -400,21 +424,30 @@ mod tests {
 
     #[test]
     fn login_admin_username_gets_admin_role() {
-        let req = LoginRequest { username: "admin".into(), password: "adminpass".into() };
+        let req = LoginRequest {
+            username: "admin".into(),
+            password: "adminpass".into(),
+        };
         let result = handle_login(&req, SECRET, 3600).unwrap();
         assert_eq!(result.data.unwrap().role, UserRole::Admin);
     }
 
     #[test]
     fn login_guest_gets_readonly_role() {
-        let req = LoginRequest { username: "guest".into(), password: "guestpass".into() };
+        let req = LoginRequest {
+            username: "guest".into(),
+            password: "guestpass".into(),
+        };
         let result = handle_login(&req, SECRET, 3600).unwrap();
         assert_eq!(result.data.unwrap().role, UserRole::ReadOnly);
     }
 
     #[test]
     fn login_empty_username_returns_error() {
-        let req = LoginRequest { username: "".into(), password: "pass".into() };
+        let req = LoginRequest {
+            username: String::new(),
+            password: "pass".into(),
+        };
         assert!(handle_login(&req, SECRET, 3600).is_err());
     }
 
@@ -440,22 +473,38 @@ mod tests {
 
     #[test]
     fn search_valid_query_returns_empty() {
-        let q = SearchQuery { q: "Beatles".into(), limit: None, page: None };
+        let q = SearchQuery {
+            q: "Beatles".into(),
+            limit: None,
+            page: None,
+        };
         let resp = handle_search(&user_claims(), &q).unwrap();
         assert!(resp.ok);
     }
 
     #[test]
     fn search_empty_query_returns_error() {
-        let q = SearchQuery { q: "  ".into(), limit: None, page: None };
+        let q = SearchQuery {
+            q: "  ".into(),
+            limit: None,
+            page: None,
+        };
         assert!(handle_search(&user_claims(), &q).is_err());
     }
 
     #[test]
     fn search_query_effective_limit_clamping() {
-        let q = SearchQuery { q: "x".into(), limit: Some(999), page: None };
+        let q = SearchQuery {
+            q: "x".into(),
+            limit: Some(999),
+            page: None,
+        };
         assert_eq!(q.effective_limit(), 200);
-        let q2 = SearchQuery { q: "x".into(), limit: Some(0), page: None };
+        let q2 = SearchQuery {
+            q: "x".into(),
+            limit: Some(0),
+            page: None,
+        };
         assert_eq!(q2.effective_limit(), 1);
     }
 
@@ -530,7 +579,7 @@ mod tests {
 
     #[test]
     fn api_response_err_serialises_without_data_field() {
-        let r: ApiResponse<()> = ApiResponse::err("something went wrong");
+        let r = ApiResponse::<()>::err("something went wrong");
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("\"ok\":false"));
         assert!(json.contains("something went wrong"));

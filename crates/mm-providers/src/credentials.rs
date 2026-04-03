@@ -38,10 +38,10 @@ pub enum CredentialSource {
 impl std::fmt::Display for CredentialSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CredentialSource::Environment => write!(f, "environment variable"),
-            CredentialSource::Config     => write!(f, "config file"),
-            CredentialSource::Keyring    => write!(f, "OS keyring"),
-            CredentialSource::LocalFile  => write!(f, "local credential file"),
+            Self::Environment => write!(f, "environment variable"),
+            Self::Config => write!(f, "config file"),
+            Self::Keyring => write!(f, "OS keyring"),
+            Self::LocalFile => write!(f, "local credential file"),
         }
     }
 }
@@ -62,7 +62,10 @@ pub struct Credential {
 impl Credential {
     /// Create a new credential with the given value and source.
     fn new(value: impl Into<String>, source: CredentialSource) -> Self {
-        Self { value: value.into(), source }
+        Self {
+            value: value.into(),
+            source,
+        }
     }
 }
 
@@ -108,29 +111,53 @@ impl CredentialStore {
     pub fn get(&self, provider: &str, key: &str) -> Option<Credential> {
         // Tier 1 — environment variable
         if let Some(val) = Self::from_env(provider, key) {
-            debug!(provider = provider, key = key, source = "env", "Credential resolved");
+            debug!(
+                provider = provider,
+                key = key,
+                source = "env",
+                "Credential resolved"
+            );
             return Some(Credential::new(val, CredentialSource::Environment));
         }
 
         // Tier 2 — config file
-        if let Some(val) = self.from_config(provider, key) {
-            debug!(provider = provider, key = key, source = "config", "Credential resolved");
+        if let Some(val) = self.config_credential(provider, key) {
+            debug!(
+                provider = provider,
+                key = key,
+                source = "config",
+                "Credential resolved"
+            );
             return Some(Credential::new(val, CredentialSource::Config));
         }
 
         // Tier 3 — OS keyring
         if let Some(val) = Self::from_keyring(provider, key) {
-            debug!(provider = provider, key = key, source = "keyring", "Credential resolved");
+            debug!(
+                provider = provider,
+                key = key,
+                source = "keyring",
+                "Credential resolved"
+            );
             return Some(Credential::new(val, CredentialSource::Keyring));
         }
 
         // Tier 4 — local credential file
-        if let Some(val) = self.from_local_file(provider, key) {
-            debug!(provider = provider, key = key, source = "local_file", "Credential resolved");
+        if let Some(val) = self.local_file_credential(provider, key) {
+            debug!(
+                provider = provider,
+                key = key,
+                source = "local_file",
+                "Credential resolved"
+            );
             return Some(Credential::new(val, CredentialSource::LocalFile));
         }
 
-        debug!(provider = provider, key = key, "Credential not found in any tier");
+        debug!(
+            provider = provider,
+            key = key,
+            "Credential not found in any tier"
+        );
         None
     }
 
@@ -141,7 +168,8 @@ impl CredentialStore {
         let service = Self::keyring_service(provider);
         let entry = keyring::Entry::new(&service, key)
             .map_err(|e| format!("Failed to create keyring entry: {e}"))?;
-        entry.set_password(value)
+        entry
+            .set_password(value)
             .map_err(|e| format!("Failed to store in keyring: {e}"))
     }
 
@@ -150,14 +178,20 @@ impl CredentialStore {
         let service = Self::keyring_service(provider);
         let entry = keyring::Entry::new(&service, key)
             .map_err(|e| format!("Failed to create keyring entry: {e}"))?;
-        entry.delete_credential()
+        entry
+            .delete_credential()
             .map_err(|e| format!("Failed to delete from keyring: {e}"))
     }
 
     /// Store a credential in the local credential file (tier 4).
     ///
     /// Creates the file if it does not exist. Thread-safe via file-level write.
-    pub fn store_in_local_file(&self, provider: &str, key: &str, value: &str) -> Result<(), String> {
+    pub fn store_in_local_file(
+        &self,
+        provider: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<(), String> {
         // Load existing credentials (or start fresh)
         let mut map = self.load_local_file().unwrap_or_default();
         // Insert / overwrite the credential
@@ -205,7 +239,7 @@ impl CredentialStore {
     }
 
     /// Tier 2: Look up `<provider>.<key>` in the config-derived credentials map.
-    fn from_config(&self, provider: &str, key: &str) -> Option<String> {
+    fn config_credential(&self, provider: &str, key: &str) -> Option<String> {
         let composite = format!("{}.{}", provider.to_lowercase(), key.to_lowercase());
         self.config_credentials
             .get(&composite)
@@ -234,7 +268,7 @@ impl CredentialStore {
     }
 
     /// Tier 4: Look up the credential in the local `credentials.json` file.
-    fn from_local_file(&self, provider: &str, key: &str) -> Option<String> {
+    fn local_file_credential(&self, provider: &str, key: &str) -> Option<String> {
         let map = self.load_local_file()?;
         let composite = format!("{}.{}", provider.to_lowercase(), key.to_lowercase());
         map.get(&composite).cloned().filter(|v| !v.is_empty())
@@ -257,10 +291,7 @@ impl CredentialStore {
     /// Normalise an identifier for use in an environment variable name.
     /// Uppercases and replaces hyphens, dots, and spaces with underscores.
     fn normalise_id(s: &str) -> String {
-        s.to_uppercase()
-            .replace('-', "_")
-            .replace('.', "_")
-            .replace(' ', "_")
+        s.to_uppercase().replace(['-', '.', ' '], "_")
     }
 }
 
@@ -269,6 +300,7 @@ impl CredentialStore {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
     use std::collections::HashMap;
@@ -290,7 +322,10 @@ mod tests {
 
     #[test]
     fn credential_source_display_env() {
-        assert_eq!(CredentialSource::Environment.to_string(), "environment variable");
+        assert_eq!(
+            CredentialSource::Environment.to_string(),
+            "environment variable"
+        );
     }
 
     #[test]
@@ -305,7 +340,10 @@ mod tests {
 
     #[test]
     fn credential_source_display_local_file() {
-        assert_eq!(CredentialSource::LocalFile.to_string(), "local credential file");
+        assert_eq!(
+            CredentialSource::LocalFile.to_string(),
+            "local credential file"
+        );
     }
 
     // --- Tier 1: Environment variable ---
@@ -313,10 +351,10 @@ mod tests {
     #[test]
     fn tier1_env_var_found() {
         // Set the env var for this test
-        std::env::set_var("MM_TESTPROVIDER_TESTKEY", "secret-value");
+        unsafe { std::env::set_var("MM_TESTPROVIDER_TESTKEY", "secret-value") };
         let (store, _dir) = empty_store();
         let cred = store.get("testprovider", "testkey");
-        std::env::remove_var("MM_TESTPROVIDER_TESTKEY");
+        unsafe { std::env::remove_var("MM_TESTPROVIDER_TESTKEY") };
 
         let cred = cred.unwrap();
         assert_eq!(cred.value, "secret-value");
@@ -326,10 +364,10 @@ mod tests {
     #[test]
     fn tier1_env_var_hyphenated_provider() {
         // Hyphens in provider name should be normalised to underscores
-        std::env::set_var("MM_APPLE_MUSIC_API_KEY", "apple-key");
+        unsafe { std::env::set_var("MM_APPLE_MUSIC_API_KEY", "apple-key") };
         let (store, _dir) = empty_store();
         let cred = store.get("apple-music", "api_key");
-        std::env::remove_var("MM_APPLE_MUSIC_API_KEY");
+        unsafe { std::env::remove_var("MM_APPLE_MUSIC_API_KEY") };
 
         assert!(cred.is_some());
         assert_eq!(cred.unwrap().value, "apple-key");
@@ -346,10 +384,10 @@ mod tests {
 
     #[test]
     fn tier1_env_var_empty_string_treated_as_missing() {
-        std::env::set_var("MM_EMPTYPROVIDER_EMPTYKEY", "");
+        unsafe { std::env::set_var("MM_EMPTYPROVIDER_EMPTYKEY", "") };
         let (store, _dir) = empty_store();
         let cred = store.get("emptyprovider", "emptykey");
-        std::env::remove_var("MM_EMPTYPROVIDER_EMPTYKEY");
+        unsafe { std::env::remove_var("MM_EMPTYPROVIDER_EMPTYKEY") };
         // Empty string should not be returned
         assert!(cred.is_none());
     }
@@ -398,13 +436,13 @@ mod tests {
 
     #[test]
     fn tier1_takes_priority_over_tier2() {
-        std::env::set_var("MM_PRIORITY_KEY", "env-value");
+        unsafe { std::env::set_var("MM_PRIORITY_KEY", "env-value") };
         let mut config = HashMap::new();
         config.insert("priority.key".to_owned(), "config-value".to_owned());
         let (store, _dir) = make_store(config);
 
         let cred = store.get("priority", "key").unwrap();
-        std::env::remove_var("MM_PRIORITY_KEY");
+        unsafe { std::env::remove_var("MM_PRIORITY_KEY") };
 
         // Env should win
         assert_eq!(cred.value, "env-value");
@@ -417,7 +455,9 @@ mod tests {
     fn tier4_store_and_retrieve_from_local_file() {
         let (store, _dir) = empty_store();
         // Store a credential
-        store.store_in_local_file("tmdb", "api_key", "tmdb-secret").unwrap();
+        store
+            .store_in_local_file("tmdb", "api_key", "tmdb-secret")
+            .unwrap();
         // Retrieve it
         let cred = store.get("tmdb", "api_key").unwrap();
         assert_eq!(cred.value, "tmdb-secret");
@@ -427,8 +467,12 @@ mod tests {
     #[test]
     fn tier4_overwrite_existing_local_credential() {
         let (store, _dir) = empty_store();
-        store.store_in_local_file("tmdb", "api_key", "old-value").unwrap();
-        store.store_in_local_file("tmdb", "api_key", "new-value").unwrap();
+        store
+            .store_in_local_file("tmdb", "api_key", "old-value")
+            .unwrap();
+        store
+            .store_in_local_file("tmdb", "api_key", "new-value")
+            .unwrap();
         let cred = store.get("tmdb", "api_key").unwrap();
         assert_eq!(cred.value, "new-value");
     }
@@ -436,7 +480,9 @@ mod tests {
     #[test]
     fn tier4_remove_from_local_file() {
         let (store, _dir) = empty_store();
-        store.store_in_local_file("tmdb", "api_key", "to-delete").unwrap();
+        store
+            .store_in_local_file("tmdb", "api_key", "to-delete")
+            .unwrap();
         store.remove_from_local_file("tmdb", "api_key").unwrap();
         assert!(store.get("tmdb", "api_key").is_none());
     }
@@ -444,9 +490,15 @@ mod tests {
     #[test]
     fn tier4_multiple_providers_in_local_file() {
         let (store, _dir) = empty_store();
-        store.store_in_local_file("provider_a", "key", "value_a").unwrap();
-        store.store_in_local_file("provider_b", "key", "value_b").unwrap();
-        store.store_in_local_file("provider_c", "secret", "value_c").unwrap();
+        store
+            .store_in_local_file("provider_a", "key", "value_a")
+            .unwrap();
+        store
+            .store_in_local_file("provider_b", "key", "value_b")
+            .unwrap();
+        store
+            .store_in_local_file("provider_c", "secret", "value_c")
+            .unwrap();
 
         assert_eq!(store.get("provider_a", "key").unwrap().value, "value_a");
         assert_eq!(store.get("provider_b", "key").unwrap().value, "value_b");
@@ -467,7 +519,9 @@ mod tests {
         let mut config = HashMap::new();
         config.insert("conflict.key".to_owned(), "config-wins".to_owned());
         let (store, _dir) = make_store(config);
-        store.store_in_local_file("conflict", "key", "file-loses").unwrap();
+        store
+            .store_in_local_file("conflict", "key", "file-loses")
+            .unwrap();
 
         let cred = store.get("conflict", "key").unwrap();
         assert_eq!(cred.value, "config-wins");
@@ -509,12 +563,18 @@ mod tests {
 
     #[test]
     fn normalise_id_replaces_spaces() {
-        assert_eq!(CredentialStore::normalise_id("youtube music"), "YOUTUBE_MUSIC");
+        assert_eq!(
+            CredentialStore::normalise_id("youtube music"),
+            "YOUTUBE_MUSIC"
+        );
     }
 
     #[test]
     fn normalise_id_mixed_chars() {
-        assert_eq!(CredentialStore::normalise_id("apple-music.api"), "APPLE_MUSIC_API");
+        assert_eq!(
+            CredentialStore::normalise_id("apple-music.api"),
+            "APPLE_MUSIC_API"
+        );
     }
 
     // --- keyring_service ---
@@ -540,9 +600,6 @@ mod tests {
     fn store_new_creates_correct_path() {
         let dir = TempDir::new().unwrap();
         let store = CredentialStore::new(HashMap::new(), dir.path());
-        assert_eq!(
-            store.local_file_path,
-            dir.path().join("credentials.json")
-        );
+        assert_eq!(store.local_file_path, dir.path().join("credentials.json"));
     }
 }

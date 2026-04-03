@@ -11,9 +11,7 @@
 use std::path::Path;
 use std::time::SystemTime;
 
-use crate::traits::{
-    ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider,
-};
+use crate::traits::{ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider};
 
 // ---------------------------------------------------------------------------
 // OneDriveProvider
@@ -30,6 +28,7 @@ pub struct OneDriveProvider {
     /// OAuth 2.0 refresh token (long-lived, used to renew the access token).
     refresh_token: Option<String>,
     /// Microsoft OAuth application (client) ID.
+    #[allow(dead_code)]
     client_id: String,
     /// The Graph API base URL. Overridable for testing.
     api_base: String,
@@ -43,10 +42,10 @@ impl OneDriveProvider {
     /// The provider is unauthenticated until `authenticate()` is called.
     pub fn new(client_id: impl Into<String>) -> Self {
         Self {
-            access_token:  None,
+            access_token: None,
             refresh_token: None,
-            client_id:     client_id.into(),
-            api_base:      "https://graph.microsoft.com/v1.0".into(),
+            client_id: client_id.into(),
+            api_base: "https://graph.microsoft.com/v1.0".into(),
             authenticated: false,
         }
     }
@@ -57,7 +56,7 @@ impl OneDriveProvider {
         access_token: impl Into<String>,
         refresh_token: impl Into<String>,
     ) {
-        self.access_token  = Some(access_token.into());
+        self.access_token = Some(access_token.into());
         self.refresh_token = Some(refresh_token.into());
         self.authenticated = true;
     }
@@ -90,23 +89,24 @@ impl OneDriveProvider {
     /// Converts a raw Graph API `driveItem` JSON value into a `CloudFile`.
     /// In production this parses `reqwest::Response` JSON; here it is a stub
     /// that would be filled in with full `serde_json` parsing.
+    #[allow(dead_code)]
     fn parse_drive_item(id: &str, name: &str, path: &str, size: u64, is_folder: bool) -> CloudFile {
         CloudFile {
-            id:           id.to_string(),
-            name:         name.to_string(),
-            path:         path.to_string(),
-            size:         if is_folder { None } else { Some(size) },
-            modified:     Some(SystemTime::UNIX_EPOCH),
+            id: id.to_string(),
+            name: name.to_string(),
+            path: path.to_string(),
+            size: if is_folder { None } else { Some(size) },
+            modified: Some(SystemTime::UNIX_EPOCH),
             is_folder,
-            mime_type:    None,
-            hash:         None,
+            mime_type: None,
+            hash: None,
             download_url: None,
         }
     }
 }
 
 impl CloudProvider for OneDriveProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "OneDrive"
     }
 
@@ -175,7 +175,7 @@ impl CloudProvider for OneDriveProvider {
         )))
     }
 
-    async fn upload_file(&self, src: &Path, dest_path: &str) -> Result<CloudFile, CloudError> {
+    async fn upload_file(&self, src: &Path, _dest_path: &str) -> Result<CloudFile, CloudError> {
         if !self.is_authenticated() {
             return Err(CloudError::Auth("not authenticated".into()));
         }
@@ -203,7 +203,7 @@ impl CloudProvider for OneDriveProvider {
 
     async fn disconnect(&mut self) -> Result<(), CloudError> {
         // Revoke stored tokens and reset state.
-        self.access_token  = None;
+        self.access_token = None;
         self.refresh_token = None;
         self.authenticated = false;
         Ok(())

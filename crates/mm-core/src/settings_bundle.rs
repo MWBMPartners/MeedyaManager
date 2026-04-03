@@ -102,9 +102,8 @@ impl SettingsBundle {
     /// read by any standard JSON parser, making it easy to inspect or process
     /// with external tools (jq, Python, etc.).
     pub fn to_json(&self) -> MmResult<String> {
-        serde_json::to_string_pretty(self).map_err(|e| {
-            MmError::Config(format!("cannot serialise settings bundle: {e}"))
-        })
+        serde_json::to_string_pretty(self)
+            .map_err(|e| MmError::Config(format!("cannot serialise settings bundle: {e}")))
     }
 
     /// Parse a bundle from a JSON string.
@@ -112,9 +111,7 @@ impl SettingsBundle {
         // Try standard JSON first, then JSON5 (for hand-edited files)
         serde_json::from_str(s)
             .or_else(|_| json5::from_str(s))
-            .map_err(|e| {
-                MmError::Config(format!("cannot parse settings bundle: {e}"))
-            })
+            .map_err(|e| MmError::Config(format!("cannot parse settings bundle: {e}")))
     }
 
     // ── File I/O ─────────────────────────────────────────────────────────────
@@ -132,7 +129,10 @@ impl SettingsBundle {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                MmError::Io(format!("cannot create directory '{}': {e}", parent.display()))
+                MmError::Io(std::io::Error::other(format!(
+                    "cannot create directory '{}': {e}",
+                    parent.display()
+                )))
             })?;
         }
 
@@ -142,22 +142,27 @@ impl SettingsBundle {
         // Write atomically: temp file → rename
         let tmp_path = {
             let mut t = path.to_path_buf();
-            let mut name = t.file_name()
-                .map(|n| n.to_os_string())
-                .unwrap_or_else(|| "bundle".into());
+            let mut name = t
+                .file_name()
+                .map_or_else(|| "bundle".into(), std::ffi::OsStr::to_os_string);
             name.push(".meedya_tmp");
             t.set_file_name(name);
             t
         };
 
         std::fs::write(&tmp_path, json.as_bytes()).map_err(|e| {
-            MmError::Io(format!("cannot write temp bundle '{}': {e}", tmp_path.display()))
+            MmError::Io(std::io::Error::other(format!(
+                "cannot write temp bundle '{}': {e}",
+                tmp_path.display()
+            )))
         })?;
 
         std::fs::rename(&tmp_path, path).map_err(|e| {
             // Clean up temp on failure
             let _ = std::fs::remove_file(&tmp_path);
-            MmError::Io(format!("cannot rename bundle into place: {e}"))
+            MmError::Io(std::io::Error::other(format!(
+                "cannot rename bundle into place: {e}"
+            )))
         })?;
 
         Ok(())
@@ -169,13 +174,17 @@ impl SettingsBundle {
     /// Returns an error if the file cannot be read or is not a valid bundle.
     pub fn import(path: &Path) -> MmResult<Self> {
         if !path.exists() {
-            return Err(MmError::Io(format!(
-                "bundle file not found: '{}'", path.display()
-            )));
+            return Err(MmError::Io(std::io::Error::other(format!(
+                "bundle file not found: '{}'",
+                path.display()
+            ))));
         }
 
         let contents = std::fs::read_to_string(path).map_err(|e| {
-            MmError::Io(format!("cannot read bundle '{}': {e}", path.display()))
+            MmError::Io(std::io::Error::other(format!(
+                "cannot read bundle '{}': {e}",
+                path.display()
+            )))
         })?;
 
         Self::from_json(&contents)
@@ -203,12 +212,13 @@ impl SettingsBundle {
         let settings_path = AppConfig::default_settings_path()?;
         if let Some(parent) = settings_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                MmError::Io(format!("cannot create config directory: {e}"))
+                MmError::Io(std::io::Error::other(format!(
+                    "cannot create config directory: {e}"
+                )))
             })?;
         }
-        let settings_json = serde_json::to_string_pretty(&self.settings).map_err(|e| {
-            MmError::Config(format!("cannot serialise settings: {e}"))
-        })?;
+        let settings_json = serde_json::to_string_pretty(&self.settings)
+            .map_err(|e| MmError::Config(format!("cannot serialise settings: {e}")))?;
         atomic_write(&settings_path, settings_json.as_bytes())?;
         written.push(settings_path);
 
@@ -217,7 +227,9 @@ impl SettingsBundle {
             let ft_path = user_override_path("filetypes.json5")?;
             if let Some(parent) = ft_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {
-                    MmError::Io(format!("cannot create config directory: {e}"))
+                    MmError::Io(std::io::Error::other(format!(
+                        "cannot create config directory: {e}"
+                    )))
                 })?;
             }
             atomic_write(&ft_path, ft.as_bytes())?;
@@ -229,7 +241,9 @@ impl SettingsBundle {
             let tags_path = user_override_path("tags.json5")?;
             if let Some(parent) = tags_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {
-                    MmError::Io(format!("cannot create config directory: {e}"))
+                    MmError::Io(std::io::Error::other(format!(
+                        "cannot create config directory: {e}"
+                    )))
                 })?;
             }
             atomic_write(&tags_path, tags.as_bytes())?;
@@ -263,21 +277,27 @@ fn atomic_write(path: &Path, data: &[u8]) -> MmResult<()> {
     // Build tmp path next to the target
     let tmp_path = {
         let mut t = path.to_path_buf();
-        let mut name = t.file_name()
-            .map(|n| n.to_os_string())
-            .unwrap_or_else(|| "out".into());
+        let mut name = t
+            .file_name()
+            .map_or_else(|| "out".into(), std::ffi::OsStr::to_os_string);
         name.push(".meedya_tmp");
         t.set_file_name(name);
         t
     };
 
     std::fs::write(&tmp_path, data).map_err(|e| {
-        MmError::Io(format!("cannot write '{}': {e}", tmp_path.display()))
+        tracing::warn!("cannot write '{}': {e}", tmp_path.display());
+        MmError::Io(e)
     })?;
 
     std::fs::rename(&tmp_path, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp_path);
-        MmError::Io(format!("cannot rename '{}' to '{}': {e}", tmp_path.display(), path.display()))
+        tracing::warn!(
+            "cannot rename '{}' to '{}': {e}",
+            tmp_path.display(),
+            path.display()
+        );
+        MmError::Io(e)
     })?;
 
     Ok(())
@@ -366,7 +386,10 @@ mod tests {
         default_bundle().export(&path).unwrap();
         // No temp files should remain
         let tmp_path = dir.path().join("test.mmprofile.meedya_tmp");
-        assert!(!tmp_path.exists(), "no temp file should remain after export");
+        assert!(
+            !tmp_path.exists(),
+            "no temp file should remain after export"
+        );
     }
 
     // ── Optional fields ───────────────────────────────────────────────────────

@@ -8,6 +8,41 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.3.1] — 2026-03-06 — Workspace Lint Configuration & Code Quality
+
+> **Code quality hardening** — Added `[workspace.lints]` configuration with pedantic and nursery clippy groups, resolved all warnings across the entire workspace, zero clippy warnings.
+
+### Added
+
+- `Cargo.toml` — `[workspace.lints.clippy]` with `pedantic` and `nursery` groups enabled as warnings; 25+ targeted lint allows with documented rationale
+- `Cargo.toml` — `[workspace.lints.rust]` with `unsafe_code = "warn"` for safety auditing
+- All 8 crate `Cargo.toml` files — `[lints] workspace = true` inheritance
+
+### Changed
+
+- Applied ~600 `use_self` fixes (Self instead of TypeName in impl blocks)
+- Applied ~240 doc comment formatting fixes
+- Applied ~30 `uninlined_format_args` fixes (inline variables in format strings)
+- Applied ~20 `redundant_closure` removals
+- Applied ~18 `derive_partial_eq_without_eq` fixes (added `Eq` derives)
+- Fixed inefficient clone assignments → `clone_into()` in export.rs and serve.rs
+- Fixed `Default::default()` → explicit `EventAttributes::default()` in watcher tests
+- Fixed redundant field names and added numeric literal separators in auth.rs tests
+- Improved doc comment formatting in classify module (first-paragraph split)
+- Used `finish_non_exhaustive()` in ProviderRegistry Debug impl
+- Removed unnecessary `collect()` in cover_art best-selection
+- Renamed `_watcher` → `watcher` (was used via `drop()`, not unused)
+- Added `#![allow(unsafe_code)]` to mm-ffi crate (FFI boundary)
+- Added `#[allow(unsafe_code)]` annotations for platform PID checking and test set_var
+
+### Verification
+
+- `cargo clippy --workspace --all-targets` → **0 warnings**
+- `cargo fmt --check` → **clean**
+- `cargo test --workspace` → **1,234 tests pass, 0 failures**
+
+---
+
 ## [v1.3.0] — 2026-03-06 — Test Mode, Privacy Policy, Pre-release Safety, JSON Schemas
 
 > **User safety and compliance** — Test Mode for non-destructive editing, privacy policy for app store compliance, pre-release version safety, and JSON Schema validation for config files.

@@ -53,16 +53,16 @@ pub enum CompanionType {
 impl std::fmt::Display for CompanionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subtitle      => write!(f, "Subtitle"),
-            Self::Lyrics        => write!(f, "Lyrics"),
-            Self::CueSheet      => write!(f, "Cue Sheet"),
-            Self::CoverArt      => write!(f, "Cover Art"),
-            Self::DiscImage     => write!(f, "Disc Image"),
-            Self::Archive       => write!(f, "Archive"),
+            Self::Subtitle => write!(f, "Subtitle"),
+            Self::Lyrics => write!(f, "Lyrics"),
+            Self::CueSheet => write!(f, "Cue Sheet"),
+            Self::CoverArt => write!(f, "Cover Art"),
+            Self::DiscImage => write!(f, "Disc Image"),
+            Self::Archive => write!(f, "Archive"),
             Self::ItunesPackage => write!(f, "iTunes Package"),
-            Self::InfoFile      => write!(f, "Info File"),
-            Self::RipLog        => write!(f, "Rip Log"),
-            Self::Playlist      => write!(f, "Playlist"),
+            Self::InfoFile => write!(f, "Info File"),
+            Self::RipLog => write!(f, "Rip Log"),
+            Self::Playlist => write!(f, "Playlist"),
             Self::AccuracyCheck => write!(f, "Accuracy Check"),
         }
     }
@@ -88,9 +88,21 @@ pub struct MediaGroup {
 
 /// Well-known cover art filenames (case-insensitive matching)
 const COVER_ART_STEMS: &[&str] = &[
-    "cover", "folder", "album", "albumart", "albumartsmall",
-    "front", "back", "disc", "cd", "inlay", "booklet",
-    "artwork", "thumb", "thumbnail", "poster",
+    "cover",
+    "folder",
+    "album",
+    "albumart",
+    "albumartsmall",
+    "front",
+    "back",
+    "disc",
+    "cd",
+    "inlay",
+    "booklet",
+    "artwork",
+    "thumb",
+    "thumbnail",
+    "poster",
 ];
 
 /// Image extensions that qualify as cover art
@@ -210,10 +222,13 @@ pub fn detect_companions(
             };
 
             if let Some(media) = stem_to_media.get(&stem) {
-                groups.entry((*media).clone()).or_default().push(CompanionFile {
-                    path: file.clone(),
-                    companion_type,
-                });
+                groups
+                    .entry((*media).clone())
+                    .or_default()
+                    .push(CompanionFile {
+                        path: file.clone(),
+                        companion_type,
+                    });
             }
         }
     }
@@ -235,9 +250,9 @@ pub fn detect_companions(
 
 /// Get companion files for a single media file by scanning its parent directory.
 pub fn find_companions(media_path: &Path) -> MmResult<Vec<CompanionFile>> {
-    let parent = media_path.parent().ok_or_else(|| {
-        MmError::Companion("media file has no parent directory".into())
-    })?;
+    let parent = media_path
+        .parent()
+        .ok_or_else(|| MmError::Companion("media file has no parent directory".into()))?;
 
     // Read directory contents
     let entries: Vec<PathBuf> = std::fs::read_dir(parent)
@@ -246,10 +261,7 @@ pub fn find_companions(media_path: &Path) -> MmResult<Vec<CompanionFile>> {
         .filter(|p| p.is_file())
         .collect();
 
-    let media_stem = media_path
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .unwrap_or("");
+    let media_stem = media_path.file_stem().and_then(OsStr::to_str).unwrap_or("");
 
     let mut companions = Vec::new();
 
@@ -274,10 +286,7 @@ pub fn find_companions(media_path: &Path) -> MmResult<Vec<CompanionFile>> {
             None => continue,
         };
 
-        let entry_stem = entry
-            .file_stem()
-            .and_then(OsStr::to_str)
-            .unwrap_or("");
+        let entry_stem = entry.file_stem().and_then(OsStr::to_str).unwrap_or("");
 
         if entry_stem == media_stem {
             if let Some(companion_type) = classify_companion(ext) {
@@ -350,8 +359,14 @@ mod tests {
 
     #[test]
     fn classify_accuracy_check() {
-        assert_eq!(classify_companion("accurip"), Some(CompanionType::AccuracyCheck));
-        assert_eq!(classify_companion("crc"), Some(CompanionType::AccuracyCheck));
+        assert_eq!(
+            classify_companion("accurip"),
+            Some(CompanionType::AccuracyCheck)
+        );
+        assert_eq!(
+            classify_companion("crc"),
+            Some(CompanionType::AccuracyCheck)
+        );
     }
 
     #[test]
@@ -366,20 +381,35 @@ mod tests {
         assert_eq!(classify_companion("zip"), Some(CompanionType::Archive));
         assert_eq!(classify_companion("ZIP"), Some(CompanionType::Archive));
         assert_eq!(classify_companion("rar"), Some(CompanionType::Archive));
-        assert_eq!(classify_companion("7z"),  Some(CompanionType::Archive));
+        assert_eq!(classify_companion("7z"), Some(CompanionType::Archive));
     }
 
     #[test]
     fn classify_itunes_package_extensions() {
-        assert_eq!(classify_companion("itlp"),  Some(CompanionType::ItunesPackage));
-        assert_eq!(classify_companion("itmsp"), Some(CompanionType::ItunesPackage));
-        assert_eq!(classify_companion("itms"),  Some(CompanionType::ItunesPackage));
+        assert_eq!(
+            classify_companion("itlp"),
+            Some(CompanionType::ItunesPackage)
+        );
+        assert_eq!(
+            classify_companion("itmsp"),
+            Some(CompanionType::ItunesPackage)
+        );
+        assert_eq!(
+            classify_companion("itms"),
+            Some(CompanionType::ItunesPackage)
+        );
     }
 
     #[test]
     fn classify_checksum_extensions() {
-        assert_eq!(classify_companion("sfv"), Some(CompanionType::AccuracyCheck));
-        assert_eq!(classify_companion("md5"), Some(CompanionType::AccuracyCheck));
+        assert_eq!(
+            classify_companion("sfv"),
+            Some(CompanionType::AccuracyCheck)
+        );
+        assert_eq!(
+            classify_companion("md5"),
+            Some(CompanionType::AccuracyCheck)
+        );
     }
 
     #[test]
@@ -390,7 +420,7 @@ mod tests {
 
     #[test]
     fn companion_type_display_new_types() {
-        assert_eq!(CompanionType::Archive.to_string(),       "Archive");
+        assert_eq!(CompanionType::Archive.to_string(), "Archive");
         assert_eq!(CompanionType::ItunesPackage.to_string(), "iTunes Package");
         assert_eq!(CompanionType::AccuracyCheck.to_string(), "Accuracy Check");
     }
@@ -434,7 +464,7 @@ mod tests {
         touch(&unrelated);
 
         let groups = detect_companions(
-            &[media.clone()],
+            std::slice::from_ref(&media),
             &[media.clone(), srt, lrc, unrelated],
         )
         .unwrap();
@@ -459,15 +489,15 @@ mod tests {
         touch(&media);
         touch(&cover);
 
-        let groups = detect_companions(
-            &[media.clone()],
-            &[media.clone(), cover],
-        )
-        .unwrap();
+        let groups =
+            detect_companions(std::slice::from_ref(&media), &[media.clone(), cover]).unwrap();
 
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].companions.len(), 1);
-        assert_eq!(groups[0].companions[0].companion_type, CompanionType::CoverArt);
+        assert_eq!(
+            groups[0].companions[0].companion_type,
+            CompanionType::CoverArt
+        );
     }
 
     #[test]

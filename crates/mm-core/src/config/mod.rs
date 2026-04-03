@@ -31,7 +31,7 @@ use crate::error::{MmError, MmResult};
 /// Each nested section maps to a logical subsystem (watching, renaming,
 /// logging, metadata providers). All fields carry defaults so a completely
 /// empty JSON5 file (or no file at all) still yields a usable config.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AppConfig {
     /// Human-readable application name (informational only)
@@ -82,7 +82,7 @@ impl Default for AppConfig {
 /// `folders` lists the directories to monitor. `poll_interval_secs` controls
 /// the fallback polling frequency when native events are unavailable.
 /// `recursive` determines whether subdirectories are included.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct WatchConfig {
     /// Directories to watch for new/changed media files
@@ -131,7 +131,7 @@ impl Default for WatchConfig {
 ///
 /// Controls the template pattern used to build destination paths, conflict
 /// resolution strategy, and whether dry-run mode is active for renames.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct RenameConfig {
     /// MusicBee-style template for building the destination file path.
@@ -196,7 +196,7 @@ impl Default for RenameConfig {
 /// Configuration for structured logging and diagnostics.
 ///
 /// Supports console output, file output, and configurable verbosity levels.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct LoggingConfig {
     /// Minimum log level: "trace", "debug", "info", "warn", "error"
@@ -246,7 +246,7 @@ impl Default for LoggingConfig {
 /// Controls which providers are enabled and stores API keys. Keys can be
 /// set in the JSON5 file or overridden via environment variables (preferred
 /// for secrets).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct ProviderConfig {
     /// Enable MusicBrainz lookups
@@ -331,10 +331,9 @@ impl AppConfig {
     /// applied on top.
     pub fn load() -> MmResult<Self> {
         // Resolve the platform-specific config directory
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| {
-                MmError::Config("unable to determine platform config directory".to_string())
-            })?;
+        let config_dir = dirs::config_dir().ok_or_else(|| {
+            MmError::Config("unable to determine platform config directory".to_string())
+        })?;
 
         // Build the full path: <config_dir>/MeedyaManager/settings.json5
         let settings_path = config_dir.join("MeedyaManager").join("settings.json5");
@@ -370,7 +369,7 @@ impl AppConfig {
             // Parse JSON5 into the strongly-typed AppConfig struct.
             // JSON5 is a superset of JSON that allows comments, trailing
             // commas, unquoted keys, and other conveniences.
-            json5::from_str::<AppConfig>(&contents).map_err(|e| {
+            json5::from_str::<Self>(&contents).map_err(|e| {
                 MmError::Config(format!(
                     "failed to parse config file '{}': {}",
                     path.display(),
@@ -382,7 +381,7 @@ impl AppConfig {
                 path = %path.display(),
                 "Configuration file not found — using defaults"
             );
-            AppConfig::default()
+            Self::default()
         };
 
         // Apply .env overrides on top of the loaded (or default) config
@@ -403,7 +402,7 @@ impl AppConfig {
     /// We then read specific `MM_*` variables and override the corresponding
     /// config fields. This is the recommended way to supply secrets (API keys)
     /// without putting them in the JSON5 file.
-    fn apply_env_overrides(config: &mut AppConfig) {
+    fn apply_env_overrides(config: &mut Self) {
         // Attempt to load .env — it is perfectly fine if the file is missing
         match dotenvy::dotenv() {
             Ok(path) => {
@@ -425,7 +424,10 @@ impl AppConfig {
         // MM_TEST_MODE: override the test-mode flag
         if let Ok(val) = std::env::var("MM_TEST_MODE") {
             config.test_mode = val == "1" || val.eq_ignore_ascii_case("true");
-            debug!(test_mode = config.test_mode, "MM_TEST_MODE override applied");
+            debug!(
+                test_mode = config.test_mode,
+                "MM_TEST_MODE override applied"
+            );
         }
 
         // --- Logging overrides ---
@@ -517,7 +519,7 @@ impl AppConfig {
     /// Validation is intentionally lenient — we warn about problems but
     /// do not fail, because the user may be running in a mode that does
     /// not require the problematic settings (e.g. CLI --help).
-    fn validate(config: &AppConfig) {
+    fn validate(config: &Self) {
         // Warn if no watch folders are configured
         if config.watch.folders.is_empty() {
             warn!("No watch folders configured — the watcher will have nothing to monitor");
@@ -564,7 +566,9 @@ impl AppConfig {
             && (config.providers.spotify_client_id.is_none()
                 || config.providers.spotify_client_secret.is_none())
         {
-            warn!("Spotify is enabled but credentials are incomplete (set MM_SPOTIFY_CLIENT_ID and MM_SPOTIFY_CLIENT_SECRET)");
+            warn!(
+                "Spotify is enabled but credentials are incomplete (set MM_SPOTIFY_CLIENT_ID and MM_SPOTIFY_CLIENT_SECRET)"
+            );
         }
         if config.providers.tmdb_enabled && config.providers.tmdb_api_key.is_none() {
             warn!("TMDb is enabled but no API key is configured (set MM_TMDB_API_KEY)");
@@ -596,6 +600,7 @@ impl AppConfig {
 // ===========================================================================
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
     use std::io::Write;
@@ -801,10 +806,7 @@ mod tests {
         // Logging section
         assert_eq!(config.logging.level, "debug");
         assert!(!config.logging.console);
-        assert_eq!(
-            config.logging.file,
-            Some(PathBuf::from("/tmp/meedya.log"))
-        );
+        assert_eq!(config.logging.file, Some(PathBuf::from("/tmp/meedya.log")));
         assert_eq!(config.logging.max_file_size_bytes, 5_242_880);
         assert_eq!(config.logging.max_rotated_files, 5);
         assert!(!config.logging.redact_pii);
@@ -822,10 +824,7 @@ mod tests {
             Some("client-id".to_string())
         );
         assert!(config.providers.tmdb_enabled);
-        assert_eq!(
-            config.providers.tmdb_api_key,
-            Some("tmdb-key".to_string())
-        );
+        assert_eq!(config.providers.tmdb_api_key, Some("tmdb-key".to_string()));
         assert!(config.providers.acoustid_enabled);
         assert_eq!(
             config.providers.acoustid_api_key,
@@ -859,12 +858,16 @@ mod tests {
         assert!(!config.dry_run);
 
         // Temporarily set the env var
-        unsafe { std::env::set_var("MM_DRY_RUN", "true"); }
+        unsafe {
+            std::env::set_var("MM_DRY_RUN", "true");
+        }
         AppConfig::apply_env_overrides(&mut config);
         assert!(config.dry_run);
 
         // Clean up
-        unsafe { std::env::remove_var("MM_DRY_RUN"); }
+        unsafe {
+            std::env::remove_var("MM_DRY_RUN");
+        }
     }
 
     #[test]
@@ -873,12 +876,16 @@ mod tests {
         let mut config = AppConfig::default();
         assert_eq!(config.logging.level, "info");
 
-        unsafe { std::env::set_var("MM_LOG_LEVEL", "debug"); }
+        unsafe {
+            std::env::set_var("MM_LOG_LEVEL", "debug");
+        }
         AppConfig::apply_env_overrides(&mut config);
         assert_eq!(config.logging.level, "debug");
 
         // Clean up
-        unsafe { std::env::remove_var("MM_LOG_LEVEL"); }
+        unsafe {
+            std::env::remove_var("MM_LOG_LEVEL");
+        }
     }
 
     #[test]
@@ -888,8 +895,12 @@ mod tests {
         assert!(config.providers.discogs_token.is_none());
         assert!(config.providers.tmdb_api_key.is_none());
 
-        unsafe { std::env::set_var("MM_DISCOGS_TOKEN", "env-discogs-token"); }
-        unsafe { std::env::set_var("MM_TMDB_API_KEY", "env-tmdb-key"); }
+        unsafe {
+            std::env::set_var("MM_DISCOGS_TOKEN", "env-discogs-token");
+        }
+        unsafe {
+            std::env::set_var("MM_TMDB_API_KEY", "env-tmdb-key");
+        }
         AppConfig::apply_env_overrides(&mut config);
 
         assert_eq!(
@@ -902,32 +913,44 @@ mod tests {
         );
 
         // Clean up
-        unsafe { std::env::remove_var("MM_DISCOGS_TOKEN"); }
-        unsafe { std::env::remove_var("MM_TMDB_API_KEY"); }
+        unsafe {
+            std::env::remove_var("MM_DISCOGS_TOKEN");
+        }
+        unsafe {
+            std::env::remove_var("MM_TMDB_API_KEY");
+        }
     }
 
     #[test]
     fn test_env_override_rename_template() {
         // MM_RENAME_TEMPLATE should override the rename template
         let mut config = AppConfig::default();
-        unsafe { std::env::set_var("MM_RENAME_TEMPLATE", "<Genre>/<Artist>"); }
+        unsafe {
+            std::env::set_var("MM_RENAME_TEMPLATE", "<Genre>/<Artist>");
+        }
         AppConfig::apply_env_overrides(&mut config);
         assert_eq!(config.rename.template, "<Genre>/<Artist>");
 
         // Clean up
-        unsafe { std::env::remove_var("MM_RENAME_TEMPLATE"); }
+        unsafe {
+            std::env::remove_var("MM_RENAME_TEMPLATE");
+        }
     }
 
     #[test]
     fn test_env_override_watch_poll_interval() {
         // MM_WATCH_POLL_INTERVAL should override the poll interval
         let mut config = AppConfig::default();
-        unsafe { std::env::set_var("MM_WATCH_POLL_INTERVAL", "30"); }
+        unsafe {
+            std::env::set_var("MM_WATCH_POLL_INTERVAL", "30");
+        }
         AppConfig::apply_env_overrides(&mut config);
         assert_eq!(config.watch.poll_interval_secs, 30);
 
         // Clean up
-        unsafe { std::env::remove_var("MM_WATCH_POLL_INTERVAL"); }
+        unsafe {
+            std::env::remove_var("MM_WATCH_POLL_INTERVAL");
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -996,7 +1019,7 @@ mod tests {
     fn test_config_debug_formatting() {
         // Debug formatting should not panic and should contain key field names
         let config = AppConfig::default();
-        let debug_str = format!("{:?}", config);
+        let debug_str = format!("{config:?}");
         assert!(debug_str.contains("app_name"));
         assert!(debug_str.contains("MeedyaManager"));
         assert!(debug_str.contains("watch"));
@@ -1009,11 +1032,15 @@ mod tests {
     fn test_env_override_conflict_strategy() {
         // MM_RENAME_CONFLICT should override the conflict strategy
         let mut config = AppConfig::default();
-        unsafe { std::env::set_var("MM_RENAME_CONFLICT", "overwrite"); }
+        unsafe {
+            std::env::set_var("MM_RENAME_CONFLICT", "overwrite");
+        }
         AppConfig::apply_env_overrides(&mut config);
         assert_eq!(config.rename.conflict_strategy, "overwrite");
 
         // Clean up
-        unsafe { std::env::remove_var("MM_RENAME_CONFLICT"); }
+        unsafe {
+            std::env::remove_var("MM_RENAME_CONFLICT");
+        }
     }
 }

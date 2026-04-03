@@ -2,6 +2,9 @@
 //
 // Application state persistence and single-instance enforcement.
 //
+// Safety: This module uses unsafe code for platform-specific PID checking
+// (libc::kill on Unix, OpenProcess on Windows).  Both are audited OS APIs.
+//
 // Saves application state (last scan times, pending operations) to a
 // JSON file in the platform config directory. Uses a lock file to
 // prevent multiple instances from running simultaneously.
@@ -49,13 +52,11 @@ impl AppState {
             return Ok(Self::default());
         }
 
-        let contents = std::fs::read_to_string(path).map_err(|e| {
-            MmError::State(format!("cannot read state file: {e}"))
-        })?;
+        let contents = std::fs::read_to_string(path)
+            .map_err(|e| MmError::State(format!("cannot read state file: {e}")))?;
 
-        let state: Self = serde_json::from_str(&contents).map_err(|e| {
-            MmError::State(format!("cannot parse state file: {e}"))
-        })?;
+        let state: Self = serde_json::from_str(&contents)
+            .map_err(|e| MmError::State(format!("cannot parse state file: {e}")))?;
 
         debug!("Loaded state from {}", path.display());
         Ok(state)
@@ -68,24 +69,20 @@ impl AppState {
 
         // Create parent directories
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                MmError::State(format!("cannot create state directory: {e}"))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| MmError::State(format!("cannot create state directory: {e}")))?;
         }
 
         // Serialize to pretty JSON
-        let json = serde_json::to_string_pretty(self).map_err(|e| {
-            MmError::State(format!("cannot serialize state: {e}"))
-        })?;
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| MmError::State(format!("cannot serialize state: {e}")))?;
 
         // Write atomically (write to temp file then rename)
         let temp_path = path.with_extension("tmp");
-        std::fs::write(&temp_path, &json).map_err(|e| {
-            MmError::State(format!("cannot write state file: {e}"))
-        })?;
-        std::fs::rename(&temp_path, path).map_err(|e| {
-            MmError::State(format!("cannot finalise state file: {e}"))
-        })?;
+        std::fs::write(&temp_path, &json)
+            .map_err(|e| MmError::State(format!("cannot write state file: {e}")))?;
+        std::fs::rename(&temp_path, path)
+            .map_err(|e| MmError::State(format!("cannot finalise state file: {e}")))?;
 
         debug!("Saved state to {}", path.display());
         Ok(())
@@ -99,8 +96,7 @@ impl AppState {
 
     /// Get the default state file path for this platform
     pub fn default_path() -> PathBuf {
-        let config_dir = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         config_dir.join("MeedyaManager").join("state.json")
     }
 }
@@ -137,15 +133,13 @@ impl LockFile {
 
         // Create lock file with our PID
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                MmError::State(format!("cannot create lock directory: {e}"))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| MmError::State(format!("cannot create lock directory: {e}")))?;
         }
 
         let pid = std::process::id();
-        std::fs::write(path, pid.to_string()).map_err(|e| {
-            MmError::State(format!("cannot create lock file: {e}"))
-        })?;
+        std::fs::write(path, pid.to_string())
+            .map_err(|e| MmError::State(format!("cannot create lock file: {e}")))?;
 
         info!("Lock file acquired: {} (PID {pid})", path.display());
         Ok(Self {
@@ -157,9 +151,8 @@ impl LockFile {
     /// Release the lock by deleting the lock file
     pub fn release(&mut self) -> MmResult<()> {
         if self.owned && self.path.exists() {
-            std::fs::remove_file(&self.path).map_err(|e| {
-                MmError::State(format!("cannot remove lock file: {e}"))
-            })?;
+            std::fs::remove_file(&self.path)
+                .map_err(|e| MmError::State(format!("cannot remove lock file: {e}")))?;
             self.owned = false;
             debug!("Lock file released: {}", self.path.display());
         }
@@ -168,8 +161,7 @@ impl LockFile {
 
     /// Get the default lock file path for this platform
     pub fn default_path() -> PathBuf {
-        let config_dir = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         config_dir.join("MeedyaManager").join("meedya.lock")
     }
 }
@@ -187,20 +179,25 @@ impl Drop for LockFile {
 /// Uses platform-specific methods:
 /// - Unix:    `kill(pid, 0)` — signal 0 probes existence without affecting the process.
 /// - Windows: `OpenProcess(SYNCHRONIZE, FALSE, pid)` — attempts to open a minimal
-///            handle to the target process.  Two distinct failure codes let us
-///            distinguish "process does not exist" from "process exists but access
-///            was denied".
+///   handle to the target process.  Two distinct failure codes let us
+///   distinguish "process does not exist" from "process exists but access
+///   was denied".
 /// - Other:   Conservative fallback — always returns `true` (never clears a lock).
-
 // ---------------------------------------------------------------------------
 // Unix implementation (Linux, macOS, FreeBSD, etc.)
 // ---------------------------------------------------------------------------
 #[cfg(unix)]
+#[allow(unsafe_code)]
 fn is_process_running(pid: u32) -> bool {
     // `kill(pid, 0)` returns 0 if the process exists (even if owned by another user),
     // or -1 with errno ESRCH if no such process exists.
     // errno EPERM means the process exists but we cannot signal it — still running.
-    unsafe { libc::kill(pid as i32, 0) == 0 || *libc::__errno_location() == libc::EPERM }
+    let ret = unsafe { libc::kill(pid as i32, 0) };
+    if ret == 0 {
+        return true;
+    }
+    // Use portable errno access instead of platform-specific __errno_location / __error
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
 // Declare libc dependency for Unix PID checking
@@ -211,6 +208,7 @@ extern crate libc;
 // Windows implementation — OpenProcess (issue #131)
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
+#[allow(unsafe_code)]
 fn is_process_running(pid: u32) -> bool {
     use winapi::shared::winerror::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER};
     use winapi::um::errhandlingapi::GetLastError;
@@ -291,9 +289,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("state.json");
 
-        let mut state = AppState::default();
-        state.files_processed = 42;
-        state.files_renamed = 10;
+        let mut state = AppState {
+            files_processed: 42,
+            files_renamed: 10,
+            ..Default::default()
+        };
         state.record_scan(Path::new("/music"));
         state.save(&path).unwrap();
 
@@ -373,7 +373,7 @@ mod tests {
         {
             let lock = LockFile::acquire(&path);
             // PID 99999999 is almost certainly not running
-            assert!(lock.is_ok() || true); // Don't fail test if it is by chance
+            let _ = lock; // Don't fail test if PID 99999999 happens to be running
         }
     }
 
@@ -392,8 +392,10 @@ mod tests {
 
     #[test]
     fn state_serialization_roundtrip() {
-        let mut state = AppState::default();
-        state.files_processed = 100;
+        let state = AppState {
+            files_processed: 100,
+            ..Default::default()
+        };
 
         let json = serde_json::to_string(&state).unwrap();
         let parsed: AppState = serde_json::from_str(&json).unwrap();
@@ -422,24 +424,29 @@ mod tests {
     fn current_process_is_detected_as_running() {
         // Our own PID must always be detected as running.
         let my_pid = std::process::id();
-        assert!(is_process_running(my_pid),
-            "is_process_running() must return true for the current process PID");
+        assert!(
+            is_process_running(my_pid),
+            "is_process_running() must return true for the current process PID"
+        );
     }
 
     #[test]
     fn extremely_large_pid_is_not_running() {
-        // PID 4_294_967_295 (u32::MAX) is not a valid PID on any platform and
-        // should reliably return false.  On Unix, kill() returns ESRCH; on Windows,
-        // OpenProcess() returns ERROR_INVALID_PARAMETER.
-        // We accept that on some exotic platforms it might return true (conservative
-        // fallback), so we only assert on the platforms with real implementations.
+        // Use a very large but positive PID that almost certainly doesn't exist.
+        // Note: u32::MAX casts to -1 as i32, and kill(-1, 0) sends to all processes
+        // on Unix — so we use a value that stays positive after the cast.
+        const FAKE_PID: u32 = 99_999_999;
         #[cfg(unix)]
-        assert!(!is_process_running(u32::MAX),
-            "PID u32::MAX should not be detected as running on Unix");
+        assert!(
+            !is_process_running(FAKE_PID),
+            "PID {FAKE_PID} should not be detected as running on Unix"
+        );
 
         #[cfg(windows)]
-        assert!(!is_process_running(u32::MAX),
-            "PID u32::MAX should not be detected as running on Windows");
+        assert!(
+            !is_process_running(FAKE_PID),
+            "PID {FAKE_PID} should not be detected as running on Windows"
+        );
     }
 
     #[cfg(windows)]
@@ -453,6 +460,9 @@ mod tests {
 
         // LockFile::acquire should detect the stale lock and overwrite it
         let lock = LockFile::acquire(&path);
-        assert!(lock.is_ok(), "Stale lock with invalid PID should be cleaned on Windows");
+        assert!(
+            lock.is_ok(),
+            "Stale lock with invalid PID should be cleaned on Windows"
+        );
     }
 }

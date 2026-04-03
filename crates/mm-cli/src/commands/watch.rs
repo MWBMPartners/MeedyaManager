@@ -109,7 +109,7 @@ pub async fn run(ctx: &CliContext, args: &WatchArgs) -> anyhow::Result<i32> {
     }
 
     // Start the file system watcher
-    let (_watcher, rx) = mm_core::watcher::start_watcher(&watcher_config)?;
+    let (watcher, rx) = mm_core::watcher::start_watcher(&watcher_config)?;
 
     // Bridge the std::sync::mpsc receiver into the async world
     let output_format = ctx.output;
@@ -163,7 +163,7 @@ pub async fn run(ctx: &CliContext, args: &WatchArgs) -> anyhow::Result<i32> {
 
     // The watcher is dropped here, which closes the channel and
     // allows the event_handle task to finish
-    drop(_watcher);
+    drop(watcher);
     let _ = event_handle.await;
 
     Ok(ExitCode::SUCCESS)

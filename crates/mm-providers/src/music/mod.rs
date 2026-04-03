@@ -48,10 +48,15 @@ fn parse_err(context: &str, e: impl std::fmt::Display) -> ProviderError {
 }
 
 /// Trim and convert an empty string to `None`.
+#[allow(dead_code)]
 fn opt_str(s: impl Into<String>) -> Option<String> {
     let s = s.into();
     let trimmed = s.trim().to_owned();
-    if trimmed.is_empty() { None } else { Some(trimmed) }
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +74,7 @@ pub struct MusicBrainzProvider {
     enabled: bool,
     capabilities: Capabilities,
     /// Required by MusicBrainz API: identifies the application making requests
+    #[allow(dead_code)]
     user_agent: String,
 }
 
@@ -92,7 +98,7 @@ impl MusicBrainzProvider {
                 supports_search: true,
                 supports_isrc: true,
                 supports_iswc: true,
-                provides_cover_art: false,  // Cover art via Cover Art Archive (separate)
+                provides_cover_art: false, // Cover art via Cover Art Archive (separate)
                 provides_fingerprint: false,
                 requires_auth: false,
                 display_name: "MusicBrainz".into(),
@@ -102,9 +108,14 @@ impl MusicBrainzProvider {
     }
 
     /// Parse a MusicBrainz recording search response into `ProviderResult`s.
-    fn parse_recordings(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
+    fn parse_recordings(
+        provider_name: &str,
+        body: &str,
+    ) -> Result<Vec<ProviderResult>, ProviderError> {
         #[derive(Deserialize)]
-        struct MbResponse { recordings: Vec<MbRecording> }
+        struct MbResponse {
+            recordings: Vec<MbRecording>,
+        }
 
         #[derive(Deserialize)]
         struct MbRecording {
@@ -124,114 +135,144 @@ impl MusicBrainzProvider {
         }
 
         #[derive(Deserialize)]
-        struct MbArtist { name: Option<String> }
+        struct MbArtist {
+            name: Option<String>,
+        }
 
         #[derive(Deserialize)]
         struct MbRelease {
             title: Option<String>,
             date: Option<String>,
             #[serde(rename = "track-count")]
+            #[allow(dead_code)]
             track_count: Option<u32>,
         }
 
-        let resp: MbResponse = serde_json::from_str(body)
-            .map_err(|e| parse_err("MusicBrainz response", e))?;
+        let resp: MbResponse =
+            serde_json::from_str(body).map_err(|e| parse_err("MusicBrainz response", e))?;
 
-        let results = resp.recordings.into_iter().map(|rec| {
-            // Combine artist-credit names
-            let artist = rec.artist_credit.as_deref().map(|credits| {
-                credits
-                    .iter()
-                    .filter_map(|c| c.artist.as_ref()?.name.as_deref())
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            });
+        let results = resp
+            .recordings
+            .into_iter()
+            .map(|rec| {
+                // Combine artist-credit names
+                let artist = rec.artist_credit.as_deref().map(|credits| {
+                    credits
+                        .iter()
+                        .filter_map(|c| c.artist.as_ref()?.name.as_deref())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                });
 
-            // Use the first release for album/year info
-            let first_release = rec.releases.as_deref().and_then(|r| r.first());
-            let album = first_release.and_then(|r| r.title.clone());
-            let year = first_release
-                .and_then(|r| r.date.as_deref())
-                .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
+                // Use the first release for album/year info
+                let first_release = rec.releases.as_deref().and_then(|r| r.first());
+                let album = first_release.and_then(|r| r.title.clone());
+                let year = first_release
+                    .and_then(|r| r.date.as_deref())
+                    .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
 
-            // MusicBrainz score is 0–100; normalise to [0.0, 1.0]
-            let score = rec.score.unwrap_or(0) as f64 / 100.0;
+                // MusicBrainz score is 0–100; normalise to [0.0, 1.0]
+                let score = f64::from(rec.score.unwrap_or(0)) / 100.0;
 
-            ProviderResult {
-                provider: provider_name.to_owned(),
-                provider_id: rec.id.unwrap_or_default(),
-                title: rec.title,
-                artist,
-                album,
-                year,
-                isrc: rec.isrcs.and_then(|v| v.into_iter().next()),
-                duration_secs: rec.length.map(|ms| ms as f64 / 1000.0),
-                score,
-                ..Default::default()
-            }
-        }).collect();
+                ProviderResult {
+                    provider: provider_name.to_owned(),
+                    provider_id: rec.id.unwrap_or_default(),
+                    title: rec.title,
+                    artist,
+                    album,
+                    year,
+                    isrc: rec.isrcs.and_then(|v| v.into_iter().next()),
+                    duration_secs: rec.length.map(|ms| ms as f64 / 1000.0),
+                    score,
+                    ..Default::default()
+                }
+            })
+            .collect();
 
         Ok(results)
     }
 }
 
 impl MetadataProvider for MusicBrainzProvider {
-    fn name(&self) -> &str { "musicbrainz" }
-    fn capabilities(&self) -> &Capabilities { &self.capabilities }
-    fn is_enabled(&self) -> bool { self.enabled }
+    fn name(&self) -> &'static str {
+        "musicbrainz"
+    }
+    fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
 
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-        if !self.enabled {
-            return Err(ProviderError::Disabled("musicbrainz".into()));
-        }
+    fn search(
+        &self,
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.enabled {
+                return Err(ProviderError::Disabled("musicbrainz".into()));
+            }
 
-        // Build query string: ISRC takes priority over free-text
-        let lucene_query = if let Some(isrc) = &query.isrc {
-            format!("isrc:{isrc}")
-        } else {
-            let mut parts = Vec::new();
-            if let Some(title) = &query.title {
-                parts.push(format!("recording:{}", title.replace('"', "")));
-            }
-            if let Some(artist) = &query.artist {
-                parts.push(format!("artistname:{}", artist.replace('"', "")));
-            }
-            if parts.is_empty() {
-                query.query.clone()
+            // Build query string: ISRC takes priority over free-text
+            let lucene_query = if let Some(isrc) = &query.isrc {
+                format!("isrc:{isrc}")
             } else {
-                parts.join(" AND ")
+                let mut parts = Vec::new();
+                if let Some(title) = &query.title {
+                    parts.push(format!("recording:{}", title.replace('"', "")));
+                }
+                if let Some(artist) = &query.artist {
+                    parts.push(format!("artistname:{}", artist.replace('"', "")));
+                }
+                if parts.is_empty() {
+                    query.query.clone()
+                } else {
+                    parts.join(" AND ")
+                }
+            };
+
+            let url = format!("{}/ws/2/recording/", self.base_url);
+            debug!(
+                provider = "musicbrainz",
+                query = &lucene_query,
+                "Sending search request"
+            );
+
+            let response = self
+                .client
+                .get(&url)
+                // User-Agent is set at the client level by crate::http::build_client()
+                // so no per-request override is needed. MusicBrainz receives our
+                // standard "MeedyaManager/<version> (<platform>)" header automatically.
+                .header("Accept", "application/json")
+                .query(&[
+                    ("query", &lucene_query as &str),
+                    ("limit", &query.max_results.to_string()),
+                    ("fmt", "json"),
+                ])
+                .send()
+                .await
+                .map_err(net_err)?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                if status.as_u16() == 503 {
+                    return Err(ProviderError::RateLimited {
+                        provider: "musicbrainz".into(),
+                    });
+                }
+                return Err(ProviderError::Network(format!("HTTP {status}")));
             }
-        };
 
-        let url = format!("{}/ws/2/recording/", self.base_url);
-        debug!(provider = "musicbrainz", query = &lucene_query, "Sending search request");
-
-        let response = self
-            .client
-            .get(&url)
-            // User-Agent is set at the client level by crate::http::build_client()
-            // so no per-request override is needed. MusicBrainz receives our
-            // standard "MeedyaManager/<version> (<platform>)" header automatically.
-            .header("Accept", "application/json")
-            .query(&[
-                ("query", &lucene_query as &str),
-                ("limit", &query.max_results.to_string()),
-                ("fmt", "json"),
-            ])
-            .send()
-            .await
-            .map_err(net_err)?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            if status.as_u16() == 503 {
-                return Err(ProviderError::RateLimited { provider: "musicbrainz".into() });
-            }
-            return Err(ProviderError::Network(format!("HTTP {status}")));
-        }
-
-        let body = response.text().await.map_err(net_err)?;
-        Self::parse_recordings("musicbrainz", &body)
+            let body = response.text().await.map_err(net_err)?;
+            Self::parse_recordings("musicbrainz", &body)
+        })
     }
 }
 
@@ -287,8 +328,14 @@ impl SpotifyProvider {
 
     /// Obtain an access token using Client Credentials OAuth2.
     async fn get_access_token(&self) -> Result<String, ProviderError> {
-        let id = self.client_id.as_deref().ok_or_else(|| ProviderError::Auth("No client_id".into()))?;
-        let secret = self.client_secret.as_deref().ok_or_else(|| ProviderError::Auth("No client_secret".into()))?;
+        let id = self
+            .client_id
+            .as_deref()
+            .ok_or_else(|| ProviderError::Auth("No client_id".into()))?;
+        let secret = self
+            .client_secret
+            .as_deref()
+            .ok_or_else(|| ProviderError::Auth("No client_secret".into()))?;
 
         let resp = self
             .client
@@ -300,12 +347,20 @@ impl SpotifyProvider {
             .map_err(net_err)?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Auth(format!("Token request failed: HTTP {}", resp.status())));
+            return Err(ProviderError::Auth(format!(
+                "Token request failed: HTTP {}",
+                resp.status()
+            )));
         }
 
         #[derive(Deserialize)]
-        struct TokenResponse { access_token: String }
-        let token: TokenResponse = resp.json().await.map_err(|e| parse_err("Spotify token", e))?;
+        struct TokenResponse {
+            access_token: String,
+        }
+        let token: TokenResponse = resp
+            .json()
+            .await
+            .map_err(|e| parse_err("Spotify token", e))?;
         Ok(token.access_token)
     }
 
@@ -316,7 +371,9 @@ impl SpotifyProvider {
             tracks: Option<SpotifyTrackPage>,
         }
         #[derive(Deserialize)]
-        struct SpotifyTrackPage { items: Vec<SpotifyTrack> }
+        struct SpotifyTrackPage {
+            items: Vec<SpotifyTrack>,
+        }
         #[derive(Deserialize)]
         struct SpotifyTrack {
             id: Option<String>,
@@ -329,7 +386,9 @@ impl SpotifyProvider {
             popularity: Option<u32>,
         }
         #[derive(Deserialize)]
-        struct SpotifyArtist { name: Option<String> }
+        struct SpotifyArtist {
+            name: Option<String>,
+        }
         #[derive(Deserialize)]
         struct SpotifyAlbum {
             name: Option<String>,
@@ -337,115 +396,163 @@ impl SpotifyProvider {
             images: Option<Vec<SpotifyImage>>,
         }
         #[derive(Deserialize)]
-        struct SpotifyImage { url: String, width: Option<u32>, height: Option<u32> }
+        struct SpotifyImage {
+            url: String,
+            width: Option<u32>,
+            height: Option<u32>,
+        }
         #[derive(Deserialize)]
-        struct SpotifyExternalIds { isrc: Option<String> }
+        struct SpotifyExternalIds {
+            isrc: Option<String>,
+        }
 
-        let resp: SpotifySearchResponse = serde_json::from_str(body)
-            .map_err(|e| parse_err("Spotify search", e))?;
+        let resp: SpotifySearchResponse =
+            serde_json::from_str(body).map_err(|e| parse_err("Spotify search", e))?;
 
         let tracks = resp.tracks.map(|p| p.items).unwrap_or_default();
 
-        let results = tracks.into_iter().map(|track| {
-            let artist = track.artists.as_deref().map(|artists| {
-                artists.iter().filter_map(|a| a.name.as_deref()).collect::<Vec<_>>().join("; ")
-            });
-            let album_name = track.album.as_ref().and_then(|a| a.name.clone());
-            let year = track.album.as_ref()
-                .and_then(|a| a.release_date.as_deref())
-                .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
-            let cover_art = track.album.as_ref()
-                .and_then(|a| a.images.as_deref())
-                .map(|imgs| {
-                    imgs.iter().map(|img| CoverArtInfo::new(
-                        &img.url,
-                        img.width.unwrap_or(0),
-                        img.height.unwrap_or(0),
-                        "image/jpeg",
-                    )).collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let isrc = track.external_ids.and_then(|ids| ids.isrc);
-            // Normalise Spotify popularity 0–100 to [0.0, 1.0]
-            let score = track.popularity.unwrap_or(0) as f64 / 100.0;
-            let content_advisory = if track.explicit.unwrap_or(false) {
-                Some("explicit".into())
-            } else {
-                Some("clean".into())
-            };
+        let results = tracks
+            .into_iter()
+            .map(|track| {
+                let artist = track.artists.as_deref().map(|artists| {
+                    artists
+                        .iter()
+                        .filter_map(|a| a.name.as_deref())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                });
+                let album_name = track.album.as_ref().and_then(|a| a.name.clone());
+                let year = track
+                    .album
+                    .as_ref()
+                    .and_then(|a| a.release_date.as_deref())
+                    .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
+                let cover_art = track
+                    .album
+                    .as_ref()
+                    .and_then(|a| a.images.as_deref())
+                    .map(|imgs| {
+                        imgs.iter()
+                            .map(|img| {
+                                CoverArtInfo::new(
+                                    &img.url,
+                                    img.width.unwrap_or(0),
+                                    img.height.unwrap_or(0),
+                                    "image/jpeg",
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let isrc = track.external_ids.and_then(|ids| ids.isrc);
+                // Normalise Spotify popularity 0–100 to [0.0, 1.0]
+                let score = f64::from(track.popularity.unwrap_or(0)) / 100.0;
+                let content_advisory = if track.explicit.unwrap_or(false) {
+                    Some("explicit".into())
+                } else {
+                    Some("clean".into())
+                };
 
-            ProviderResult {
-                provider: provider_name.to_owned(),
-                provider_id: track.id.unwrap_or_default(),
-                title: track.name,
-                artist,
-                album: album_name,
-                year,
-                isrc,
-                duration_secs: track.duration_ms.map(|ms| ms as f64 / 1000.0),
-                content_advisory,
-                cover_art,
-                score,
-                ..Default::default()
-            }
-        }).collect();
+                ProviderResult {
+                    provider: provider_name.to_owned(),
+                    provider_id: track.id.unwrap_or_default(),
+                    title: track.name,
+                    artist,
+                    album: album_name,
+                    year,
+                    isrc,
+                    duration_secs: track.duration_ms.map(|ms| ms as f64 / 1000.0),
+                    content_advisory,
+                    cover_art,
+                    score,
+                    ..Default::default()
+                }
+            })
+            .collect();
 
         Ok(results)
     }
 }
 
 impl MetadataProvider for SpotifyProvider {
-    fn name(&self) -> &str { "spotify" }
-    fn capabilities(&self) -> &Capabilities { &self.capabilities }
-    fn is_enabled(&self) -> bool { self.client_id.is_some() && self.client_secret.is_some() }
+    fn name(&self) -> &'static str {
+        "spotify"
+    }
+    fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+    fn is_enabled(&self) -> bool {
+        self.client_id.is_some() && self.client_secret.is_some()
+    }
 
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-        if !self.is_enabled() {
-            return Err(ProviderError::Disabled("spotify".into()));
-        }
-
-        let token = self.get_access_token().await?;
-
-        // Build Spotify search query
-        let sp_query = if let Some(isrc) = &query.isrc {
-            format!("isrc:{isrc}")
-        } else {
-            let mut parts = Vec::new();
-            if let Some(title) = &query.title {
-                parts.push(format!("track:{title}"));
+    fn search(
+        &self,
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.is_enabled() {
+                return Err(ProviderError::Disabled("spotify".into()));
             }
-            if let Some(artist) = &query.artist {
-                parts.push(format!("artist:{artist}"));
+
+            let token = self.get_access_token().await?;
+
+            // Build Spotify search query
+            let sp_query = if let Some(isrc) = &query.isrc {
+                format!("isrc:{isrc}")
+            } else {
+                let mut parts = Vec::new();
+                if let Some(title) = &query.title {
+                    parts.push(format!("track:{title}"));
+                }
+                if let Some(artist) = &query.artist {
+                    parts.push(format!("artist:{artist}"));
+                }
+                if parts.is_empty() {
+                    query.query.clone()
+                } else {
+                    parts.join(" ")
+                }
+            };
+
+            let url = format!("{}/v1/search", self.base_url);
+            debug!(
+                provider = "spotify",
+                query = &sp_query,
+                "Sending search request"
+            );
+
+            let response = self
+                .client
+                .get(&url)
+                .bearer_auth(&token)
+                .query(&[
+                    ("q", &sp_query),
+                    ("type", &"track".to_owned()),
+                    ("limit", &query.max_results.to_string()),
+                ])
+                .send()
+                .await
+                .map_err(net_err)?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                if status.as_u16() == 429 {
+                    return Err(ProviderError::RateLimited {
+                        provider: "spotify".into(),
+                    });
+                }
+                return Err(ProviderError::Network(format!("HTTP {status}")));
             }
-            if parts.is_empty() { query.query.clone() } else { parts.join(" ") }
-        };
 
-        let url = format!("{}/v1/search", self.base_url);
-        debug!(provider = "spotify", query = &sp_query, "Sending search request");
-
-        let response = self
-            .client
-            .get(&url)
-            .bearer_auth(&token)
-            .query(&[
-                ("q", &sp_query),
-                ("type", &"track".to_owned()),
-                ("limit", &query.max_results.to_string()),
-            ])
-            .send()
-            .await
-            .map_err(net_err)?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            if status.as_u16() == 429 {
-                return Err(ProviderError::RateLimited { provider: "spotify".into() });
-            }
-            return Err(ProviderError::Network(format!("HTTP {status}")));
-        }
-
-        let body = response.text().await.map_err(net_err)?;
-        Self::parse_tracks("spotify", &body)
+            let body = response.text().await.map_err(net_err)?;
+            Self::parse_tracks("spotify", &body)
+        })
     }
 }
 
@@ -495,7 +602,9 @@ impl AppleMusicProvider {
     fn parse_itunes(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
-        struct ItunesResponse { results: Vec<ItunesTrack> }
+        struct ItunesResponse {
+            results: Vec<ItunesTrack>,
+        }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct ItunesTrack {
@@ -513,91 +622,130 @@ impl AppleMusicProvider {
             explicit_ness: Option<String>,
         }
 
-        let resp: ItunesResponse = serde_json::from_str(body)
-            .map_err(|e| parse_err("iTunes response", e))?;
+        let resp: ItunesResponse =
+            serde_json::from_str(body).map_err(|e| parse_err("iTunes response", e))?;
 
-        let results = resp.results.into_iter().map(|t| {
-            let cover_art = t.artwork_url100.as_deref().map(|url| {
-                // Replace 100x100 with higher-res variant
-                let hires = url.replace("100x100", "3000x3000");
-                vec![
-                    CoverArtInfo::new(&hires, 3000, 3000, "image/jpeg"),
-                    CoverArtInfo::new(url, 100, 100, "image/jpeg"),
-                ]
-            }).unwrap_or_default();
+        let results = resp
+            .results
+            .into_iter()
+            .map(|t| {
+                let cover_art = t
+                    .artwork_url100
+                    .as_deref()
+                    .map(|url| {
+                        // Replace 100x100 with higher-res variant
+                        let hires = url.replace("100x100", "3000x3000");
+                        vec![
+                            CoverArtInfo::new(&hires, 3000, 3000, "image/jpeg"),
+                            CoverArtInfo::new(url, 100, 100, "image/jpeg"),
+                        ]
+                    })
+                    .unwrap_or_default();
 
-            let year = t.release_date.as_deref()
-                .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
+                let year = t
+                    .release_date
+                    .as_deref()
+                    .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
 
-            let content_advisory = t.explicit_ness.as_deref().map(|e| {
-                if e.to_lowercase() == "explicit" { "explicit" } else { "clean" }.to_owned()
-            });
+                let content_advisory = t.explicit_ness.as_deref().map(|e| {
+                    if e.to_lowercase() == "explicit" {
+                        "explicit"
+                    } else {
+                        "clean"
+                    }
+                    .to_owned()
+                });
 
-            ProviderResult {
-                provider: provider_name.to_owned(),
-                provider_id: t.track_id.map(|id| id.to_string()).unwrap_or_default(),
-                title: t.track_name,
-                artist: t.artist_name,
-                album: t.collection_name,
-                year,
-                track_number: t.track_number,
-                track_total: t.track_count,
-                disc_number: t.disc_number,
-                genre: t.primary_genre_name,
-                duration_secs: t.track_time_millis.map(|ms| ms as f64 / 1000.0),
-                content_advisory,
-                cover_art,
-                ..Default::default()
-            }
-        }).collect();
+                ProviderResult {
+                    provider: provider_name.to_owned(),
+                    provider_id: t.track_id.map(|id| id.to_string()).unwrap_or_default(),
+                    title: t.track_name,
+                    artist: t.artist_name,
+                    album: t.collection_name,
+                    year,
+                    track_number: t.track_number,
+                    track_total: t.track_count,
+                    disc_number: t.disc_number,
+                    genre: t.primary_genre_name,
+                    duration_secs: t.track_time_millis.map(|ms| ms as f64 / 1000.0),
+                    content_advisory,
+                    cover_art,
+                    ..Default::default()
+                }
+            })
+            .collect();
 
         Ok(results)
     }
 }
 
 impl MetadataProvider for AppleMusicProvider {
-    fn name(&self) -> &str { "apple_music" }
-    fn capabilities(&self) -> &Capabilities { &self.capabilities }
-    fn is_enabled(&self) -> bool { self.enabled }
+    fn name(&self) -> &'static str {
+        "apple_music"
+    }
+    fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
 
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-        if !self.enabled {
-            return Err(ProviderError::Disabled("apple_music".into()));
-        }
-
-        let search_term = if let Some(title) = &query.title {
-            if let Some(artist) = &query.artist {
-                format!("{title} {artist}")
-            } else {
-                title.clone()
+    fn search(
+        &self,
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.enabled {
+                return Err(ProviderError::Disabled("apple_music".into()));
             }
-        } else {
-            query.query.clone()
-        };
 
-        let url = format!("{}/search", self.base_url);
-        debug!(provider = "apple_music", term = &search_term, "Sending iTunes search request");
+            let search_term = if let Some(title) = &query.title {
+                if let Some(artist) = &query.artist {
+                    format!("{title} {artist}")
+                } else {
+                    title.clone()
+                }
+            } else {
+                query.query.clone()
+            };
 
-        let response = self
-            .client
-            .get(&url)
-            .query(&[
-                ("term", &search_term),
-                ("media", &"music".to_owned()),
-                ("entity", &"song".to_owned()),
-                ("country", &self.country),
-                ("limit", &query.max_results.to_string()),
-            ])
-            .send()
-            .await
-            .map_err(net_err)?;
+            let url = format!("{}/search", self.base_url);
+            debug!(
+                provider = "apple_music",
+                term = &search_term,
+                "Sending iTunes search request"
+            );
 
-        if !response.status().is_success() {
-            return Err(ProviderError::Network(format!("HTTP {}", response.status())));
-        }
+            let response = self
+                .client
+                .get(&url)
+                .query(&[
+                    ("term", &search_term),
+                    ("media", &"music".to_owned()),
+                    ("entity", &"song".to_owned()),
+                    ("country", &self.country),
+                    ("limit", &query.max_results.to_string()),
+                ])
+                .send()
+                .await
+                .map_err(net_err)?;
 
-        let body = response.text().await.map_err(net_err)?;
-        Self::parse_itunes("apple_music", &body)
+            if !response.status().is_success() {
+                return Err(ProviderError::Network(format!(
+                    "HTTP {}",
+                    response.status()
+                )));
+            }
+
+            let body = response.text().await.map_err(net_err)?;
+            Self::parse_itunes("apple_music", &body)
+        })
     }
 }
 
@@ -643,7 +791,9 @@ impl DeezerProvider {
 
     fn parse_deezer(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
         #[derive(Deserialize)]
-        struct DeezerResponse { data: Vec<DeezerTrack> }
+        struct DeezerResponse {
+            data: Vec<DeezerTrack>,
+        }
         #[derive(Deserialize)]
         struct DeezerTrack {
             id: Option<u64>,
@@ -656,7 +806,9 @@ impl DeezerProvider {
             rank: Option<u64>,
         }
         #[derive(Deserialize)]
-        struct DeezerArtist { name: Option<String> }
+        struct DeezerArtist {
+            name: Option<String>,
+        }
         #[derive(Deserialize)]
         struct DeezerAlbum {
             title: Option<String>,
@@ -664,105 +816,130 @@ impl DeezerProvider {
             cover_medium: Option<String>,
         }
 
-        let resp: DeezerResponse = serde_json::from_str(body)
-            .map_err(|e| parse_err("Deezer response", e))?;
+        let resp: DeezerResponse =
+            serde_json::from_str(body).map_err(|e| parse_err("Deezer response", e))?;
 
-        let results = resp.data.into_iter().map(|t| {
-            let cover_art = {
-                let mut arts = Vec::new();
-                if let Some(xl) = t.album.as_ref().and_then(|a| a.cover_xl.as_deref()) {
-                    arts.push(CoverArtInfo::new(xl, 1000, 1000, "image/jpeg"));
+        let results = resp
+            .data
+            .into_iter()
+            .map(|t| {
+                let cover_art = {
+                    let mut arts = Vec::new();
+                    if let Some(xl) = t.album.as_ref().and_then(|a| a.cover_xl.as_deref()) {
+                        arts.push(CoverArtInfo::new(xl, 1000, 1000, "image/jpeg"));
+                    }
+                    if let Some(med) = t.album.as_ref().and_then(|a| a.cover_medium.as_deref()) {
+                        arts.push(CoverArtInfo::new(med, 250, 250, "image/jpeg"));
+                    }
+                    arts
+                };
+
+                // Deezer rank is up to ~100_000; normalise to [0.0, 1.0]
+                let score = t
+                    .rank
+                    .map_or(0.5, |r| (r as f64 / 100_000.0).clamp(0.0, 1.0));
+
+                ProviderResult {
+                    provider: provider_name.to_owned(),
+                    provider_id: t.id.map(|id| id.to_string()).unwrap_or_default(),
+                    title: t.title,
+                    artist: t.artist.and_then(|a| a.name),
+                    album: t.album.and_then(|a| a.title),
+                    isrc: t.isrc,
+                    duration_secs: t.duration.map(|s| s as f64),
+                    content_advisory: if t.explicit_lyrics.unwrap_or(false) {
+                        Some("explicit".into())
+                    } else {
+                        Some("clean".into())
+                    },
+                    cover_art,
+                    score,
+                    ..Default::default()
                 }
-                if let Some(med) = t.album.as_ref().and_then(|a| a.cover_medium.as_deref()) {
-                    arts.push(CoverArtInfo::new(med, 250, 250, "image/jpeg"));
-                }
-                arts
-            };
-
-            // Deezer rank is up to ~100_000; normalise to [0.0, 1.0]
-            let score = t.rank.map(|r| (r as f64 / 100_000.0).clamp(0.0, 1.0)).unwrap_or(0.5);
-
-            ProviderResult {
-                provider: provider_name.to_owned(),
-                provider_id: t.id.map(|id| id.to_string()).unwrap_or_default(),
-                title: t.title,
-                artist: t.artist.and_then(|a| a.name),
-                album: t.album.and_then(|a| a.title),
-                isrc: t.isrc,
-                duration_secs: t.duration.map(|s| s as f64),
-                content_advisory: if t.explicit_lyrics.unwrap_or(false) {
-                    Some("explicit".into())
-                } else {
-                    Some("clean".into())
-                },
-                cover_art,
-                score,
-                ..Default::default()
-            }
-        }).collect();
+            })
+            .collect();
 
         Ok(results)
     }
 }
 
 impl Default for DeezerProvider {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetadataProvider for DeezerProvider {
-    fn name(&self) -> &str { "deezer" }
-    fn capabilities(&self) -> &Capabilities { &self.capabilities }
-    fn is_enabled(&self) -> bool { self.enabled }
+    fn name(&self) -> &'static str {
+        "deezer"
+    }
+    fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
 
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
-        if !self.enabled {
-            return Err(ProviderError::Disabled("deezer".into()));
-        }
+    fn search(
+        &self,
+        query: SearchQuery,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            if !self.enabled {
+                return Err(ProviderError::Disabled("deezer".into()));
+            }
 
-        // Deezer supports ISRC lookup via `/track/isrc:<isrc>`
-        let url = if let Some(isrc) = &query.isrc {
-            format!("{}/track/isrc:{isrc}", self.base_url)
-        } else {
-            format!("{}/search", self.base_url)
-        };
-
-        let q = if query.isrc.is_some() {
-            None
-        } else {
-            let term = if let (Some(t), Some(a)) = (&query.title, &query.artist) {
-                format!("{t} {a}")
+            // Deezer supports ISRC lookup via `/track/isrc:<isrc>`
+            let url = if let Some(isrc) = &query.isrc {
+                format!("{}/track/isrc:{isrc}", self.base_url)
             } else {
-                query.query.clone()
+                format!("{}/search", self.base_url)
             };
-            Some(term)
-        };
 
-        debug!(provider = "deezer", query = ?q, "Sending search request");
+            let q = if query.isrc.is_some() {
+                None
+            } else {
+                let term = if let (Some(t), Some(a)) = (&query.title, &query.artist) {
+                    format!("{t} {a}")
+                } else {
+                    query.query.clone()
+                };
+                Some(term)
+            };
 
-        let mut req = self.client.get(&url);
-        if let Some(q) = &q {
-            req = req.query(&[
-                ("q", q.as_str()),
-                ("limit", &query.max_results.to_string()),
-            ]);
-        }
+            debug!(provider = "deezer", query = ?q, "Sending search request");
 
-        let response = req.send().await.map_err(net_err)?;
+            let mut req = self.client.get(&url);
+            if let Some(q) = &q {
+                req = req.query(&[("q", q.as_str()), ("limit", &query.max_results.to_string())]);
+            }
 
-        if !response.status().is_success() {
-            return Err(ProviderError::Network(format!("HTTP {}", response.status())));
-        }
+            let response = req.send().await.map_err(net_err)?;
 
-        let body = response.text().await.map_err(net_err)?;
+            if !response.status().is_success() {
+                return Err(ProviderError::Network(format!(
+                    "HTTP {}",
+                    response.status()
+                )));
+            }
 
-        // ISRC lookup returns a single track object; wrap it
-        if query.isrc.is_some() {
-            // Wrap single track in a `data` array
-            let wrapped = format!("{{\"data\":[{body}]}}");
-            Self::parse_deezer("deezer", &wrapped)
-        } else {
-            Self::parse_deezer("deezer", &body)
-        }
+            let body = response.text().await.map_err(net_err)?;
+
+            // ISRC lookup returns a single track object; wrap it
+            if query.isrc.is_some() {
+                // Wrap single track in a `data` array
+                let wrapped = format!("{{\"data\":[{body}]}}");
+                Self::parse_deezer("deezer", &wrapped)
+            } else {
+                Self::parse_deezer("deezer", &body)
+            }
+        })
     }
 }
 
@@ -790,11 +967,13 @@ macro_rules! stub_provider {
         $enabled_default:literal,
         $media_type:expr
     ) => {
+        #[allow(non_camel_case_types, non_snake_case)]
         pub struct $struct_name {
             enabled: bool,
             capabilities: Capabilities,
         }
 
+        #[allow(non_snake_case)]
         impl $struct_name {
             pub fn new(enabled: bool) -> Self {
                 Self {
@@ -814,28 +993,47 @@ macro_rules! stub_provider {
             }
         }
 
+        #[allow(non_snake_case)]
         impl Default for $struct_name {
             fn default() -> Self {
                 Self::new($enabled_default)
             }
         }
 
+        #[allow(non_snake_case)]
         impl MetadataProvider for $struct_name {
-            fn name(&self) -> &str { $name }
-            fn capabilities(&self) -> &Capabilities { &self.capabilities }
-            fn is_enabled(&self) -> bool { self.enabled }
+            fn name(&self) -> &str {
+                $name
+            }
+            fn capabilities(&self) -> &Capabilities {
+                &self.capabilities
+            }
+            fn is_enabled(&self) -> bool {
+                self.enabled
+            }
 
-            async fn search(
+            fn search(
                 &self,
-                _query: &SearchQuery,
-            ) -> Result<Vec<ProviderResult>, ProviderError> {
-                if !self.enabled {
-                    return Err(ProviderError::Disabled($name.into()));
-                }
-                warn!(provider = $name, "Provider not fully implemented in M5 (stub)");
-                Err(ProviderError::NotSupported {
-                    provider: $name.into(),
-                    reason: "Provider implementation pending API review".into(),
+                _query: SearchQuery,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
+                        + Send
+                        + '_,
+                >,
+            > {
+                Box::pin(async move {
+                    if !self.enabled {
+                        return Err(ProviderError::Disabled($name.into()));
+                    }
+                    warn!(
+                        provider = $name,
+                        "Provider not fully implemented in M5 (stub)"
+                    );
+                    Err(ProviderError::NotSupported {
+                        provider: $name.into(),
+                        reason: "Provider implementation pending API review".into(),
+                    })
                 })
             }
         }
@@ -848,9 +1046,9 @@ stub_provider!(
     "youtube_music",
     "YouTube Music",
     "https://music.youtube.com",
-    true,    // requires_auth
-    true,    // provides_cover_art
-    false,   // enabled_default
+    true,  // requires_auth
+    true,  // provides_cover_art
+    false, // enabled_default
     MediaType::Music
 );
 
@@ -860,9 +1058,9 @@ stub_provider!(
     "amazon_music",
     "Amazon Music",
     "https://music.amazon.com",
-    true,    // requires_auth
-    true,    // provides_cover_art
-    false,   // enabled_default
+    true,  // requires_auth
+    true,  // provides_cover_art
+    false, // enabled_default
     MediaType::Music
 );
 
@@ -872,9 +1070,9 @@ stub_provider!(
     "pandora",
     "Pandora",
     "https://pandora.com",
-    true,    // requires_auth
-    true,    // provides_cover_art
-    false,   // enabled_default
+    true,  // requires_auth
+    true,  // provides_cover_art
+    false, // enabled_default
     MediaType::Music
 );
 
@@ -884,9 +1082,9 @@ stub_provider!(
     "tidal",
     "Tidal",
     "https://tidal.com",
-    true,    // requires_auth
-    true,    // provides_cover_art
-    false,   // enabled_default
+    true,  // requires_auth
+    true,  // provides_cover_art
+    false, // enabled_default
     MediaType::Music
 );
 
@@ -896,9 +1094,9 @@ stub_provider!(
     "shazam",
     "Shazam",
     "https://shazam.com",
-    false,   // requires_auth (some endpoints don't)
-    true,    // provides_cover_art
-    false,   // enabled_default
+    false, // requires_auth (some endpoints don't)
+    true,  // provides_cover_art
+    false, // enabled_default
     MediaType::Music
 );
 
@@ -908,9 +1106,9 @@ stub_provider!(
     "iheart",
     "iHeart",
     "https://iheart.com",
-    false,   // requires_auth
-    true,    // provides_cover_art
-    false,   // enabled_default
+    false, // requires_auth
+    true,  // provides_cover_art
+    false, // enabled_default
     MediaType::Music
 );
 
@@ -1098,7 +1296,8 @@ mod tests {
 
     #[test]
     fn spotify_parse_explicit_track_flagged() {
-        let json = r#"{"tracks": {"items": [{"id": "x","name": "T","explicit": true,"popularity": 0}]}}"#;
+        let json =
+            r#"{"tracks": {"items": [{"id": "x","name": "T","explicit": true,"popularity": 0}]}}"#;
         let results = SpotifyProvider::parse_tracks("spotify", json).unwrap();
         assert_eq!(results[0].content_advisory.as_deref(), Some("explicit"));
     }
@@ -1154,7 +1353,7 @@ mod tests {
     }
 
     #[test]
-    fn apple_music_parse_hiRes_url_generated() {
+    fn apple_music_parse_hi_res_url_generated() {
         let json = r#"{
             "results": [{"artworkUrl100": "https://x.com/100x100.jpg"}]
         }"#;
@@ -1264,14 +1463,20 @@ mod tests {
     async fn youtube_music_search_disabled_returns_err() {
         let p = YouTubeMusicProvider::new(false);
         let q = SearchQuery::music("Track", "Artist");
-        assert!(matches!(p.search(&q).await, Err(ProviderError::Disabled(_))));
+        assert!(matches!(
+            p.search(q.clone()).await,
+            Err(ProviderError::Disabled(_))
+        ));
     }
 
     #[tokio::test]
     async fn youtube_music_search_enabled_returns_not_supported() {
         let p = YouTubeMusicProvider::new(true);
         let q = SearchQuery::music("Track", "Artist");
-        assert!(matches!(p.search(&q).await, Err(ProviderError::NotSupported { .. })));
+        assert!(matches!(
+            p.search(q.clone()).await,
+            Err(ProviderError::NotSupported { .. })
+        ));
     }
 
     #[test]
@@ -1329,7 +1534,11 @@ mod tests {
             Box::new(iHeartProvider::default()),
         ];
         for p in &providers {
-            assert!(!p.is_enabled(), "Provider {} should be disabled by default", p.name());
+            assert!(
+                !p.is_enabled(),
+                "Provider {} should be disabled by default",
+                p.name()
+            );
         }
     }
 

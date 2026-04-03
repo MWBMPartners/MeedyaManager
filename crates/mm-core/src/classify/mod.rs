@@ -13,12 +13,12 @@
 //
 // License: GPL-2.0-or-later
 
-use std::fmt;                              // Display trait for human-readable enum output
-use std::path::Path;                       // Path handling for classify_by_path
+use std::fmt; // Display trait for human-readable enum output
+use std::path::Path; // Path handling for classify_by_path
 
-use serde::{Deserialize, Serialize};       // Serialization support for all enums
+use serde::{Deserialize, Serialize}; // Serialization support for all enums
 
-use crate::error::{MmError, MmResult};    // Unified error type
+use crate::error::{MmError, MmResult}; // Unified error type
 
 // ─────────────────────────────────────────────────────────────────────
 // Level 1: MediaGroup — broad media category
@@ -46,12 +46,12 @@ impl fmt::Display for MediaGroup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Human-readable group names for UI display and logging
         match self {
-            MediaGroup::Audio    => write!(f, "Audio"),
-            MediaGroup::Video    => write!(f, "Video"),
-            MediaGroup::Image    => write!(f, "Image"),
-            MediaGroup::Document => write!(f, "Document"),
-            MediaGroup::Archive  => write!(f, "Archive"),
-            MediaGroup::Unknown  => write!(f, "Unknown"),
+            Self::Audio => write!(f, "Audio"),
+            Self::Video => write!(f, "Video"),
+            Self::Image => write!(f, "Image"),
+            Self::Document => write!(f, "Document"),
+            Self::Archive => write!(f, "Archive"),
+            Self::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -328,134 +328,134 @@ impl fmt::Display for MediaFormat {
         // Human-readable format names (matches common industry names)
         match self {
             // Audio
-            MediaFormat::MP3   => write!(f, "MP3"),
-            MediaFormat::FLAC  => write!(f, "FLAC"),
-            MediaFormat::AAC   => write!(f, "AAC"),
-            MediaFormat::WAV   => write!(f, "WAV"),
-            MediaFormat::AIFF  => write!(f, "AIFF"),
-            MediaFormat::ALAC  => write!(f, "ALAC"),
-            MediaFormat::OGG   => write!(f, "Ogg Vorbis"),
-            MediaFormat::OPUS  => write!(f, "Opus"),
-            MediaFormat::WMA   => write!(f, "WMA"),
-            MediaFormat::M4A   => write!(f, "M4A"),
-            MediaFormat::M4B   => write!(f, "M4B"),
-            MediaFormat::APE   => write!(f, "Monkey's Audio"),
-            MediaFormat::WV    => write!(f, "WavPack"),
-            MediaFormat::MPC   => write!(f, "Musepack"),
-            MediaFormat::TTA   => write!(f, "True Audio"),
-            MediaFormat::DSF   => write!(f, "DSD (DSF)"),
-            MediaFormat::DFF   => write!(f, "DSD (DFF)"),
-            MediaFormat::AMR   => write!(f, "AMR"),
-            MediaFormat::AU    => write!(f, "Au/SND"),
-            MediaFormat::RA    => write!(f, "RealAudio"),
-            MediaFormat::MID   => write!(f, "MIDI"),
-            MediaFormat::SPC   => write!(f, "SPC"),
-            MediaFormat::MOD   => write!(f, "MOD"),
-            MediaFormat::S3M   => write!(f, "S3M"),
-            MediaFormat::XM    => write!(f, "XM"),
-            MediaFormat::IT    => write!(f, "IT"),
-            MediaFormat::CAF   => write!(f, "Core Audio Format"),
-            MediaFormat::AC3   => write!(f, "AC-3 / Dolby Digital"),
-            MediaFormat::DTS   => write!(f, "DTS"),
+            Self::MP3 => write!(f, "MP3"),
+            Self::FLAC => write!(f, "FLAC"),
+            Self::AAC => write!(f, "AAC"),
+            Self::WAV => write!(f, "WAV"),
+            Self::AIFF => write!(f, "AIFF"),
+            Self::ALAC => write!(f, "ALAC"),
+            Self::OGG => write!(f, "Ogg Vorbis"),
+            Self::OPUS => write!(f, "Opus"),
+            Self::WMA => write!(f, "WMA"),
+            Self::M4A => write!(f, "M4A"),
+            Self::M4B => write!(f, "M4B"),
+            Self::APE => write!(f, "Monkey's Audio"),
+            Self::WV => write!(f, "WavPack"),
+            Self::MPC => write!(f, "Musepack"),
+            Self::TTA => write!(f, "True Audio"),
+            Self::DSF => write!(f, "DSD (DSF)"),
+            Self::DFF => write!(f, "DSD (DFF)"),
+            Self::AMR => write!(f, "AMR"),
+            Self::AU => write!(f, "Au/SND"),
+            Self::RA => write!(f, "RealAudio"),
+            Self::MID => write!(f, "MIDI"),
+            Self::SPC => write!(f, "SPC"),
+            Self::MOD => write!(f, "MOD"),
+            Self::S3M => write!(f, "S3M"),
+            Self::XM => write!(f, "XM"),
+            Self::IT => write!(f, "IT"),
+            Self::CAF => write!(f, "Core Audio Format"),
+            Self::AC3 => write!(f, "AC-3 / Dolby Digital"),
+            Self::DTS => write!(f, "DTS"),
             // Video
-            MediaFormat::MKV     => write!(f, "Matroska Video"),
-            MediaFormat::MP4     => write!(f, "MP4"),
-            MediaFormat::AVI     => write!(f, "AVI"),
-            MediaFormat::MOV     => write!(f, "QuickTime"),
-            MediaFormat::WMV     => write!(f, "WMV"),
-            MediaFormat::WEBM    => write!(f, "WebM"),
-            MediaFormat::FLV     => write!(f, "Flash Video"),
-            MediaFormat::M4V     => write!(f, "M4V"),
-            MediaFormat::TS      => write!(f, "MPEG-TS"),
-            MediaFormat::MPG     => write!(f, "MPEG"),
-            MediaFormat::MPEG    => write!(f, "MPEG-2"),
-            MediaFormat::ThreeGP => write!(f, "3GP"),
-            MediaFormat::RM      => write!(f, "RealMedia"),
-            MediaFormat::RMVB    => write!(f, "RealMedia VBR"),
-            MediaFormat::VOB     => write!(f, "DVD Video Object"),
-            MediaFormat::OGV     => write!(f, "Ogg Video"),
-            MediaFormat::ASF     => write!(f, "ASF"),
-            MediaFormat::MXF     => write!(f, "MXF"),
-            MediaFormat::MK3D    => write!(f, "Matroska 3D"),
-            MediaFormat::NSV     => write!(f, "NSV"),
-            MediaFormat::F4V     => write!(f, "Flash Video (F4V)"),
+            Self::MKV => write!(f, "Matroska Video"),
+            Self::MP4 => write!(f, "MP4"),
+            Self::AVI => write!(f, "AVI"),
+            Self::MOV => write!(f, "QuickTime"),
+            Self::WMV => write!(f, "WMV"),
+            Self::WEBM => write!(f, "WebM"),
+            Self::FLV => write!(f, "Flash Video"),
+            Self::M4V => write!(f, "M4V"),
+            Self::TS => write!(f, "MPEG-TS"),
+            Self::MPG => write!(f, "MPEG"),
+            Self::MPEG => write!(f, "MPEG-2"),
+            Self::ThreeGP => write!(f, "3GP"),
+            Self::RM => write!(f, "RealMedia"),
+            Self::RMVB => write!(f, "RealMedia VBR"),
+            Self::VOB => write!(f, "DVD Video Object"),
+            Self::OGV => write!(f, "Ogg Video"),
+            Self::ASF => write!(f, "ASF"),
+            Self::MXF => write!(f, "MXF"),
+            Self::MK3D => write!(f, "Matroska 3D"),
+            Self::NSV => write!(f, "NSV"),
+            Self::F4V => write!(f, "Flash Video (F4V)"),
             // Image
-            MediaFormat::JPG  => write!(f, "JPEG"),
-            MediaFormat::PNG  => write!(f, "PNG"),
-            MediaFormat::GIF  => write!(f, "GIF"),
-            MediaFormat::BMP  => write!(f, "BMP"),
-            MediaFormat::TIFF => write!(f, "TIFF"),
-            MediaFormat::WEBP => write!(f, "WebP"),
-            MediaFormat::SVG  => write!(f, "SVG"),
-            MediaFormat::HEIF => write!(f, "HEIF"),
-            MediaFormat::HEIC => write!(f, "HEIC"),
-            MediaFormat::AVIF => write!(f, "AVIF"),
-            MediaFormat::PSD  => write!(f, "Photoshop"),
-            MediaFormat::TGA  => write!(f, "TGA"),
-            MediaFormat::ICO  => write!(f, "ICO"),
-            MediaFormat::CR2  => write!(f, "Canon RAW"),
-            MediaFormat::NEF  => write!(f, "Nikon RAW"),
-            MediaFormat::DNG  => write!(f, "DNG"),
-            MediaFormat::ARW  => write!(f, "Sony RAW"),
-            MediaFormat::ORF  => write!(f, "Olympus RAW"),
-            MediaFormat::RAF  => write!(f, "Fuji RAW"),
-            MediaFormat::RW2  => write!(f, "Panasonic RAW"),
-            MediaFormat::RAW  => write!(f, "RAW"),
-            MediaFormat::EXR  => write!(f, "OpenEXR"),
-            MediaFormat::HDR  => write!(f, "Radiance HDR"),
-            MediaFormat::PPM  => write!(f, "PPM"),
-            MediaFormat::PGM  => write!(f, "PGM"),
-            MediaFormat::JP2  => write!(f, "JPEG 2000"),
-            MediaFormat::JXL  => write!(f, "JPEG XL"),
+            Self::JPG => write!(f, "JPEG"),
+            Self::PNG => write!(f, "PNG"),
+            Self::GIF => write!(f, "GIF"),
+            Self::BMP => write!(f, "BMP"),
+            Self::TIFF => write!(f, "TIFF"),
+            Self::WEBP => write!(f, "WebP"),
+            Self::SVG => write!(f, "SVG"),
+            Self::HEIF => write!(f, "HEIF"),
+            Self::HEIC => write!(f, "HEIC"),
+            Self::AVIF => write!(f, "AVIF"),
+            Self::PSD => write!(f, "Photoshop"),
+            Self::TGA => write!(f, "TGA"),
+            Self::ICO => write!(f, "ICO"),
+            Self::CR2 => write!(f, "Canon RAW"),
+            Self::NEF => write!(f, "Nikon RAW"),
+            Self::DNG => write!(f, "DNG"),
+            Self::ARW => write!(f, "Sony RAW"),
+            Self::ORF => write!(f, "Olympus RAW"),
+            Self::RAF => write!(f, "Fuji RAW"),
+            Self::RW2 => write!(f, "Panasonic RAW"),
+            Self::RAW => write!(f, "RAW"),
+            Self::EXR => write!(f, "OpenEXR"),
+            Self::HDR => write!(f, "Radiance HDR"),
+            Self::PPM => write!(f, "PPM"),
+            Self::PGM => write!(f, "PGM"),
+            Self::JP2 => write!(f, "JPEG 2000"),
+            Self::JXL => write!(f, "JPEG XL"),
             // Document
-            MediaFormat::PDF  => write!(f, "PDF"),
-            MediaFormat::EPUB => write!(f, "EPUB"),
-            MediaFormat::MOBI => write!(f, "Kindle"),
-            MediaFormat::DOC  => write!(f, "Word (DOC)"),
-            MediaFormat::DOCX => write!(f, "Word (DOCX)"),
-            MediaFormat::XLS  => write!(f, "Excel (XLS)"),
-            MediaFormat::XLSX => write!(f, "Excel (XLSX)"),
-            MediaFormat::PPT  => write!(f, "PowerPoint (PPT)"),
-            MediaFormat::PPTX => write!(f, "PowerPoint (PPTX)"),
-            MediaFormat::ODT  => write!(f, "OpenDocument Text"),
-            MediaFormat::ODS  => write!(f, "OpenDocument Spreadsheet"),
-            MediaFormat::ODP  => write!(f, "OpenDocument Presentation"),
-            MediaFormat::RTF  => write!(f, "Rich Text"),
-            MediaFormat::TXT  => write!(f, "Plain Text"),
-            MediaFormat::CSV  => write!(f, "CSV"),
-            MediaFormat::HTML => write!(f, "HTML"),
-            MediaFormat::XML  => write!(f, "XML"),
-            MediaFormat::JSON => write!(f, "JSON"),
-            MediaFormat::YAML => write!(f, "YAML"),
-            MediaFormat::MD   => write!(f, "Markdown"),
-            MediaFormat::TEX  => write!(f, "LaTeX"),
-            MediaFormat::DJVU => write!(f, "DjVu"),
-            MediaFormat::CBZ  => write!(f, "CBZ"),
-            MediaFormat::CBR  => write!(f, "CBR"),
-            MediaFormat::FB2  => write!(f, "FictionBook"),
-            MediaFormat::SRT  => write!(f, "SubRip"),
-            MediaFormat::ASS  => write!(f, "ASS Subtitles"),
-            MediaFormat::VTT  => write!(f, "WebVTT"),
+            Self::PDF => write!(f, "PDF"),
+            Self::EPUB => write!(f, "EPUB"),
+            Self::MOBI => write!(f, "Kindle"),
+            Self::DOC => write!(f, "Word (DOC)"),
+            Self::DOCX => write!(f, "Word (DOCX)"),
+            Self::XLS => write!(f, "Excel (XLS)"),
+            Self::XLSX => write!(f, "Excel (XLSX)"),
+            Self::PPT => write!(f, "PowerPoint (PPT)"),
+            Self::PPTX => write!(f, "PowerPoint (PPTX)"),
+            Self::ODT => write!(f, "OpenDocument Text"),
+            Self::ODS => write!(f, "OpenDocument Spreadsheet"),
+            Self::ODP => write!(f, "OpenDocument Presentation"),
+            Self::RTF => write!(f, "Rich Text"),
+            Self::TXT => write!(f, "Plain Text"),
+            Self::CSV => write!(f, "CSV"),
+            Self::HTML => write!(f, "HTML"),
+            Self::XML => write!(f, "XML"),
+            Self::JSON => write!(f, "JSON"),
+            Self::YAML => write!(f, "YAML"),
+            Self::MD => write!(f, "Markdown"),
+            Self::TEX => write!(f, "LaTeX"),
+            Self::DJVU => write!(f, "DjVu"),
+            Self::CBZ => write!(f, "CBZ"),
+            Self::CBR => write!(f, "CBR"),
+            Self::FB2 => write!(f, "FictionBook"),
+            Self::SRT => write!(f, "SubRip"),
+            Self::ASS => write!(f, "ASS Subtitles"),
+            Self::VTT => write!(f, "WebVTT"),
             // Archive
-            MediaFormat::ZIP    => write!(f, "ZIP"),
-            MediaFormat::RAR    => write!(f, "RAR"),
-            MediaFormat::SevenZ => write!(f, "7-Zip"),
-            MediaFormat::TAR    => write!(f, "TAR"),
-            MediaFormat::GZ     => write!(f, "Gzip"),
-            MediaFormat::BZ2    => write!(f, "Bzip2"),
-            MediaFormat::XZ     => write!(f, "XZ"),
-            MediaFormat::ZST    => write!(f, "Zstandard"),
-            MediaFormat::LZ4    => write!(f, "LZ4"),
-            MediaFormat::ISO    => write!(f, "ISO"),
-            MediaFormat::DMG    => write!(f, "Apple Disk Image"),
-            MediaFormat::MSI    => write!(f, "Windows Installer"),
-            MediaFormat::DEB    => write!(f, "Debian Package"),
-            MediaFormat::RPM    => write!(f, "RPM Package"),
-            MediaFormat::PKG    => write!(f, "macOS Package"),
-            MediaFormat::JAR    => write!(f, "Java Archive"),
-            MediaFormat::APK    => write!(f, "Android Package"),
+            Self::ZIP => write!(f, "ZIP"),
+            Self::RAR => write!(f, "RAR"),
+            Self::SevenZ => write!(f, "7-Zip"),
+            Self::TAR => write!(f, "TAR"),
+            Self::GZ => write!(f, "Gzip"),
+            Self::BZ2 => write!(f, "Bzip2"),
+            Self::XZ => write!(f, "XZ"),
+            Self::ZST => write!(f, "Zstandard"),
+            Self::LZ4 => write!(f, "LZ4"),
+            Self::ISO => write!(f, "ISO"),
+            Self::DMG => write!(f, "Apple Disk Image"),
+            Self::MSI => write!(f, "Windows Installer"),
+            Self::DEB => write!(f, "Debian Package"),
+            Self::RPM => write!(f, "RPM Package"),
+            Self::PKG => write!(f, "macOS Package"),
+            Self::JAR => write!(f, "Java Archive"),
+            Self::APK => write!(f, "Android Package"),
             // Unknown
-            MediaFormat::UnknownFormat => write!(f, "Unknown"),
+            Self::UnknownFormat => write!(f, "Unknown"),
         }
     }
 }
@@ -465,134 +465,134 @@ impl MediaFormat {
     pub fn extension(&self) -> &str {
         match self {
             // Audio
-            MediaFormat::MP3  => "mp3",
-            MediaFormat::FLAC => "flac",
-            MediaFormat::AAC  => "aac",
-            MediaFormat::WAV  => "wav",
-            MediaFormat::AIFF => "aiff",
-            MediaFormat::ALAC => "m4a",   // ALAC uses the M4A container
-            MediaFormat::OGG  => "ogg",
-            MediaFormat::OPUS => "opus",
-            MediaFormat::WMA  => "wma",
-            MediaFormat::M4A  => "m4a",
-            MediaFormat::M4B  => "m4b",
-            MediaFormat::APE  => "ape",
-            MediaFormat::WV   => "wv",
-            MediaFormat::MPC  => "mpc",
-            MediaFormat::TTA  => "tta",
-            MediaFormat::DSF  => "dsf",
-            MediaFormat::DFF  => "dff",
-            MediaFormat::AMR  => "amr",
-            MediaFormat::AU   => "au",
-            MediaFormat::RA   => "ra",
-            MediaFormat::MID  => "mid",
-            MediaFormat::SPC  => "spc",
-            MediaFormat::MOD  => "mod",
-            MediaFormat::S3M  => "s3m",
-            MediaFormat::XM   => "xm",
-            MediaFormat::IT   => "it",
-            MediaFormat::CAF  => "caf",
-            MediaFormat::AC3  => "ac3",
-            MediaFormat::DTS  => "dts",
+            Self::MP3 => "mp3",
+            Self::FLAC => "flac",
+            Self::AAC => "aac",
+            Self::WAV => "wav",
+            Self::AIFF => "aiff",
+            Self::ALAC => "m4a", // ALAC uses the M4A container
+            Self::OGG => "ogg",
+            Self::OPUS => "opus",
+            Self::WMA => "wma",
+            Self::M4A => "m4a",
+            Self::M4B => "m4b",
+            Self::APE => "ape",
+            Self::WV => "wv",
+            Self::MPC => "mpc",
+            Self::TTA => "tta",
+            Self::DSF => "dsf",
+            Self::DFF => "dff",
+            Self::AMR => "amr",
+            Self::AU => "au",
+            Self::RA => "ra",
+            Self::MID => "mid",
+            Self::SPC => "spc",
+            Self::MOD => "mod",
+            Self::S3M => "s3m",
+            Self::XM => "xm",
+            Self::IT => "it",
+            Self::CAF => "caf",
+            Self::AC3 => "ac3",
+            Self::DTS => "dts",
             // Video
-            MediaFormat::MKV     => "mkv",
-            MediaFormat::MP4     => "mp4",
-            MediaFormat::AVI     => "avi",
-            MediaFormat::MOV     => "mov",
-            MediaFormat::WMV     => "wmv",
-            MediaFormat::WEBM    => "webm",
-            MediaFormat::FLV     => "flv",
-            MediaFormat::M4V     => "m4v",
-            MediaFormat::TS      => "ts",
-            MediaFormat::MPG     => "mpg",
-            MediaFormat::MPEG    => "mpeg",
-            MediaFormat::ThreeGP => "3gp",
-            MediaFormat::RM      => "rm",
-            MediaFormat::RMVB    => "rmvb",
-            MediaFormat::VOB     => "vob",
-            MediaFormat::OGV     => "ogv",
-            MediaFormat::ASF     => "asf",
-            MediaFormat::MXF     => "mxf",
-            MediaFormat::MK3D    => "mk3d",
-            MediaFormat::NSV     => "nsv",
-            MediaFormat::F4V     => "f4v",
+            Self::MKV => "mkv",
+            Self::MP4 => "mp4",
+            Self::AVI => "avi",
+            Self::MOV => "mov",
+            Self::WMV => "wmv",
+            Self::WEBM => "webm",
+            Self::FLV => "flv",
+            Self::M4V => "m4v",
+            Self::TS => "ts",
+            Self::MPG => "mpg",
+            Self::MPEG => "mpeg",
+            Self::ThreeGP => "3gp",
+            Self::RM => "rm",
+            Self::RMVB => "rmvb",
+            Self::VOB => "vob",
+            Self::OGV => "ogv",
+            Self::ASF => "asf",
+            Self::MXF => "mxf",
+            Self::MK3D => "mk3d",
+            Self::NSV => "nsv",
+            Self::F4V => "f4v",
             // Image
-            MediaFormat::JPG  => "jpg",
-            MediaFormat::PNG  => "png",
-            MediaFormat::GIF  => "gif",
-            MediaFormat::BMP  => "bmp",
-            MediaFormat::TIFF => "tiff",
-            MediaFormat::WEBP => "webp",
-            MediaFormat::SVG  => "svg",
-            MediaFormat::HEIF => "heif",
-            MediaFormat::HEIC => "heic",
-            MediaFormat::AVIF => "avif",
-            MediaFormat::PSD  => "psd",
-            MediaFormat::TGA  => "tga",
-            MediaFormat::ICO  => "ico",
-            MediaFormat::CR2  => "cr2",
-            MediaFormat::NEF  => "nef",
-            MediaFormat::DNG  => "dng",
-            MediaFormat::ARW  => "arw",
-            MediaFormat::ORF  => "orf",
-            MediaFormat::RAF  => "raf",
-            MediaFormat::RW2  => "rw2",
-            MediaFormat::RAW  => "raw",
-            MediaFormat::EXR  => "exr",
-            MediaFormat::HDR  => "hdr",
-            MediaFormat::PPM  => "ppm",
-            MediaFormat::PGM  => "pgm",
-            MediaFormat::JP2  => "jp2",
-            MediaFormat::JXL  => "jxl",
+            Self::JPG => "jpg",
+            Self::PNG => "png",
+            Self::GIF => "gif",
+            Self::BMP => "bmp",
+            Self::TIFF => "tiff",
+            Self::WEBP => "webp",
+            Self::SVG => "svg",
+            Self::HEIF => "heif",
+            Self::HEIC => "heic",
+            Self::AVIF => "avif",
+            Self::PSD => "psd",
+            Self::TGA => "tga",
+            Self::ICO => "ico",
+            Self::CR2 => "cr2",
+            Self::NEF => "nef",
+            Self::DNG => "dng",
+            Self::ARW => "arw",
+            Self::ORF => "orf",
+            Self::RAF => "raf",
+            Self::RW2 => "rw2",
+            Self::RAW => "raw",
+            Self::EXR => "exr",
+            Self::HDR => "hdr",
+            Self::PPM => "ppm",
+            Self::PGM => "pgm",
+            Self::JP2 => "jp2",
+            Self::JXL => "jxl",
             // Document
-            MediaFormat::PDF  => "pdf",
-            MediaFormat::EPUB => "epub",
-            MediaFormat::MOBI => "mobi",
-            MediaFormat::DOC  => "doc",
-            MediaFormat::DOCX => "docx",
-            MediaFormat::XLS  => "xls",
-            MediaFormat::XLSX => "xlsx",
-            MediaFormat::PPT  => "ppt",
-            MediaFormat::PPTX => "pptx",
-            MediaFormat::ODT  => "odt",
-            MediaFormat::ODS  => "ods",
-            MediaFormat::ODP  => "odp",
-            MediaFormat::RTF  => "rtf",
-            MediaFormat::TXT  => "txt",
-            MediaFormat::CSV  => "csv",
-            MediaFormat::HTML => "html",
-            MediaFormat::XML  => "xml",
-            MediaFormat::JSON => "json",
-            MediaFormat::YAML => "yaml",
-            MediaFormat::MD   => "md",
-            MediaFormat::TEX  => "tex",
-            MediaFormat::DJVU => "djvu",
-            MediaFormat::CBZ  => "cbz",
-            MediaFormat::CBR  => "cbr",
-            MediaFormat::FB2  => "fb2",
-            MediaFormat::SRT  => "srt",
-            MediaFormat::ASS  => "ass",
-            MediaFormat::VTT  => "vtt",
+            Self::PDF => "pdf",
+            Self::EPUB => "epub",
+            Self::MOBI => "mobi",
+            Self::DOC => "doc",
+            Self::DOCX => "docx",
+            Self::XLS => "xls",
+            Self::XLSX => "xlsx",
+            Self::PPT => "ppt",
+            Self::PPTX => "pptx",
+            Self::ODT => "odt",
+            Self::ODS => "ods",
+            Self::ODP => "odp",
+            Self::RTF => "rtf",
+            Self::TXT => "txt",
+            Self::CSV => "csv",
+            Self::HTML => "html",
+            Self::XML => "xml",
+            Self::JSON => "json",
+            Self::YAML => "yaml",
+            Self::MD => "md",
+            Self::TEX => "tex",
+            Self::DJVU => "djvu",
+            Self::CBZ => "cbz",
+            Self::CBR => "cbr",
+            Self::FB2 => "fb2",
+            Self::SRT => "srt",
+            Self::ASS => "ass",
+            Self::VTT => "vtt",
             // Archive
-            MediaFormat::ZIP    => "zip",
-            MediaFormat::RAR    => "rar",
-            MediaFormat::SevenZ => "7z",
-            MediaFormat::TAR    => "tar",
-            MediaFormat::GZ     => "gz",
-            MediaFormat::BZ2    => "bz2",
-            MediaFormat::XZ     => "xz",
-            MediaFormat::ZST    => "zst",
-            MediaFormat::LZ4    => "lz4",
-            MediaFormat::ISO    => "iso",
-            MediaFormat::DMG    => "dmg",
-            MediaFormat::MSI    => "msi",
-            MediaFormat::DEB    => "deb",
-            MediaFormat::RPM    => "rpm",
-            MediaFormat::PKG    => "pkg",
-            MediaFormat::JAR    => "jar",
-            MediaFormat::APK    => "apk",
+            Self::ZIP => "zip",
+            Self::RAR => "rar",
+            Self::SevenZ => "7z",
+            Self::TAR => "tar",
+            Self::GZ => "gz",
+            Self::BZ2 => "bz2",
+            Self::XZ => "xz",
+            Self::ZST => "zst",
+            Self::LZ4 => "lz4",
+            Self::ISO => "iso",
+            Self::DMG => "dmg",
+            Self::MSI => "msi",
+            Self::DEB => "deb",
+            Self::RPM => "rpm",
+            Self::PKG => "pkg",
+            Self::JAR => "jar",
+            Self::APK => "apk",
             // Unknown
-            MediaFormat::UnknownFormat => "",
+            Self::UnknownFormat => "",
         }
     }
 
@@ -601,134 +601,136 @@ impl MediaFormat {
     pub fn mime_type(&self) -> &str {
         match self {
             // Audio
-            MediaFormat::MP3  => "audio/mpeg",
-            MediaFormat::FLAC => "audio/flac",
-            MediaFormat::AAC  => "audio/aac",
-            MediaFormat::WAV  => "audio/wav",
-            MediaFormat::AIFF => "audio/aiff",
-            MediaFormat::ALAC => "audio/mp4",
-            MediaFormat::OGG  => "audio/ogg",
-            MediaFormat::OPUS => "audio/opus",
-            MediaFormat::WMA  => "audio/x-ms-wma",
-            MediaFormat::M4A  => "audio/mp4",
-            MediaFormat::M4B  => "audio/mp4",
-            MediaFormat::APE  => "audio/x-ape",
-            MediaFormat::WV   => "audio/x-wavpack",
-            MediaFormat::MPC  => "audio/x-musepack",
-            MediaFormat::TTA  => "audio/x-tta",
-            MediaFormat::DSF  => "audio/x-dsf",
-            MediaFormat::DFF  => "audio/x-dff",
-            MediaFormat::AMR  => "audio/amr",
-            MediaFormat::AU   => "audio/basic",
-            MediaFormat::RA   => "audio/x-realaudio",
-            MediaFormat::MID  => "audio/midi",
-            MediaFormat::SPC  => "audio/x-spc",
-            MediaFormat::MOD  => "audio/x-mod",
-            MediaFormat::S3M  => "audio/x-s3m",
-            MediaFormat::XM   => "audio/x-xm",
-            MediaFormat::IT   => "audio/x-it",
-            MediaFormat::CAF  => "audio/x-caf",
-            MediaFormat::AC3  => "audio/ac3",
-            MediaFormat::DTS  => "audio/vnd.dts",
+            Self::MP3 => "audio/mpeg",
+            Self::FLAC => "audio/flac",
+            Self::AAC => "audio/aac",
+            Self::WAV => "audio/wav",
+            Self::AIFF => "audio/aiff",
+            Self::ALAC => "audio/mp4",
+            Self::OGG => "audio/ogg",
+            Self::OPUS => "audio/opus",
+            Self::WMA => "audio/x-ms-wma",
+            Self::M4A => "audio/mp4",
+            Self::M4B => "audio/mp4",
+            Self::APE => "audio/x-ape",
+            Self::WV => "audio/x-wavpack",
+            Self::MPC => "audio/x-musepack",
+            Self::TTA => "audio/x-tta",
+            Self::DSF => "audio/x-dsf",
+            Self::DFF => "audio/x-dff",
+            Self::AMR => "audio/amr",
+            Self::AU => "audio/basic",
+            Self::RA => "audio/x-realaudio",
+            Self::MID => "audio/midi",
+            Self::SPC => "audio/x-spc",
+            Self::MOD => "audio/x-mod",
+            Self::S3M => "audio/x-s3m",
+            Self::XM => "audio/x-xm",
+            Self::IT => "audio/x-it",
+            Self::CAF => "audio/x-caf",
+            Self::AC3 => "audio/ac3",
+            Self::DTS => "audio/vnd.dts",
             // Video
-            MediaFormat::MKV     => "video/x-matroska",
-            MediaFormat::MP4     => "video/mp4",
-            MediaFormat::AVI     => "video/x-msvideo",
-            MediaFormat::MOV     => "video/quicktime",
-            MediaFormat::WMV     => "video/x-ms-wmv",
-            MediaFormat::WEBM    => "video/webm",
-            MediaFormat::FLV     => "video/x-flv",
-            MediaFormat::M4V     => "video/mp4",
-            MediaFormat::TS      => "video/mp2t",
-            MediaFormat::MPG     => "video/mpeg",
-            MediaFormat::MPEG    => "video/mpeg",
-            MediaFormat::ThreeGP => "video/3gpp",
-            MediaFormat::RM      => "application/vnd.rn-realmedia",
-            MediaFormat::RMVB    => "application/vnd.rn-realmedia-vbr",
-            MediaFormat::VOB     => "video/x-ms-vob",
-            MediaFormat::OGV     => "video/ogg",
-            MediaFormat::ASF     => "video/x-ms-asf",
-            MediaFormat::MXF     => "application/mxf",
-            MediaFormat::MK3D    => "video/x-matroska-3d",
-            MediaFormat::NSV     => "video/x-nsv",
-            MediaFormat::F4V     => "video/mp4",
+            Self::MKV => "video/x-matroska",
+            Self::MP4 => "video/mp4",
+            Self::AVI => "video/x-msvideo",
+            Self::MOV => "video/quicktime",
+            Self::WMV => "video/x-ms-wmv",
+            Self::WEBM => "video/webm",
+            Self::FLV => "video/x-flv",
+            Self::M4V => "video/mp4",
+            Self::TS => "video/mp2t",
+            Self::MPG => "video/mpeg",
+            Self::MPEG => "video/mpeg",
+            Self::ThreeGP => "video/3gpp",
+            Self::RM => "application/vnd.rn-realmedia",
+            Self::RMVB => "application/vnd.rn-realmedia-vbr",
+            Self::VOB => "video/x-ms-vob",
+            Self::OGV => "video/ogg",
+            Self::ASF => "video/x-ms-asf",
+            Self::MXF => "application/mxf",
+            Self::MK3D => "video/x-matroska-3d",
+            Self::NSV => "video/x-nsv",
+            Self::F4V => "video/mp4",
             // Image
-            MediaFormat::JPG  => "image/jpeg",
-            MediaFormat::PNG  => "image/png",
-            MediaFormat::GIF  => "image/gif",
-            MediaFormat::BMP  => "image/bmp",
-            MediaFormat::TIFF => "image/tiff",
-            MediaFormat::WEBP => "image/webp",
-            MediaFormat::SVG  => "image/svg+xml",
-            MediaFormat::HEIF => "image/heif",
-            MediaFormat::HEIC => "image/heic",
-            MediaFormat::AVIF => "image/avif",
-            MediaFormat::PSD  => "image/vnd.adobe.photoshop",
-            MediaFormat::TGA  => "image/x-tga",
-            MediaFormat::ICO  => "image/x-icon",
-            MediaFormat::CR2  => "image/x-canon-cr2",
-            MediaFormat::NEF  => "image/x-nikon-nef",
-            MediaFormat::DNG  => "image/x-adobe-dng",
-            MediaFormat::ARW  => "image/x-sony-arw",
-            MediaFormat::ORF  => "image/x-olympus-orf",
-            MediaFormat::RAF  => "image/x-fuji-raf",
-            MediaFormat::RW2  => "image/x-panasonic-rw2",
-            MediaFormat::RAW  => "image/x-raw",
-            MediaFormat::EXR  => "image/x-exr",
-            MediaFormat::HDR  => "image/vnd.radiance",
-            MediaFormat::PPM  => "image/x-portable-pixmap",
-            MediaFormat::PGM  => "image/x-portable-graymap",
-            MediaFormat::JP2  => "image/jp2",
-            MediaFormat::JXL  => "image/jxl",
+            Self::JPG => "image/jpeg",
+            Self::PNG => "image/png",
+            Self::GIF => "image/gif",
+            Self::BMP => "image/bmp",
+            Self::TIFF => "image/tiff",
+            Self::WEBP => "image/webp",
+            Self::SVG => "image/svg+xml",
+            Self::HEIF => "image/heif",
+            Self::HEIC => "image/heic",
+            Self::AVIF => "image/avif",
+            Self::PSD => "image/vnd.adobe.photoshop",
+            Self::TGA => "image/x-tga",
+            Self::ICO => "image/x-icon",
+            Self::CR2 => "image/x-canon-cr2",
+            Self::NEF => "image/x-nikon-nef",
+            Self::DNG => "image/x-adobe-dng",
+            Self::ARW => "image/x-sony-arw",
+            Self::ORF => "image/x-olympus-orf",
+            Self::RAF => "image/x-fuji-raf",
+            Self::RW2 => "image/x-panasonic-rw2",
+            Self::RAW => "image/x-raw",
+            Self::EXR => "image/x-exr",
+            Self::HDR => "image/vnd.radiance",
+            Self::PPM => "image/x-portable-pixmap",
+            Self::PGM => "image/x-portable-graymap",
+            Self::JP2 => "image/jp2",
+            Self::JXL => "image/jxl",
             // Document
-            MediaFormat::PDF  => "application/pdf",
-            MediaFormat::EPUB => "application/epub+zip",
-            MediaFormat::MOBI => "application/x-mobipocket-ebook",
-            MediaFormat::DOC  => "application/msword",
-            MediaFormat::DOCX => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            MediaFormat::XLS  => "application/vnd.ms-excel",
-            MediaFormat::XLSX => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            MediaFormat::PPT  => "application/vnd.ms-powerpoint",
-            MediaFormat::PPTX => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            MediaFormat::ODT  => "application/vnd.oasis.opendocument.text",
-            MediaFormat::ODS  => "application/vnd.oasis.opendocument.spreadsheet",
-            MediaFormat::ODP  => "application/vnd.oasis.opendocument.presentation",
-            MediaFormat::RTF  => "application/rtf",
-            MediaFormat::TXT  => "text/plain",
-            MediaFormat::CSV  => "text/csv",
-            MediaFormat::HTML => "text/html",
-            MediaFormat::XML  => "application/xml",
-            MediaFormat::JSON => "application/json",
-            MediaFormat::YAML => "application/x-yaml",
-            MediaFormat::MD   => "text/markdown",
-            MediaFormat::TEX  => "application/x-tex",
-            MediaFormat::DJVU => "image/vnd.djvu",
-            MediaFormat::CBZ  => "application/vnd.comicbook+zip",
-            MediaFormat::CBR  => "application/vnd.comicbook-rar",
-            MediaFormat::FB2  => "application/x-fictionbook+xml",
-            MediaFormat::SRT  => "application/x-subrip",
-            MediaFormat::ASS  => "text/x-ssa",
-            MediaFormat::VTT  => "text/vtt",
+            Self::PDF => "application/pdf",
+            Self::EPUB => "application/epub+zip",
+            Self::MOBI => "application/x-mobipocket-ebook",
+            Self::DOC => "application/msword",
+            Self::DOCX => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            Self::XLS => "application/vnd.ms-excel",
+            Self::XLSX => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            Self::PPT => "application/vnd.ms-powerpoint",
+            Self::PPTX => {
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            }
+            Self::ODT => "application/vnd.oasis.opendocument.text",
+            Self::ODS => "application/vnd.oasis.opendocument.spreadsheet",
+            Self::ODP => "application/vnd.oasis.opendocument.presentation",
+            Self::RTF => "application/rtf",
+            Self::TXT => "text/plain",
+            Self::CSV => "text/csv",
+            Self::HTML => "text/html",
+            Self::XML => "application/xml",
+            Self::JSON => "application/json",
+            Self::YAML => "application/x-yaml",
+            Self::MD => "text/markdown",
+            Self::TEX => "application/x-tex",
+            Self::DJVU => "image/vnd.djvu",
+            Self::CBZ => "application/vnd.comicbook+zip",
+            Self::CBR => "application/vnd.comicbook-rar",
+            Self::FB2 => "application/x-fictionbook+xml",
+            Self::SRT => "application/x-subrip",
+            Self::ASS => "text/x-ssa",
+            Self::VTT => "text/vtt",
             // Archive
-            MediaFormat::ZIP    => "application/zip",
-            MediaFormat::RAR    => "application/vnd.rar",
-            MediaFormat::SevenZ => "application/x-7z-compressed",
-            MediaFormat::TAR    => "application/x-tar",
-            MediaFormat::GZ     => "application/gzip",
-            MediaFormat::BZ2    => "application/x-bzip2",
-            MediaFormat::XZ     => "application/x-xz",
-            MediaFormat::ZST    => "application/zstd",
-            MediaFormat::LZ4    => "application/x-lz4",
-            MediaFormat::ISO    => "application/x-iso9660-image",
-            MediaFormat::DMG    => "application/x-apple-diskimage",
-            MediaFormat::MSI    => "application/x-msi",
-            MediaFormat::DEB    => "application/vnd.debian.binary-package",
-            MediaFormat::RPM    => "application/x-rpm",
-            MediaFormat::PKG    => "application/x-newton-compatible-pkg",
-            MediaFormat::JAR    => "application/java-archive",
-            MediaFormat::APK    => "application/vnd.android.package-archive",
+            Self::ZIP => "application/zip",
+            Self::RAR => "application/vnd.rar",
+            Self::SevenZ => "application/x-7z-compressed",
+            Self::TAR => "application/x-tar",
+            Self::GZ => "application/gzip",
+            Self::BZ2 => "application/x-bzip2",
+            Self::XZ => "application/x-xz",
+            Self::ZST => "application/zstd",
+            Self::LZ4 => "application/x-lz4",
+            Self::ISO => "application/x-iso9660-image",
+            Self::DMG => "application/x-apple-diskimage",
+            Self::MSI => "application/x-msi",
+            Self::DEB => "application/vnd.debian.binary-package",
+            Self::RPM => "application/x-rpm",
+            Self::PKG => "application/x-newton-compatible-pkg",
+            Self::JAR => "application/java-archive",
+            Self::APK => "application/vnd.android.package-archive",
             // Unknown
-            MediaFormat::UnknownFormat => "application/octet-stream",
+            Self::UnknownFormat => "application/octet-stream",
         }
     }
 
@@ -736,59 +738,139 @@ impl MediaFormat {
     pub fn group(&self) -> MediaGroup {
         match self {
             // Audio formats
-            MediaFormat::MP3 | MediaFormat::FLAC | MediaFormat::AAC |
-            MediaFormat::WAV | MediaFormat::AIFF | MediaFormat::ALAC |
-            MediaFormat::OGG | MediaFormat::OPUS | MediaFormat::WMA |
-            MediaFormat::M4A | MediaFormat::M4B | MediaFormat::APE |
-            MediaFormat::WV  | MediaFormat::MPC  | MediaFormat::TTA |
-            MediaFormat::DSF | MediaFormat::DFF  | MediaFormat::AMR |
-            MediaFormat::AU  | MediaFormat::RA   | MediaFormat::MID |
-            MediaFormat::SPC | MediaFormat::MOD  | MediaFormat::S3M |
-            MediaFormat::XM  | MediaFormat::IT   | MediaFormat::CAF |
-            MediaFormat::AC3 | MediaFormat::DTS => MediaGroup::Audio,
+            Self::MP3
+            | Self::FLAC
+            | Self::AAC
+            | Self::WAV
+            | Self::AIFF
+            | Self::ALAC
+            | Self::OGG
+            | Self::OPUS
+            | Self::WMA
+            | Self::M4A
+            | Self::M4B
+            | Self::APE
+            | Self::WV
+            | Self::MPC
+            | Self::TTA
+            | Self::DSF
+            | Self::DFF
+            | Self::AMR
+            | Self::AU
+            | Self::RA
+            | Self::MID
+            | Self::SPC
+            | Self::MOD
+            | Self::S3M
+            | Self::XM
+            | Self::IT
+            | Self::CAF
+            | Self::AC3
+            | Self::DTS => MediaGroup::Audio,
 
             // Video formats
-            MediaFormat::MKV  | MediaFormat::MP4     | MediaFormat::AVI |
-            MediaFormat::MOV  | MediaFormat::WMV     | MediaFormat::WEBM |
-            MediaFormat::FLV  | MediaFormat::M4V     | MediaFormat::TS |
-            MediaFormat::MPG  | MediaFormat::MPEG    | MediaFormat::ThreeGP |
-            MediaFormat::RM   | MediaFormat::RMVB    | MediaFormat::VOB |
-            MediaFormat::OGV  | MediaFormat::ASF     | MediaFormat::MXF |
-            MediaFormat::MK3D | MediaFormat::NSV     | MediaFormat::F4V => MediaGroup::Video,
+            Self::MKV
+            | Self::MP4
+            | Self::AVI
+            | Self::MOV
+            | Self::WMV
+            | Self::WEBM
+            | Self::FLV
+            | Self::M4V
+            | Self::TS
+            | Self::MPG
+            | Self::MPEG
+            | Self::ThreeGP
+            | Self::RM
+            | Self::RMVB
+            | Self::VOB
+            | Self::OGV
+            | Self::ASF
+            | Self::MXF
+            | Self::MK3D
+            | Self::NSV
+            | Self::F4V => MediaGroup::Video,
 
             // Image formats
-            MediaFormat::JPG  | MediaFormat::PNG  | MediaFormat::GIF |
-            MediaFormat::BMP  | MediaFormat::TIFF | MediaFormat::WEBP |
-            MediaFormat::SVG  | MediaFormat::HEIF | MediaFormat::HEIC |
-            MediaFormat::AVIF | MediaFormat::PSD  | MediaFormat::TGA |
-            MediaFormat::ICO  | MediaFormat::CR2  | MediaFormat::NEF |
-            MediaFormat::DNG  | MediaFormat::ARW  | MediaFormat::ORF |
-            MediaFormat::RAF  | MediaFormat::RW2  | MediaFormat::RAW |
-            MediaFormat::EXR  | MediaFormat::HDR  | MediaFormat::PPM |
-            MediaFormat::PGM  | MediaFormat::JP2  | MediaFormat::JXL => MediaGroup::Image,
+            Self::JPG
+            | Self::PNG
+            | Self::GIF
+            | Self::BMP
+            | Self::TIFF
+            | Self::WEBP
+            | Self::SVG
+            | Self::HEIF
+            | Self::HEIC
+            | Self::AVIF
+            | Self::PSD
+            | Self::TGA
+            | Self::ICO
+            | Self::CR2
+            | Self::NEF
+            | Self::DNG
+            | Self::ARW
+            | Self::ORF
+            | Self::RAF
+            | Self::RW2
+            | Self::RAW
+            | Self::EXR
+            | Self::HDR
+            | Self::PPM
+            | Self::PGM
+            | Self::JP2
+            | Self::JXL => MediaGroup::Image,
 
             // Document formats
-            MediaFormat::PDF  | MediaFormat::EPUB | MediaFormat::MOBI |
-            MediaFormat::DOC  | MediaFormat::DOCX | MediaFormat::XLS |
-            MediaFormat::XLSX | MediaFormat::PPT  | MediaFormat::PPTX |
-            MediaFormat::ODT  | MediaFormat::ODS  | MediaFormat::ODP |
-            MediaFormat::RTF  | MediaFormat::TXT  | MediaFormat::CSV |
-            MediaFormat::HTML | MediaFormat::XML  | MediaFormat::JSON |
-            MediaFormat::YAML | MediaFormat::MD   | MediaFormat::TEX |
-            MediaFormat::DJVU | MediaFormat::CBZ  | MediaFormat::CBR |
-            MediaFormat::FB2  | MediaFormat::SRT  | MediaFormat::ASS |
-            MediaFormat::VTT => MediaGroup::Document,
+            Self::PDF
+            | Self::EPUB
+            | Self::MOBI
+            | Self::DOC
+            | Self::DOCX
+            | Self::XLS
+            | Self::XLSX
+            | Self::PPT
+            | Self::PPTX
+            | Self::ODT
+            | Self::ODS
+            | Self::ODP
+            | Self::RTF
+            | Self::TXT
+            | Self::CSV
+            | Self::HTML
+            | Self::XML
+            | Self::JSON
+            | Self::YAML
+            | Self::MD
+            | Self::TEX
+            | Self::DJVU
+            | Self::CBZ
+            | Self::CBR
+            | Self::FB2
+            | Self::SRT
+            | Self::ASS
+            | Self::VTT => MediaGroup::Document,
 
             // Archive formats
-            MediaFormat::ZIP    | MediaFormat::RAR | MediaFormat::SevenZ |
-            MediaFormat::TAR    | MediaFormat::GZ  | MediaFormat::BZ2 |
-            MediaFormat::XZ     | MediaFormat::ZST | MediaFormat::LZ4 |
-            MediaFormat::ISO    | MediaFormat::DMG | MediaFormat::MSI |
-            MediaFormat::DEB    | MediaFormat::RPM | MediaFormat::PKG |
-            MediaFormat::JAR    | MediaFormat::APK => MediaGroup::Archive,
+            Self::ZIP
+            | Self::RAR
+            | Self::SevenZ
+            | Self::TAR
+            | Self::GZ
+            | Self::BZ2
+            | Self::XZ
+            | Self::ZST
+            | Self::LZ4
+            | Self::ISO
+            | Self::DMG
+            | Self::MSI
+            | Self::DEB
+            | Self::RPM
+            | Self::PKG
+            | Self::JAR
+            | Self::APK => MediaGroup::Archive,
 
             // Unknown
-            MediaFormat::UnknownFormat => MediaGroup::Unknown,
+            Self::UnknownFormat => MediaGroup::Unknown,
         }
     }
 }
@@ -797,10 +879,10 @@ impl MediaFormat {
 // Level 3: MediaClass — content type / purpose
 // ─────────────────────────────────────────────────────────────────────
 
-/// Content classification describing what the media *is* rather than
-/// what container it uses.  This level typically requires metadata
-/// inspection or user tagging to populate accurately; extension-based
-/// classification defaults to `Unknown`.
+/// Content classification describing what the media *is* rather than what container it uses.
+///
+/// This level typically requires metadata inspection or user tagging to populate
+/// accurately; extension-based classification defaults to `Unknown`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MediaClass {
     /// Song / album track
@@ -832,18 +914,18 @@ pub enum MediaClass {
 impl fmt::Display for MediaClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MediaClass::Music       => write!(f, "Music"),
-            MediaClass::Podcast     => write!(f, "Podcast"),
-            MediaClass::Audiobook   => write!(f, "Audiobook"),
-            MediaClass::Movie       => write!(f, "Movie"),
-            MediaClass::TVShow      => write!(f, "TV Show"),
-            MediaClass::MusicVideo  => write!(f, "Music Video"),
-            MediaClass::Concert     => write!(f, "Concert"),
-            MediaClass::Documentary => write!(f, "Documentary"),
-            MediaClass::HomeVideo   => write!(f, "Home Video"),
-            MediaClass::Ringtone    => write!(f, "Ringtone"),
-            MediaClass::SoundEffect => write!(f, "Sound Effect"),
-            MediaClass::Unknown     => write!(f, "Unknown"),
+            Self::Music => write!(f, "Music"),
+            Self::Podcast => write!(f, "Podcast"),
+            Self::Audiobook => write!(f, "Audiobook"),
+            Self::Movie => write!(f, "Movie"),
+            Self::TVShow => write!(f, "TV Show"),
+            Self::MusicVideo => write!(f, "Music Video"),
+            Self::Concert => write!(f, "Concert"),
+            Self::Documentary => write!(f, "Documentary"),
+            Self::HomeVideo => write!(f, "Home Video"),
+            Self::Ringtone => write!(f, "Ringtone"),
+            Self::SoundEffect => write!(f, "Sound Effect"),
+            Self::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -880,15 +962,15 @@ pub enum MediaQuality {
 impl fmt::Display for MediaQuality {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MediaQuality::Lossless  => write!(f, "Lossless"),
-            MediaQuality::HiRes    => write!(f, "Hi-Res"),
-            MediaQuality::Lossy320 => write!(f, "320 kbps"),
-            MediaQuality::Lossy256 => write!(f, "256 kbps"),
-            MediaQuality::Lossy192 => write!(f, "192 kbps"),
-            MediaQuality::Lossy128 => write!(f, "128 kbps"),
-            MediaQuality::LossyLow => write!(f, "Low Quality"),
-            MediaQuality::Standard => write!(f, "Standard"),
-            MediaQuality::Unknown  => write!(f, "Unknown"),
+            Self::Lossless => write!(f, "Lossless"),
+            Self::HiRes => write!(f, "Hi-Res"),
+            Self::Lossy320 => write!(f, "320 kbps"),
+            Self::Lossy256 => write!(f, "256 kbps"),
+            Self::Lossy192 => write!(f, "192 kbps"),
+            Self::Lossy128 => write!(f, "128 kbps"),
+            Self::LossyLow => write!(f, "Low Quality"),
+            Self::Standard => write!(f, "Standard"),
+            Self::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -921,7 +1003,12 @@ impl MediaClassification {
         class: MediaClass,
         quality: MediaQuality,
     ) -> Self {
-        Self { group, format, class, quality }
+        Self {
+            group,
+            format,
+            class,
+            quality,
+        }
     }
 
     /// Convenience constructor for a fully-unknown classification.
@@ -955,146 +1042,146 @@ impl fmt::Display for MediaClassification {
 fn extension_to_format(ext: &str) -> MediaFormat {
     match ext {
         // ── Audio ──────────────────────────────────────────────────
-        "mp3"                       => MediaFormat::MP3,
-        "flac"                      => MediaFormat::FLAC,
-        "aac"                       => MediaFormat::AAC,
-        "wav"                       => MediaFormat::WAV,
-        "aiff" | "aif" | "aifc"    => MediaFormat::AIFF,
-        "alac"                      => MediaFormat::ALAC,
-        "ogg" | "oga"              => MediaFormat::OGG,
-        "opus"                      => MediaFormat::OPUS,
-        "wma"                       => MediaFormat::WMA,
-        "m4a"                       => MediaFormat::M4A,
-        "m4b"                       => MediaFormat::M4B,
-        "ape"                       => MediaFormat::APE,
-        "wv"                        => MediaFormat::WV,
-        "mpc" | "mp+" | "mpp"      => MediaFormat::MPC,
-        "tta"                       => MediaFormat::TTA,
-        "dsf"                       => MediaFormat::DSF,
-        "dff"                       => MediaFormat::DFF,
-        "amr"                       => MediaFormat::AMR,
-        "au" | "snd"               => MediaFormat::AU,
-        "ra" | "ram"               => MediaFormat::RA,
-        "mid" | "midi" | "kar"     => MediaFormat::MID,
-        "spc"                       => MediaFormat::SPC,
-        "mod"                       => MediaFormat::MOD,
-        "s3m"                       => MediaFormat::S3M,
-        "xm"                        => MediaFormat::XM,
-        "it"                        => MediaFormat::IT,
-        "caf"                       => MediaFormat::CAF,
-        "ac3"                       => MediaFormat::AC3,
-        "dts"                       => MediaFormat::DTS,
+        "mp3" => MediaFormat::MP3,
+        "flac" => MediaFormat::FLAC,
+        "aac" => MediaFormat::AAC,
+        "wav" => MediaFormat::WAV,
+        "aiff" | "aif" | "aifc" => MediaFormat::AIFF,
+        "alac" => MediaFormat::ALAC,
+        "ogg" | "oga" => MediaFormat::OGG,
+        "opus" => MediaFormat::OPUS,
+        "wma" => MediaFormat::WMA,
+        "m4a" => MediaFormat::M4A,
+        "m4b" => MediaFormat::M4B,
+        "ape" => MediaFormat::APE,
+        "wv" => MediaFormat::WV,
+        "mpc" | "mp+" | "mpp" => MediaFormat::MPC,
+        "tta" => MediaFormat::TTA,
+        "dsf" => MediaFormat::DSF,
+        "dff" => MediaFormat::DFF,
+        "amr" => MediaFormat::AMR,
+        "au" | "snd" => MediaFormat::AU,
+        "ra" | "ram" => MediaFormat::RA,
+        "mid" | "midi" | "kar" => MediaFormat::MID,
+        "spc" => MediaFormat::SPC,
+        "mod" => MediaFormat::MOD,
+        "s3m" => MediaFormat::S3M,
+        "xm" => MediaFormat::XM,
+        "it" => MediaFormat::IT,
+        "caf" => MediaFormat::CAF,
+        "ac3" => MediaFormat::AC3,
+        "dts" => MediaFormat::DTS,
 
         // ── Video ──────────────────────────────────────────────────
-        "mkv"                       => MediaFormat::MKV,
-        "mp4" | "m4p"              => MediaFormat::MP4,
-        "avi"                       => MediaFormat::AVI,
-        "mov" | "qt"               => MediaFormat::MOV,
-        "wmv"                       => MediaFormat::WMV,
-        "webm"                      => MediaFormat::WEBM,
-        "flv"                       => MediaFormat::FLV,
-        "m4v"                       => MediaFormat::M4V,
-        "ts" | "mts" | "m2ts"     => MediaFormat::TS,
-        "mpg" | "mp2"              => MediaFormat::MPG,
-        "mpeg"                      => MediaFormat::MPEG,
-        "3gp" | "3g2" | "3gpp"    => MediaFormat::ThreeGP,
-        "rm"                        => MediaFormat::RM,
-        "rmvb"                      => MediaFormat::RMVB,
-        "vob"                       => MediaFormat::VOB,
-        "ogv"                       => MediaFormat::OGV,
-        "asf"                       => MediaFormat::ASF,
-        "mxf"                       => MediaFormat::MXF,
-        "mk3d"                      => MediaFormat::MK3D,
-        "nsv"                       => MediaFormat::NSV,
-        "f4v"                       => MediaFormat::F4V,
+        "mkv" => MediaFormat::MKV,
+        "mp4" | "m4p" => MediaFormat::MP4,
+        "avi" => MediaFormat::AVI,
+        "mov" | "qt" => MediaFormat::MOV,
+        "wmv" => MediaFormat::WMV,
+        "webm" => MediaFormat::WEBM,
+        "flv" => MediaFormat::FLV,
+        "m4v" => MediaFormat::M4V,
+        "ts" | "mts" | "m2ts" => MediaFormat::TS,
+        "mpg" | "mp2" => MediaFormat::MPG,
+        "mpeg" => MediaFormat::MPEG,
+        "3gp" | "3g2" | "3gpp" => MediaFormat::ThreeGP,
+        "rm" => MediaFormat::RM,
+        "rmvb" => MediaFormat::RMVB,
+        "vob" => MediaFormat::VOB,
+        "ogv" => MediaFormat::OGV,
+        "asf" => MediaFormat::ASF,
+        "mxf" => MediaFormat::MXF,
+        "mk3d" => MediaFormat::MK3D,
+        "nsv" => MediaFormat::NSV,
+        "f4v" => MediaFormat::F4V,
 
         // ── Image ──────────────────────────────────────────────────
         "jpg" | "jpeg" | "jpe" | "jfif" => MediaFormat::JPG,
-        "png"                       => MediaFormat::PNG,
-        "gif"                       => MediaFormat::GIF,
-        "bmp" | "dib"              => MediaFormat::BMP,
-        "tiff" | "tif"             => MediaFormat::TIFF,
-        "webp"                      => MediaFormat::WEBP,
-        "svg" | "svgz"             => MediaFormat::SVG,
-        "heif" | "hif"             => MediaFormat::HEIF,
-        "heic"                      => MediaFormat::HEIC,
-        "avif"                      => MediaFormat::AVIF,
-        "psd"                       => MediaFormat::PSD,
+        "png" => MediaFormat::PNG,
+        "gif" => MediaFormat::GIF,
+        "bmp" | "dib" => MediaFormat::BMP,
+        "tiff" | "tif" => MediaFormat::TIFF,
+        "webp" => MediaFormat::WEBP,
+        "svg" | "svgz" => MediaFormat::SVG,
+        "heif" | "hif" => MediaFormat::HEIF,
+        "heic" => MediaFormat::HEIC,
+        "avif" => MediaFormat::AVIF,
+        "psd" => MediaFormat::PSD,
         "tga" | "icb" | "vda" | "vst" => MediaFormat::TGA,
-        "ico"                       => MediaFormat::ICO,
-        "cr2"                       => MediaFormat::CR2,
-        "nef" | "nrw"              => MediaFormat::NEF,
-        "dng"                       => MediaFormat::DNG,
-        "arw" | "srf" | "sr2"     => MediaFormat::ARW,
-        "orf"                       => MediaFormat::ORF,
-        "raf"                       => MediaFormat::RAF,
-        "rw2"                       => MediaFormat::RW2,
-        "raw"                       => MediaFormat::RAW,
-        "exr"                       => MediaFormat::EXR,
-        "hdr"                       => MediaFormat::HDR,
-        "ppm"                       => MediaFormat::PPM,
-        "pgm"                       => MediaFormat::PGM,
+        "ico" => MediaFormat::ICO,
+        "cr2" => MediaFormat::CR2,
+        "nef" | "nrw" => MediaFormat::NEF,
+        "dng" => MediaFormat::DNG,
+        "arw" | "srf" | "sr2" => MediaFormat::ARW,
+        "orf" => MediaFormat::ORF,
+        "raf" => MediaFormat::RAF,
+        "rw2" => MediaFormat::RW2,
+        "raw" => MediaFormat::RAW,
+        "exr" => MediaFormat::EXR,
+        "hdr" => MediaFormat::HDR,
+        "ppm" => MediaFormat::PPM,
+        "pgm" => MediaFormat::PGM,
         "jp2" | "j2k" | "jpf" | "jpx" => MediaFormat::JP2,
-        "jxl"                       => MediaFormat::JXL,
+        "jxl" => MediaFormat::JXL,
 
         // ── Document ───────────────────────────────────────────────
-        "pdf"                       => MediaFormat::PDF,
-        "epub"                      => MediaFormat::EPUB,
+        "pdf" => MediaFormat::PDF,
+        "epub" => MediaFormat::EPUB,
         "mobi" | "prc" | "azw" | "azw3" | "kfx" => MediaFormat::MOBI,
-        "doc"                       => MediaFormat::DOC,
-        "docx"                      => MediaFormat::DOCX,
-        "xls"                       => MediaFormat::XLS,
-        "xlsx"                      => MediaFormat::XLSX,
-        "ppt"                       => MediaFormat::PPT,
-        "pptx"                      => MediaFormat::PPTX,
-        "odt"                       => MediaFormat::ODT,
-        "ods"                       => MediaFormat::ODS,
-        "odp"                       => MediaFormat::ODP,
-        "rtf"                       => MediaFormat::RTF,
-        "txt" | "text" | "log"     => MediaFormat::TXT,
-        "csv" | "tsv"              => MediaFormat::CSV,
-        "html" | "htm" | "xhtml"   => MediaFormat::HTML,
-        "xml" | "xsl" | "xslt"    => MediaFormat::XML,
+        "doc" => MediaFormat::DOC,
+        "docx" => MediaFormat::DOCX,
+        "xls" => MediaFormat::XLS,
+        "xlsx" => MediaFormat::XLSX,
+        "ppt" => MediaFormat::PPT,
+        "pptx" => MediaFormat::PPTX,
+        "odt" => MediaFormat::ODT,
+        "ods" => MediaFormat::ODS,
+        "odp" => MediaFormat::ODP,
+        "rtf" => MediaFormat::RTF,
+        "txt" | "text" | "log" => MediaFormat::TXT,
+        "csv" | "tsv" => MediaFormat::CSV,
+        "html" | "htm" | "xhtml" => MediaFormat::HTML,
+        "xml" | "xsl" | "xslt" => MediaFormat::XML,
         "json" | "jsonl" | "json5" => MediaFormat::JSON,
-        "yaml" | "yml"             => MediaFormat::YAML,
-        "md" | "markdown"          => MediaFormat::MD,
-        "tex" | "latex"            => MediaFormat::TEX,
-        "djvu" | "djv"             => MediaFormat::DJVU,
-        "cbz"                       => MediaFormat::CBZ,
-        "cbr"                       => MediaFormat::CBR,
-        "fb2"                       => MediaFormat::FB2,
-        "srt"                       => MediaFormat::SRT,
-        "ass" | "ssa"              => MediaFormat::ASS,
-        "vtt"                       => MediaFormat::VTT,
+        "yaml" | "yml" => MediaFormat::YAML,
+        "md" | "markdown" => MediaFormat::MD,
+        "tex" | "latex" => MediaFormat::TEX,
+        "djvu" | "djv" => MediaFormat::DJVU,
+        "cbz" => MediaFormat::CBZ,
+        "cbr" => MediaFormat::CBR,
+        "fb2" => MediaFormat::FB2,
+        "srt" => MediaFormat::SRT,
+        "ass" | "ssa" => MediaFormat::ASS,
+        "vtt" => MediaFormat::VTT,
 
         // ── Archive ────────────────────────────────────────────────
-        "zip"                       => MediaFormat::ZIP,
-        "rar"                       => MediaFormat::RAR,
-        "7z"                        => MediaFormat::SevenZ,
-        "tar"                       => MediaFormat::TAR,
-        "gz" | "gzip"              => MediaFormat::GZ,
-        "bz2" | "bzip2"           => MediaFormat::BZ2,
-        "xz" | "lzma"             => MediaFormat::XZ,
-        "zst" | "zstd"            => MediaFormat::ZST,
-        "lz4"                       => MediaFormat::LZ4,
-        "iso"                       => MediaFormat::ISO,
-        "dmg"                       => MediaFormat::DMG,
-        "msi"                       => MediaFormat::MSI,
-        "deb"                       => MediaFormat::DEB,
-        "rpm"                       => MediaFormat::RPM,
-        "pkg"                       => MediaFormat::PKG,
-        "jar"                       => MediaFormat::JAR,
-        "apk"                       => MediaFormat::APK,
+        "zip" => MediaFormat::ZIP,
+        "rar" => MediaFormat::RAR,
+        "7z" => MediaFormat::SevenZ,
+        "tar" => MediaFormat::TAR,
+        "gz" | "gzip" => MediaFormat::GZ,
+        "bz2" | "bzip2" => MediaFormat::BZ2,
+        "xz" | "lzma" => MediaFormat::XZ,
+        "zst" | "zstd" => MediaFormat::ZST,
+        "lz4" => MediaFormat::LZ4,
+        "iso" => MediaFormat::ISO,
+        "dmg" => MediaFormat::DMG,
+        "msi" => MediaFormat::MSI,
+        "deb" => MediaFormat::DEB,
+        "rpm" => MediaFormat::RPM,
+        "pkg" => MediaFormat::PKG,
+        "jar" => MediaFormat::JAR,
+        "apk" => MediaFormat::APK,
 
         // ── Compound archive extensions (tar.gz etc.) ──────────────
         // These are handled if the caller strips the outer extension;
         // "tgz" is a common single-extension alias for tar+gzip.
-        "tgz"                       => MediaFormat::GZ,
-        "tbz2" | "tbz"            => MediaFormat::BZ2,
-        "txz"                       => MediaFormat::XZ,
+        "tgz" => MediaFormat::GZ,
+        "tbz2" | "tbz" => MediaFormat::BZ2,
+        "txz" => MediaFormat::XZ,
 
         // ── Unrecognised ───────────────────────────────────────────
-        _                           => MediaFormat::UnknownFormat,
+        _ => MediaFormat::UnknownFormat,
     }
 }
 
@@ -1133,12 +1220,17 @@ pub fn classify_by_extension(ext: &str) -> MediaClassification {
     // directly apply, so we set Standard. For audio, Unknown until we
     // have bitrate / codec information.
     let quality = match group {
-        MediaGroup::Audio   => MediaQuality::Unknown,
+        MediaGroup::Audio => MediaQuality::Unknown,
         MediaGroup::Unknown => MediaQuality::Unknown,
-        _                   => MediaQuality::Standard,
+        _ => MediaQuality::Standard,
     };
 
-    MediaClassification { group, format, class, quality }
+    MediaClassification {
+        group,
+        format,
+        class,
+        quality,
+    }
 }
 
 /// Classify a media file from its full path.
@@ -1152,13 +1244,10 @@ pub fn classify_by_extension(ext: &str) -> MediaClassification {
 pub fn classify_by_path(path: &Path) -> MmResult<MediaClassification> {
     // Extract the extension from the path, handling the None case
     let ext = path
-        .extension()                          // Option<&OsStr>
-        .and_then(|e| e.to_str())             // Option<&str> (lossy-free)
+        .extension() // Option<&OsStr>
+        .and_then(|e| e.to_str()) // Option<&str> (lossy-free)
         .ok_or_else(|| {
-            MmError::Classify(format!(
-                "path has no file extension: {}",
-                path.display()
-            ))
+            MmError::Classify(format!("path has no file extension: {}", path.display()))
         })?;
 
     Ok(classify_by_extension(ext))
@@ -1494,15 +1583,21 @@ mod tests {
     fn format_extension_roundtrip() {
         // For canonical formats, classifying by extension should return the same format
         let formats = [
-            MediaFormat::MP3, MediaFormat::FLAC, MediaFormat::AAC,
-            MediaFormat::WAV, MediaFormat::MKV, MediaFormat::MP4,
-            MediaFormat::JPG, MediaFormat::PNG, MediaFormat::PDF,
+            MediaFormat::MP3,
+            MediaFormat::FLAC,
+            MediaFormat::AAC,
+            MediaFormat::WAV,
+            MediaFormat::MKV,
+            MediaFormat::MP4,
+            MediaFormat::JPG,
+            MediaFormat::PNG,
+            MediaFormat::PDF,
             MediaFormat::ZIP,
         ];
         for fmt in formats {
             let ext = fmt.extension();
             let classified = classify_by_extension(ext);
-            assert_eq!(classified.format, fmt, "Roundtrip failed for {}", fmt);
+            assert_eq!(classified.format, fmt, "Roundtrip failed for {fmt}");
         }
     }
 
@@ -1513,7 +1608,10 @@ mod tests {
         assert_eq!(MediaFormat::JPG.mime_type(), "image/jpeg");
         assert_eq!(MediaFormat::PDF.mime_type(), "application/pdf");
         assert_eq!(MediaFormat::ZIP.mime_type(), "application/zip");
-        assert_eq!(MediaFormat::UnknownFormat.mime_type(), "application/octet-stream");
+        assert_eq!(
+            MediaFormat::UnknownFormat.mime_type(),
+            "application/octet-stream"
+        );
     }
 
     // ── Display impls ──────────────────────────────────────────────
@@ -1599,8 +1697,7 @@ mod tests {
         // Serialize to JSON
         let json = serde_json::to_string(&original).expect("serialize");
         // Deserialize back
-        let restored: MediaClassification =
-            serde_json::from_str(&json).expect("deserialize");
+        let restored: MediaClassification = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, restored);
     }
 }

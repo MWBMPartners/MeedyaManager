@@ -59,7 +59,7 @@ impl SyncManager {
     pub fn new(config: SyncConfig) -> Self {
         Self {
             config,
-            states:    HashMap::new(),
+            states: HashMap::new(),
             event_log: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -96,11 +96,7 @@ impl SyncManager {
     /// conflict resolution strategy and media extension filter.
     ///
     /// Returns the list of `SyncEvent`s emitted during this pass.
-    pub fn process_changes(
-        &mut self,
-        provider_name: &str,
-        changeset: ChangeSet,
-    ) -> Vec<SyncEvent> {
+    pub fn process_changes(&mut self, provider_name: &str, changeset: ChangeSet) -> Vec<SyncEvent> {
         let mut events = Vec::new();
         let now = SystemTime::now();
 
@@ -124,7 +120,7 @@ impl SyncManager {
             }
             events.push(SyncEvent::FileAdded {
                 provider: provider_name.to_string(),
-                file:     file.clone(),
+                file: file.clone(),
             });
             change_count += 1;
         }
@@ -140,14 +136,14 @@ impl SyncManager {
                     // Surface the conflict to the user for manual resolution.
                     events.push(SyncEvent::ConflictDetected {
                         provider: provider_name.to_string(),
-                        file:     file.clone(),
+                        file: file.clone(),
                     });
                 }
                 _ => {
                     // LocalWins / RemoteWins / KeepBoth all proceed with sync.
                     events.push(SyncEvent::FileModified {
                         provider: provider_name.to_string(),
-                        file:     file.clone(),
+                        file: file.clone(),
                     });
                 }
             }
@@ -158,22 +154,22 @@ impl SyncManager {
         for id in &changeset.deleted {
             events.push(SyncEvent::FileDeleted {
                 provider: provider_name.to_string(),
-                id:       id.clone(),
+                id: id.clone(),
             });
             change_count += 1;
         }
 
         // Update cursor and state after processing.
         if !changeset.cursor.is_empty() {
-            state.cursor = Some(changeset.cursor.clone());
+            state.cursor = Some(changeset.cursor);
         }
-        state.files_synced  += change_count as u64;
-        state.last_sync      = Some(now);
-        state.status         = SyncStatus::Synced;
+        state.files_synced += change_count as u64;
+        state.last_sync = Some(now);
+        state.status = SyncStatus::Synced;
 
         events.push(SyncEvent::SyncCompleted {
             provider: provider_name.to_string(),
-            changes:  change_count,
+            changes: change_count,
         });
 
         // Append to the shared event log.
@@ -192,7 +188,7 @@ impl SyncManager {
         if let Ok(mut log) = self.event_log.lock() {
             log.push(SyncEvent::SyncFailed {
                 provider: provider_name.to_string(),
-                error:    error.to_string(),
+                error: error.to_string(),
             });
         }
     }
@@ -230,14 +226,14 @@ mod tests {
 
     fn make_file(name: &str) -> CloudFile {
         CloudFile {
-            id:           name.to_string(),
-            name:         name.to_string(),
-            path:         format!("/Music/{name}"),
-            size:         Some(4_096),
-            modified:     None,
-            is_folder:    false,
-            mime_type:    Some("audio/mpeg".into()),
-            hash:         None,
+            id: name.to_string(),
+            name: name.to_string(),
+            path: format!("/Music/{name}"),
+            size: Some(4_096),
+            modified: None,
+            is_folder: false,
+            mime_type: Some("audio/mpeg".into()),
+            hash: None,
             download_url: None,
         }
     }
@@ -278,7 +274,10 @@ mod tests {
     #[test]
     fn state_is_not_connected_after_register() {
         let m = manager();
-        assert_eq!(m.state("OneDrive").unwrap().status, SyncStatus::NotConnected);
+        assert_eq!(
+            m.state("OneDrive").unwrap().status,
+            SyncStatus::NotConnected
+        );
     }
 
     // ── process_changes ───────────────────────────────────────────────────────
@@ -291,9 +290,9 @@ mod tests {
         let kinds: Vec<&str> = events
             .iter()
             .map(|e| match e {
-                SyncEvent::SyncStarted { .. }   => "started",
+                SyncEvent::SyncStarted { .. } => "started",
                 SyncEvent::SyncCompleted { .. } => "completed",
-                _                               => "other",
+                _ => "other",
             })
             .collect();
         assert!(kinds.contains(&"started"));
@@ -311,9 +310,11 @@ mod tests {
         };
         let events = m.process_changes("OneDrive", cs);
         // No FileAdded event should be emitted for a .txt file.
-        assert!(!events
-            .iter()
-            .any(|e| matches!(e, SyncEvent::FileAdded { .. })));
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, SyncEvent::FileAdded { .. }))
+        );
     }
 
     #[test]
@@ -324,9 +325,11 @@ mod tests {
             ..Default::default()
         };
         let events = m.process_changes("OneDrive", cs);
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, SyncEvent::FileAdded { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SyncEvent::FileAdded { .. }))
+        );
     }
 
     #[test]
@@ -337,9 +340,11 @@ mod tests {
             ..Default::default()
         };
         let events = m.process_changes("OneDrive", cs);
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, SyncEvent::FileDeleted { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SyncEvent::FileDeleted { .. }))
+        );
     }
 
     #[test]
@@ -378,7 +383,7 @@ mod tests {
     fn drain_events_clears_log() {
         let mut m = manager();
         m.process_changes("OneDrive", ChangeSet::default());
-        let first  = m.drain_events();
+        let first = m.drain_events();
         let second = m.drain_events();
         assert!(!first.is_empty());
         assert!(second.is_empty());
@@ -387,9 +392,9 @@ mod tests {
     #[test]
     fn all_states_returns_all_registered_providers() {
         let mut m = SyncManager::new(SyncConfig::default());
-        m.register_provider("OneDrive",   "/Music");
+        m.register_provider("OneDrive", "/Music");
         m.register_provider("GoogleDrive", "/Media");
-        m.register_provider("Dropbox",    "/Photos");
+        m.register_provider("Dropbox", "/Photos");
         assert_eq!(m.all_states().len(), 3);
     }
 }

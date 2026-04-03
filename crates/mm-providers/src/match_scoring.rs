@@ -56,11 +56,11 @@ impl Default for ScoringWeights {
     /// Default production weights: title 35%, artist 30%, album 20%, year 10%, ISRC 5%.
     fn default() -> Self {
         Self {
-            title:  0.35,
+            title: 0.35,
             artist: 0.30,
-            album:  0.20,
-            year:   0.10,
-            isrc:   0.05,
+            album: 0.20,
+            year: 0.10,
+            isrc: 0.05,
         }
     }
 }
@@ -79,12 +79,21 @@ impl Default for ScoringWeights {
 /// // Attach score to result
 /// result.score = score;
 /// ```
-#[derive(Debug)]
 pub struct MatchScorer {
     /// Field weights
     weights: ScoringWeights,
     /// Reusable fuzzy matcher (stateless after construction)
     matcher: SkimMatcherV2,
+}
+
+// Manual Debug because SkimMatcherV2 does not implement Debug
+impl std::fmt::Debug for MatchScorer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MatchScorer")
+            .field("weights", &self.weights)
+            .field("matcher", &"SkimMatcherV2 { .. }")
+            .finish()
+    }
 }
 
 impl MatchScorer {
@@ -116,65 +125,76 @@ impl MatchScorer {
         // Title component (weighted 35%)
         let title_score = match (&query.title, &result.title) {
             (Some(q), Some(r)) => self.fuzzy_ratio(q, r),
-            (None,    Some(_)) => 0.5, // Query has no title → neutral
-            (Some(_), None)    => 0.0, // Result missing title → penalty
-            (None,    None)    => 1.0, // Both absent → neutral
+            (None, Some(_)) => 0.5, // Query has no title → neutral
+            (Some(_), None) => 0.0, // Result missing title → penalty
+            (None, None) => 1.0,    // Both absent → neutral
         };
 
         // Artist component (weighted 30%)
         let artist_score = match (&query.artist, &result.artist) {
             (Some(q), Some(r)) => self.fuzzy_ratio(q, r),
-            (None,    Some(_)) => 0.5,
-            (Some(_), None)    => 0.0,
-            (None,    None)    => 1.0,
+            (None, Some(_)) => 0.5,
+            (Some(_), None) => 0.0,
+            (None, None) => 1.0,
         };
 
         // Album component (weighted 20%)
         let album_score = match (&query.album, &result.album) {
             (Some(q), Some(r)) => self.fuzzy_ratio(q, r),
-            (None,    Some(_)) => 0.5,
-            (Some(_), None)    => 0.3,  // Missing album is a minor penalty
-            (None,    None)    => 1.0,
+            (None, Some(_)) => 0.5,
+            (Some(_), None) => 0.3, // Missing album is a minor penalty
+            (None, None) => 1.0,
         };
 
         // Year proximity component (weighted 10%)
         let year_score = match (query.year, result.year) {
             (Some(qy), Some(ry)) => year_proximity(qy, ry),
-            (None,    Some(_))   => 0.5,
-            (Some(_), None)      => 0.5,
-            (None,    None)      => 1.0,
+            (None, Some(_)) => 0.5,
+            (Some(_), None) => 0.5,
+            (None, None) => 1.0,
         };
 
         // ISRC exact-match bonus (weighted 5%)
         let isrc_score = match (&query.isrc, &result.isrc) {
             (Some(q), Some(r)) => {
-                if normalise_isrc(q) == normalise_isrc(r) { 1.0 } else { 0.0 }
+                if normalise_isrc(q) == normalise_isrc(r) {
+                    1.0
+                } else {
+                    0.0
+                }
             }
-            (Some(_), None) => 0.0, // Query specified ISRC but result has none → small penalty
-            _               => 0.5, // Not applicable → neutral
+            (Some(_), None) => 0.3, // Query specified ISRC but result has none → mild penalty (less bad than mismatch)
+            _ => 0.5,               // Not applicable → neutral
         };
 
         // Weighted sum
-        let raw = self.weights.title  * title_score
-                + self.weights.artist * artist_score
-                + self.weights.album  * album_score
-                + self.weights.year   * year_score
-                + self.weights.isrc   * isrc_score;
+        let raw = self.weights.isrc.mul_add(
+            isrc_score,
+            self.weights.year.mul_add(
+                year_score,
+                self.weights.album.mul_add(
+                    album_score,
+                    self.weights
+                        .title
+                        .mul_add(title_score, self.weights.artist * artist_score),
+                ),
+            ),
+        );
 
         raw.clamp(0.0, 1.0)
     }
 
     /// Compute and attach a score to each result in a list, then sort descending.
-    pub fn rank_results(
-        &self,
-        query: &SearchQuery,
-        results: &mut Vec<ProviderResult>,
-    ) {
+    pub fn rank_results(&self, query: &SearchQuery, results: &mut [ProviderResult]) {
         for r in results.iter_mut() {
             r.score = self.score(query, r);
         }
         // Sort highest score first
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -189,12 +209,17 @@ impl MatchScorer {
         let a = normalise_for_comparison(a);
         let b = normalise_for_comparison(b);
 
+        // Both empty → no meaningful comparison
+        if a.is_empty() && b.is_empty() {
+            return 0.0;
+        }
+        // One side empty → no match
+        if a.is_empty() || b.is_empty() {
+            return 0.0;
+        }
         // Exact match after normalisation → perfect score
         if a == b {
             return 1.0;
-        }
-        if a.is_empty() || b.is_empty() {
-            return 0.0;
         }
 
         // SkimMatcherV2: `fuzzy_match(text, pattern)` → pattern searched in text
@@ -209,10 +234,7 @@ impl MatchScorer {
 
         // Normalise: compare against the self-match score of the longer string
         let longer = if a.len() >= b.len() { &a } else { &b };
-        let self_score = self.matcher
-            .fuzzy_match(longer, longer)
-            .unwrap_or(1)
-            .max(1) as f64;
+        let self_score = self.matcher.fuzzy_match(longer, longer).unwrap_or(1).max(1) as f64;
 
         (best_score / self_score).clamp(0.0, 1.0)
     }
@@ -236,7 +258,7 @@ pub fn score_result(query: &SearchQuery, result: &ProviderResult) -> f64 {
 }
 
 /// Rank a list of results by score (highest first) using default weights.
-pub fn rank_results(query: &SearchQuery, results: &mut Vec<ProviderResult>) {
+pub fn rank_results(query: &SearchQuery, results: &mut [ProviderResult]) {
     MatchScorer::new().rank_results(query, results);
 }
 
@@ -250,7 +272,13 @@ fn normalise_for_comparison(s: &str) -> String {
     // Remove punctuation characters that don't affect meaning
     let stripped: String = lower
         .chars()
-        .map(|c| if c.is_alphabetic() || c.is_numeric() || c == ' ' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphabetic() || c.is_numeric() || c == ' ' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
     // Collapse consecutive whitespace
     stripped.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -261,12 +289,12 @@ fn normalise_for_comparison(s: &str) -> String {
 /// Exact year match → 1.0. Each year off reduces the score by 0.1 (minimum 0.0).
 fn year_proximity(query_year: u32, result_year: u32) -> f64 {
     let diff = query_year.abs_diff(result_year);
-    (1.0 - (diff as f64 * 0.1)).clamp(0.0, 1.0)
+    f64::from(diff).mul_add(-0.1, 1.0).clamp(0.0, 1.0)
 }
 
 /// Normalise an ISRC for comparison: uppercase, remove hyphens and spaces.
 fn normalise_isrc(isrc: &str) -> String {
-    isrc.to_uppercase().replace('-', "").replace(' ', "")
+    isrc.to_uppercase().replace(['-', ' '], "")
 }
 
 // ---------------------------------------------------------------------------
@@ -307,14 +335,24 @@ mod tests {
 
     #[test]
     fn invalid_weights_detected() {
-        let w = ScoringWeights { title: 0.5, artist: 0.5, album: 0.5, year: 0.0, isrc: 0.0 };
+        let w = ScoringWeights {
+            title: 0.5,
+            artist: 0.5,
+            album: 0.5,
+            year: 0.0,
+            isrc: 0.0,
+        };
         assert!(!w.is_valid());
     }
 
     #[test]
     fn custom_weights_stored_correctly() {
         let w = ScoringWeights {
-            title: 0.40, artist: 0.30, album: 0.15, year: 0.10, isrc: 0.05,
+            title: 0.40,
+            artist: 0.30,
+            album: 0.15,
+            year: 0.10,
+            isrc: 0.05,
         };
         assert!(w.is_valid());
         assert!((w.title - 0.40).abs() < 1e-9);
@@ -332,7 +370,11 @@ mod tests {
     #[test]
     fn scorer_with_custom_weights() {
         let weights = ScoringWeights {
-            title: 0.40, artist: 0.30, album: 0.15, year: 0.10, isrc: 0.05,
+            title: 0.40,
+            artist: 0.30,
+            album: 0.15,
+            year: 0.10,
+            isrc: 0.05,
         };
         let scorer = MatchScorer::with_weights(weights.clone());
         assert_eq!(scorer.weights, weights);
@@ -365,7 +407,10 @@ mod tests {
         let scorer = make_scorer();
         let similar = scorer.fuzzy_ratio("Pink Floyd", "Pink Floyd - The Wall");
         let different = scorer.fuzzy_ratio("Pink Floyd", "Radiohead OK Computer");
-        assert!(similar > different, "similar={similar} should be > different={different}");
+        assert!(
+            similar > different,
+            "similar={similar} should be > different={different}"
+        );
     }
 
     #[test]
@@ -471,11 +516,14 @@ mod tests {
         let scorer = make_scorer();
         let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
         let correct_artist = make_result("Comfortably Numb", "Pink Floyd");
-        let wrong_artist   = make_result("Comfortably Numb", "Radiohead");
+        let wrong_artist = make_result("Comfortably Numb", "Radiohead");
 
         let s1 = scorer.score(&query, &correct_artist);
         let s2 = scorer.score(&query, &wrong_artist);
-        assert!(s1 > s2, "correct artist score={s1} should be > wrong artist score={s2}");
+        assert!(
+            s1 > s2,
+            "correct artist score={s1} should be > wrong artist score={s2}"
+        );
     }
 
     #[test]
@@ -483,7 +531,7 @@ mod tests {
         let scorer = make_scorer();
         let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
         let correct = make_result("Comfortably Numb", "Pink Floyd");
-        let wrong   = make_result("Money", "Pink Floyd");
+        let wrong = make_result("Money", "Pink Floyd");
 
         assert!(scorer.score(&query, &correct) > scorer.score(&query, &wrong));
     }
@@ -558,14 +606,14 @@ mod tests {
         let scorer = make_scorer();
         let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
 
-        let mut no_title = ProviderResult::default();
-        no_title.artist = Some("Pink Floyd".into());
+        let no_title = ProviderResult {
+            artist: Some("Pink Floyd".into()),
+            ..Default::default()
+        };
 
         // No title should score lower than matching title
         let with_title = make_result("Comfortably Numb", "Pink Floyd");
-        assert!(
-            scorer.score(&query, &with_title) > scorer.score(&query, &no_title)
-        );
+        assert!(scorer.score(&query, &with_title) > scorer.score(&query, &no_title));
     }
 
     // --- rank_results ---
@@ -576,9 +624,9 @@ mod tests {
         let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
 
         let mut results = vec![
-            make_result("Money", "Pink Floyd"),               // wrong title
-            make_result("Comfortably Numb", "Pink Floyd"),    // exact match
-            make_result("Bohemian Rhapsody", "Queen"),        // different artist
+            make_result("Money", "Pink Floyd"),            // wrong title
+            make_result("Comfortably Numb", "Pink Floyd"), // exact match
+            make_result("Bohemian Rhapsody", "Queen"),     // different artist
         ];
         scorer.rank_results(&query, &mut results);
 

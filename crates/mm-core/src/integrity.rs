@@ -26,10 +26,10 @@ use std::io::{Read, Write as IoWrite};
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use crate::error::{MmError, MmResult};
-use crate::metadata::{write_tags, TagMap};
+use crate::metadata::{TagMap, write_tags};
 use crate::test_mode;
 
 // ---------------------------------------------------------------------------
@@ -66,7 +66,8 @@ pub struct IntegrityWriteResult {
 pub fn file_sha256(path: &Path) -> MmResult<String> {
     // Open the file for reading
     let mut file = std::fs::File::open(path).map_err(|e| {
-        MmError::Io(format!("sha256: cannot open '{}': {e}", path.display()))
+        tracing::warn!("sha256: cannot open '{}': {e}", path.display());
+        MmError::Io(e)
     })?;
 
     // Feed file contents through the SHA-256 hasher in 64 KiB chunks
@@ -75,7 +76,8 @@ pub fn file_sha256(path: &Path) -> MmResult<String> {
 
     loop {
         let n = file.read(&mut buf).map_err(|e| {
-            MmError::Io(format!("sha256: read error on '{}': {e}", path.display()))
+            tracing::warn!("sha256: read error on '{}': {e}", path.display());
+            MmError::Io(e)
         })?;
         if n == 0 {
             break; // EOF
@@ -167,22 +169,14 @@ fn write_tags_standard(path: &Path, tags: &TagMap) -> IntegrityWriteResult {
         Ok(h) => h,
         Err(e) => {
             cleanup_tmp(&tmp_path);
-            return failure(
-                path,
-                sha256_before,
-                format!("post-write hash failed: {e}"),
-            );
+            return failure(path, sha256_before, format!("post-write hash failed: {e}"));
         }
     };
 
     // -- Step 5: atomically rename temp over original ----------------------
     if let Err(e) = std::fs::rename(&tmp_path, path) {
         cleanup_tmp(&tmp_path);
-        return failure(
-            path,
-            sha256_before,
-            format!("atomic rename failed: {e}"),
-        );
+        return failure(path, sha256_before, format!("atomic rename failed: {e}"));
     }
 
     // -- Step 6: log success and return ------------------------------------
@@ -303,7 +297,10 @@ fn temp_path(path: &Path) -> PathBuf {
 /// Attempt to delete the temp file; log a warning but do not panic on failure.
 fn cleanup_tmp(tmp: &Path) {
     if let Err(e) = std::fs::remove_file(tmp) {
-        warn!("integrity: could not remove temp file '{}': {e}", tmp.display());
+        warn!(
+            "integrity: could not remove temp file '{}': {e}",
+            tmp.display()
+        );
     }
 }
 
@@ -333,11 +330,15 @@ fn failure(path: &Path, sha256_before: String, message: String) -> IntegrityWrit
 /// panic).
 fn append_corruption_log(path: &Path, message: &str) {
     // Resolve the OS-specific config directory
-    let Some(config_root) = dirs::config_dir() else { return };
+    let Some(config_root) = dirs::config_dir() else {
+        return;
+    };
     let log_dir = config_root.join("meedyamanager");
 
     // Ensure the directory exists
-    if std::fs::create_dir_all(&log_dir).is_err() { return }
+    if std::fs::create_dir_all(&log_dir).is_err() {
+        return;
+    }
 
     let log_path = log_dir.join("corruption.log");
 
@@ -425,7 +426,10 @@ mod tests {
         // Modify the file
         fs::write(&p, b"modified content").unwrap();
 
-        assert!(!verify_file(&p, &hash), "modified file should not match original hash");
+        assert!(
+            !verify_file(&p, &hash),
+            "modified file should not match original hash"
+        );
     }
 
     #[test]

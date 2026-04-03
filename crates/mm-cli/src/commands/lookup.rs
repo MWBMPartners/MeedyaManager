@@ -91,7 +91,10 @@ pub fn run(ctx: &CliContext, args: &LookupArgs) -> anyhow::Result<i32> {
             output::print_json(&LookupStubOutput {
                 status: "stub".to_string(),
                 message,
-                planned_providers: PLANNED_PROVIDERS.iter().map(|s| s.to_string()).collect(),
+                planned_providers: PLANNED_PROVIDERS
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect(),
             });
         }
         OutputFormat::Human => {

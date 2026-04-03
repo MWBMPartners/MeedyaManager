@@ -11,7 +11,9 @@
 // Tags:            delete-then-reinsert in the same transaction.
 
 use crate::schema::SchemaBuilder;
-use crate::traits::{DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent};
+use crate::traits::{
+    DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent,
+};
 
 // ---------------------------------------------------------------------------
 // PostgresExporter
@@ -81,7 +83,9 @@ impl PostgresExporter {
 impl DatabaseExporter for PostgresExporter {
     type Config = ExportConfig;
 
-    fn dialect(&self) -> DbDialect { DbDialect::Postgres }
+    fn dialect(&self) -> DbDialect {
+        DbDialect::Postgres
+    }
 
     async fn ensure_schema(&self) -> Result<(), ExportError> {
         for stmt in self.schema_ddl() {
@@ -94,10 +98,16 @@ impl DatabaseExporter for PostgresExporter {
 
     async fn export_file(&self, row: &ExportRow) -> Result<(), ExportError> {
         if row.file_hash.is_empty() {
-            return Err(ExportError::RowFailed { path: row.path.clone(), message: "file_hash required".into() });
+            return Err(ExportError::RowFailed {
+                path: row.path.clone(),
+                message: "file_hash required".into(),
+            });
         }
         if row.path.is_empty() {
-            return Err(ExportError::RowFailed { path: String::new(), message: "path required".into() });
+            return Err(ExportError::RowFailed {
+                path: String::new(),
+                message: "path required".into(),
+            });
         }
         let _ = self.upsert_file_sql();
         let _ = self.replace_tags_sql();
@@ -108,8 +118,8 @@ impl DatabaseExporter for PostgresExporter {
         let mut stats = ExportStats::default();
         for row in rows {
             match self.export_file(row).await {
-                Ok(())  => stats.inserted += 1,
-                Err(_)  => stats.errors   += 1,
+                Ok(()) => stats.inserted += 1,
+                Err(_) => stats.errors += 1,
             }
         }
         Ok(stats)
@@ -123,7 +133,9 @@ impl DatabaseExporter for PostgresExporter {
         Ok(())
     }
 
-    async fn disconnect(self) -> Result<(), ExportError> { Ok(()) }
+    async fn disconnect(self) -> Result<(), ExportError> {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -135,11 +147,16 @@ mod tests {
     use super::*;
 
     fn exporter() -> PostgresExporter {
-        PostgresExporter::new(ExportConfig::with_dsn("postgres://admin:pass@localhost/meedya")).unwrap()
+        PostgresExporter::new(ExportConfig::with_dsn(
+            "postgres://admin:pass@localhost/meedya",
+        ))
+        .unwrap()
     }
 
     #[test]
-    fn dialect_is_postgres() { assert_eq!(exporter().dialect(), DbDialect::Postgres); }
+    fn dialect_is_postgres() {
+        assert_eq!(exporter().dialect(), DbDialect::Postgres);
+    }
 
     #[test]
     fn new_rejects_empty_dsn() {
@@ -189,11 +206,19 @@ mod tests {
 
     #[tokio::test]
     async fn record_rename_valid() {
-        let ev = RenameEvent { file_hash: "pgH".into(), old_path: "/o".into(),
-            new_path: "/n".into(), rule_name: "R".into(), dry_run: true, renamed_at: 0 };
+        let ev = RenameEvent {
+            file_hash: "pgH".into(),
+            old_path: "/o".into(),
+            new_path: "/n".into(),
+            rule_name: "R".into(),
+            dry_run: true,
+            renamed_at: 0,
+        };
         assert!(exporter().record_rename(&ev).await.is_ok());
     }
 
     #[tokio::test]
-    async fn disconnect_ok() { assert!(exporter().disconnect().await.is_ok()); }
+    async fn disconnect_ok() {
+        assert!(exporter().disconnect().await.is_ok());
+    }
 }

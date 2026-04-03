@@ -86,19 +86,18 @@ pub fn run(ctx: &CliContext, args: &EditArgs) -> anyhow::Result<i32> {
     // ── 1. Parse and apply --set operations ─────────────────────────────
     for set_arg in &args.set {
         // Parse "key=value" format
-        let (key, value) = match set_arg.split_once('=') {
-            Some((k, v)) => (k.to_string(), v.to_string()),
-            None => {
-                let action = EditAction {
-                    action: "set".to_string(),
-                    key: Some(set_arg.clone()),
-                    value: None,
-                    success: false,
-                    error: Some("Invalid format — expected key=value".to_string()),
-                };
-                actions.push(action);
-                continue;
-            }
+        let (key, value) = if let Some((k, v)) = set_arg.split_once('=') {
+            (k.to_string(), v.to_string())
+        } else {
+            let action = EditAction {
+                action: "set".to_string(),
+                key: Some(set_arg.clone()),
+                value: None,
+                success: false,
+                error: Some("Invalid format — expected key=value".to_string()),
+            };
+            actions.push(action);
+            continue;
         };
 
         if dry_run {

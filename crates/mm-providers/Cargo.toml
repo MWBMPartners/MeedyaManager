@@ -56,3 +56,6 @@ wiremock = { workspace = true }
 
 # Temporary file/directory creation for test fixtures
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

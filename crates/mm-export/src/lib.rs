@@ -43,16 +43,16 @@ pub mod mssql;
 
 // --- Convenience re-exports ---
 
+pub use mariadb::MariaDbExporter;
+pub use mssql::MssqlExporter;
+pub use mysql::MySqlExporter;
+pub use postgres::PostgresExporter;
+pub use schema::SchemaBuilder;
+pub use sqlite::SqliteExporter;
 /// All public types needed to use mm-export from other crates.
 pub use traits::{
     DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent,
 };
-pub use schema::SchemaBuilder;
-pub use mysql::MySqlExporter;
-pub use mariadb::MariaDbExporter;
-pub use postgres::PostgresExporter;
-pub use sqlite::SqliteExporter;
-pub use mssql::MssqlExporter;
 
 // ---------------------------------------------------------------------------
 // Integration / smoke tests
@@ -74,7 +74,10 @@ mod tests {
             DbDialect::SqlServer,
         ];
         // Every dialect must have a unique Display string
-        let labels: Vec<String> = dialects.iter().map(|d| d.to_string()).collect();
+        let labels: Vec<String> = dialects
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         let unique: std::collections::HashSet<_> = labels.iter().collect();
         assert_eq!(unique.len(), 5, "dialect labels must all be unique");
     }
@@ -105,7 +108,10 @@ mod tests {
 
     #[test]
     fn mssql_exporter_dialect() {
-        let e = MssqlExporter::new(ExportConfig::with_dsn("server=tcp:h,1433;database=d;user=u;password=P")).unwrap();
+        let e = MssqlExporter::new(ExportConfig::with_dsn(
+            "server=tcp:h,1433;database=d;user=u;password=P",
+        ))
+        .unwrap();
         assert_eq!(e.dialect(), DbDialect::SqlServer);
     }
 
@@ -114,11 +120,14 @@ mod tests {
     #[test]
     fn all_backends_produce_three_ddl_statements() {
         let cfgs: Vec<(&str, DbDialect)> = vec![
-            ("sqlite://:memory:",           DbDialect::Sqlite),
-            ("mysql://u:p@h/db",            DbDialect::MySql),
-            ("mysql://u:p@h/db",            DbDialect::MariaDb),
-            ("postgres://u:p@h/db",         DbDialect::Postgres),
-            ("server=tcp:h;database=d;user=u;password=P", DbDialect::SqlServer),
+            ("sqlite://:memory:", DbDialect::Sqlite),
+            ("mysql://u:p@h/db", DbDialect::MySql),
+            ("mysql://u:p@h/db", DbDialect::MariaDb),
+            ("postgres://u:p@h/db", DbDialect::Postgres),
+            (
+                "server=tcp:h;database=d;user=u;password=P",
+                DbDialect::SqlServer,
+            ),
         ];
         for (dsn, dialect) in cfgs {
             let cfg = ExportConfig::with_dsn(dsn);
@@ -137,7 +146,7 @@ mod tests {
         let mut row = ExportRow::new("/music/song.flac", "song.flac", "aabbcc");
         row.tags.insert("title".into(), "My Song".into());
         row.tags.insert("artist".into(), "The Band".into());
-        row.file_size  = 12_000_000;
+        row.file_size = 12_000_000;
         row.duration_s = 240;
 
         let json = serde_json::to_string(&row).expect("serialise");
@@ -152,17 +161,29 @@ mod tests {
     #[test]
     fn export_stats_accumulate_across_batches() {
         let mut total = ExportStats::default();
-        let batch1 = ExportStats { inserted: 100, updated: 20, skipped: 5, errors: 0, elapsed_ms: 50 };
-        let batch2 = ExportStats { inserted: 80,  updated: 10, skipped: 3, errors: 2, elapsed_ms: 40 };
+        let batch1 = ExportStats {
+            inserted: 100,
+            updated: 20,
+            skipped: 5,
+            errors: 0,
+            elapsed_ms: 50,
+        };
+        let batch2 = ExportStats {
+            inserted: 80,
+            updated: 10,
+            skipped: 3,
+            errors: 2,
+            elapsed_ms: 40,
+        };
         total.merge(&batch1);
         total.merge(&batch2);
 
-        assert_eq!(total.inserted,   180);
-        assert_eq!(total.updated,     30);
-        assert_eq!(total.skipped,      8);
-        assert_eq!(total.errors,       2);
-        assert_eq!(total.elapsed_ms,  90);
-        assert_eq!(total.total(),    220);
+        assert_eq!(total.inserted, 180);
+        assert_eq!(total.updated, 30);
+        assert_eq!(total.skipped, 8);
+        assert_eq!(total.errors, 2);
+        assert_eq!(total.elapsed_ms, 90);
+        assert_eq!(total.total(), 220);
         assert!(!total.is_clean());
     }
 
@@ -171,8 +192,8 @@ mod tests {
     #[test]
     fn default_table_prefix_is_mm_underscore() {
         let cfg = ExportConfig::with_dsn("sqlite://:memory:");
-        assert_eq!(cfg.table_name("files"),   "mm_files");
-        assert_eq!(cfg.table_name("tags"),    "mm_tags");
+        assert_eq!(cfg.table_name("files"), "mm_files");
+        assert_eq!(cfg.table_name("tags"), "mm_tags");
         assert_eq!(cfg.table_name("history"), "mm_history");
     }
 
@@ -180,7 +201,10 @@ mod tests {
 
     #[test]
     fn connection_errors_are_retryable() {
-        let e = ExportError::ConnectionFailed { dialect: DbDialect::Postgres, message: "timeout".into() };
+        let e = ExportError::ConnectionFailed {
+            dialect: DbDialect::Postgres,
+            message: "timeout".into(),
+        };
         assert!(e.is_retryable());
     }
 

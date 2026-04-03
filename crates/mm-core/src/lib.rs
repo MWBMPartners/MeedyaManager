@@ -75,7 +75,7 @@ pub mod test_mode;
 mod tests {
     #[test]
     fn core_crate_loads() {
-        // Stub test — verifies the crate compiles and loads
-        assert!(true);
+        // Stub test — verifies the crate compiles and loads.
+        // If this function runs at all, the crate loaded successfully.
     }
 }
