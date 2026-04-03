@@ -86,7 +86,7 @@ jobs:
   # ---------------------------------------------------------------------------
   release-macos:
     name: macOS arm64
-    runs-on: macos-14
+    runs-on: macos-15
     needs: prepare
 
     steps:

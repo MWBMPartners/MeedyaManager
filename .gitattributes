@@ -1,0 +1,43 @@
+# (C) 2025-2026 MWBM Partners Ltd
+# Enforce consistent line endings across platforms
+
+# Default: auto-detect (respects .editorconfig / per-file overrides below)
+* text=auto
+
+# Rust source files — always LF (required by rustfmt newline_style = "Unix")
+*.rs text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.json5 text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+
+# Swift source files
+*.swift text eol=lf
+
+# C# / Windows project files — keep CRLF for Visual Studio compatibility
+*.cs text eol=crlf
+*.csproj text eol=crlf
+*.sln text eol=crlf
+*.appxmanifest text eol=crlf
+*.xaml text eol=crlf
+
+# Binary files — never touch line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.dll binary
+*.dylib binary
+*.so binary
+*.a binary
+*.xcframework binary

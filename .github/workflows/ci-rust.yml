@@ -76,8 +76,8 @@ jobs:
           echo "Base version (no pre-release): $BASE_VER"
 
           # Check Windows MSIX manifest (expects X.Y.Z.0 format)
-          # Match only the <Identity> element's Version attribute (not TargetDeviceFamily versions)
-          MSIX_VER=$(grep '<Identity' windows/MeedyaManager/Package.appxmanifest | grep -oP 'Version="\K[^"]+')
+          # The <Identity> element spans multiple lines, so use sed to extract the Version attribute
+          MSIX_VER=$(sed -n '/<Identity/,/\/>/{ s/.*Version="\([^"]*\)".*/\1/p; }' windows/MeedyaManager/Package.appxmanifest)
           EXPECTED_MSIX="${BASE_VER}.0"
           echo "MSIX version: $MSIX_VER (expected: $EXPECTED_MSIX)"
           if [ "$MSIX_VER" != "$EXPECTED_MSIX" ]; then

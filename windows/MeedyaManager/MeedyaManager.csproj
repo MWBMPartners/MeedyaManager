@@ -34,9 +34,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- mm_ffi.dll — Rust FFI library. Bundled with the MSIX package so users do not
-         need the Rust toolchain installed. Built by `cargo build -p mm-ffi --release`
-         before running `dotnet publish`. The Condition guard prevents build errors on
+    <!-- mm_ffi.dll: Rust FFI library bundled with the MSIX package so users do not
+         need the Rust toolchain installed. Built by cargo build (release mode)
+         before running dotnet publish. The Condition guard prevents build errors on
          machines where the Rust build has not been run yet. -->
     <Content Include="..\..\..\target\release\mm_ffi.dll"
              Condition="Exists('..\..\..\target\release\mm_ffi.dll')">

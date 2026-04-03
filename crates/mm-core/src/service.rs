@@ -68,6 +68,7 @@ impl std::fmt::Display for ServiceStatus {
 const SERVICE_NAME: &str = "meedyamanager";
 
 /// Reverse-DNS bundle identifier (macOS launchd).
+#[cfg(target_os = "macos")]
 const LAUNCHD_LABEL: &str = "com.mwbm.meedyamanager";
 
 // ---------------------------------------------------------------------------
