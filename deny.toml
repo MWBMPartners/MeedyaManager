@@ -1,19 +1,22 @@
 # (C) 2025-2026 MWBM Partners Ltd
 # cargo-deny configuration — license, advisory, and dependency auditing
 # Run with: cargo deny check
+# Compatible with cargo-deny 0.19.x
 
 [advisories]
 # Check RustSec advisory database for known vulnerabilities
-db-path = "~/.cargo/advisory-db"
-db-urls = ["https://github.com/rustsec/advisory-db"]
 # Scope: check all crates (workspace + transitive dependencies)
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
+ignore = [
+    # Unmaintained crates with no available fix — transitive dependencies
+    "RUSTSEC-2024-0384", # instant — unmaintained (used by parking_lot via governor)
+    "RUSTSEC-2024-0436", # paste — unmaintained (transitive via lofty from meedya-core)
+
+    # rsa timing sidechannel — no fix available upstream yet
+    "RUSTSEC-2023-0071", # rsa — Marvin Attack (used by sqlx/oauth2)
+]
 
 [licenses]
 # Only allow licenses compatible with GPL-2.0-or-later
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -23,15 +26,17 @@ allow = [
     "ISC",
     "Zlib",
     "MPL-2.0",
-    "GPL-2.0",
-    "GPL-3.0",
+    "GPL-2.0-or-later",
+    "GPL-3.0-or-later",
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "BSL-1.0",
     "OpenSSL",
     "CC0-1.0",
+    "0BSD",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
 ]
-copyleft = "allow"
 
 # Some crates don't have license info in Cargo.toml — allow known-good ones
 [[licenses.clarify]]
@@ -42,9 +47,15 @@ license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 [bans]
 # Warn on multiple versions of the same crate (dependency duplication)
 multiple-versions = "warn"
-wildcards = "deny"
+wildcards = "allow" # workspace crates use path dependencies resolved as wildcard
 
 [sources]
 # Only allow crates from crates.io (no unknown registries)
 unknown-registry = "deny"
 unknown-git = "warn"
+
+# Allow all git dependencies from the MWBMPartners GitHub organisation.
+# This covers MeedyaSuite-core (and any future internal crates) regardless
+# of branch, tag, or rev qualifiers in the Cargo.toml git URL.
+[sources.allow-org]
+github = ["MWBMPartners"]
