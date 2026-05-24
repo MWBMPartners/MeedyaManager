@@ -271,7 +271,11 @@ struct ServerView: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .accessibilityLabel("Server status: \(model.status.displayText)")
-                            .accessibilityLiveRegion(.polite)
+                            // TODO(#146): restore .accessibilityLiveRegion(.polite)
+                            // once the macos-15 runner's Xcode/SDK can resolve the
+                            // modifier (currently fails: "Text has no member
+                            // 'accessibilityLiveRegion'" despite Package.swift
+                            // requiring macOS 15 and the API being macOS 14+).
                     }
 
                     // Buttons

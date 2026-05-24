@@ -213,7 +213,7 @@ pub fn run(ctx: &CliContext, args: &ScanArgs) -> anyhow::Result<i32> {
             .into_iter()
             .map(|(group, count)| GroupCount { group, count })
             .collect();
-        v.sort_by(|a, b| b.count.cmp(&a.count));
+        v.sort_by_key(|b| std::cmp::Reverse(b.count));
         v
     };
 
