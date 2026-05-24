@@ -131,4 +131,34 @@
 - `.gitignore` covers OS files, Rust `target/`, IDE files, secrets, build artifacts
 - Python v1.x archived at tag `v1.5-M6-python-final`
 - **Every task** must have a GitHub Issue created BEFORE work begins and closed AFTER verification
-- **Commit but do NOT push** — user pushes manually
+- **Commit but do NOT push** — user pushes manually (exception: pushing a *new feature branch* is OK once the user has explicitly asked for a PR)
+
+## Post-PR housekeeping — full dev-cache cleanup
+
+After a PR has been **successfully created** (URL returned), run a full dev-cache cleanup covering the workspace plus Rust global caches. Cache is fully regeneratable; the user accepts the cold-build cost (~5–15 min on next build for this 8-crate workspace) in exchange for disk-pressure relief.
+
+**When:** *after* the PR is created — never before or during, because the cleanup invalidates the `cargo check`/`cargo test` caches the PR flow itself relies on.
+
+**Commands (run from repo root, in order):**
+
+```bash
+# 1. Workspace Rust cache (all 8 crates' target/)
+cargo clean
+
+# 2. Swift Package Manager build dirs under macos/
+find macos -type d -name '.build' -prune -exec rm -rf {} +
+
+# 3. C# WinUI 3 build output (scoped to known dirs — do NOT bare-find bin/obj)
+rm -rf windows/MeedyaManager/bin windows/MeedyaManager/obj \
+       windows/MeedyaManager.Tests/bin windows/MeedyaManager.Tests/obj
+
+# 4. Rust global caches (affects ALL Rust projects on this machine — user accepts this)
+rm -rf ~/.cargo/registry/cache ~/.cargo/registry/src \
+       ~/.cargo/git/checkouts ~/.cargo/git/db
+```
+
+**Scope is fixed at "workspace + Rust global".** Do not silently extend to Xcode `DerivedData`, NuGet `~/.nuget/packages`, or other toolchain caches without re-confirming with the user — those were explicitly excluded on 2026-05-24.
+
+**If the C# project layout changes** (a new project added under `windows/`), update the `rm` list in step 3 rather than reaching for `find -name bin -o -name obj` — those names are too common to wildcard safely.
+
+**After cleanup,** briefly mention to the user that the next build will be cold so they're not surprised.
