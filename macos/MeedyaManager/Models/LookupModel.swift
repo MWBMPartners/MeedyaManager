@@ -71,7 +71,9 @@ final class LookupModel {
     var selected: LookupResult?
 
     // MARK: Providers
-    var providers: [ProviderEntry] = Self.defaultProviders()
+    // Use concrete class name (not Self) — Swift 6 forbids covariant Self in
+    // stored property initializers, even on final classes.
+    var providers: [ProviderEntry] = LookupModel.defaultProviders()
 
     // MARK: – Search
 

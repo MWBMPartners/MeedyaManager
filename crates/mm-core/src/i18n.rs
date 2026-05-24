@@ -140,9 +140,10 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    #[allow(unsafe_code)] // env::remove_var requires unsafe in Edition 2024
     fn resolve_locale_dir_returns_system_fallback_without_env() {
         // Clear any override that might be set in the test environment
-        std::env::remove_var("MEEDYA_LOCALE_DIR");
+        unsafe { std::env::remove_var("MEEDYA_LOCALE_DIR") };
         // Without MEEDYA_LOCALE_DIR set and without valid XDG_DATA_DIRS entries,
         // the function should return the system-wide fallback path.
         let dir = resolve_locale_dir();
@@ -151,10 +152,11 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    #[allow(unsafe_code)] // env::set_var/remove_var require unsafe in Edition 2024
     fn resolve_locale_dir_honours_env_override() {
-        std::env::set_var("MEEDYA_LOCALE_DIR", "/tmp/test-locales");
+        unsafe { std::env::set_var("MEEDYA_LOCALE_DIR", "/tmp/test-locales") };
         let dir = resolve_locale_dir();
-        std::env::remove_var("MEEDYA_LOCALE_DIR");
+        unsafe { std::env::remove_var("MEEDYA_LOCALE_DIR") };
         assert_eq!(dir, "/tmp/test-locales");
     }
 
