@@ -4,18 +4,17 @@
 name: Rust Core CI
 
 on:
+  # Direct pushes to main still trigger native runs.
   push:
     branches: [main]
     paths:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
-  pull_request:
-    branches: [main]
-    paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
+  # PRs reach this workflow via pr-gate.yml (the umbrella). pr-gate decides
+  # whether to call it based on changed paths; do NOT add a pull_request:
+  # trigger here or runs will duplicate.
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always

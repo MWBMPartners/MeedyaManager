@@ -4,16 +4,15 @@
 name: macOS CI
 
 on:
+  # Direct pushes to main still trigger native runs.
   push:
     branches: [main]
     paths:
       - "macos/**"
       - "crates/mm-ffi/**"
-  pull_request:
-    branches: [main]
-    paths:
-      - "macos/**"
-      - "crates/mm-ffi/**"
+  # PRs reach this workflow via pr-gate.yml (the umbrella). Do NOT add a
+  # pull_request: trigger here or runs will duplicate.
+  workflow_call:
 
 jobs:
   macos-ci:
