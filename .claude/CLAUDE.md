@@ -121,7 +121,7 @@
 - **9 GitHub Actions workflows:**
   - `pr-gate.yml` — **Umbrella for PR branch protection.** No path filter; runs on every PR, detects changed paths, conditionally invokes the 4 platform CIs as reusable workflows, aggregates results in a `Gate` job. The `Gate` context is the single required check on `main`. See "Branch protection" section below.
   - `ci-rust.yml` — Cargo fmt + clippy + test + version-sync (3-OS matrix). **Reusable** (`workflow_call:`) — invoked by `pr-gate.yml` for PRs; native `push:` trigger still fires on direct main pushes.
-  - `ci-macos.yml` — Build mm-ffi + SwiftUI app (macos-15). **Reusable.**
+  - `ci-macos.yml` — Build mm-ffi + SwiftUI app (macos-26, Xcode 26.4.1, Swift 6.3). **Reusable.** Runner is macos-26 (not macos-latest) because `Package.swift` requires `swift-tools-version: 6.3` which needs Xcode 26.3+.
   - `ci-windows.yml` — Build mm-ffi + WinUI 3 app (windows-latest). **Reusable.**
   - `ci-linux.yml` — Build mm-gtk with GTK4/Libadwaita (ubuntu-latest). **Reusable.**
   - `version-bump.yml` — Automated version bumping across all files (manual trigger)
