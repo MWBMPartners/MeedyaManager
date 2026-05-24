@@ -23,7 +23,12 @@
 //   - service_status()           — query running / stopped / not-installed
 //   - is_service_running()       — quick boolean check
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+// PathBuf is only used by the linux and macos platform modules below; Windows
+// uses sc.exe via run_cmd and doesn't need it. Gate the import so clippy
+// doesn't flag it as unused on Windows builds.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::path::PathBuf;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};

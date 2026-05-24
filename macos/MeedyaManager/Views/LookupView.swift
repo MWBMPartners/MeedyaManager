@@ -167,7 +167,7 @@ struct LookupView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .accessibilityLabel("Lookup status: \(model.statusMessage)")
-                .accessibilityLiveRegion(.polite)
+                // TODO(#146): restore .accessibilityLiveRegion(.polite)
 
             Spacer()
 

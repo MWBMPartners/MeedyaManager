@@ -307,7 +307,7 @@ struct SettingsView: View {
                             Group {
                                 switch updateStatus {
                                 case "idle":
-                                    Text("Tap "Check" to look for a newer release.")
+                                    Text("Tap \"Check\" to look for a newer release.")
                                         .foregroundStyle(.secondary)
                                 case "checking":
                                     Label("Checking for updates…", systemImage: "arrow.clockwise")

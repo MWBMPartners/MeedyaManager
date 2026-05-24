@@ -45,7 +45,9 @@ struct FfiRenamePreview {
 final class MmCore {
 
     // Shared singleton — thread-safe because @MainActor enforces serialisation
-    static let shared = MmCore()
+    // at call sites. nonisolated(unsafe) opts out of Swift 6 strict concurrency
+    // checking on the static itself; the safety guarantee is at the use site.
+    nonisolated(unsafe) static let shared = MmCore()
     private init() {}
 
     // MARK: – Version
@@ -95,7 +97,7 @@ final class MmCore {
         }.value
         #else
         // Stub: scan using FileManager, return placeholder previews
-        return await Task.detached(priority: .userInitiated) {
+        return try await Task.detached(priority: .userInitiated) {
             try self.stubScanDirectory(directory: directory, template: template)
         }.value
         #endif

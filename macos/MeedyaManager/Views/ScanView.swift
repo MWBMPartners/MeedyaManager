@@ -36,7 +36,7 @@ struct ScanView: View {
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("Scan status: \(model.status)")
-                    .accessibilityLiveRegion(.polite)
+                    // TODO(#146): restore .accessibilityLiveRegion(.polite)
             }
             .frame(minWidth: 260, idealWidth: 280, maxWidth: 340)
 
