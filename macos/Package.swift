@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.3
 // (C) 2025-2026 MWBM Partners Ltd
 //
 // MeedyaManager — Swift Package Manifest

@@ -71,7 +71,7 @@ struct MetadataView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Metadata status: \(model.status)")
-                    // TODO(#146): restore .accessibilityLiveRegion(.polite)
+                    .accessibilityLiveRegion(.polite)
 
                 Spacer()
 
