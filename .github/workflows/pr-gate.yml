@@ -60,21 +60,30 @@ jobs:
           echo ""
 
           # Path-to-platform mapping (keep in sync with each ci-*.yml `paths:`):
-          #   rust    : anything under crates/ or Cargo.{toml,lock}
-          #   macos   : macos/ or crates/mm-ffi/ (UniFFI Swift bindings)
-          #   windows : windows/ or crates/mm-ffi/ (cbindgen C# P/Invoke)
-          #   linux   : crates/mm-gtk/ only (GTK4 UI shell)
+          #   rust    : crates/, Cargo.{toml,lock}, rust-toolchain.toml,
+          #             deny.toml, clippy.toml, .cargo/  (anything that
+          #             changes Rust build/lint behaviour)
+          #   macos   : macos/ or crates/mm-ffi/  (UniFFI Swift bindings)
+          #   windows : windows/ or crates/mm-ffi/  (cbindgen C# P/Invoke)
+          #   linux   : crates/mm-gtk/  (GTK4 UI shell only)
           #
-          # Note: a crates/mm-ffi/ change triggers rust + macos + windows.
-          # A crates/mm-gtk/ change triggers rust + linux (rust skips mm-gtk
-          # internally via --exclude mm-gtk, so this is just a fmt check on
-          # the rest of the workspace — cheap and acceptable).
+          # SAFETY NET: any change to .github/workflows/ forces a FULL platform
+          # sweep. Workflow changes are meta-changes that can break CI for any
+          # platform; without this, a workflow-only PR merges green and breaks
+          # the next unrelated PR. Cost is at most one full CI run per workflow
+          # PR — acceptable insurance against the "I changed the workflow but
+          # never ran it" trap.
           match() { echo "$CHANGED" | grep -qE "$1"; }
 
-          if match '^(crates/|Cargo\.toml$|Cargo\.lock$)'; then RUST=true; else RUST=false; fi
-          if match '^(macos/|crates/mm-ffi/)';              then MACOS=true; else MACOS=false; fi
-          if match '^(windows/|crates/mm-ffi/)';            then WINDOWS=true; else WINDOWS=false; fi
-          if match '^crates/mm-gtk/';                       then LINUX=true; else LINUX=false; fi
+          if match '^\.github/workflows/'; then
+            echo "Workflow change detected — forcing full platform sweep."
+            RUST=true; MACOS=true; WINDOWS=true; LINUX=true
+          else
+            if match '^(crates/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|deny\.toml$|clippy\.toml$|\.cargo/)'; then RUST=true; else RUST=false; fi
+            if match '^(macos/|crates/mm-ffi/)';                                                                     then MACOS=true; else MACOS=false; fi
+            if match '^(windows/|crates/mm-ffi/)';                                                                   then WINDOWS=true; else WINDOWS=false; fi
+            if match '^crates/mm-gtk/';                                                                              then LINUX=true; else LINUX=false; fi
+          fi
 
           {
             echo "rust=$RUST"

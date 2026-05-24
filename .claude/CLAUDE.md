@@ -146,13 +146,19 @@
 - A `crates/mm-gtk/` PR → only linux runs → Gate passes if linux passed.
 - A `crates/mm-ffi/` PR → rust + macos + windows run → Gate passes if all three passed.
 
+**Safety-net paths** in `pr-gate.yml`'s `changes` job (do not remove):
+
+- Any change under `.github/workflows/` → **forces a full platform sweep** (all 4 platforms run). Workflow changes are meta-changes that can break CI for any platform; without this rule, a workflow-only PR merges green and breaks the next unrelated PR. Cost = at most one full CI run per workflow PR.
+- `rust-toolchain.toml`, `deny.toml`, `clippy.toml`, `.cargo/` → trigger the rust workflow (they change Rust build/lint behaviour for every crate).
+
 **Hard rules — do not violate without explicit user go-ahead:**
 
 1. **Never add another required status check context** without first running it on a real PR and capturing the exact recorded context name. New orphans = soft-lock.
 2. **Never add a `pull_request:` trigger to `ci-rust/macos/windows/linux.yml`.** They MUST be reached only via `workflow_call:` from `pr-gate.yml`, otherwise PR runs duplicate.
 3. **Keep `pr-gate.yml` without path filters.** Adding one would re-introduce the soft-lock problem.
 4. **Keep the path-detection logic in `pr-gate.yml`'s `changes` job in sync with each `ci-*.yml`'s `push:` `paths:`.** Drift means PR Gate triggers a platform whose own `push:` filter would've ignored the change, or vice versa.
-5. **If a new platform CI is added** (e.g. `ci-android.yml`), it must follow the same template: `workflow_call:` trigger, no `pull_request:`, then add a corresponding `if`-gated job + a new `needs:` entry in `gate` inside `pr-gate.yml`.
+5. **Do not remove the `.github/workflows/` full-sweep rule** without first putting in place an equivalent safety net (e.g. an `actionlint` job). Without it, workflow changes go to main untested.
+6. **If a new platform CI is added** (e.g. `ci-android.yml`), it must follow the same template: `workflow_call:` trigger, no `pull_request:`, then add a corresponding `if`-gated job + a new `needs:` entry in `gate` inside `pr-gate.yml`.
 
 ## Post-PR housekeeping — full dev-cache cleanup
 
