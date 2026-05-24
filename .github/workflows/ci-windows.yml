@@ -45,7 +45,11 @@ jobs:
 
       - name: Build WinUI 3 application
         working-directory: windows
-        run: dotnet build --no-restore
+        # --verbosity detailed so XamlCompiler errors are visible in the log.
+        # Without this, MSB3073 from the XAML compiler is opaque ("command
+        # exited with code 1") with no hint as to which XAML/code issue
+        # caused the failure.
+        run: dotnet build --no-restore --verbosity detailed
 
       - name: Run .NET unit tests
         working-directory: windows

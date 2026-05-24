@@ -271,7 +271,10 @@ struct ServerView: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .accessibilityLabel("Server status: \(model.status.displayText)")
-                            .accessibilityLiveRegion(.polite)
+                            // accessibilityLiveRegion is a UIAccessibility/AppKit property,
+                            // not a SwiftUI View modifier. Status changes are surfaced via
+                            // accessibilityLabel above; consider AccessibilityNotification
+                            // .Announcement.post(...) if explicit announcement is desired.
                     }
 
                     // Buttons

@@ -96,8 +96,10 @@ final class LookupModel {
         // We call a stub that returns a small set of synthetic results so the
         // UI layout and selection logic can be verified without live API calls.
         // Full wiring to mm-providers happens when the FFI exposes the search API.
-        let mockResults = await Task.detached(priority: .userInitiated) {
-            Self.mockSearch(query: self.query, artist: self.artistHint)
+        // Capture values explicitly so the detached closure doesn't
+        // capture `self` (which is @MainActor-isolated and not Sendable).
+        let mockResults = await Task.detached(priority: .userInitiated) { [query, artistHint] in
+            Self.mockSearch(query: query, artist: artistHint)
         }.value
 
         results       = mockResults

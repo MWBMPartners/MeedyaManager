@@ -42,12 +42,14 @@ struct FfiRenamePreview {
 /// Use `MmCore.shared` throughout the application.
 /// All methods are `async throws` to support long-running operations
 /// without blocking the main thread.
-final class MmCore {
+final class MmCore: @unchecked Sendable {
 
-    // Shared singleton — thread-safe because @MainActor enforces serialisation
-    // at call sites. nonisolated(unsafe) opts out of Swift 6 strict concurrency
-    // checking on the static itself; the safety guarantee is at the use site.
-    nonisolated(unsafe) static let shared = MmCore()
+    // Shared singleton. @unchecked Sendable on the class is the documented
+    // Swift 6 escape hatch for types with no mutable state — MmCore has none
+    // (all stored properties are forbidden by convention; methods are pure
+    // FFI calls or stateless stubs). Maintain this invariant: do NOT add
+    // mutable stored properties without revisiting the Sendable conformance.
+    static let shared = MmCore()
     private init() {}
 
     // MARK: – Version

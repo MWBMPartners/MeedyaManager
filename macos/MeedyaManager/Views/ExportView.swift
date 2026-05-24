@@ -253,7 +253,6 @@ struct ExportView: View {
                         .foregroundStyle(model.exportStatus == "error" ? .red : .green)
                         .padding(.bottom, 6)
                         .accessibilityLabel("Export result: \(model.resultMessage)")
-                        .accessibilityLiveRegion(.polite)
                 }
 
                 // ── Log ────────────────────────────────────────────────────
