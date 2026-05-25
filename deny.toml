@@ -1,29 +1,37 @@
 # (C) 2025-2026 MWBM Partners Ltd
 # cargo-deny configuration — license, advisory, and dependency auditing
 # Run with: cargo deny check
+# Compatible with cargo-deny 0.19.x
 
-# cargo-deny v0.16+ schema (see #149 for migration history).
+# Schema v2 (default in cargo-deny 0.16+). See #149/#150/#152 for migration
+# history and #153 for the SPDX/advisory-ignores port from the
+# feature/MeedyaManager_MeedyaSuite-core_integration branch.
 [advisories]
 version = 2
-# Check RustSec advisory database for known vulnerabilities. In schema v2,
-# vulnerabilities fail the build by default — the previous `vulnerability =
-# "deny"` field was removed.
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# `unmaintained` is now a SCOPE (was severity): which crates to check for
-# unmaintained-advisories. "workspace" matches the original "warn but don't
-# fail on transitive deps" intent.
+# `unmaintained` is a SCOPE (not severity): "workspace" = only fail when a
+# workspace crate is unmaintained; transitive deps are skipped.
 unmaintained = "workspace"
 yanked = "warn"
+# Ignore unfixable advisories on transitive dependencies. Each entry must
+# document WHY the advisory can't be addressed and what triggered it.
+ignore = [
+    # Unmaintained crates with no upstream replacement available.
+    "RUSTSEC-2024-0384", # instant — unmaintained (pulled in via parking_lot ← governor)
+    "RUSTSEC-2024-0436", # paste — unmaintained (pulled in via lofty)
+
+    # rsa timing sidechannel (Marvin Attack) — no upstream fix yet.
+    "RUSTSEC-2023-0071", # rsa — used transitively by sqlx / oauth2
+]
 
 [licenses]
 # Only allow licenses compatible with GPL-2.0-or-later.
-# v2 schema removed the `unlicensed` and `copyleft` keys
-# (https://github.com/EmbarkStudios/cargo-deny/pull/611):
-# - Anything not in `allow = [...]` below is rejected by default
-#   (replaces `unlicensed = "deny"`).
-# - Copyleft licenses are just licenses now; GPL-2.0/GPL-3.0 in the
-#   allow list provides what `copyleft = "allow"` used to.
+# v2 schema removed `unlicensed` and `copyleft` (see #151 / cargo-deny PR 611):
+# - Anything not in `allow = [...]` is rejected by default.
+# - Copyleft licenses go in `allow` like any other.
+# SPDX identifiers are validated strictly in 0.19.x: GPL-2.0 must be
+# `GPL-2.0-or-later`, GPL-3.0 must be `GPL-3.0-or-later`.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -33,13 +41,16 @@ allow = [
     "ISC",
     "Zlib",
     "MPL-2.0",
-    "GPL-2.0",
-    "GPL-3.0",
+    "GPL-2.0-or-later",
+    "GPL-3.0-or-later",
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "BSL-1.0",
     "OpenSSL",
     "CC0-1.0",
+    "0BSD",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
 ]
 
 # Some crates don't have license info in Cargo.toml — allow known-good ones
@@ -51,9 +62,17 @@ license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 [bans]
 # Warn on multiple versions of the same crate (dependency duplication)
 multiple-versions = "warn"
-wildcards = "deny"
+# Workspace crates use path dependencies which appear as wildcards. Without
+# this, every internal `mm-*` crate triggers a wildcard-deny error.
+wildcards = "allow"
 
 [sources]
 # Only allow crates from crates.io (no unknown registries)
 unknown-registry = "deny"
 unknown-git = "warn"
+
+# Allow all git dependencies from the MWBMPartners GitHub organisation.
+# Covers MeedyaSuite-core (and any future internal crates) regardless of
+# branch, tag, or rev qualifiers in the Cargo.toml git URL.
+[sources.allow-org]
+github = ["MWBMPartners"]
