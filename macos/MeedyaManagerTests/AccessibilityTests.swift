@@ -14,7 +14,9 @@
 //   - No element relies solely on colour to convey state.
 
 import Testing
-@testable import MeedyaManager
+// AppTab is replicated locally in AppTabTests.swift per the test target's
+// "standalone tests" design (see Package.swift). Don't @testable-import the
+// executable target — that introduces type shadowing against the local replica.
 
 // MARK: — AppTab accessibility labels
 
