@@ -56,12 +56,20 @@ let package = Package(
             ]
         ),
 
-        // Unit test target. SPM 6.0+ supports @testable import of executable
-        // targets (SE-0387), so we declare MeedyaManager as a dependency
-        // rather than duplicating model code into the test target.
+        // Unit test target. The project's chosen design is "standalone tests":
+        // each test file replicates the small enum/struct it tests rather than
+        // @testable-importing the executable. Reasons (preserved deliberately):
+        //   - SPM has historical pain around @testable for executableTarget.
+        //   - Adding `dependencies: ["MeedyaManager"]` causes type-shadowing
+        //     when the test target has a local copy AND the imported one
+        //     (Swift picks the local — silently wrong test).
+        // If a test references a new property on a replicated type, the
+        // replica must be updated in sync. CI catches drift only when the
+        // referenced property is missing; semantic drift (different default,
+        // different label string) is not caught.
         .testTarget(
             name: "MeedyaManagerTests",
-            dependencies: ["MeedyaManager"],
+            dependencies: [],
             path: "MeedyaManagerTests"
         )
     ]

@@ -46,8 +46,10 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 # GTK4 Rust bindings — native Linux widget toolkit (wraps GTK 4.16)
 gtk4 = { version = "0.9", features = ["v4_10"] }
 
-# Libadwaita — GNOME adaptive UI: AdwTabView, AdwHeaderBar, AdwPreferencesPage, etc.
-libadwaita = { version = "0.7", features = ["v1_4"] }
+# Libadwaita — GNOME adaptive UI: AdwTabView, AdwHeaderBar, AdwPreferencesPage,
+# AdwAlertDialog (1.5+), AdwAboutDialog (1.5+).
+# Ubuntu 24.04 ships libadwaita 1.5 in libadwaita-1-dev — matches the v1_5 feature.
+libadwaita = { version = "0.7", features = ["v1_5"] }
 
 # Serialization — used for JSON config display in the settings panel
 serde = { version = "1", features = ["derive"] }

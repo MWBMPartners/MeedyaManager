@@ -45,39 +45,64 @@ jobs:
 
       - name: Build WinUI 3 application
         working-directory: windows
-        # --verbosity detailed + binary log so XamlCompiler errors are
-        # capturable. Without this, MSB3073 from the XAML compiler is opaque
-        # ("command exited with code 1") with no hint as to which XAML/code
-        # issue caused the failure. The .binlog is uploaded as an artifact on
-        # failure (see next step) so the user can open it locally with the
-        # MSBuild Structured Log Viewer (https://msbuildlog.com).
-        run: dotnet build --no-restore --verbosity detailed -bl:msbuild.binlog
+        # --verbosity diagnostic (highest) + tee output to file + binary log.
+        # MSB3073 from XamlCompiler is opaque ("command exited with code 1");
+        # diagnostic-level output should surface its actual stderr/stdout.
+        # The .binlog is uploaded as an artifact on failure for offline
+        # inspection with the MSBuild Structured Log Viewer (msbuildlog.com).
+        shell: pwsh
+        run: |
+          dotnet build --no-restore --verbosity diagnostic `
+            -bl:msbuild.binlog `
+            -fl -flp:logfile=msbuild.log`;verbosity=diagnostic 2>&1 |
+            Tee-Object -FilePath build.out
 
-      - name: Dump XamlCompiler I/O on failure
+      - name: Dump XamlCompiler I/O + msbuild.log error context on failure
         if: failure()
         working-directory: windows
         shell: pwsh
-        # When XamlCompiler.exe fails, its real error message is NOT in the
-        # MSBuild log. The error often surfaces in input.json / output.json
-        # under <Project>/obj/. Recurse from `.` (windows/) — previous attempt
-        # used `-Path obj` which only checked windows/obj/ (doesn't exist);
-        # the actual files live at windows/MeedyaManager/obj/x64/Debug/.../*.json.
         run: |
-          Get-ChildItem -Recurse -Path . -Filter input.json -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "===== $($_.FullName) ====="
-            Get-Content $_.FullName | Out-Host
-          }
-          Get-ChildItem -Recurse -Path . -Filter output.json -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "===== $($_.FullName) ====="
-            Get-Content $_.FullName | Out-Host
+          Write-Host "=== Searching for XamlCompiler input/output JSON files ==="
+          $jsonFiles = @()
+          $jsonFiles += Get-ChildItem -Recurse -Path . -Filter input.json -ErrorAction SilentlyContinue
+          $jsonFiles += Get-ChildItem -Recurse -Path . -Filter output.json -ErrorAction SilentlyContinue
+          if ($jsonFiles.Count -eq 0) {
+            Write-Host "(no input.json / output.json files found anywhere under windows/)"
+          } else {
+            foreach ($f in $jsonFiles) {
+              Write-Host "===== $($f.FullName) ====="
+              Get-Content $f.FullName | Out-Host
+            }
           }
 
-      - name: Upload MSBuild binary log on failure
+          Write-Host ""
+          Write-Host "=== msbuild.log error context (50 lines around each 'error') ==="
+          if (Test-Path msbuild.log) {
+            $lines = Get-Content msbuild.log
+            for ($i = 0; $i -lt $lines.Length; $i++) {
+              if ($lines[$i] -match 'error\s|: error |XamlCompiler.*exit') {
+                $start = [Math]::Max(0, $i - 5)
+                $end = [Math]::Min($lines.Length - 1, $i + 20)
+                Write-Host "----- match at line $($i+1) -----"
+                Write-Host ($lines[$start..$end] -join "`n")
+                Write-Host ""
+              }
+            }
+          } else {
+            Write-Host "(msbuild.log not produced)"
+          }
+
+      - name: Upload MSBuild logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: msbuild-binlog-${{ github.run_id }}
-          path: windows/msbuild.binlog
+          name: msbuild-logs-${{ github.run_id }}
+          path: |
+            windows/msbuild.binlog
+            windows/msbuild.log
+            windows/build.out
+            windows/**/obj/**/input.json
+            windows/**/obj/**/output.json
           if-no-files-found: ignore
           retention-days: 7
 
