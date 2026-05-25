@@ -71,7 +71,9 @@ final class LookupModel {
     var selected: LookupResult?
 
     // MARK: Providers
-    var providers: [ProviderEntry] = Self.defaultProviders()
+    // Use concrete class name (not Self) — Swift 6 forbids covariant Self in
+    // stored property initializers, even on final classes.
+    var providers: [ProviderEntry] = LookupModel.defaultProviders()
 
     // MARK: – Search
 
@@ -94,8 +96,17 @@ final class LookupModel {
         // We call a stub that returns a small set of synthetic results so the
         // UI layout and selection logic can be verified without live API calls.
         // Full wiring to mm-providers happens when the FFI exposes the search API.
+        // Snapshot values to locals so the detached closure doesn't capture
+        // @MainActor-isolated `self`. Using a [query, artistHint] capture list
+        // hit a Swift 6.3 region-based-isolation-checker limitation
+        // ("pattern that the region-based isolation checker does not understand
+        // how to check"), so we lift to locals instead. Also use the concrete
+        // class name `LookupModel` rather than `Self` — `Self` triggered the
+        // same checker bug in some cases.
+        let queryLocal = query
+        let artistHintLocal = artistHint
         let mockResults = await Task.detached(priority: .userInitiated) {
-            Self.mockSearch(query: self.query, artist: self.artistHint)
+            LookupModel.mockSearch(query: queryLocal, artist: artistHintLocal)
         }.value
 
         results       = mockResults

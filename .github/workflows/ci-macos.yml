@@ -4,25 +4,45 @@
 name: macOS CI
 
 on:
+  # Direct pushes to main still trigger native runs.
   push:
     branches: [main]
     paths:
       - "macos/**"
       - "crates/mm-ffi/**"
-  pull_request:
-    branches: [main]
-    paths:
-      - "macos/**"
-      - "crates/mm-ffi/**"
+  # PRs reach this workflow via pr-gate.yml (the umbrella). Do NOT add a
+  # pull_request: trigger here or runs will duplicate.
+  workflow_call:
 
 jobs:
   macos-ci:
     name: macOS SwiftUI (Apple Silicon)
-    runs-on: macos-15
+    # macos-26: macOS 26 runner with Xcode 26.4.1 (Swift 6.3) as default.
+    # Package.swift requires swift-tools-version: 6.3, so the runner MUST
+    # ship Xcode 26.3+ (Swift 6.3). macos-15's default Xcode 16.4 is Swift
+    # 6.1 — too old. (macos-15 does have Xcode 26.3 installed alongside;
+    # macos-26 is preferred for cleanliness — no xcode-select step needed.)
+    runs-on: macos-26
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # Diagnostic: print toolchain versions so future failures don't
+      # require guessing "what Swift/Xcode is this runner using today?"
+      - name: Show toolchain versions
+        run: |
+          echo "=== Xcode ==="
+          xcodebuild -version
+          echo ""
+          echo "=== Swift ==="
+          swift --version
+          echo ""
+          echo "=== xcrun swiftc path ==="
+          xcrun --find swiftc
+          echo ""
+          echo "=== Runner macOS version ==="
+          sw_vers
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

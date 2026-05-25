@@ -5,12 +5,17 @@
 [package]
 name = "mm-gtk"
 description = "GTK4/Adwaita desktop GUI for MeedyaManager (Linux)"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
-repository.workspace = true
-rust-version.workspace = true
+# NOTE: mm-gtk is `exclude`d from the root Cargo.toml [workspace] (it depends
+# on gettextrs which needs Linux system libs that break macOS/Windows CI).
+# Excluded crates CANNOT inherit `*.workspace = true` from the root manifest,
+# so all package metadata is inlined here. Keep these in sync with the root
+# Cargo.toml [workspace.package] if it changes.
+version = "1.3.0"
+edition = "2024"
+authors = ["MWBM Partners Ltd <dev@mwbm.co.uk>"]
+license = "GPL-2.0-or-later"
+repository = "https://github.com/MWBMPartners/MeedyaManager"
+rust-version = "1.85"
 
 # Binary target — the actual desktop application
 [[bin]]
@@ -41,8 +46,10 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 # GTK4 Rust bindings — native Linux widget toolkit (wraps GTK 4.16)
 gtk4 = { version = "0.9", features = ["v4_10"] }
 
-# Libadwaita — GNOME adaptive UI: AdwTabView, AdwHeaderBar, AdwPreferencesPage, etc.
-libadwaita = { version = "0.7", features = ["v1_4"] }
+# Libadwaita — GNOME adaptive UI: AdwTabView, AdwHeaderBar, AdwPreferencesPage,
+# AdwAlertDialog (1.5+), AdwAboutDialog (1.5+).
+# Ubuntu 24.04 ships libadwaita 1.5 in libadwaita-1-dev — matches the v1_5 feature.
+libadwaita = { version = "0.7", features = ["v1_5"] }
 
 # Serialization — used for JSON config display in the settings panel
 serde = { version = "1", features = ["derive"] }
@@ -52,7 +59,8 @@ serde_json = "1"
 dirs = "6"
 
 # Internationalisation — initialise gettext locale at GTK startup
-gettextrs = { workspace = true }
+# (cannot use `{ workspace = true }` because mm-gtk is excluded from the workspace)
+gettextrs = { version = "0.7", package = "gettext-rs" }
 
 # Error handling
 anyhow = "1"

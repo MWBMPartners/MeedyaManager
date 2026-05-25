@@ -35,6 +35,10 @@ enum ExportBackend: String, CaseIterable, Identifiable {
 }
 
 /// Observable model driving the Export view.
+/// @MainActor: state is read by SwiftUI views and mutated by user actions;
+/// isolating to MainActor satisfies Swift 6 strict concurrency without adding
+/// capture-list ceremony at every call site (matches CloudModel pattern).
+@MainActor
 @Observable
 final class ExportModel {
 
@@ -79,16 +83,19 @@ final class ExportModel {
         appendLog("Table prefix: \(tablePrefix)")
         appendLog("Dry run: \(dryRun)")
 
-        // Simulate async export with a short delay
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.2) { [self] in
-            // M9 stub — no real DB writes
-            DispatchQueue.main.async { [self] in
-                self.appendLog("Export complete (stub — no DB writes in M9).")
-                self.exportStatus  = "done"
-                self.resultMessage = dryRun
-                    ? "Dry-run complete. No rows written."
-                    : "Export finished: 0 inserted, 0 updated, 0 skipped."
-            }
+        // Simulate async export with a short delay. Swift 6 idiom: Task + sleep
+        // instead of nested DispatchQueue.global → DispatchQueue.main, which
+        // triggers "task or actor-isolated value cannot be sent" under strict
+        // concurrency (both closures capture @MainActor-isolated self).
+        let isDryRun = dryRun
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard let self else { return }
+            self.appendLog("Export complete (stub — no DB writes in M9).")
+            self.exportStatus  = "done"
+            self.resultMessage = isDryRun
+                ? "Dry-run complete. No rows written."
+                : "Export finished: 0 inserted, 0 updated, 0 skipped."
         }
     }
 
@@ -253,7 +260,6 @@ struct ExportView: View {
                         .foregroundStyle(model.exportStatus == "error" ? .red : .green)
                         .padding(.bottom, 6)
                         .accessibilityLabel("Export result: \(model.resultMessage)")
-                        .accessibilityLiveRegion(.polite)
                 }
 
                 // ── Log ────────────────────────────────────────────────────

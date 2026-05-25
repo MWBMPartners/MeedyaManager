@@ -14,12 +14,15 @@ import Foundation
 // the same definition via ci-macos.yml.
 
 /// Navigation tabs — replica of the production enum for test isolation.
+/// MUST stay in sync with `AppTab` in macos/MeedyaManager/Models/AppState.swift.
 enum AppTab: String, CaseIterable, Identifiable {
     case library  = "Library"
     case metadata = "Metadata"
     case lookup   = "Lookup"
     case rules    = "Rules"
     case cloud    = "Cloud"    // M7 — Cloud Storage Monitor
+    case export   = "Export"   // M9 — Database Export
+    case server   = "Server"   // M10 — Secure Media Server
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -31,9 +34,15 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .lookup:   "magnifyingglass"
         case .rules:    "list.bullet.rectangle.fill"
         case .cloud:    "cloud.fill"
+        case .export:   "cylinder.split.1x2.fill"
+        case .server:   "network"
         case .settings: "gearshape.fill"
         }
     }
+
+    /// Human-readable label announced by VoiceOver when the tab gains focus.
+    /// Identical to the raw value; exposed as a named property for clarity.
+    var accessibilityLabel: String { rawValue }
 }
 
 // MARK: – Tests
@@ -41,9 +50,11 @@ enum AppTab: String, CaseIterable, Identifiable {
 @Suite("AppTab")
 struct AppTabTests {
 
-    @Test("CaseIterable provides 6 cases")
-    func allCases_has_six_cases() {
-        #expect(AppTab.allCases.count == 6)
+    @Test("CaseIterable provides 8 cases")
+    func allCases_has_eight_cases() {
+        // Bumped from 6 → 8 after adding `export` (M9) and `server` (M10)
+        // to the local AppTab replica in iteration 7 of PR #144.
+        #expect(AppTab.allCases.count == 8)
     }
 
     @Test("library raw value")

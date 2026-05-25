@@ -20,7 +20,12 @@ use adw::prelude::*;
 ///
 /// The dialog has a single "OK" close button.  It is presented non-blocking;
 /// the GTK main loop continues to run while the dialog is open.
-pub fn show_error(parent: &impl IsA<gtk::Window>, heading: &str, body: &str) {
+// Parameter is `&impl IsA<gtk::Widget>` (not `Window`) because that's what
+// AdwAlertDialog::present takes. Callers pass `Window`s which IsA Widget
+// naturally; broadening the type to match present's signature avoids needing
+// `upcast_ref::<Widget>()` (which itself requires the generic bound to
+// include `+ IsA<Widget>`, defeating the brevity of `&impl IsA<Window>`).
+pub fn show_error(parent: &impl IsA<gtk::Widget>, heading: &str, body: &str) {
     let dialog = adw::AlertDialog::new(Some(heading), Some(body));
     // Add a single close button
     dialog.add_response("close", "OK");
@@ -30,7 +35,7 @@ pub fn show_error(parent: &impl IsA<gtk::Window>, heading: &str, body: &str) {
 }
 
 /// Show an informational (non-error) dialog with a single "OK" button.
-pub fn show_info(parent: &impl IsA<gtk::Window>, heading: &str, body: &str) {
+pub fn show_info(parent: &impl IsA<gtk::Widget>, heading: &str, body: &str) {
     let dialog = adw::AlertDialog::new(Some(heading), Some(body));
     dialog.add_response("close", "OK");
     dialog.set_default_response(Some("close"));
