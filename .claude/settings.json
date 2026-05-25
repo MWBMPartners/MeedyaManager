@@ -45,10 +45,12 @@
       "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/?search=update_property\" -o /tmp/gtk4_search.html -w \"HTTP %{http_code}\\\\n\")",
       "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/all.html\" -o /tmp/gtk4_all.html -w \"HTTP %{http_code}\\\\n\")",
       "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/trait.AccessibleExtManual.html\" -o /tmp/manual.html -w \"HTTP %{http_code}\\\\n\")",
-      "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/accessible/trait.AccessibleExtManual.html\" -o /tmp/manual.html -w \"HTTP %{http_code}\\\\n\")"
+      "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/accessible/trait.AccessibleExtManual.html\" -o /tmp/manual.html -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(cd \"/Users/lance.manasse/Projects/Coding and Development/MWBM Partners Ltd/GitHub/MeedyaSuite/MeedyaManager\" && cargo clean 2>&1 | tail -1 && rm -rf macos/.build windows/MeedyaManager/bin windows/MeedyaManager/obj windows/MeedyaManager.Tests/bin windows/MeedyaManager.Tests/obj ~/.cargo/registry/cache ~/.cargo/registry/src ~/.cargo/git/checkouts ~/.cargo/git/db 2>&1 | tail -1; echo \"cleanup done\")"
     ],
     "additionalDirectories": [
-      "/dev"
+      "/dev",
+      "/Users/lance.manasse/.cargo/registry/cache"
     ]
   }
 }
