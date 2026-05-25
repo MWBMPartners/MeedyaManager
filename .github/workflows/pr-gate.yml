@@ -85,6 +85,14 @@ jobs:
             if match '^crates/mm-gtk/';                                                                              then LINUX=true; else LINUX=false; fi
           fi
 
+          # TEMPORARY DE-SCOPE — Windows is OFF the gate pending investigation
+          # of a silent XamlCompiler.exe failure (see #148). ci-windows.yml
+          # still runs on direct main pushes and via its path filter, but is
+          # not invoked from this gate. Re-enable by deleting this `WINDOWS=false`
+          # line once #148 lands. DO NOT remove the workflow-sweep rule above
+          # (that's a separate safety net, not Windows-specific).
+          WINDOWS=false
+
           {
             echo "rust=$RUST"
             echo "macos=$MACOS"

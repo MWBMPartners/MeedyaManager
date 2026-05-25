@@ -144,7 +144,9 @@
 - The umbrella `pr-gate.yml` runs on every PR with **no path filter**. It detects which platform code changed (plain `git diff` against the PR base — no third-party action) and conditionally invokes the 4 platform workflows as reusable (`workflow_call:`) jobs. The final `Gate` job uses `if: always()` and treats `success` and `skipped` as OK, only failing if a platform job actually `failure`d/`cancelled`.
 - A docs-only PR → all platforms skip → Gate passes immediately, no CI cost.
 - A `crates/mm-gtk/` PR → only linux runs → Gate passes if linux passed.
-- A `crates/mm-ffi/` PR → rust + macos + windows run → Gate passes if all three passed.
+- A `crates/mm-ffi/` PR → rust + macos run → Gate passes if both passed. (Windows is currently de-scoped from the gate — see below.)
+
+**TEMPORARY: Windows is de-scoped from PR Gate** (see [#148](https://github.com/MWBMPartners/MeedyaManager/issues/148)). `pr-gate.yml`'s `changes` job hardcodes `WINDOWS=false` after the path-detection block. `ci-windows.yml` still runs on direct pushes to `main` and via its `paths:` filter, so Windows regressions on `main` are visible — they just don't block PRs. To re-enable Windows in the gate once #148 is resolved, delete the `WINDOWS=false` line in `pr-gate.yml`.
 
 **Safety-net paths** in `pr-gate.yml`'s `changes` job (do not remove):
 
