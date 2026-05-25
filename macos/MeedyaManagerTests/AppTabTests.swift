@@ -50,9 +50,11 @@ enum AppTab: String, CaseIterable, Identifiable {
 @Suite("AppTab")
 struct AppTabTests {
 
-    @Test("CaseIterable provides 6 cases")
-    func allCases_has_six_cases() {
-        #expect(AppTab.allCases.count == 6)
+    @Test("CaseIterable provides 8 cases")
+    func allCases_has_eight_cases() {
+        // Bumped from 6 → 8 after adding `export` (M9) and `server` (M10)
+        // to the local AppTab replica in iteration 7 of PR #144.
+        #expect(AppTab.allCases.count == 8)
     }
 
     @Test("library raw value")
