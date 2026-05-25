@@ -96,10 +96,17 @@ final class LookupModel {
         // We call a stub that returns a small set of synthetic results so the
         // UI layout and selection logic can be verified without live API calls.
         // Full wiring to mm-providers happens when the FFI exposes the search API.
-        // Capture values explicitly so the detached closure doesn't
-        // capture `self` (which is @MainActor-isolated and not Sendable).
-        let mockResults = await Task.detached(priority: .userInitiated) { [query, artistHint] in
-            Self.mockSearch(query: query, artist: artistHint)
+        // Snapshot values to locals so the detached closure doesn't capture
+        // @MainActor-isolated `self`. Using a [query, artistHint] capture list
+        // hit a Swift 6.3 region-based-isolation-checker limitation
+        // ("pattern that the region-based isolation checker does not understand
+        // how to check"), so we lift to locals instead. Also use the concrete
+        // class name `LookupModel` rather than `Self` — `Self` triggered the
+        // same checker bug in some cases.
+        let queryLocal = query
+        let artistHintLocal = artistHint
+        let mockResults = await Task.detached(priority: .userInitiated) {
+            LookupModel.mockSearch(query: queryLocal, artist: artistHintLocal)
         }.value
 
         results       = mockResults

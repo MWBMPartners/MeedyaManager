@@ -41,6 +41,11 @@ enum ServerStatus: Equatable {
 }
 
 /// Observable model for the Server tab.
+/// @MainActor: state is read by SwiftUI views and mutated by user actions;
+/// isolating to MainActor satisfies Swift 6 strict concurrency without adding
+/// capture-list ceremony at every call site (matches CloudModel/ExportModel
+/// pattern).
+@MainActor
 @Observable
 final class ServerModel {
     // ── Network settings ──────────────────────────────────────────────────
@@ -102,14 +107,15 @@ final class ServerModel {
         appendLog("Binding to \(noTls ? "http" : "https")://\(bindAddr)")
         appendLog("JWT expiry: \(jwtExpirySecs) seconds")
 
-        // M10 stub: simulate server startup latency
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.2) {
-            DispatchQueue.main.async {
-                self.isLoading = false
-                self.status    = .running(address: "\(self.noTls ? "http" : "https")://\(self.bindAddr)")
-                self.appendLog("Server ready. Listening on \(self.noTls ? "http" : "https")://\(self.bindAddr)")
-                self.appendLog("Routes: GET /health, POST /auth/login, GET /api/library, GET /stream/:id")
-            }
+        // M10 stub: simulate server startup latency. Swift 6 idiom (Task + sleep)
+        // replaces nested DispatchQueue patterns that trigger sending-self errors.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard let self else { return }
+            self.isLoading = false
+            self.status    = .running(address: "\(self.noTls ? "http" : "https")://\(self.bindAddr)")
+            self.appendLog("Server ready. Listening on \(self.noTls ? "http" : "https")://\(self.bindAddr)")
+            self.appendLog("Routes: GET /health, POST /auth/login, GET /api/library, GET /stream/:id")
         }
     }
 
@@ -118,12 +124,12 @@ final class ServerModel {
         appendLog("Stopping server…")
         isLoading = true
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
-            DispatchQueue.main.async {
-                self.isLoading = false
-                self.status    = .stopped
-                self.appendLog("Server stopped.")
-            }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(0.5))
+            guard let self else { return }
+            self.isLoading = false
+            self.status    = .stopped
+            self.appendLog("Server stopped.")
         }
     }
 

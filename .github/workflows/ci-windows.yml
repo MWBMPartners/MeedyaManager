@@ -45,11 +45,40 @@ jobs:
 
       - name: Build WinUI 3 application
         working-directory: windows
-        # --verbosity detailed so XamlCompiler errors are visible in the log.
-        # Without this, MSB3073 from the XAML compiler is opaque ("command
-        # exited with code 1") with no hint as to which XAML/code issue
-        # caused the failure.
-        run: dotnet build --no-restore --verbosity detailed
+        # --verbosity detailed + binary log so XamlCompiler errors are
+        # capturable. Without this, MSB3073 from the XAML compiler is opaque
+        # ("command exited with code 1") with no hint as to which XAML/code
+        # issue caused the failure. The .binlog is uploaded as an artifact on
+        # failure (see next step) so the user can open it locally with the
+        # MSBuild Structured Log Viewer (https://msbuildlog.com).
+        run: dotnet build --no-restore --verbosity detailed -bl:msbuild.binlog
+
+      - name: Dump XamlCompiler I/O on failure
+        if: failure()
+        working-directory: windows
+        shell: pwsh
+        # When XamlCompiler.exe fails, its real error message is NOT in the
+        # MSBuild log. The error often surfaces in input.json / output.json
+        # under obj/. Print every such file's contents so the next CI run
+        # surfaces the underlying error inline.
+        run: |
+          Get-ChildItem -Recurse -Path obj -Filter input.json -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "===== $($_.FullName) ====="
+            Get-Content $_.FullName | Out-Host
+          }
+          Get-ChildItem -Recurse -Path obj -Filter output.json -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "===== $($_.FullName) ====="
+            Get-Content $_.FullName | Out-Host
+          }
+
+      - name: Upload MSBuild binary log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msbuild-binlog-${{ github.run_id }}
+          path: windows/msbuild.binlog
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Run .NET unit tests
         working-directory: windows

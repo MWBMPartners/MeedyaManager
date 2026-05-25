@@ -22,7 +22,12 @@
 //   accessibility::set_description(&my_button, "Scans the selected directory for media files.");
 
 use gtk4 as gtk;
-use gtk::prelude::AccessibleExt;
+// AccessibleExt provides auto-generated bindings; AccessibleExtManual provides
+// the hand-written ones, which is where update_property() and update_state()
+// live (they have variadic-like signatures gir can't auto-generate). Importing
+// only AccessibleExt means those two methods are not in scope — gtk4 0.9 splits
+// the trait this way intentionally.
+use gtk::prelude::{AccessibleExt, AccessibleExtManual};
 
 // ── Label helpers ─────────────────────────────────────────────────────────
 
