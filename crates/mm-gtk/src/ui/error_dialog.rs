@@ -26,7 +26,9 @@ pub fn show_error(parent: &impl IsA<gtk::Window>, heading: &str, body: &str) {
     dialog.add_response("close", "OK");
     dialog.set_default_response(Some("close"));
     dialog.set_close_response("close");
-    dialog.present(Some(parent));
+    // present() takes Option<&impl IsA<Widget>>. Window IsA Widget, but Rust
+    // generics don't auto-bridge IsA relationships, so upcast explicitly.
+    dialog.present(Some(parent.upcast_ref::<gtk::Widget>()));
 }
 
 /// Show an informational (non-error) dialog with a single "OK" button.
@@ -35,7 +37,7 @@ pub fn show_info(parent: &impl IsA<gtk::Window>, heading: &str, body: &str) {
     dialog.add_response("close", "OK");
     dialog.set_default_response(Some("close"));
     dialog.set_close_response("close");
-    dialog.present(Some(parent));
+    dialog.present(Some(parent.upcast_ref::<gtk::Widget>()));
 }
 
 /// Build a confirmation dialog with "Cancel" and a labelled confirm button.

@@ -17,7 +17,13 @@ on:
 jobs:
   windows-ci:
     name: Windows WinUI 3
-    runs-on: windows-latest
+    # Pinned to windows-2022 (default .NET 8 SDK) instead of windows-latest
+    # (which now resolves to windows-2025 with .NET 10 SDK as host). The
+    # project targets net8.0; the .NET 10 host has been silently failing
+    # XamlCompiler.exe with no actionable error in any log. Iteration-7
+    # diagnostics confirmed reference assemblies were correct (.NET 8) but
+    # XamlCompiler still exits code 1. Trying the older runner to isolate.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout repository

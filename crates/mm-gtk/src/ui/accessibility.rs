@@ -66,7 +66,9 @@ pub fn set_busy<W: AccessibleExtManual>(widget: &W, busy: bool) {
 
 /// Mark a widget as expanded or collapsed (e.g. a disclosure group).
 pub fn set_expanded<W: AccessibleExtManual>(widget: &W, expanded: bool) {
-    widget.update_state(&[State::Expanded(expanded)]);
+    // State::Expanded carries Option<bool>: Some(true)=expanded,
+    // Some(false)=collapsed, None=indeterminate (AT-SPI2 semantics).
+    widget.update_state(&[State::Expanded(Some(expanded))]);
 }
 
 // ── Tab label helper ──────────────────────────────────────────────────────
