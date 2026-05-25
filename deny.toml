@@ -2,13 +2,18 @@
 # cargo-deny configuration — license, advisory, and dependency auditing
 # Run with: cargo deny check
 
+# cargo-deny v0.16+ schema (see #149 for migration history).
 [advisories]
-# Check RustSec advisory database for known vulnerabilities
+version = 2
+# Check RustSec advisory database for known vulnerabilities. In schema v2,
+# vulnerabilities fail the build by default — the previous `vulnerability =
+# "deny"` field was removed.
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# Scope: check all crates (workspace + transitive dependencies)
-vulnerability = "deny"
-unmaintained = "warn"
+# `unmaintained` is now a SCOPE (was severity): which crates to check for
+# unmaintained-advisories. "workspace" matches the original "warn but don't
+# fail on transitive deps" intent.
+unmaintained = "workspace"
 yanked = "warn"
 
 [licenses]
