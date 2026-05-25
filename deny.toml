@@ -17,8 +17,13 @@ unmaintained = "workspace"
 yanked = "warn"
 
 [licenses]
-# Only allow licenses compatible with GPL-2.0-or-later
-unlicensed = "deny"
+# Only allow licenses compatible with GPL-2.0-or-later.
+# v2 schema removed the `unlicensed` and `copyleft` keys
+# (https://github.com/EmbarkStudios/cargo-deny/pull/611):
+# - Anything not in `allow = [...]` below is rejected by default
+#   (replaces `unlicensed = "deny"`).
+# - Copyleft licenses are just licenses now; GPL-2.0/GPL-3.0 in the
+#   allow list provides what `copyleft = "allow"` used to.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -36,7 +41,6 @@ allow = [
     "OpenSSL",
     "CC0-1.0",
 ]
-copyleft = "allow"
 
 # Some crates don't have license info in Cargo.toml — allow known-good ones
 [[licenses.clarify]]
