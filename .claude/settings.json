@@ -41,7 +41,11 @@
       "Bash(do gh issue close $i --comment \"Implemented and verified — 45 mm-cli tests passing, clippy clean, formatted.\")",
       "Bash(gh issue close 62 --comment \"Documentation updated: PROJECT_STATUS.md \\(M3 complete, 36% overall, 444 tests\\), docs/CHANGELOG.md \\(v2.0.0-alpha.4 entry\\), MEMORY.md.\")",
       "Bash(gh issue list --milestone \"M1 — Core Engine \\(Rust\\)\" --state open --json number,title --limit 20)",
-      "Bash(gh issue list --state open --json number,title,milestone --limit 5)"
+      "Bash(gh issue list --state open --json number,title,milestone --limit 5)",
+      "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/?search=update_property\" -o /tmp/gtk4_search.html -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/all.html\" -o /tmp/gtk4_all.html -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/trait.AccessibleExtManual.html\" -o /tmp/manual.html -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/accessible/trait.AccessibleExtManual.html\" -o /tmp/manual.html -w \"HTTP %{http_code}\\\\n\")"
     ],
     "additionalDirectories": [
       "/dev"

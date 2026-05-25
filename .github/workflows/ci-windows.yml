@@ -59,14 +59,15 @@ jobs:
         shell: pwsh
         # When XamlCompiler.exe fails, its real error message is NOT in the
         # MSBuild log. The error often surfaces in input.json / output.json
-        # under obj/. Print every such file's contents so the next CI run
-        # surfaces the underlying error inline.
+        # under <Project>/obj/. Recurse from `.` (windows/) — previous attempt
+        # used `-Path obj` which only checked windows/obj/ (doesn't exist);
+        # the actual files live at windows/MeedyaManager/obj/x64/Debug/.../*.json.
         run: |
-          Get-ChildItem -Recurse -Path obj -Filter input.json -ErrorAction SilentlyContinue | ForEach-Object {
+          Get-ChildItem -Recurse -Path . -Filter input.json -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "===== $($_.FullName) ====="
             Get-Content $_.FullName | Out-Host
           }
-          Get-ChildItem -Recurse -Path obj -Filter output.json -ErrorAction SilentlyContinue | ForEach-Object {
+          Get-ChildItem -Recurse -Path . -Filter output.json -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "===== $($_.FullName) ====="
             Get-Content $_.FullName | Out-Host
           }

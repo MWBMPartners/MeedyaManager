@@ -56,13 +56,12 @@ let package = Package(
             ]
         ),
 
-        // Unit test target — tests model logic without the SwiftUI runtime.
-        // Sources in MeedyaManagerTests/ are compiled independently; the test
-        // models are copied here rather than @testable-importing the executable
-        // (SPM does not support @testable import from .executableTarget).
+        // Unit test target. SPM 6.0+ supports @testable import of executable
+        // targets (SE-0387), so we declare MeedyaManager as a dependency
+        // rather than duplicating model code into the test target.
         .testTarget(
             name: "MeedyaManagerTests",
-            dependencies: [],
+            dependencies: ["MeedyaManager"],
             path: "MeedyaManagerTests"
         )
     ]
