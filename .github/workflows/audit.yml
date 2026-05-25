@@ -32,6 +32,15 @@ jobs:
         run: cargo deny check
 
       - name: Run cargo audit (RustSec advisory database)
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        # Use cargo-audit CLI directly rather than the rustsec/audit-check
+        # wrapper action (#155). The wrapper crashes with "Unexpected end
+        # of JSON input"; the underlying cargo-audit binary is fine. The
+        # CLI route also gives us version control and mirrors the
+        # gitleaks-action → CLI pattern in the global CLAUDE.md.
+        #
+        # cargo-deny step 6 already queries the same RustSec DB; this
+        # step is belt-and-braces defense-in-depth (slightly different
+        # report formats and edge-case behaviour).
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
