@@ -52,8 +52,13 @@ rust-version = "1.85"
 
 # Shared dependency versions to keep all crates in sync
 [workspace.dependencies]
-# MeedyaSuite-core — shared core library
-meedya-core = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", branch = "claude/interesting-mirzakhani", features = ["full"] }
+# MeedyaSuite-core — shared core library. Pinned to a specific rev on
+# main for reproducible builds (per #135 acceptance criteria). Bump the
+# rev to consume new upstream features; do NOT switch to `branch =
+# "main"` (non-deterministic builds).
+# Current rev = 222ca7590493 (MeedyaSuite-core PR #37 merge: feat/353-
+# 596-meedya-fingerprint-and-lyrics, 2026-05-26).
+meedya-core = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = "222ca7590493", features = ["full"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
