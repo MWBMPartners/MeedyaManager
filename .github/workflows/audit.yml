@@ -29,18 +29,9 @@ jobs:
         run: cargo install cargo-deny --locked
 
       - name: Run cargo-deny checks (licenses, bans, advisories, sources)
+        # cargo-deny is the modern superset of cargo-audit. Its `advisories`
+        # check queries the RustSec database directly; the ignore list in
+        # deny.toml is the canonical place to silence individual advisories.
+        # A separate cargo-audit step was tried (#156) but turned out to be
+        # redundant AND had runner-side DB-fetch issues (#157). Dropped.
         run: cargo deny check
-
-      - name: Run cargo audit (RustSec advisory database)
-        # Use cargo-audit CLI directly rather than the rustsec/audit-check
-        # wrapper action (#155). The wrapper crashes with "Unexpected end
-        # of JSON input"; the underlying cargo-audit binary is fine. The
-        # CLI route also gives us version control and mirrors the
-        # gitleaks-action → CLI pattern in the global CLAUDE.md.
-        #
-        # cargo-deny step 6 already queries the same RustSec DB; this
-        # step is belt-and-braces defense-in-depth (slightly different
-        # report formats and edge-case behaviour).
-        run: |
-          cargo install cargo-audit --locked
-          cargo audit
