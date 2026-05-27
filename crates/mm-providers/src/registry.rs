@@ -8,8 +8,15 @@
 //
 // Usage:
 //   1. Create a registry and register providers.
-//   2. Call `search()` with a `SearchQuery` to fan out across enabled providers.
+//   2. Call `search()` with a `SearchQuery` to fan out across registered providers.
 //   3. Results are collected, scored, and returned sorted by score.
+//
+// MIGRATION NOTE (#132): the upstream `MetadataProvider` trait does NOT have
+// an `is_enabled()` method. Disabled providers are now expected to return
+// `ProviderError::NotConfigured` from `search()`; the registry treats those as
+// a non-fatal failure (logged and skipped). The previous `enabled_count()` API
+// is preserved as an alias of `total_count()` for backward compatibility but is
+// no longer meaningful — fix this when the registry is overhauled in #133.
 
 use std::sync::Arc;
 
@@ -27,7 +34,7 @@ use crate::traits::{MediaType, MetadataProvider, ProviderResult, SearchQuery};
 /// Providers are stored as `Arc<dyn MetadataProvider>` so they can be shared
 /// across async tasks without cloning the full provider implementation.
 pub struct ProviderRegistry {
-    /// All registered providers (enabled and disabled)
+    /// All registered providers
     providers: Vec<Arc<dyn MetadataProvider>>,
 
     /// Scorer used to rank results after aggregation
@@ -55,48 +62,49 @@ impl ProviderRegistry {
         self.providers.push(provider);
     }
 
-    /// Returns all registered providers (enabled and disabled).
+    /// Returns all registered providers.
     pub fn all_providers(&self) -> &[Arc<dyn MetadataProvider>] {
         &self.providers
     }
 
-    /// Returns the number of registered providers (enabled and disabled).
+    /// Returns the number of registered providers.
     pub fn total_count(&self) -> usize {
         self.providers.len()
     }
 
-    /// Returns the number of currently enabled providers.
+    /// Returns the number of registered providers. Alias of `total_count()` after
+    /// the upstream trait migration (#132) removed per-provider enabled tracking.
     pub fn enabled_count(&self) -> usize {
-        self.providers.iter().filter(|p| p.is_enabled()).count()
+        self.providers.len()
     }
 
-    /// Returns all enabled providers that support the given `media_type`.
+    /// Returns all registered providers that support the given `media_type`.
     pub fn providers_for(&self, media_type: MediaType) -> Vec<Arc<dyn MetadataProvider>> {
         self.providers
             .iter()
-            .filter(|p| p.is_enabled() && p.capabilities().supports_media_type(media_type))
+            .filter(|p| supports_media_type(p.as_ref(), media_type))
             .cloned()
             .collect()
     }
 
-    /// Find a provider by its exact name (case-insensitive).
+    /// Find a provider by its exact id (case-insensitive).
     ///
-    /// Returns the first registered provider whose `name()` matches, or `None`.
+    /// Returns the first registered provider whose `id()` matches, or `None`.
     pub fn find_by_name(&self, name: &str) -> Option<Arc<dyn MetadataProvider>> {
         let lower = name.to_lowercase();
         self.providers
             .iter()
-            .find(|p| p.name().to_lowercase() == lower)
+            .find(|p| p.id().to_lowercase() == lower)
             .cloned()
     }
 
-    /// Search all enabled, compatible providers concurrently and return ranked results.
+    /// Search all compatible providers concurrently and return ranked results.
     ///
-    /// - Queries are fanned out in parallel using `futures::future::join_all`.
+    /// - Queries are fanned out in parallel.
     /// - Results from all providers are merged into a single list.
     /// - Each result is scored against the query using `MatchScorer`.
     /// - The merged list is sorted by score (highest first).
-    /// - Results from failed providers are logged and skipped.
+    /// - Results from failed providers (incl. `NotConfigured`) are logged and skipped.
     ///
     /// Returns an empty `Vec` if no providers are available or all fail.
     pub async fn search(&self, query: &SearchQuery) -> Vec<ProviderResult> {
@@ -104,31 +112,27 @@ impl ProviderRegistry {
         let providers: Vec<Arc<dyn MetadataProvider>> = if let Some(mt) = query.media_type {
             self.providers_for(mt)
         } else {
-            // No type hint: query all enabled providers
-            self.providers
-                .iter()
-                .filter(|p| p.is_enabled())
-                .cloned()
-                .collect()
+            // No type hint: query all registered providers
+            self.providers.clone()
         };
 
         if providers.is_empty() {
-            debug!("No enabled providers available for this query");
+            debug!("No providers available for this query");
             return Vec::new();
         }
 
         debug!(
             provider_count = providers.len(),
-            query = &query.query,
+            title = ?query.title,
             "Dispatching search"
         );
 
-        // Fan out to all providers concurrently, collecting results
+        // Fan out to all providers, collecting results
         let mut merged: Vec<ProviderResult> = Vec::new();
         for provider in &providers {
             let p = Arc::clone(provider);
-            let name = p.name().to_owned();
-            match p.search(query.clone()).await {
+            let name = p.id().to_owned();
+            match p.search(query).await {
                 Ok(results) => {
                     debug!(
                         provider = &name,
@@ -147,8 +151,8 @@ impl ProviderRegistry {
         self.scorer.rank_results(query, &mut merged);
 
         // Respect the max_results limit from the query
-        if query.max_results > 0 {
-            merged.truncate(query.max_results);
+        if let Some(limit) = query.max_results {
+            merged.truncate(limit);
         }
 
         merged
@@ -156,7 +160,7 @@ impl ProviderRegistry {
 
     /// Search a specific named provider only (bypasses media-type filtering).
     ///
-    /// Returns `Err(String)` if the provider is not found or is disabled.
+    /// Returns `Err(String)` if the provider is not found or its search fails.
     pub async fn search_provider(
         &self,
         name: &str,
@@ -166,12 +170,8 @@ impl ProviderRegistry {
             .find_by_name(name)
             .ok_or_else(|| format!("Provider '{name}' not registered"))?;
 
-        if !provider.is_enabled() {
-            return Err(format!("Provider '{name}' is disabled"));
-        }
-
         provider
-            .search(query.clone())
+            .search(query)
             .await
             .map_err(|e| format!("Provider '{name}' failed: {e}"))
     }
@@ -185,22 +185,44 @@ impl Default for ProviderRegistry {
 
 impl std::fmt::Debug for ProviderRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let names: Vec<&str> = self.providers.iter().map(|p| p.name()).collect();
+        let names: Vec<&str> = self.providers.iter().map(|p| p.id()).collect();
         f.debug_struct("ProviderRegistry")
             .field("providers", &names)
-            .field("enabled", &self.enabled_count())
+            .field("count", &self.total_count())
             .finish_non_exhaustive()
     }
 }
 
 // ---------------------------------------------------------------------------
-// Tests — 25 tests
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Returns `true` if the provider's capabilities cover the requested media type.
+///
+/// Replaces the old `Capabilities::supports_media_type()` method, which doesn't
+/// exist on the upstream `ProviderCapabilities` struct.
+fn supports_media_type(p: &dyn MetadataProvider, media_type: MediaType) -> bool {
+    let caps = p.capabilities();
+    match media_type {
+        MediaType::Music => caps.music_search,
+        MediaType::Video => caps.video_search,
+        MediaType::Podcast => caps.podcast_search,
+        MediaType::Identifier => caps.identifier_lookup,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::{Capabilities, MediaType, ProviderError, ProviderResult, SearchQuery};
+    use crate::traits::{
+        MediaType, MetadataProvider, ProviderCapabilities, ProviderError, ProviderResult,
+        SearchQuery, music_query,
+    };
+    use async_trait::async_trait;
 
     // --- Mock providers for testing ---
 
@@ -208,6 +230,8 @@ mod tests {
     struct MockProvider {
         name: String,
         media_type: MediaType,
+        /// When false, the search returns `NotConfigured`, mirroring the new
+        /// "disabled = not configured" convention.
         enabled: bool,
         result_title: String,
     }
@@ -239,60 +263,42 @@ mod tests {
                 result_title: result_title.into(),
             }
         }
-
-        /// Build a static Capabilities struct for this provider.
-        fn make_capabilities(&self) -> Capabilities {
-            Capabilities {
-                media_types: vec![self.media_type],
-                supports_search: true,
-                supports_isrc: false,
-                supports_iswc: false,
-                provides_cover_art: false,
-                provides_fingerprint: false,
-                requires_auth: false,
-                display_name: self.name.clone(),
-                homepage_url: "https://example.com".into(),
-            }
-        }
     }
 
+    #[async_trait]
     impl MetadataProvider for MockProvider {
-        fn name(&self) -> &str {
+        fn id(&self) -> &str {
             &self.name
         }
 
-        fn capabilities(&self) -> &Capabilities {
-            // Leak to get a 'static reference (acceptable in tests)
-            Box::leak(Box::new(self.make_capabilities()))
+        fn display_name(&self) -> &str {
+            &self.name
         }
 
-        fn is_enabled(&self) -> bool {
-            self.enabled
+        fn capabilities(&self) -> ProviderCapabilities {
+            ProviderCapabilities {
+                music_search: matches!(self.media_type, MediaType::Music),
+                video_search: matches!(self.media_type, MediaType::Video),
+                podcast_search: matches!(self.media_type, MediaType::Podcast),
+                cover_art: false,
+                lyrics: false,
+                fingerprint_lookup: false,
+                identifier_lookup: matches!(self.media_type, MediaType::Identifier),
+            }
         }
 
-        fn search(
+        async fn search(
             &self,
-            query: SearchQuery,
-        ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
-                    + Send
-                    + '_,
-            >,
-        > {
-            Box::pin(async move {
-                if !self.enabled {
-                    return Err(ProviderError::Disabled(self.name.clone()));
-                }
-                Ok(vec![ProviderResult {
-                    provider: self.name.clone(),
-                    provider_id: "mock-1".into(),
-                    title: Some(self.result_title.clone()),
-                    artist: query.artist.clone(),
-                    score: 1.0,
-                    ..Default::default()
-                }])
-            })
+            query: &SearchQuery,
+        ) -> Result<Vec<ProviderResult>, ProviderError> {
+            if !self.enabled {
+                return Err(ProviderError::NotConfigured(self.name.clone()));
+            }
+            let mut result = ProviderResult::new(&self.name);
+            result.title = Some(self.result_title.clone());
+            result.artist = query.artist.clone();
+            result.score = 1.0;
+            Ok(vec![result])
         }
     }
 
@@ -301,37 +307,25 @@ mod tests {
         name: String,
     }
 
+    #[async_trait]
     impl MetadataProvider for FailingProvider {
-        fn name(&self) -> &str {
+        fn id(&self) -> &str {
             &self.name
         }
-        fn capabilities(&self) -> &Capabilities {
-            Box::leak(Box::new(Capabilities {
-                media_types: vec![MediaType::Music],
-                supports_search: true,
-                supports_isrc: false,
-                supports_iswc: false,
-                provides_cover_art: false,
-                provides_fingerprint: false,
-                requires_auth: false,
-                display_name: self.name.clone(),
-                homepage_url: "https://example.com".into(),
-            }))
+        fn display_name(&self) -> &str {
+            &self.name
         }
-        fn is_enabled(&self) -> bool {
-            true
+        fn capabilities(&self) -> ProviderCapabilities {
+            ProviderCapabilities {
+                music_search: true,
+                ..Default::default()
+            }
         }
-        fn search(
+        async fn search(
             &self,
-            _query: SearchQuery,
-        ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
-                    + Send
-                    + '_,
-            >,
-        > {
-            Box::pin(async move { Err(ProviderError::Network("connection refused".into())) })
+            _query: &SearchQuery,
+        ) -> Result<Vec<ProviderResult>, ProviderError> {
+            Err(ProviderError::NetworkError("connection refused".into()))
         }
     }
 
@@ -367,16 +361,6 @@ mod tests {
         assert_eq!(r.total_count(), 2);
     }
 
-    // --- enabled_count ---
-
-    #[test]
-    fn enabled_count_excludes_disabled() {
-        let mut r = ProviderRegistry::new();
-        r.register(MockProvider::music("mb", "Track A"));
-        r.register(MockProvider::disabled("disabled_p"));
-        assert_eq!(r.enabled_count(), 1);
-    }
-
     // --- providers_for ---
 
     #[test]
@@ -387,7 +371,7 @@ mod tests {
 
         let music = r.providers_for(MediaType::Music);
         assert_eq!(music.len(), 1);
-        assert_eq!(music[0].name(), "mb");
+        assert_eq!(music[0].id(), "mb");
     }
 
     #[test]
@@ -398,15 +382,7 @@ mod tests {
 
         let video = r.providers_for(MediaType::Video);
         assert_eq!(video.len(), 1);
-        assert_eq!(video[0].name(), "tmdb");
-    }
-
-    #[test]
-    fn providers_for_excludes_disabled() {
-        let mut r = ProviderRegistry::new();
-        r.register(MockProvider::disabled("disabled_mb"));
-        let music = r.providers_for(MediaType::Music);
-        assert!(music.is_empty());
+        assert_eq!(video[0].id(), "tmdb");
     }
 
     // --- find_by_name ---
@@ -451,18 +427,19 @@ mod tests {
         let mut r = ProviderRegistry::new();
         r.register(MockProvider::music("mb", "Comfortably Numb"));
 
-        let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
+        let query = music_query("Comfortably Numb", "Pink Floyd");
         let results = r.search(&query).await;
         assert!(!results.is_empty());
         assert_eq!(results[0].title.as_deref(), Some("Comfortably Numb"));
     }
 
     #[tokio::test]
-    async fn search_skips_disabled_providers() {
+    async fn search_skips_unconfigured_providers() {
         let mut r = ProviderRegistry::new();
         r.register(MockProvider::disabled("disabled"));
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let results = r.search(&query).await;
+        // Disabled provider returns NotConfigured → swallowed; no results returned
         assert!(results.is_empty());
     }
 
@@ -472,7 +449,7 @@ mod tests {
         r.register(MockProvider::music("mb", "Track from MB"));
         r.register(MockProvider::music("spotify", "Track from Spotify"));
 
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let results = r.search(&query).await;
         // Both providers return one result each
         assert_eq!(results.len(), 2);
@@ -486,11 +463,11 @@ mod tests {
         });
         r.register(MockProvider::music("good", "Good Track"));
 
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let results = r.search(&query).await;
         // Only the good provider's result is returned
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].provider, "good");
+        assert_eq!(results[0].provider_name, "good");
     }
 
     #[tokio::test]
@@ -500,10 +477,10 @@ mod tests {
         r.register(MockProvider::video("tmdb", "Video Result"));
 
         // Music query should only hit music provider
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let results = r.search(&query).await;
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].provider, "mb");
+        assert_eq!(results[0].provider_name, "mb");
     }
 
     #[tokio::test]
@@ -514,8 +491,8 @@ mod tests {
         r.register(MockProvider::music("p2", "Result 2"));
         r.register(MockProvider::music("p3", "Result 3"));
 
-        let mut query = SearchQuery::music("Track", "Artist");
-        query.max_results = 2;
+        let mut query = music_query("Track", "Artist");
+        query.max_results = Some(2);
         let results = r.search(&query).await;
         assert!(results.len() <= 2);
     }
@@ -523,7 +500,7 @@ mod tests {
     #[tokio::test]
     async fn search_empty_registry_returns_empty() {
         let r = ProviderRegistry::new();
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let results = r.search(&query).await;
         assert!(results.is_empty());
     }
@@ -535,29 +512,30 @@ mod tests {
         let mut r = ProviderRegistry::new();
         r.register(MockProvider::music("mb", "MB Track"));
 
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let results = r.search_provider("mb", &query).await.unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].provider, "mb");
+        assert_eq!(results[0].provider_name, "mb");
     }
 
     #[tokio::test]
     async fn search_provider_not_registered_returns_err() {
         let r = ProviderRegistry::new();
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let result = r.search_provider("nobody", &query).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not registered"));
     }
 
     #[tokio::test]
-    async fn search_provider_disabled_returns_err() {
+    async fn search_provider_unconfigured_returns_err() {
         let mut r = ProviderRegistry::new();
         r.register(MockProvider::disabled("disabled_p"));
 
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let result = r.search_provider("disabled_p", &query).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("disabled"));
+        // Error message includes the provider name plus its NotConfigured message
+        assert!(result.unwrap_err().to_lowercase().contains("disabled_p"));
     }
 }
