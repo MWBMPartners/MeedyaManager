@@ -16,6 +16,12 @@
 //
 //   (* = stub, no public API)
 
+// Provider impls return `&str` (matching the upstream trait signature) but the
+// bodies are string literals — clippy suggests `&'static str` which would
+// change the trait method's effective signature and is unnecessary. Allow
+// across the crate rather than scattering per-impl attributes.
+#![allow(clippy::unnecessary_literal_bound)]
+
 // ---------------------------------------------------------------------------
 // Module declarations
 // ---------------------------------------------------------------------------
@@ -57,10 +63,11 @@ pub(crate) mod http;
 // Convenient re-exports — consumers only need `use mm_providers::*`
 // ---------------------------------------------------------------------------
 
-// Core traits and data types
+// Core traits and data types (re-exported from the upstream
+// `meedya_providers` crate via the `traits` shim).
 pub use traits::{
-    Capabilities, CoverArtInfo, MediaType, MetadataProvider, ProviderError, ProviderResult,
-    SearchQuery,
+    CoverArtInfo, MediaType, MetadataProvider, ProviderCapabilities, ProviderError,
+    ProviderResult, SearchQuery,
 };
 
 // Registry
@@ -110,6 +117,25 @@ pub use identifiers::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::traits::music_query;
+
+    /// Build a `CoverArtInfo` for tests with explicit dimensions.
+    fn art(url: &str, w: u32, h: u32) -> CoverArtInfo {
+        CoverArtInfo {
+            url: url.into(),
+            width: Some(w),
+            height: Some(h),
+            mime_type: Some("image/jpeg".into()),
+        }
+    }
+
+    /// Build a `ProviderResult` with the given title/artist for scoring tests.
+    fn result(provider: &str, title: &str, artist: &str) -> ProviderResult {
+        let mut r = ProviderResult::new(provider);
+        r.title = Some(title.into());
+        r.artist = Some(artist.into());
+        r
+    }
 
     // -----------------------------------------------------------------------
     // 1. Crate loads
@@ -158,29 +184,29 @@ mod tests {
     // 3. All provider names are unique
     // -----------------------------------------------------------------------
 
-    /// Confirm that no two providers share the same `name()` string.
+    /// Confirm that no two providers share the same `id()` string.
     #[test]
     fn all_provider_names_are_unique() {
         let names = vec![
-            MusicBrainzProvider::new("ua").name().to_owned(),
-            SpotifyProvider::new(None, None).name().to_owned(),
-            AppleMusicProvider::new("US").name().to_owned(),
-            DeezerProvider::new().name().to_owned(),
-            YouTubeMusicProvider::default().name().to_owned(),
-            AmazonMusicProvider::default().name().to_owned(),
-            PandoraProvider::default().name().to_owned(),
-            TidalProvider::default().name().to_owned(),
-            ShazamProvider::default().name().to_owned(),
-            iHeartProvider::default().name().to_owned(),
-            TmdbProvider::new(None).name().to_owned(),
-            TheTvdbProvider::new(None).name().to_owned(),
-            OmdbProvider::new(None).name().to_owned(),
-            AppleTvProvider::new("US").name().to_owned(),
-            ItunesStoreProvider::new("US").name().to_owned(),
-            ApplePodcastsProvider::new("US").name().to_owned(),
-            IsrcProvider::new("ua").name().to_owned(),
-            EidrProvider::new(None, None).name().to_owned(),
-            IswcProvider::new("ua").name().to_owned(),
+            MusicBrainzProvider::new("ua").id().to_owned(),
+            SpotifyProvider::new(None, None).id().to_owned(),
+            AppleMusicProvider::new("US").id().to_owned(),
+            DeezerProvider::new().id().to_owned(),
+            YouTubeMusicProvider::default().id().to_owned(),
+            AmazonMusicProvider::default().id().to_owned(),
+            PandoraProvider::default().id().to_owned(),
+            TidalProvider::default().id().to_owned(),
+            ShazamProvider::default().id().to_owned(),
+            iHeartProvider::default().id().to_owned(),
+            TmdbProvider::new(None).id().to_owned(),
+            TheTvdbProvider::new(None).id().to_owned(),
+            OmdbProvider::new(None).id().to_owned(),
+            AppleTvProvider::new("US").id().to_owned(),
+            ItunesStoreProvider::new("US").id().to_owned(),
+            ApplePodcastsProvider::new("US").id().to_owned(),
+            IsrcProvider::new("ua").id().to_owned(),
+            EidrProvider::new(None, None).id().to_owned(),
+            IswcProvider::new("ua").id().to_owned(),
         ];
         let total = names.len();
         let mut deduped = names.clone();
@@ -197,72 +223,56 @@ mod tests {
     // 4. All providers have valid capabilities
     // -----------------------------------------------------------------------
 
-    /// Every provider must declare at least one media type and a non-empty display name.
+    /// Every provider must declare at least one capability and a non-empty display name.
     #[test]
     fn all_providers_have_valid_capabilities() {
-        let providers: Vec<(&str, usize, usize)> = vec![
+        /// Convert capabilities to "true booleans count" — sanity check for any capability set.
+        fn cap_count(c: &ProviderCapabilities) -> u32 {
+            u32::from(c.music_search)
+                + u32::from(c.video_search)
+                + u32::from(c.podcast_search)
+                + u32::from(c.identifier_lookup)
+        }
+
+        let providers: Vec<(&str, u32, usize)> = vec![
             (
                 "musicbrainz",
-                MusicBrainzProvider::new("ua")
-                    .capabilities()
-                    .media_types
-                    .len(),
-                MusicBrainzProvider::new("ua")
-                    .capabilities()
-                    .display_name
-                    .len(),
+                cap_count(&MusicBrainzProvider::new("ua").capabilities()),
+                MusicBrainzProvider::new("ua").display_name().len(),
             ),
             (
                 "spotify",
-                SpotifyProvider::new(None, None)
-                    .capabilities()
-                    .media_types
-                    .len(),
-                SpotifyProvider::new(None, None)
-                    .capabilities()
-                    .display_name
-                    .len(),
+                cap_count(&SpotifyProvider::new(None, None).capabilities()),
+                SpotifyProvider::new(None, None).display_name().len(),
             ),
             (
                 "apple_music",
-                AppleMusicProvider::new("US")
-                    .capabilities()
-                    .media_types
-                    .len(),
-                AppleMusicProvider::new("US")
-                    .capabilities()
-                    .display_name
-                    .len(),
+                cap_count(&AppleMusicProvider::new("US").capabilities()),
+                AppleMusicProvider::new("US").display_name().len(),
             ),
             (
                 "deezer",
-                DeezerProvider::new().capabilities().media_types.len(),
-                DeezerProvider::new().capabilities().display_name.len(),
+                cap_count(&DeezerProvider::new().capabilities()),
+                DeezerProvider::new().display_name().len(),
             ),
             (
                 "tmdb",
-                TmdbProvider::new(None).capabilities().media_types.len(),
-                TmdbProvider::new(None).capabilities().display_name.len(),
+                cap_count(&TmdbProvider::new(None).capabilities()),
+                TmdbProvider::new(None).display_name().len(),
             ),
             (
                 "apple_podcasts",
-                ApplePodcastsProvider::new("US")
-                    .capabilities()
-                    .media_types
-                    .len(),
-                ApplePodcastsProvider::new("US")
-                    .capabilities()
-                    .display_name
-                    .len(),
+                cap_count(&ApplePodcastsProvider::new("US").capabilities()),
+                ApplePodcastsProvider::new("US").display_name().len(),
             ),
             (
                 "isrc",
-                IsrcProvider::new("ua").capabilities().media_types.len(),
-                IsrcProvider::new("ua").capabilities().display_name.len(),
+                cap_count(&IsrcProvider::new("ua").capabilities()),
+                IsrcProvider::new("ua").display_name().len(),
             ),
         ];
         for (name, type_count, name_len) in providers {
-            assert!(type_count > 0, "{name}: no media types declared");
+            assert!(type_count > 0, "{name}: no capability bits declared");
             assert!(name_len > 0, "{name}: empty display_name");
         }
     }
@@ -275,13 +285,9 @@ mod tests {
     #[test]
     fn match_scorer_scores_provider_result() {
         let scorer = MatchScorer::new();
-        let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
-        let result = ProviderResult {
-            title: Some("Comfortably Numb".into()),
-            artist: Some("Pink Floyd".into()),
-            ..Default::default()
-        };
-        let score = scorer.score(&query, &result);
+        let query = music_query("Comfortably Numb", "Pink Floyd");
+        let r = result("test", "Comfortably Numb", "Pink Floyd");
+        let score = scorer.score(&query, &r);
         // Should be a high score for a perfect title+artist match
         assert!(score >= 0.0, "score must be non-negative");
         assert!(
@@ -352,15 +358,15 @@ mod tests {
     #[test]
     fn cover_art_size_from_provider_result() {
         // 600×600 → Medium (500–999 range)
-        let art = CoverArtInfo::new("https://example.com/cover.jpg", 600, 600, "image/jpeg");
-        assert_eq!(CoverArtSize::from_art(&art), CoverArtSize::Medium);
+        let medium = art("https://example.com/cover.jpg", 600, 600);
+        assert_eq!(CoverArtSize::from_art(&medium), CoverArtSize::Medium);
 
         // 100×100 → Thumbnail (< 200)
-        let thumb = CoverArtInfo::new("https://example.com/thumb.jpg", 100, 100, "image/jpeg");
+        let thumb = art("https://example.com/thumb.jpg", 100, 100);
         assert_eq!(CoverArtSize::from_art(&thumb), CoverArtSize::Thumbnail);
 
         // 1200×1200 → Large (1000–1999 range)
-        let xl = CoverArtInfo::new("https://example.com/xl.jpg", 1200, 1200, "image/jpeg");
+        let xl = art("https://example.com/xl.jpg", 1200, 1200);
         assert_eq!(CoverArtSize::from_art(&xl), CoverArtSize::Large);
     }
 
@@ -374,7 +380,7 @@ mod tests {
         // We can't make live HTTP calls in tests, but we can verify routing:
         // A registry with no providers returns empty results.
         let registry = ProviderRegistry::new();
-        let query = SearchQuery::music("Bohemian Rhapsody", "Queen");
+        let query = music_query("Bohemian Rhapsody", "Queen");
         let results = registry.search(&query).await;
         assert!(
             results.is_empty(),
@@ -472,13 +478,13 @@ mod tests {
     #[test]
     fn cover_art_select_best_picks_correct() {
         let arts = vec![
-            CoverArtInfo::new("https://example.com/100.jpg", 100, 100, "image/jpeg"),
-            CoverArtInfo::new("https://example.com/500.jpg", 500, 500, "image/jpeg"),
-            CoverArtInfo::new("https://example.com/1000.jpg", 1000, 1000, "image/jpeg"),
+            art("https://example.com/100.jpg", 100, 100),
+            art("https://example.com/500.jpg", 500, 500),
+            art("https://example.com/1000.jpg", 1000, 1000),
         ];
         // Min 400px — select_best returns the largest qualifying image
         let best = select_best(&arts, 400).unwrap();
-        assert_eq!(best.width, 1000);
+        assert_eq!(best.width, Some(1000));
     }
 
     // -----------------------------------------------------------------------
@@ -502,15 +508,11 @@ mod tests {
     /// The `score_result` convenience function must agree with `MatchScorer::score`.
     #[test]
     fn score_result_matches_scorer() {
-        let query = SearchQuery::music("Let It Be", "The Beatles");
-        let result = ProviderResult {
-            title: Some("Let It Be".into()),
-            artist: Some("The Beatles".into()),
-            ..Default::default()
-        };
+        let query = music_query("Let It Be", "The Beatles");
+        let r = result("test", "Let It Be", "The Beatles");
         let scorer = MatchScorer::new();
-        let direct = scorer.score(&query, &result);
-        let convenience = score_result(&query, &result);
+        let direct = scorer.score(&query, &r);
+        let convenience = score_result(&query, &r);
         // Both should agree to within floating-point precision
         assert!(
             (direct - convenience).abs() < 1e-9,
