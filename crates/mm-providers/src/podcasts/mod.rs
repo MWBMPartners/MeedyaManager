@@ -7,13 +7,15 @@
 // Provider:
 //   ApplePodcastsProvider — iTunes Search API (podcast entity); no auth required
 
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
+use serde_json::Value;
 use tracing::debug;
 
 use crate::traits::{
-    Capabilities, CoverArtInfo, MediaType, MetadataProvider, ProviderError, ProviderResult,
-    SearchQuery,
+    CoverArtInfo, META_PROVIDER_ID, MetadataProvider, ProviderCapabilities, ProviderError,
+    ProviderResult, SearchQuery,
 };
 
 // ---------------------------------------------------------------------------
@@ -28,9 +30,9 @@ use crate::traits::{
 pub struct ApplePodcastsProvider {
     client: Client,
     base_url: String,
-    enabled: bool,
+    /// Whether the provider should respond to queries (test hook).
+    pub(crate) enabled: bool,
     country: String,
-    capabilities: Capabilities,
 }
 
 impl ApplePodcastsProvider {
@@ -46,17 +48,6 @@ impl ApplePodcastsProvider {
             base_url: base_url.into(),
             enabled: true,
             country: country.into(),
-            capabilities: Capabilities {
-                media_types: vec![MediaType::Podcast],
-                supports_search: true,
-                supports_isrc: false,
-                supports_iswc: false,
-                provides_cover_art: true,
-                provides_fingerprint: false,
-                requires_auth: false,
-                display_name: "Apple Podcasts".into(),
-                homepage_url: "https://podcasts.apple.com".into(),
-            },
         }
     }
 
@@ -86,52 +77,68 @@ impl ApplePodcastsProvider {
             collection_view_url: Option<String>,
         }
 
-        let resp: ItunesPodcastResponse = serde_json::from_str(body)
-            .map_err(|e| ProviderError::Parse(format!("Apple Podcasts response: {e}")))?;
+        let resp: ItunesPodcastResponse = serde_json::from_str(body).map_err(|e| {
+            ProviderError::Other(format!("parse error: Apple Podcasts response: {e}"))
+        })?;
 
         let results = resp
             .results
             .into_iter()
             .map(|r| {
                 // Prefer 600px cover, fall back to 100px
-                let cover_art = {
-                    let mut arts = Vec::new();
-                    if let Some(url) = &r.artwork_url600 {
-                        arts.push(CoverArtInfo::new(url, 600, 600, "image/jpeg"));
-                    }
-                    if let Some(url) = &r.artwork_url100 {
-                        arts.push(CoverArtInfo::new(url, 100, 100, "image/jpeg"));
-                    }
-                    arts
-                };
+                let mut cover_art = Vec::new();
+                if let Some(url) = &r.artwork_url600 {
+                    cover_art.push(CoverArtInfo {
+                        url: url.clone(),
+                        width: Some(600),
+                        height: Some(600),
+                        mime_type: Some("image/jpeg".into()),
+                    });
+                }
+                if let Some(url) = &r.artwork_url100 {
+                    cover_art.push(CoverArtInfo {
+                        url: url.clone(),
+                        width: Some(100),
+                        height: Some(100),
+                        mime_type: Some("image/jpeg".into()),
+                    });
+                }
 
                 let year = r
                     .release_date
                     .as_deref()
                     .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
 
-                let mut extra = std::collections::HashMap::new();
+                let mut result = ProviderResult::new(provider_name);
+                result.title = r.collection_name; // Podcast name
+                result.artist = r.artist_name; // Podcast author / network
+                result.genre = r.primary_genre_name;
+                result.year = year;
+                result.cover_art = cover_art;
+
+                // Provider-specific identifiers go into metadata
+                if let Some(id) = r.collection_id {
+                    result
+                        .metadata
+                        .insert(META_PROVIDER_ID.into(), Value::String(id.to_string()));
+                }
                 if let Some(feed) = &r.feed_url {
-                    extra.insert("feed_url".into(), feed.clone());
+                    result
+                        .metadata
+                        .insert("feed_url".into(), Value::String(feed.clone()));
                 }
                 if let Some(view_url) = &r.collection_view_url {
-                    extra.insert("podcast_url".into(), view_url.clone());
+                    result
+                        .metadata
+                        .insert("podcast_url".into(), Value::String(view_url.clone()));
                 }
                 if let Some(count) = r.track_count {
-                    extra.insert("episode_count".into(), count.to_string());
+                    result
+                        .metadata
+                        .insert("episode_count".into(), Value::Number(count.into()));
                 }
 
-                ProviderResult {
-                    provider: provider_name.to_owned(),
-                    provider_id: r.collection_id.map(|id| id.to_string()).unwrap_or_default(),
-                    title: r.collection_name, // Podcast name
-                    artist: r.artist_name,    // Podcast author / network
-                    genre: r.primary_genre_name,
-                    year,
-                    cover_art,
-                    extra,
-                    ..Default::default()
-                }
+                result
             })
             .collect();
 
@@ -145,72 +152,80 @@ impl Default for ApplePodcastsProvider {
     }
 }
 
+#[async_trait]
 impl MetadataProvider for ApplePodcastsProvider {
-    fn name(&self) -> &'static str {
+    fn id(&self) -> &str {
         "apple_podcasts"
     }
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-    fn is_enabled(&self) -> bool {
-        self.enabled
+
+    fn display_name(&self) -> &str {
+        "Apple Podcasts"
     }
 
-    fn search(
-        &self,
-        query: SearchQuery,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
-                + Send
-                + '_,
-        >,
-    > {
-        Box::pin(async move {
-            if !self.enabled {
-                return Err(ProviderError::Disabled("apple_podcasts".into()));
-            }
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities {
+            music_search: false,
+            video_search: false,
+            podcast_search: true,
+            cover_art: true,
+            lyrics: false,
+            fingerprint_lookup: false,
+            identifier_lookup: false,
+        }
+    }
 
-            let term = query
-                .title
-                .as_deref()
-                .or(query.artist.as_deref())
-                .unwrap_or(&query.query);
+    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
+        if !self.enabled {
+            return Err(ProviderError::NotConfigured("apple_podcasts".into()));
+        }
 
-            debug!(
-                provider = "apple_podcasts",
-                term = term,
-                "Sending iTunes podcast search request"
-            );
+        // Build a free-text term from title or artist (no upstream `query` field).
+        let fallback = format!(
+            "{} {}",
+            query.title.as_deref().unwrap_or(""),
+            query.artist.as_deref().unwrap_or("")
+        );
+        let fallback_trimmed = fallback.trim();
+        let term: &str = query
+            .title
+            .as_deref()
+            .or(query.artist.as_deref())
+            .unwrap_or(fallback_trimmed);
 
-            let url = format!("{}/search", self.base_url);
-            let response = self
-                .client
-                .get(&url)
-                .query(&[
-                    ("term", term),
-                    ("media", "podcast"),
-                    ("entity", "podcast"),
-                    ("country", &self.country),
-                    ("limit", &query.max_results.to_string()),
-                ])
-                .send()
-                .await
-                .map_err(|e| ProviderError::Network(e.to_string()))?;
+        debug!(
+            provider = "apple_podcasts",
+            term = term,
+            "Sending iTunes podcast search request"
+        );
 
-            if !response.status().is_success() {
-                return Err(ProviderError::Network(format!(
-                    "HTTP {}",
-                    response.status()
-                )));
-            }
+        let limit = query.max_results.unwrap_or(20).to_string();
+        let url = format!("{}/search", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .query(&[
+                ("term", term),
+                ("media", "podcast"),
+                ("entity", "podcast"),
+                ("country", &self.country),
+                ("limit", &limit),
+            ])
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-            let body = response
-                .text()
-                .await
-                .map_err(|e| ProviderError::Network(e.to_string()))?;
-            Self::parse_podcasts("apple_podcasts", &body)
-        })
+        if !response.status().is_success() {
+            return Err(ProviderError::NetworkError(format!(
+                "HTTP {}",
+                response.status()
+            )));
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        Self::parse_podcasts("apple_podcasts", &body)
     }
 }
 
@@ -221,40 +236,27 @@ impl MetadataProvider for ApplePodcastsProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::traits::META_PROVIDER_ID;
 
     #[test]
     fn apple_podcasts_name() {
-        assert_eq!(ApplePodcastsProvider::new("US").name(), "apple_podcasts");
+        assert_eq!(ApplePodcastsProvider::new("US").id(), "apple_podcasts");
     }
 
     #[test]
-    fn apple_podcasts_enabled_by_default() {
-        assert!(ApplePodcastsProvider::default().is_enabled());
-    }
-
-    #[test]
-    fn apple_podcasts_no_auth_required() {
-        assert!(
-            !ApplePodcastsProvider::new("US")
-                .capabilities()
-                .requires_auth
+    fn apple_podcasts_display_name() {
+        assert_eq!(
+            ApplePodcastsProvider::new("US").display_name(),
+            "Apple Podcasts"
         );
     }
 
     #[test]
-    fn apple_podcasts_media_type_podcast() {
-        let p = ApplePodcastsProvider::new("US");
-        assert!(p.capabilities().supports_media_type(MediaType::Podcast));
-        assert!(!p.capabilities().supports_media_type(MediaType::Music));
-    }
-
-    #[test]
-    fn apple_podcasts_provides_cover_art() {
-        assert!(
-            ApplePodcastsProvider::new("US")
-                .capabilities()
-                .provides_cover_art
-        );
+    fn apple_podcasts_capabilities_podcast() {
+        let caps = ApplePodcastsProvider::new("US").capabilities();
+        assert!(caps.podcast_search);
+        assert!(!caps.music_search);
+        assert!(caps.cover_art);
     }
 
     #[test]
@@ -279,15 +281,21 @@ mod tests {
         assert_eq!(results[0].artist.as_deref(), Some("The New York Times"));
         assert_eq!(results[0].year, Some(2024));
         assert_eq!(results[0].genre.as_deref(), Some("News"));
-        assert_eq!(results[0].provider_id, "12345678");
+        assert_eq!(
+            results[0]
+                .metadata
+                .get(META_PROVIDER_ID)
+                .and_then(|v| v.as_str()),
+            Some("12345678")
+        );
         // Both cover art sizes present
         assert_eq!(results[0].cover_art.len(), 2);
-        // Extra fields stored
-        assert!(results[0].extra.contains_key("feed_url"));
-        assert!(results[0].extra.contains_key("episode_count"));
+        // Extra fields stored in metadata
+        assert!(results[0].metadata.contains_key("feed_url"));
+        assert!(results[0].metadata.contains_key("episode_count"));
         assert_eq!(
-            results[0].extra.get("episode_count").map(String::as_str),
-            Some("2500")
+            results[0].metadata.get("episode_count").and_then(serde_json::Value::as_u64),
+            Some(2500)
         );
     }
 
@@ -301,7 +309,7 @@ mod tests {
     #[test]
     fn apple_podcasts_parse_invalid_json_returns_err() {
         let result = ApplePodcastsProvider::parse_podcasts("apple_podcasts", "bad json");
-        assert!(matches!(result, Err(ProviderError::Parse(_))));
+        assert!(matches!(result, Err(ProviderError::Other(_))));
     }
 
     #[test]
@@ -316,9 +324,9 @@ mod tests {
         let largest = results[0]
             .cover_art
             .iter()
-            .max_by_key(|a| a.pixel_count())
+            .max_by_key(|a| u64::from(a.width.unwrap_or(0)) * u64::from(a.height.unwrap_or(0)))
             .unwrap();
-        assert_eq!(largest.width, 600);
+        assert_eq!(largest.width, Some(600));
     }
 
     #[test]
@@ -332,7 +340,7 @@ mod tests {
     fn apple_podcasts_parse_no_feed_url_skips_extra() {
         let json = r#"{"results": [{"collectionName": "Podcast"}]}"#;
         let results = ApplePodcastsProvider::parse_podcasts("apple_podcasts", json).unwrap();
-        assert!(!results[0].extra.contains_key("feed_url"));
+        assert!(!results[0].metadata.contains_key("feed_url"));
     }
 
     #[tokio::test]
@@ -340,13 +348,13 @@ mod tests {
         let mut p = ApplePodcastsProvider::new("US");
         p.enabled = false;
         let q = SearchQuery {
-            query: "Test".into(),
-            max_results: 5,
+            title: Some("Test".into()),
+            max_results: Some(5),
             ..Default::default()
         };
         assert!(matches!(
-            p.search(q.clone()).await,
-            Err(ProviderError::Disabled(_))
+            p.search(&q).await,
+            Err(ProviderError::NotConfigured(_))
         ));
     }
 }
