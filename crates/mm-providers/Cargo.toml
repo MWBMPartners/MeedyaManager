@@ -13,6 +13,9 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# MeedyaSuite-core — shared metadata provider infrastructure
+meedya-core = { workspace = true }
+
 # Internal crate dependency — core types, config, and error handling
 mm-core = { path = "../mm-core" }
 
