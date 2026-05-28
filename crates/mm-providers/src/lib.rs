@@ -74,7 +74,10 @@ pub use traits::{
 pub use registry::ProviderRegistry;
 
 // Credential management
-pub use credentials::{Credential, CredentialSource, CredentialStore};
+pub use credentials::{
+    Credential, CredentialError, CredentialSource, CredentialStore, MmUpstreamCredentialStore,
+    ResolvedCredential, credential_source_label,
+};
 
 // Rate limiting
 pub use rate_limiter::{
