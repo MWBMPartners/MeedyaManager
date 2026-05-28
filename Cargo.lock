@@ -2108,6 +2108,7 @@ name = "mm-providers"
 version = "1.3.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "fuzzy-matcher",
  "governor 0.7.0",
  "jsonwebtoken",

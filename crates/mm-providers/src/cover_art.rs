@@ -5,8 +5,35 @@
 // Helpers for selecting, validating, and describing cover art returned by
 // metadata providers. Providers attach `CoverArtInfo` structs to `ProviderResult`;
 // the functions in this module help callers choose the best image and verify URLs.
+//
+// MIGRATION NOTE (#132): the upstream `CoverArtInfo` uses `Option<u32>` for
+// `width`/`height` and has no `pixel_count()` / `has_dimensions()` methods.
+// We provide local equivalents as free functions / inline expressions so this
+// module's selectors continue to work.
 
 use crate::traits::CoverArtInfo;
+
+// ---------------------------------------------------------------------------
+// Helpers — inline replacements for the removed CoverArtInfo methods
+// ---------------------------------------------------------------------------
+
+/// Returns `width * height` for a `CoverArtInfo`, treating absent dimensions as zero.
+///
+/// Replaces the local-only `CoverArtInfo::pixel_count()` method that no longer
+/// exists on the upstream type.
+fn pixel_count(a: &CoverArtInfo) -> u64 {
+    u64::from(a.width.unwrap_or(0)) * u64::from(a.height.unwrap_or(0))
+}
+
+/// Returns the width (zero if unknown).
+fn width(a: &CoverArtInfo) -> u32 {
+    a.width.unwrap_or(0)
+}
+
+/// Returns the height (zero if unknown).
+fn height(a: &CoverArtInfo) -> u32 {
+    a.height.unwrap_or(0)
+}
 
 // ---------------------------------------------------------------------------
 // Cover art size classification
@@ -20,7 +47,7 @@ use crate::traits::CoverArtInfo;
 ///   - Medium     : 500–999 px on shortest side
 ///   - Large      : 1000–1999 px on shortest side
 ///   - ExtraLarge : ≥ 2000 px on shortest side
-///   - Unknown    : dimensions not reported (width or height is 0)
+///   - Unknown    : dimensions not reported (width or height is None/0)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CoverArtSize {
     /// Dimensions unknown / not reported
@@ -40,10 +67,12 @@ pub enum CoverArtSize {
 impl CoverArtSize {
     /// Classify a `CoverArtInfo` entry by its shortest dimension.
     pub fn from_art(art: &CoverArtInfo) -> Self {
-        if art.width == 0 || art.height == 0 {
+        let w = width(art);
+        let h = height(art);
+        if w == 0 || h == 0 {
             return Self::Unknown;
         }
-        let min_side = art.width.min(art.height);
+        let min_side = w.min(h);
         match min_side {
             0..=199 => Self::Thumbnail,
             200..=499 => Self::Small,
@@ -75,14 +104,14 @@ impl std::fmt::Display for CoverArtSize {
 ///
 /// Returns `None` if the slice is empty.
 pub fn select_largest(arts: &[CoverArtInfo]) -> Option<&CoverArtInfo> {
-    arts.iter().max_by_key(|a| a.pixel_count())
+    arts.iter().max_by_key(|a| pixel_count(a))
 }
 
 /// Select the smallest cover art from a slice, by pixel count.
 ///
 /// Returns `None` if the slice is empty.
 pub fn select_smallest(arts: &[CoverArtInfo]) -> Option<&CoverArtInfo> {
-    arts.iter().min_by_key(|a| a.pixel_count())
+    arts.iter().min_by_key(|a| pixel_count(a))
 }
 
 /// Select the best cover art that meets a minimum size requirement.
@@ -96,8 +125,8 @@ pub fn select_best(arts: &[CoverArtInfo], min_side_px: u32) -> Option<&CoverArtI
     // First: look for an image that meets the minimum size
     if let Some(best) = arts
         .iter()
-        .filter(|a| a.width >= min_side_px && a.height >= min_side_px)
-        .max_by_key(|a| a.pixel_count())
+        .filter(|a| width(a) >= min_side_px && height(a) >= min_side_px)
+        .max_by_key(|a| pixel_count(a))
     {
         return Some(best);
     }
@@ -112,10 +141,10 @@ pub fn select_best(arts: &[CoverArtInfo], min_side_px: u32) -> Option<&CoverArtI
 pub fn filter_by_min_size(arts: &[CoverArtInfo], min_side_px: u32) -> Vec<&CoverArtInfo> {
     let mut qualifying: Vec<&CoverArtInfo> = arts
         .iter()
-        .filter(|a| a.width >= min_side_px && a.height >= min_side_px)
+        .filter(|a| width(a) >= min_side_px && height(a) >= min_side_px)
         .collect();
     // Sort largest-first
-    qualifying.sort_by_key(|a| std::cmp::Reverse(a.pixel_count()));
+    qualifying.sort_by_key(|a| std::cmp::Reverse(pixel_count(a)));
     qualifying
 }
 
@@ -186,32 +215,7 @@ pub fn deduplicate(arts: Vec<CoverArtInfo>) -> Vec<CoverArtInfo> {
 }
 
 // ---------------------------------------------------------------------------
-// Reverse sort helper for filter_by_min_size
-// ---------------------------------------------------------------------------
-
-/// A wrapper that reverses the ordering for use with `.sort_by_key`.
-#[allow(dead_code)]
-struct Reverse<T: Ord>(T);
-
-impl<T: Ord> PartialEq for Reverse<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-impl<T: Ord> Eq for Reverse<T> {}
-impl<T: Ord> PartialOrd for Reverse<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl<T: Ord> Ord for Reverse<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.0.cmp(&self.0)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests — 20 tests
+// Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -220,14 +224,28 @@ mod tests {
     use crate::traits::CoverArtInfo;
 
     fn art(url: &str, w: u32, h: u32) -> CoverArtInfo {
-        CoverArtInfo::new(url, w, h, "image/jpeg")
+        CoverArtInfo {
+            url: url.into(),
+            width: Some(w),
+            height: Some(h),
+            mime_type: Some("image/jpeg".into()),
+        }
+    }
+
+    fn art_unknown(url: &str) -> CoverArtInfo {
+        CoverArtInfo {
+            url: url.into(),
+            width: None,
+            height: None,
+            mime_type: Some("image/jpeg".into()),
+        }
     }
 
     // --- CoverArtSize::from_art ---
 
     #[test]
     fn cover_art_size_unknown_when_no_dimensions() {
-        let a = art("https://x.com/a.jpg", 0, 0);
+        let a = art_unknown("https://x.com/a.jpg");
         assert_eq!(CoverArtSize::from_art(&a), CoverArtSize::Unknown);
     }
 
@@ -284,7 +302,7 @@ mod tests {
             art("https://x.com/m.jpg", 500, 500),
         ];
         let best = select_largest(&arts).unwrap();
-        assert_eq!(best.width, 1400);
+        assert_eq!(best.width, Some(1400));
     }
 
     #[test]
@@ -301,7 +319,7 @@ mod tests {
             art("https://x.com/t.jpg", 100, 100),
         ];
         let small = select_smallest(&arts).unwrap();
-        assert_eq!(small.width, 100);
+        assert_eq!(small.width, Some(100));
     }
 
     // --- select_best ---
@@ -313,7 +331,7 @@ mod tests {
             art("https://x.com/l.jpg", 1400, 1400),
         ];
         let best = select_best(&arts, 1000).unwrap();
-        assert_eq!(best.width, 1400);
+        assert_eq!(best.width, Some(1400));
     }
 
     #[test]
@@ -324,7 +342,7 @@ mod tests {
         ];
         // No image meets 2000px minimum
         let best = select_best(&arts, 2000).unwrap();
-        assert_eq!(best.width, 300); // Fallback: largest available
+        assert_eq!(best.width, Some(300)); // Fallback: largest available
     }
 
     // --- is_valid_art_url ---

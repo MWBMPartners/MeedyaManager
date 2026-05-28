@@ -126,9 +126,7 @@ impl ProviderRateLimiter {
     pub fn check(&self) -> Result<(), ProviderError> {
         self.limiter
             .check()
-            .map_err(|_| ProviderError::RateLimited {
-                provider: self.provider.clone(),
-            })
+            .map_err(|_| ProviderError::RateLimited(self.provider.clone()))
     }
 
     /// Async wait until a token is available, then return.
@@ -341,7 +339,7 @@ mod tests {
         let result = limiter.check();
         // It's valid for it to be RateLimited (high RPM limiters may have burst)
         // Just verify the result is Ok or RateLimited (not a panic/crash)
-        assert!(result.is_ok() || matches!(result, Err(ProviderError::RateLimited { .. })));
+        assert!(result.is_ok() || matches!(result, Err(ProviderError::RateLimited(_))));
     }
 
     #[test]
@@ -350,7 +348,7 @@ mod tests {
         let limiter = ProviderRateLimiter::new("spotify", 1);
         // Force a rate limit by draining tokens
         let _ = limiter.check();
-        if let Err(ProviderError::RateLimited { provider }) = limiter.check() {
+        if let Err(ProviderError::RateLimited(provider)) = limiter.check() {
             assert_eq!(provider, "spotify");
         }
         // If no rate limit triggered (burst > 1), test still passes

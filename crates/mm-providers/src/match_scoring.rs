@@ -304,15 +304,14 @@ fn normalise_isrc(isrc: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::{ProviderResult, SearchQuery};
+    use crate::traits::{ProviderResult, music_query};
 
     // Helper: build a minimal ProviderResult
     fn make_result(title: &str, artist: &str) -> ProviderResult {
-        ProviderResult {
-            title: Some(title.into()),
-            artist: Some(artist.into()),
-            ..Default::default()
-        }
+        let mut r = ProviderResult::new("test");
+        r.title = Some(title.into());
+        r.artist = Some(artist.into());
+        r
     }
 
     fn make_scorer() -> MatchScorer {
@@ -504,7 +503,7 @@ mod tests {
     #[test]
     fn score_exact_match_title_and_artist() {
         let scorer = make_scorer();
-        let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
+        let query = music_query("Comfortably Numb", "Pink Floyd");
         let result = make_result("Comfortably Numb", "Pink Floyd");
         let score = scorer.score(&query, &result);
         // Should be very high (title + artist both exact)
@@ -514,7 +513,7 @@ mod tests {
     #[test]
     fn score_wrong_artist_reduces_score() {
         let scorer = make_scorer();
-        let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
+        let query = music_query("Comfortably Numb", "Pink Floyd");
         let correct_artist = make_result("Comfortably Numb", "Pink Floyd");
         let wrong_artist = make_result("Comfortably Numb", "Radiohead");
 
@@ -529,7 +528,7 @@ mod tests {
     #[test]
     fn score_wrong_title_reduces_score() {
         let scorer = make_scorer();
-        let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
+        let query = music_query("Comfortably Numb", "Pink Floyd");
         let correct = make_result("Comfortably Numb", "Pink Floyd");
         let wrong = make_result("Money", "Pink Floyd");
 
@@ -539,7 +538,7 @@ mod tests {
     #[test]
     fn score_isrc_exact_match_bonus() {
         let scorer = make_scorer();
-        let mut query = SearchQuery::music("Track", "Artist");
+        let mut query = music_query("Track", "Artist");
         query.isrc = Some("GBAYE0601498".into());
 
         let mut with_isrc = make_result("Track", "Artist");
@@ -558,7 +557,7 @@ mod tests {
     #[test]
     fn score_isrc_mismatch_penalty() {
         let scorer = make_scorer();
-        let mut query = SearchQuery::music("Track", "Artist");
+        let mut query = music_query("Track", "Artist");
         query.isrc = Some("GBAYE0601498".into());
 
         let mut wrong_isrc = make_result("Track", "Artist");
@@ -577,7 +576,7 @@ mod tests {
     #[test]
     fn score_year_match_bonus() {
         let scorer = make_scorer();
-        let mut query = SearchQuery::music("Track", "Artist");
+        let mut query = music_query("Track", "Artist");
         query.year = Some(1979);
 
         let mut r_correct_year = make_result("Track", "Artist");
@@ -595,7 +594,7 @@ mod tests {
     #[test]
     fn score_in_0_1_range() {
         let scorer = make_scorer();
-        let query = SearchQuery::music("Some Track", "Some Artist");
+        let query = music_query("Some Track", "Some Artist");
         let result = make_result("Completely Different", "Nothing In Common");
         let s = scorer.score(&query, &result);
         assert!((0.0..=1.0).contains(&s), "score={s}");
@@ -604,12 +603,10 @@ mod tests {
     #[test]
     fn score_missing_result_title_is_penalised() {
         let scorer = make_scorer();
-        let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
+        let query = music_query("Comfortably Numb", "Pink Floyd");
 
-        let no_title = ProviderResult {
-            artist: Some("Pink Floyd".into()),
-            ..Default::default()
-        };
+        let mut no_title = ProviderResult::new("test");
+        no_title.artist = Some("Pink Floyd".into());
 
         // No title should score lower than matching title
         let with_title = make_result("Comfortably Numb", "Pink Floyd");
@@ -621,7 +618,7 @@ mod tests {
     #[test]
     fn rank_results_sorts_highest_first() {
         let scorer = make_scorer();
-        let query = SearchQuery::music("Comfortably Numb", "Pink Floyd");
+        let query = music_query("Comfortably Numb", "Pink Floyd");
 
         let mut results = vec![
             make_result("Money", "Pink Floyd"),            // wrong title
@@ -636,7 +633,7 @@ mod tests {
     #[test]
     fn rank_results_attaches_scores_to_results() {
         let scorer = make_scorer();
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let mut results = vec![make_result("Track", "Artist")];
         scorer.rank_results(&query, &mut results);
         assert!(results[0].score > 0.0, "Score should be attached");
@@ -646,7 +643,7 @@ mod tests {
 
     #[test]
     fn convenience_score_result_matches_scorer() {
-        let query = SearchQuery::music("Track", "Artist");
+        let query = music_query("Track", "Artist");
         let result = make_result("Track", "Artist");
         let conv = score_result(&query, &result);
         let direct = MatchScorer::new().score(&query, &result);

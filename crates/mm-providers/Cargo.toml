@@ -53,6 +53,9 @@ fuzzy-matcher = { workspace = true }
 # Secure credential storage for API keys and tokens
 keyring = { workspace = true }
 
+# Async trait support — required by upstream `meedya_providers::MetadataProvider`
+async-trait = "0.1"
+
 [dev-dependencies]
 # HTTP mock server for provider API integration tests
 wiremock = { workspace = true }
