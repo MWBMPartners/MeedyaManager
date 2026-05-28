@@ -504,7 +504,9 @@ impl IswcProvider {
                         .insert(META_PROVIDER_ID.into(), Value::String(id));
                 }
                 if let Some(iswc) = work.iswcs.and_then(|v| v.into_iter().next()) {
-                    result.metadata.insert(META_ISWC.into(), Value::String(iswc));
+                    result
+                        .metadata
+                        .insert(META_ISWC.into(), Value::String(iswc));
                 }
                 result
             })
@@ -759,7 +761,10 @@ mod tests {
         assert_eq!(results[0].artist.as_deref(), Some("Christopher Nolan"));
         // EIDR is now stored in metadata
         assert_eq!(
-            results[0].metadata.get(META_EIDR).and_then(serde_json::Value::as_str),
+            results[0]
+                .metadata
+                .get(META_EIDR)
+                .and_then(serde_json::Value::as_str),
             Some("10.5240/AEBE-0317-CE0D-4943-5916-E")
         );
     }
@@ -798,7 +803,10 @@ mod tests {
         assert_eq!(results[0].title.as_deref(), Some("Bohemian Rhapsody"));
         assert_eq!(results[0].artist.as_deref(), Some("Freddie Mercury"));
         assert_eq!(
-            results[0].metadata.get(META_ISWC).and_then(serde_json::Value::as_str),
+            results[0]
+                .metadata
+                .get(META_ISWC)
+                .and_then(serde_json::Value::as_str),
             Some("T0345246801")
         );
     }

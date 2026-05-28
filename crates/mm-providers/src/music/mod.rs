@@ -345,12 +345,13 @@ impl SpotifyProvider {
                 provider: "spotify".into(),
                 reason: "No client_id".into(),
             })?;
-        let secret = self.client_secret.as_deref().ok_or_else(|| {
-            ProviderError::AuthenticationFailed {
-                provider: "spotify".into(),
-                reason: "No client_secret".into(),
-            }
-        })?;
+        let secret =
+            self.client_secret
+                .as_deref()
+                .ok_or_else(|| ProviderError::AuthenticationFailed {
+                    provider: "spotify".into(),
+                    reason: "No client_secret".into(),
+                })?;
 
         let resp = self
             .client
@@ -1283,9 +1284,10 @@ mod tests {
             "results": [{"artworkUrl100": "https://x.com/100x100.jpg"}]
         }"#;
         let results = AppleMusicProvider::parse_itunes("apple_music", json).unwrap();
-        let largest = results[0].cover_art.iter().max_by_key(|a| {
-            u64::from(a.width.unwrap_or(0)) * u64::from(a.height.unwrap_or(0))
-        });
+        let largest = results[0]
+            .cover_art
+            .iter()
+            .max_by_key(|a| u64::from(a.width.unwrap_or(0)) * u64::from(a.height.unwrap_or(0)));
         assert!(largest.unwrap().url.contains("3000x3000"));
     }
 

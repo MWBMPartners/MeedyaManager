@@ -287,10 +287,7 @@ mod tests {
             }
         }
 
-        async fn search(
-            &self,
-            query: &SearchQuery,
-        ) -> Result<Vec<ProviderResult>, ProviderError> {
+        async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
             if !self.enabled {
                 return Err(ProviderError::NotConfigured(self.name.clone()));
             }
@@ -321,10 +318,7 @@ mod tests {
                 ..Default::default()
             }
         }
-        async fn search(
-            &self,
-            _query: &SearchQuery,
-        ) -> Result<Vec<ProviderResult>, ProviderError> {
+        async fn search(&self, _query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
             Err(ProviderError::NetworkError("connection refused".into()))
         }
     }

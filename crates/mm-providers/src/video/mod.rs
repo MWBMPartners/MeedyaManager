@@ -936,7 +936,10 @@ mod tests {
             r#"{"results": [{"id": 1, "media_type": "movie", "overview": "Description here"}]}"#;
         let results = TmdbProvider::parse_multi_search("tmdb", json).unwrap();
         assert_eq!(
-            results[0].metadata.get("overview").and_then(serde_json::Value::as_str),
+            results[0]
+                .metadata
+                .get("overview")
+                .and_then(serde_json::Value::as_str),
             Some("Description here")
         );
     }
@@ -1129,11 +1132,7 @@ mod tests {
 
     #[test]
     fn itunes_store_capabilities_video_type() {
-        assert!(
-            ItunesStoreProvider::default()
-                .capabilities()
-                .video_search
-        );
+        assert!(ItunesStoreProvider::default().capabilities().video_search);
     }
 
     #[test]

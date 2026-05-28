@@ -26,8 +26,8 @@
 
 // Re-exports — the new canonical home of these types is upstream.
 pub use meedya_core::providers::{
-    CoverArtInfo, MediaType, MetadataProvider, ProviderCapabilities, ProviderError,
-    ProviderResult, SearchQuery,
+    CoverArtInfo, MediaType, MetadataProvider, ProviderCapabilities, ProviderError, ProviderResult,
+    SearchQuery,
 };
 
 // ---------------------------------------------------------------------------
@@ -126,9 +126,9 @@ pub fn video_query(title: impl Into<String>, year: Option<u32>) -> SearchQuery {
 /// Entries with missing `width` or `height` are treated as zero pixels.
 /// Returns `None` if the result has no cover art at all.
 pub fn best_cover_art(r: &ProviderResult) -> Option<&CoverArtInfo> {
-    r.cover_art.iter().max_by_key(|a| {
-        u64::from(a.width.unwrap_or(0)) * u64::from(a.height.unwrap_or(0))
-    })
+    r.cover_art
+        .iter()
+        .max_by_key(|a| u64::from(a.width.unwrap_or(0)) * u64::from(a.height.unwrap_or(0)))
 }
 
 /// Returns `true` if the result has at least one cover art entry.

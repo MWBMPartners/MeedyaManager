@@ -294,7 +294,10 @@ mod tests {
         assert!(results[0].metadata.contains_key("feed_url"));
         assert!(results[0].metadata.contains_key("episode_count"));
         assert_eq!(
-            results[0].metadata.get("episode_count").and_then(serde_json::Value::as_u64),
+            results[0]
+                .metadata
+                .get("episode_count")
+                .and_then(serde_json::Value::as_u64),
             Some(2500)
         );
     }

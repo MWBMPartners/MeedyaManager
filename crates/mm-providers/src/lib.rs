@@ -66,8 +66,8 @@ pub(crate) mod http;
 // Core traits and data types (re-exported from the upstream
 // `meedya_providers` crate via the `traits` shim).
 pub use traits::{
-    CoverArtInfo, MediaType, MetadataProvider, ProviderCapabilities, ProviderError,
-    ProviderResult, SearchQuery,
+    CoverArtInfo, MediaType, MetadataProvider, ProviderCapabilities, ProviderError, ProviderResult,
+    SearchQuery,
 };
 
 // Registry
