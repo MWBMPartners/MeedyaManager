@@ -86,7 +86,10 @@ pub use rate_limiter::{
 };
 
 // Match scoring
-pub use match_scoring::{MatchScorer, ScoringWeights, score_result};
+pub use match_scoring::{
+    MatchScorer, MmScoringWeightsExt, ScoringWeights, rank_results, rank_results_with,
+    score_result,
+};
 
 // Cover art utilities
 pub use cover_art::{
@@ -291,7 +294,7 @@ mod tests {
     /// Basic sanity check that `MatchScorer::score` returns a value in [0.0, 1.0+].
     #[test]
     fn match_scorer_scores_provider_result() {
-        let scorer = MatchScorer::new();
+        let scorer = MatchScorer::default();
         let query = music_query("Comfortably Numb", "Pink Floyd");
         let r = result("test", "Comfortably Numb", "Pink Floyd");
         let score = scorer.score(&query, &r);
@@ -498,7 +501,7 @@ mod tests {
     fn score_result_matches_scorer() {
         let query = music_query("Let It Be", "The Beatles");
         let r = result("test", "Let It Be", "The Beatles");
-        let scorer = MatchScorer::new();
+        let scorer = MatchScorer::default();
         let direct = scorer.score(&query, &r);
         let convenience = score_result(&query, &r);
         // Both should agree to within floating-point precision
