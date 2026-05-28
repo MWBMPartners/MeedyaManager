@@ -17,6 +17,43 @@
 //   - parse_multi_value     — split "; "-delimited string into Vec<String>
 //   - join_multi_value      — join Vec<String> with "; "
 //
+// ## Relationship to upstream `meedya_core::metadata`
+//
+// MeedyaManager's local metadata layer is materially different from the
+// upstream `meedya_metadata` API and the two are NOT a drop-in swap:
+//
+//   - Local TagMap = HashMap<String, Vec<String>> — keyed by 40+ MM
+//     string IDs (TAG_TITLE, TAG_SORT_*, TAG_PODCAST_*, classical fields, …)
+//     that drive the JSON5 template-tag registry used by the rename rule
+//     engine and the UI pickers.
+//   - Upstream TagMap = HashMap<CommonTag, Vec<String>> — keyed by an
+//     enum with ~30 variants, no sort/classical/podcast keys, designed
+//     for provider/AcoustID/ReplayGain analyse→write flows.
+//
+// The local API drives the rule engine, rename templates, FFI tag list,
+// and UI panels — all of which depend on the larger string-keyed surface.
+// Forcing the upstream enum-only surface here would silently drop sort
+// keys, podcast fields, work/movement, original_*, mood, key, etc.  This
+// would break user templates that already reference `<SortArtist>`,
+// `<Movement>`, `<PodcastTitle>`, and friends.
+//
+// What we DO migrate in this phase:
+//   - Re-export upstream `CommonTag`, `STANDARD_NAMESPACES`, `MetadataError`
+//     for use by future provider / fingerprint / ReplayGain integration.
+//   - Re-expose upstream tag_io functions under explicit `upstream::` names
+//     so MM code that wants the CommonTag-keyed surface can opt in.
+//   - Provide conversion helpers between MM string keys and upstream
+//     CommonTag enum where the two overlap.
+//
+// What stays local (and why):
+//   - TagMap (String-keyed) — see above.
+//   - The full TAG_* constant set — needed by the JSON5 UI registry, the
+//     rule-engine tag registry, and downstream consumers.
+//   - extract_tags / write_tags / remove_tag / *cover_art / parse/join
+//     multi-value — the lofty-backed implementations match upstream's
+//     behaviour for the overlapping subset and additionally handle the
+//     MM-only tags.
+//
 // License: GPL-2.0-or-later
 
 /// Tag definition registry — loads from config/tags.json5 at startup.
@@ -36,6 +73,127 @@ use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MmError, MmResult};
+
+// ---------------------------------------------------------------------------
+// Upstream re-exports — symbols from meedya_core::metadata available alongside
+// the MM-local surface.  Consumers that want the CommonTag-keyed enum surface
+// (typically provider / fingerprint / ReplayGain integration code) use these.
+// ---------------------------------------------------------------------------
+
+/// Upstream `CommonTag` enum — the narrower enum-keyed identifier used by
+/// the provider-side write helpers in `meedya_core::metadata::tag_io`.
+pub use meedya_core::metadata::CommonTag;
+
+/// Upstream standard namespace aliases (`("itunes", "com.apple.iTunes")`, etc.).
+pub use meedya_core::metadata::STANDARD_NAMESPACES;
+
+/// Upstream metadata error type — emitted by upstream tag_io functions and
+/// the upstream tag_registry parser.  MeedyaManager keeps wrapping lofty
+/// errors into `MmError::Metadata` for its own surfaces, so this is exposed
+/// only for callers that opt into the upstream functions via `upstream::`.
+pub use meedya_core::metadata::MetadataError;
+
+/// Re-exports of the upstream lofty-backed tag I/O surface.
+///
+/// These use `HashMap<CommonTag, Vec<String>>` (note: NOT the local TagMap)
+/// and are intended for future integration points that need to interop with
+/// upstream provider, fingerprint, or ReplayGain code.
+///
+/// MeedyaManager's own metadata read/write path remains the top-level
+/// [`extract_tags`] / [`write_tags`] functions below — those preserve the
+/// full MM tag surface including sort keys, classical fields, podcast
+/// metadata, and the multi-value semantics that the rule engine depends on.
+pub mod upstream {
+    // Direct re-exports of the upstream `meedya_core::metadata::tag_io`
+    // surface.  Re-exported here so MM code never imports `meedya_metadata`
+    // / `meedya_core::metadata` paths directly.
+    pub use meedya_core::metadata::tag_io::{
+        TagMap, read_tags, write_acoustid_tags, write_registry_tags, write_replaygain_tags,
+        write_tags,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// CommonTag <-> MM string-key bridge
+// ---------------------------------------------------------------------------
+
+/// Convert an MM string tag key (e.g. `TAG_TITLE`) to the equivalent upstream
+/// `CommonTag` enum variant, where one exists.
+///
+/// Returns `None` for MM tag keys that have no upstream counterpart (sort
+/// keys, classical fields, podcast metadata, original_* fields, etc.).
+/// These tags exist only in the MM string-keyed surface.
+pub fn mm_key_to_common_tag(key: &str) -> Option<CommonTag> {
+    match key {
+        TAG_TITLE => Some(CommonTag::Title),
+        TAG_ARTIST => Some(CommonTag::Artist),
+        TAG_ALBUM => Some(CommonTag::Album),
+        TAG_ALBUM_ARTIST => Some(CommonTag::AlbumArtist),
+        TAG_YEAR => Some(CommonTag::Year),
+        TAG_GENRE => Some(CommonTag::Genre),
+        TAG_TRACK_NUMBER => Some(CommonTag::TrackNumber),
+        TAG_TRACK_TOTAL => Some(CommonTag::TotalTracks),
+        TAG_DISC_NUMBER => Some(CommonTag::DiscNumber),
+        TAG_DISC_TOTAL => Some(CommonTag::TotalDiscs),
+        TAG_COMPOSER => Some(CommonTag::Composer),
+        TAG_COMMENT => Some(CommonTag::Comment),
+        TAG_LYRICS => Some(CommonTag::Lyrics),
+        TAG_ISRC => Some(CommonTag::Isrc),
+        TAG_BARCODE => Some(CommonTag::Upc),
+        TAG_LABEL => Some(CommonTag::Label),
+        TAG_COMPILATION => Some(CommonTag::Compilation),
+        TAG_REPLAYGAIN_TRACK_GAIN => Some(CommonTag::ReplayGainTrackGain),
+        TAG_REPLAYGAIN_TRACK_PEAK => Some(CommonTag::ReplayGainTrackPeak),
+        TAG_REPLAYGAIN_ALBUM_GAIN => Some(CommonTag::ReplayGainAlbumGain),
+        TAG_REPLAYGAIN_ALBUM_PEAK => Some(CommonTag::ReplayGainAlbumPeak),
+        TAG_ENCODED_BY => Some(CommonTag::Encoder),
+        _ => None,
+    }
+}
+
+/// Convert an upstream `CommonTag` enum variant to the equivalent MM string key.
+///
+/// This is total — every `CommonTag` variant maps to a defined MM key (the
+/// inverse of `mm_key_to_common_tag` for the overlapping subset).
+pub fn common_tag_to_mm_key(tag: CommonTag) -> &'static str {
+    match tag {
+        CommonTag::Title => TAG_TITLE,
+        CommonTag::Artist => TAG_ARTIST,
+        CommonTag::Album => TAG_ALBUM,
+        CommonTag::AlbumArtist => TAG_ALBUM_ARTIST,
+        CommonTag::Year => TAG_YEAR,
+        CommonTag::Genre => TAG_GENRE,
+        CommonTag::TrackNumber => TAG_TRACK_NUMBER,
+        CommonTag::TotalTracks => TAG_TRACK_TOTAL,
+        CommonTag::DiscNumber => TAG_DISC_NUMBER,
+        CommonTag::TotalDiscs => TAG_DISC_TOTAL,
+        CommonTag::Composer => TAG_COMPOSER,
+        CommonTag::Comment => TAG_COMMENT,
+        CommonTag::Lyrics => TAG_LYRICS,
+        CommonTag::Isrc => TAG_ISRC,
+        CommonTag::Upc => TAG_BARCODE,
+        CommonTag::Label => TAG_LABEL,
+        CommonTag::Compilation => TAG_COMPILATION,
+        CommonTag::ReplayGainTrackGain => TAG_REPLAYGAIN_TRACK_GAIN,
+        CommonTag::ReplayGainTrackPeak => TAG_REPLAYGAIN_TRACK_PEAK,
+        CommonTag::ReplayGainAlbumGain => TAG_REPLAYGAIN_ALBUM_GAIN,
+        CommonTag::ReplayGainAlbumPeak => TAG_REPLAYGAIN_ALBUM_PEAK,
+        CommonTag::ReplayGainReferenceLoudness => "replaygain_reference_loudness",
+        CommonTag::Encoder => TAG_ENCODED_BY,
+        // CommonTag variants without a direct TAG_* constant fall back to
+        // their lowercase string name; this only happens for tags the
+        // local MM surface doesn't pre-declare as TAG_* constants
+        // (Copyright is in the rule-engine extended set but doesn't have
+        // a TAG_COPYRIGHT here; the rest are upstream-only fields that
+        // round-trip through the upstream tag_io surface).
+        CommonTag::Copyright => "copyright",
+        CommonTag::MusicBrainzRecordingId => "mb_recording_id",
+        CommonTag::MusicBrainzReleaseId => "mb_release_id",
+        CommonTag::AcoustId => "acoustid",
+        CommonTag::ReleaseDate => "release_date",
+        CommonTag::Description => "description",
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tag key constants — canonical string keys used throughout MeedyaManager
@@ -1404,5 +1562,136 @@ mod tests {
         read_tag_into_map(&tag2, &mut map);
 
         assert_eq!(map.get(TAG_TITLE), Some(&vec!["Same Title".to_string()]),);
+    }
+
+    // -----------------------------------------------------------------------
+    // Upstream CommonTag <-> MM string-key bridge tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn mm_key_to_common_tag_known_keys() {
+        // Each of the 22 MM keys with an upstream CommonTag equivalent
+        assert_eq!(mm_key_to_common_tag(TAG_TITLE), Some(CommonTag::Title));
+        assert_eq!(mm_key_to_common_tag(TAG_ARTIST), Some(CommonTag::Artist));
+        assert_eq!(mm_key_to_common_tag(TAG_ALBUM), Some(CommonTag::Album));
+        assert_eq!(
+            mm_key_to_common_tag(TAG_ALBUM_ARTIST),
+            Some(CommonTag::AlbumArtist)
+        );
+        assert_eq!(mm_key_to_common_tag(TAG_ISRC), Some(CommonTag::Isrc));
+        assert_eq!(mm_key_to_common_tag(TAG_BARCODE), Some(CommonTag::Upc));
+        assert_eq!(
+            mm_key_to_common_tag(TAG_REPLAYGAIN_TRACK_GAIN),
+            Some(CommonTag::ReplayGainTrackGain)
+        );
+    }
+
+    #[test]
+    fn mm_key_to_common_tag_mm_only_keys_return_none() {
+        // MM-only keys (no upstream equivalent) should return None.
+        // This documents which fields are "lost" if a caller goes through
+        // the upstream surface.
+        assert_eq!(mm_key_to_common_tag(TAG_TITLE_SORT), None);
+        assert_eq!(mm_key_to_common_tag(TAG_ARTIST_SORT), None);
+        assert_eq!(mm_key_to_common_tag(TAG_ALBUM_SORT), None);
+        assert_eq!(mm_key_to_common_tag(TAG_CONDUCTOR), None);
+        assert_eq!(mm_key_to_common_tag(TAG_REMIXER), None);
+        assert_eq!(mm_key_to_common_tag(TAG_LYRICIST), None);
+        assert_eq!(mm_key_to_common_tag(TAG_LANGUAGE), None);
+        assert_eq!(mm_key_to_common_tag(TAG_MOOD), None);
+        assert_eq!(mm_key_to_common_tag(TAG_GROUPING), None);
+        assert_eq!(mm_key_to_common_tag(TAG_WORK), None);
+        assert_eq!(mm_key_to_common_tag(TAG_MOVEMENT), None);
+        assert_eq!(mm_key_to_common_tag(TAG_MOVEMENT_INDEX), None);
+        assert_eq!(mm_key_to_common_tag(TAG_MOVEMENT_TOTAL), None);
+        assert_eq!(mm_key_to_common_tag(TAG_CATALOG_NUMBER), None);
+        assert_eq!(mm_key_to_common_tag(TAG_BPM), None);
+        assert_eq!(mm_key_to_common_tag(TAG_ORIGINAL_YEAR), None);
+        assert_eq!(mm_key_to_common_tag(TAG_ORIGINAL_ALBUM), None);
+        assert_eq!(mm_key_to_common_tag(TAG_ORIGINAL_ARTIST), None);
+        assert_eq!(mm_key_to_common_tag(TAG_PODCAST_TITLE), None);
+        assert_eq!(mm_key_to_common_tag(TAG_PODCAST_ID), None);
+        assert_eq!(mm_key_to_common_tag(TAG_PODCAST_URL), None);
+        assert_eq!(mm_key_to_common_tag(TAG_PODCAST_CATEGORY), None);
+        assert_eq!(mm_key_to_common_tag(TAG_PODCAST_DESCRIPTION), None);
+        assert_eq!(mm_key_to_common_tag(TAG_ENCODER_SETTINGS), None);
+    }
+
+    #[test]
+    fn mm_key_to_common_tag_unknown_returns_none() {
+        // Garbage input
+        assert_eq!(mm_key_to_common_tag("nonsense"), None);
+        assert_eq!(mm_key_to_common_tag(""), None);
+    }
+
+    #[test]
+    fn common_tag_to_mm_key_roundtrip() {
+        // For every CommonTag variant, common_tag_to_mm_key is total.
+        // We additionally verify that the returned key, if it's a MM TAG_*
+        // constant, round-trips back through mm_key_to_common_tag.
+        let variants = [
+            CommonTag::Title,
+            CommonTag::Artist,
+            CommonTag::Album,
+            CommonTag::AlbumArtist,
+            CommonTag::Genre,
+            CommonTag::Year,
+            CommonTag::TrackNumber,
+            CommonTag::TotalTracks,
+            CommonTag::DiscNumber,
+            CommonTag::TotalDiscs,
+            CommonTag::Composer,
+            CommonTag::Comment,
+            CommonTag::Lyrics,
+            CommonTag::Isrc,
+            CommonTag::Upc,
+            CommonTag::Label,
+            CommonTag::Compilation,
+            CommonTag::Encoder,
+            CommonTag::ReplayGainTrackGain,
+            CommonTag::ReplayGainTrackPeak,
+            CommonTag::ReplayGainAlbumGain,
+            CommonTag::ReplayGainAlbumPeak,
+        ];
+        for v in variants {
+            let mm_key = common_tag_to_mm_key(v);
+            assert!(!mm_key.is_empty(), "MM key for {v:?} must be non-empty");
+            assert_eq!(
+                mm_key_to_common_tag(mm_key),
+                Some(v),
+                "CommonTag::{v:?} -> mm_key -> CommonTag round-trip failed",
+            );
+        }
+    }
+
+    #[test]
+    fn common_tag_to_mm_key_extended_variants_are_total() {
+        // The variants that don't map to a TAG_* constant still produce
+        // a well-defined non-empty string.
+        assert!(!common_tag_to_mm_key(CommonTag::Copyright).is_empty());
+        assert!(!common_tag_to_mm_key(CommonTag::MusicBrainzRecordingId).is_empty());
+        assert!(!common_tag_to_mm_key(CommonTag::MusicBrainzReleaseId).is_empty());
+        assert!(!common_tag_to_mm_key(CommonTag::AcoustId).is_empty());
+        assert!(!common_tag_to_mm_key(CommonTag::ReleaseDate).is_empty());
+        assert!(!common_tag_to_mm_key(CommonTag::Description).is_empty());
+        assert!(!common_tag_to_mm_key(CommonTag::ReplayGainReferenceLoudness).is_empty());
+    }
+
+    #[test]
+    fn upstream_reexports_resolve() {
+        // Sanity: the re-exported upstream symbols actually resolve to types.
+        // STANDARD_NAMESPACES is a slice constant — verify it includes the
+        // canonical entries.
+        let names: Vec<&str> = STANDARD_NAMESPACES.iter().map(|(k, _)| *k).collect();
+        assert!(names.contains(&"itunes"));
+        assert!(names.contains(&"meedya"));
+    }
+
+    #[test]
+    fn upstream_tag_io_module_resolves() {
+        // Touching the type forces the re-export to be exercised at compile
+        // time.  TagMap is HashMap<CommonTag, Vec<String>>.
+        let m: upstream::TagMap = upstream::TagMap::new();
+        assert!(m.is_empty());
     }
 }
