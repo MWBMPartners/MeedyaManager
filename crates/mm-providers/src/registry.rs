@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use tracing::{debug, warn};
 
-use crate::match_scoring::MatchScorer;
+use crate::match_scoring::{MatchScorer, rank_results_with};
 use crate::traits::{MediaType, MetadataProvider, ProviderResult, SearchQuery};
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ impl ProviderRegistry {
     pub fn new() -> Self {
         Self {
             providers: Vec::new(),
-            scorer: MatchScorer::new(),
+            scorer: MatchScorer::default(),
         }
     }
 
@@ -148,7 +148,7 @@ impl ProviderRegistry {
         }
 
         // Score and sort merged results
-        self.scorer.rank_results(query, &mut merged);
+        rank_results_with(&self.scorer, query, &mut merged);
 
         // Respect the max_results limit from the query
         if let Some(limit) = query.max_results {

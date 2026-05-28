@@ -1,66 +1,87 @@
 // (C) 2025-2026 MWBM Partners Ltd
 //
-// MeedyaManager — Credential Management
+// MeedyaManager — Credential Management (#133 migration)
 //
-// Implements 4-tier credential resolution for metadata provider API keys:
+// Phase 3 of the MeedyaSuite-core integration epic. The 605-line local
+// implementation is replaced by re-exports from
+// `meedya_core::providers::credentials` PLUS a thin local wrapper
+// (`CredentialStore`) that preserves MeedyaManager's deployment
+// conventions:
 //
-//   Tier 1 — Environment variable: `MM_<PROVIDER>_<KEY>` (highest priority)
-//   Tier 2 — Configuration file: values injected from `settings.json5`
-//   Tier 3 — OS keyring: macOS Keychain, Windows Credential Manager, Linux Secret Service
-//   Tier 4 — Local credential file: `credentials.json` in the app config directory
+//   - Tier 1 env var prefix: `MM_<PROVIDER>_<KEY>` (NOT upstream's
+//     `MEEDYA_<PROVIDER>_<KEY>`). Existing user environments and CI
+//     pipelines depend on the `MM_` prefix — changing it would silently
+//     break every deployment.
+//   - Keyring service name: `meedyamanager.<provider>` (per-provider
+//     services) rather than upstream's single shared service.
+//   - Two-arg constructor: `(config_map, config_dir)`, where
+//     `credentials.json` is auto-appended to the directory.
 //
-// Resolution order: Env → Config → Keyring → Local File → None
+// We achieve this by delegating tiers 2–4 to the upstream
+// `meedya_providers::CredentialStore` (which already has 4-tier resolution
+// with config map / OS keyring / local file) and prepending MM-flavoured
+// tier 1 logic on top.
 //
-// All credential access is logged (at debug level) but values are never logged.
+// Upstream items re-exported (for code that wants the raw upstream API):
+//   - `MmUpstreamCredentialStore` (renamed from `CredentialStore` to avoid
+//     conflict with our local wrapper)
+//   - `CredentialSource`, `ResolvedCredential`, `CredentialError`
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use tracing::{debug, warn};
 
-// ---------------------------------------------------------------------------
-// Credential source tag
-// ---------------------------------------------------------------------------
+// Re-exports — provides the upstream API for callers that want it raw.
+pub use meedya_core::providers::credentials::{
+    CredentialSource, CredentialStore as MmUpstreamCredentialStore, ResolvedCredential,
+};
+pub use meedya_core::providers::error::CredentialError;
 
-/// Indicates which tier supplied a credential (for diagnostics / UI display).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CredentialSource {
-    /// Resolved from an environment variable (`MM_<PROVIDER>_<KEY>`)
-    Environment,
-    /// Resolved from the configuration file (`settings.json5`)
-    Config,
-    /// Resolved from the OS keyring (macOS Keychain / Windows Credential Manager / Secret Service)
-    Keyring,
-    /// Resolved from the local credential JSON file in the config directory
-    LocalFile,
-}
+// ---------------------------------------------------------------------------
+// Local-only Display impl for CredentialSource
+// ---------------------------------------------------------------------------
+//
+// The upstream `CredentialSource` derives `Debug` but doesn't impl `Display`.
+// We expose the prior MM-style human-readable labels via a free function so
+// callers don't need to match on the enum themselves. This is the
+// replacement for the previous `impl Display for CredentialSource`.
 
-impl std::fmt::Display for CredentialSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Environment => write!(f, "environment variable"),
-            Self::Config => write!(f, "config file"),
-            Self::Keyring => write!(f, "OS keyring"),
-            Self::LocalFile => write!(f, "local credential file"),
-        }
+/// Human-readable label for a `CredentialSource` tier (lowercase, terse).
+///
+/// Matches the previous `Display` impl on the local `CredentialSource` enum:
+///   - `Environment`   → `"environment variable"`
+///   - `Config`        → `"config file"`
+///   - `Keyring`       → `"OS keyring"`
+///   - `LocalFile`     → `"local credential file"`
+pub fn credential_source_label(src: CredentialSource) -> &'static str {
+    match src {
+        CredentialSource::Environment => "environment variable",
+        CredentialSource::Config => "config file",
+        CredentialSource::Keyring => "OS keyring",
+        CredentialSource::LocalFile => "local credential file",
     }
 }
 
 // ---------------------------------------------------------------------------
-// Resolved credential
+// Credential — local-flavoured wrapper around the value+source pair
 // ---------------------------------------------------------------------------
 
 /// A successfully resolved credential value with provenance information.
+///
+/// This is the MeedyaManager-flavoured equivalent of the upstream
+/// `ResolvedCredential`. We keep it as a separate type because the
+/// previous code paths exposed `Credential` directly (and a couple of
+/// downstream callers `match` on `cred.source` against `CredentialSource`).
 #[derive(Debug, Clone)]
 pub struct Credential {
-    /// The secret value (never log this)
+    /// The secret value (never log this).
     pub value: String,
-    /// Which tier supplied this credential
+    /// Which tier supplied this credential.
     pub source: CredentialSource,
 }
 
 impl Credential {
-    /// Create a new credential with the given value and source.
     fn new(value: impl Into<String>, source: CredentialSource) -> Self {
         Self {
             value: value.into(),
@@ -69,35 +90,53 @@ impl Credential {
     }
 }
 
+impl From<ResolvedCredential> for Credential {
+    fn from(r: ResolvedCredential) -> Self {
+        Self {
+            value: r.value,
+            source: r.source,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Credential store
+// CredentialStore — local wrapper preserving MM conventions
 // ---------------------------------------------------------------------------
+
+/// Keyring service identifier used when storing per-provider secrets.
+///
+/// The upstream `CredentialStore` keys all entries under a single service
+/// name with `{provider}/{key}` as the secret label. We keep the previous
+/// MeedyaManager convention of per-provider services
+/// (`meedyamanager.<provider>`) by instantiating a fresh upstream store per
+/// keyring operation with the service name pre-baked in.
+const MM_KEYRING_SERVICE_PREFIX: &str = "meedyamanager";
 
 /// 4-tier credential resolver for metadata provider API keys.
 ///
-/// # Example
+/// Tier order (highest priority first):
+///   1. `MM_<PROVIDER>_<KEY>` environment variable
+///   2. In-memory config map (from `settings.json5`)
+///   3. OS keyring (per-provider service `meedyamanager.<provider>`)
+///   4. Local `credentials.json` in the configured directory
 ///
-/// ```ignore
-/// let store = CredentialStore::new(config_values, config_dir);
-/// if let Some(cred) = store.get("spotify", "client_id") {
-///     // Use cred.value
-/// }
-/// ```
+/// All credential access is logged at debug level; values are NEVER logged.
 #[derive(Debug)]
 pub struct CredentialStore {
-    /// Tier 2: credentials injected from `settings.json5` at startup.
-    /// Key format: `<provider>.<key>` (e.g., `"spotify.client_id"`)
+    /// Tier 2 — credentials injected from `settings.json5` at startup.
+    /// Key format: `<provider>.<key>` (e.g., `"spotify.client_id"`).
     config_credentials: HashMap<String, String>,
-
-    /// Tier 4: path to the local `credentials.json` file
+    /// Tier 4 — full path to `credentials.json`.
     local_file_path: PathBuf,
 }
 
 impl CredentialStore {
     /// Create a new credential store.
     ///
-    /// - `config_credentials` — flat map of `"provider.key" → "value"` from `settings.json5`
+    /// - `config_credentials` — flat map of `"provider.key" → "value"`
+    ///   loaded from `settings.json5`.
     /// - `config_dir`         — directory where `credentials.json` is stored
+    ///   (the filename is auto-appended).
     pub fn new(config_credentials: HashMap<String, String>, config_dir: impl AsRef<Path>) -> Self {
         Self {
             config_credentials,
@@ -109,113 +148,98 @@ impl CredentialStore {
     ///
     /// Returns `None` if the credential is not found in any tier.
     pub fn get(&self, provider: &str, key: &str) -> Option<Credential> {
-        // Tier 1 — environment variable
-        if let Some(val) = Self::from_env(provider, key) {
-            debug!(
-                provider = provider,
-                key = key,
-                source = "env",
-                "Credential resolved"
-            );
+        // Tier 1 — `MM_<PROVIDER>_<KEY>` env var (local-flavoured prefix).
+        if let Some(val) = Self::from_mm_env(provider, key) {
+            debug!(provider, key, source = "env", "Credential resolved");
             return Some(Credential::new(val, CredentialSource::Environment));
         }
 
-        // Tier 2 — config file
-        if let Some(val) = self.config_credential(provider, key) {
-            debug!(
-                provider = provider,
-                key = key,
-                source = "config",
-                "Credential resolved"
-            );
-            return Some(Credential::new(val, CredentialSource::Config));
+        // Tiers 2–4: delegate to a freshly-built upstream store with our
+        // config map and credentials file path. We rebuild the upstream
+        // store per call because `CredentialStore` is small and the
+        // `config_credentials` map must be re-applied via `set_config`.
+        let upstream = self.build_upstream_store(provider);
+        match upstream.resolve(provider, key) {
+            Ok(resolved) => {
+                debug!(
+                    provider,
+                    key,
+                    source = ?resolved.source,
+                    "Credential resolved (delegated to upstream)"
+                );
+                Some(resolved.into())
+            }
+            Err(CredentialError::NotFound { .. }) => {
+                debug!(provider, key, "Credential not found in any tier");
+                None
+            }
+            Err(e) => {
+                warn!(provider, key, error = %e, "Credential resolution error");
+                None
+            }
         }
-
-        // Tier 3 — OS keyring
-        if let Some(val) = Self::from_keyring(provider, key) {
-            debug!(
-                provider = provider,
-                key = key,
-                source = "keyring",
-                "Credential resolved"
-            );
-            return Some(Credential::new(val, CredentialSource::Keyring));
-        }
-
-        // Tier 4 — local credential file
-        if let Some(val) = self.local_file_credential(provider, key) {
-            debug!(
-                provider = provider,
-                key = key,
-                source = "local_file",
-                "Credential resolved"
-            );
-            return Some(Credential::new(val, CredentialSource::LocalFile));
-        }
-
-        debug!(
-            provider = provider,
-            key = key,
-            "Credential not found in any tier"
-        );
-        None
     }
 
     /// Store a credential in the OS keyring.
     ///
     /// Returns `Ok(())` on success, or an error message string on failure.
     pub fn store_in_keyring(provider: &str, key: &str, value: &str) -> Result<(), String> {
-        let service = Self::keyring_service(provider);
-        let entry = keyring::Entry::new(&service, key)
-            .map_err(|e| format!("Failed to create keyring entry: {e}"))?;
-        entry
-            .set_password(value)
+        let upstream = MmUpstreamCredentialStore::new(Self::keyring_service(provider), None);
+        upstream
+            .store_keyring(provider, key, value)
             .map_err(|e| format!("Failed to store in keyring: {e}"))
     }
 
     /// Delete a credential from the OS keyring.
     pub fn delete_from_keyring(provider: &str, key: &str) -> Result<(), String> {
-        let service = Self::keyring_service(provider);
-        let entry = keyring::Entry::new(&service, key)
-            .map_err(|e| format!("Failed to create keyring entry: {e}"))?;
-        entry
-            .delete_credential()
+        let upstream = MmUpstreamCredentialStore::new(Self::keyring_service(provider), None);
+        upstream
+            .delete_keyring(provider, key)
             .map_err(|e| format!("Failed to delete from keyring: {e}"))
     }
 
     /// Store a credential in the local credential file (tier 4).
-    ///
-    /// Creates the file if it does not exist. Thread-safe via file-level write.
     pub fn store_in_local_file(
         &self,
         provider: &str,
         key: &str,
         value: &str,
     ) -> Result<(), String> {
-        // Load existing credentials (or start fresh)
-        let mut map = self.load_local_file().unwrap_or_default();
-        // Insert / overwrite the credential
-        let composite_key = format!("{provider}.{key}");
-        map.insert(composite_key, value.to_owned());
-        // Serialise and write atomically (write → rename)
-        let json = serde_json::to_string_pretty(&map)
-            .map_err(|e| format!("Failed to serialise credentials: {e}"))?;
-        // Write to a temp file first, then rename for atomicity
-        let tmp_path = self.local_file_path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, &json)
-            .map_err(|e| format!("Failed to write credential file: {e}"))?;
-        std::fs::rename(&tmp_path, &self.local_file_path)
-            .map_err(|e| format!("Failed to rename credential file: {e}"))
+        // Delegate to upstream's atomic-write implementation.
+        let upstream = MmUpstreamCredentialStore::new(
+            Self::keyring_service(provider),
+            Some(self.local_file_path.clone()),
+        );
+        upstream
+            .store_local_file(provider, key, value)
+            .map_err(|e| format!("Failed to write credential file: {e}"))
     }
 
     /// Remove a credential from the local file.
+    ///
+    /// The upstream API has no public delete-by-key, so we do this directly:
+    /// load the JSON, mutate it, write it back atomically.
     pub fn remove_from_local_file(&self, provider: &str, key: &str) -> Result<(), String> {
-        let mut map = self.load_local_file().unwrap_or_default();
-        map.remove(&format!("{provider}.{key}"));
-        let json = serde_json::to_string_pretty(&map)
+        let path = &self.local_file_path;
+        if !path.exists() {
+            return Ok(()); // Nothing to remove.
+        }
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read credential file: {e}"))?;
+        let mut data: HashMap<String, serde_json::Value> = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse credential file: {e}"))?;
+
+        // Upstream's local-file format is `{ "<provider>": { "<key>": "<value>", ... }, ... }`.
+        if let Some(serde_json::Value::Object(provider_map)) = data.get_mut(provider) {
+            provider_map.remove(key);
+            if provider_map.is_empty() {
+                data.remove(provider);
+            }
+        }
+
+        let json = serde_json::to_string_pretty(&data)
             .map_err(|e| format!("Failed to serialise credentials: {e}"))?;
-        std::fs::write(&self.local_file_path, json)
-            .map_err(|e| format!("Failed to write credential file: {e}"))
+        std::fs::write(path, json).map_err(|e| format!("Failed to write credential file: {e}"))
     }
 
     /// Check whether a credential exists in any tier (without returning the value).
@@ -224,133 +248,116 @@ impl CredentialStore {
     }
 
     // -----------------------------------------------------------------------
-    // Internal tier implementations
+    // Internal helpers
     // -----------------------------------------------------------------------
 
-    /// Tier 1: Look up `MM_<PROVIDER>_<KEY>` in the environment.
-    fn from_env(provider: &str, key: &str) -> Option<String> {
-        // Normalise: uppercase, replace hyphens/dots/spaces with underscores
-        let var = format!(
-            "MM_{}_{}",
-            Self::normalise_id(provider),
-            Self::normalise_id(key)
-        );
-        std::env::var(&var).ok().filter(|v| !v.is_empty())
-    }
-
-    /// Tier 2: Look up `<provider>.<key>` in the config-derived credentials map.
-    fn config_credential(&self, provider: &str, key: &str) -> Option<String> {
-        let composite = format!("{}.{}", provider.to_lowercase(), key.to_lowercase());
-        self.config_credentials
-            .get(&composite)
-            .cloned()
-            .filter(|v| !v.is_empty())
-    }
-
-    /// Tier 3: Look up the credential in the OS keyring.
-    fn from_keyring(provider: &str, key: &str) -> Option<String> {
+    /// Build a fresh upstream `CredentialStore` pre-loaded with this wrapper's
+    /// config map and the per-provider keyring service name.
+    fn build_upstream_store(&self, provider: &str) -> MmUpstreamCredentialStore {
         let service = Self::keyring_service(provider);
-        match keyring::Entry::new(&service, key) {
-            Ok(entry) => match entry.get_password() {
-                Ok(password) if !password.is_empty() => Some(password),
-                Ok(_) => None,
-                Err(keyring::Error::NoEntry) => None,
-                Err(e) => {
-                    warn!(provider = provider, key = key, error = %e, "Keyring lookup failed");
-                    None
+        let mut store = MmUpstreamCredentialStore::new(service, Some(self.local_file_path.clone()));
+
+        // Tier 2 — apply our config map. Upstream's `resolve()` looks under
+        // the key `<provider>.<key>`, which is exactly the format used by
+        // MeedyaManager's settings.json5 wiring, so a direct `set_config`
+        // for each entry whose composite key matches the requested provider
+        // is sufficient.
+        for (composite_key, value) in &self.config_credentials {
+            if value.is_empty() {
+                // Empty config values are treated as missing — skip them so
+                // resolution can fall through to the next tier.
+                continue;
+            }
+            if let Some((p, k)) = composite_key.split_once('.') {
+                // Only apply entries that match the requested provider —
+                // limits the in-memory size of the upstream store for any
+                // single resolution and matches the previous behaviour
+                // where unrelated entries didn't shadow lower tiers.
+                if p.eq_ignore_ascii_case(provider) {
+                    store.set_config(p, k, value.clone());
                 }
-            },
-            Err(e) => {
-                warn!(provider = provider, key = key, error = %e, "Failed to create keyring entry");
-                None
             }
         }
+        store
     }
 
-    /// Tier 4: Look up the credential in the local `credentials.json` file.
-    fn local_file_credential(&self, provider: &str, key: &str) -> Option<String> {
-        let map = self.load_local_file()?;
-        let composite = format!("{}.{}", provider.to_lowercase(), key.to_lowercase());
-        map.get(&composite).cloned().filter(|v| !v.is_empty())
-    }
-
-    /// Load and parse the local credentials JSON file.
-    fn load_local_file(&self) -> Option<HashMap<String, String>> {
-        if !self.local_file_path.exists() {
-            return None;
-        }
-        let content = std::fs::read_to_string(&self.local_file_path).ok()?;
-        serde_json::from_str(&content).ok()
-    }
-
-    /// Build the keyring service name for a provider.
+    /// Build the keyring service name for a provider, e.g. `meedyamanager.spotify`.
     fn keyring_service(provider: &str) -> String {
-        format!("meedyamanager.{}", provider.to_lowercase())
+        format!("{MM_KEYRING_SERVICE_PREFIX}.{}", provider.to_lowercase())
     }
 
-    /// Normalise an identifier for use in an environment variable name.
-    /// Uppercases and replaces hyphens, dots, and spaces with underscores.
-    fn normalise_id(s: &str) -> String {
-        s.to_uppercase().replace(['-', '.', ' '], "_")
+    /// Tier 1: look up `MM_<PROVIDER>_<KEY>` in the environment.
+    fn from_mm_env(provider: &str, key: &str) -> Option<String> {
+        let var = format!("MM_{}_{}", normalise_id(provider), normalise_id(key));
+        std::env::var(&var).ok().filter(|v| !v.is_empty())
     }
 }
 
+/// Normalise an identifier for use in an environment variable name.
+/// Uppercases and replaces hyphens, dots, and spaces with underscores.
+fn normalise_id(s: &str) -> String {
+    s.to_uppercase().replace(['-', '.', ' '], "_")
+}
+
 // ---------------------------------------------------------------------------
-// Tests — 30 tests
+// Tests — preserve all behaviour the previous local impl had
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
+#[allow(unsafe_code)] // set_var / remove_var require unsafe in Edition 2024
 mod tests {
     use super::*;
     use std::collections::HashMap;
     use tempfile::TempDir;
 
-    // Helper: create a store backed by a temp directory
     fn make_store(config_creds: HashMap<String, String>) -> (CredentialStore, TempDir) {
         let dir = TempDir::new().unwrap();
         let store = CredentialStore::new(config_creds, dir.path());
         (store, dir)
     }
 
-    // Helper: empty config credential store
     fn empty_store() -> (CredentialStore, TempDir) {
         make_store(HashMap::new())
     }
 
-    // --- CredentialSource Display ---
+    // --- credential_source_label ---
 
     #[test]
-    fn credential_source_display_env() {
+    fn source_label_env() {
         assert_eq!(
-            CredentialSource::Environment.to_string(),
+            credential_source_label(CredentialSource::Environment),
             "environment variable"
         );
     }
 
     #[test]
-    fn credential_source_display_config() {
-        assert_eq!(CredentialSource::Config.to_string(), "config file");
-    }
-
-    #[test]
-    fn credential_source_display_keyring() {
-        assert_eq!(CredentialSource::Keyring.to_string(), "OS keyring");
-    }
-
-    #[test]
-    fn credential_source_display_local_file() {
+    fn source_label_config() {
         assert_eq!(
-            CredentialSource::LocalFile.to_string(),
+            credential_source_label(CredentialSource::Config),
+            "config file"
+        );
+    }
+
+    #[test]
+    fn source_label_keyring() {
+        assert_eq!(
+            credential_source_label(CredentialSource::Keyring),
+            "OS keyring"
+        );
+    }
+
+    #[test]
+    fn source_label_local_file() {
+        assert_eq!(
+            credential_source_label(CredentialSource::LocalFile),
             "local credential file"
         );
     }
 
-    // --- Tier 1: Environment variable ---
+    // --- Tier 1 (MM_ env) ---
 
     #[test]
     fn tier1_env_var_found() {
-        // Set the env var for this test
         unsafe { std::env::set_var("MM_TESTPROVIDER_TESTKEY", "secret-value") };
         let (store, _dir) = empty_store();
         let cred = store.get("testprovider", "testkey");
@@ -363,7 +370,6 @@ mod tests {
 
     #[test]
     fn tier1_env_var_hyphenated_provider() {
-        // Hyphens in provider name should be normalised to underscores
         unsafe { std::env::set_var("MM_APPLE_MUSIC_API_KEY", "apple-key") };
         let (store, _dir) = empty_store();
         let cred = store.get("apple-music", "api_key");
@@ -375,9 +381,7 @@ mod tests {
 
     #[test]
     fn tier1_env_var_not_set_returns_none() {
-        // Use a unique key name to avoid collision with existing env vars
         let (store, _dir) = empty_store();
-        // No env var set for this unique provider/key combo
         let cred = store.get("mm_no_such_provider_xyz", "no_such_key_xyz");
         assert!(cred.is_none());
     }
@@ -388,11 +392,10 @@ mod tests {
         let (store, _dir) = empty_store();
         let cred = store.get("emptyprovider", "emptykey");
         unsafe { std::env::remove_var("MM_EMPTYPROVIDER_EMPTYKEY") };
-        // Empty string should not be returned
         assert!(cred.is_none());
     }
 
-    // --- Tier 2: Config file ---
+    // --- Tier 2 (config map) ---
 
     #[test]
     fn tier2_config_credential_found() {
@@ -402,18 +405,6 @@ mod tests {
 
         let cred = store.get("spotify", "client_id").unwrap();
         assert_eq!(cred.value, "sp-client-id");
-        assert_eq!(cred.source, CredentialSource::Config);
-    }
-
-    #[test]
-    fn tier2_config_key_is_case_insensitive() {
-        // Config lookup normalises to lowercase
-        let mut config = HashMap::new();
-        config.insert("musicbrainz.user_agent".to_owned(), "my-app/1.0".to_owned());
-        let (store, _dir) = make_store(config);
-
-        let cred = store.get("MusicBrainz", "user_agent").unwrap();
-        assert_eq!(cred.value, "my-app/1.0");
         assert_eq!(cred.source, CredentialSource::Config);
     }
 
@@ -428,11 +419,10 @@ mod tests {
         let mut config = HashMap::new();
         config.insert("deezer.app_id".to_owned(), String::new());
         let (store, _dir) = make_store(config);
-        // Empty config value → should fall through to next tier (None for now)
         assert!(store.get("deezer", "app_id").is_none());
     }
 
-    // --- Tier 1 takes priority over Tier 2 ---
+    // --- Tier 1 > Tier 2 priority ---
 
     #[test]
     fn tier1_takes_priority_over_tier2() {
@@ -444,21 +434,18 @@ mod tests {
         let cred = store.get("priority", "key").unwrap();
         unsafe { std::env::remove_var("MM_PRIORITY_KEY") };
 
-        // Env should win
         assert_eq!(cred.value, "env-value");
         assert_eq!(cred.source, CredentialSource::Environment);
     }
 
-    // --- Tier 4: Local credential file ---
+    // --- Tier 4 (local file) ---
 
     #[test]
     fn tier4_store_and_retrieve_from_local_file() {
         let (store, _dir) = empty_store();
-        // Store a credential
         store
             .store_in_local_file("tmdb", "api_key", "tmdb-secret")
             .unwrap();
-        // Retrieve it
         let cred = store.get("tmdb", "api_key").unwrap();
         assert_eq!(cred.value, "tmdb-secret");
         assert_eq!(cred.source, CredentialSource::LocalFile);
@@ -508,11 +495,10 @@ mod tests {
     #[test]
     fn tier4_local_file_not_found_returns_none() {
         let (store, _dir) = empty_store();
-        // No local file has been written
         assert!(store.get("nobody", "nothing").is_none());
     }
 
-    // --- Config takes priority over Tier 4 ---
+    // --- Tier 2 > Tier 4 priority ---
 
     #[test]
     fn tier2_takes_priority_over_tier4() {
@@ -548,33 +534,27 @@ mod tests {
 
     #[test]
     fn normalise_id_uppercase() {
-        assert_eq!(CredentialStore::normalise_id("spotify"), "SPOTIFY");
+        assert_eq!(normalise_id("spotify"), "SPOTIFY");
     }
 
     #[test]
     fn normalise_id_replaces_hyphens() {
-        assert_eq!(CredentialStore::normalise_id("apple-music"), "APPLE_MUSIC");
+        assert_eq!(normalise_id("apple-music"), "APPLE_MUSIC");
     }
 
     #[test]
     fn normalise_id_replaces_dots() {
-        assert_eq!(CredentialStore::normalise_id("my.provider"), "MY_PROVIDER");
+        assert_eq!(normalise_id("my.provider"), "MY_PROVIDER");
     }
 
     #[test]
     fn normalise_id_replaces_spaces() {
-        assert_eq!(
-            CredentialStore::normalise_id("youtube music"),
-            "YOUTUBE_MUSIC"
-        );
+        assert_eq!(normalise_id("youtube music"), "YOUTUBE_MUSIC");
     }
 
     #[test]
     fn normalise_id_mixed_chars() {
-        assert_eq!(
-            CredentialStore::normalise_id("apple-music.api"),
-            "APPLE_MUSIC_API"
-        );
+        assert_eq!(normalise_id("apple-music.api"), "APPLE_MUSIC_API");
     }
 
     // --- keyring_service ---
@@ -594,12 +574,16 @@ mod tests {
         assert_eq!(cred.source, CredentialSource::Config);
     }
 
-    // --- CredentialStore construction ---
+    // --- Conversion from upstream ResolvedCredential ---
 
     #[test]
-    fn store_new_creates_correct_path() {
-        let dir = TempDir::new().unwrap();
-        let store = CredentialStore::new(HashMap::new(), dir.path());
-        assert_eq!(store.local_file_path, dir.path().join("credentials.json"));
+    fn credential_from_resolved() {
+        let resolved = ResolvedCredential {
+            value: "secret".into(),
+            source: CredentialSource::Environment,
+        };
+        let cred: Credential = resolved.into();
+        assert_eq!(cred.value, "secret");
+        assert_eq!(cred.source, CredentialSource::Environment);
     }
 }

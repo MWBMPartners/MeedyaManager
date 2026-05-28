@@ -74,18 +74,27 @@ pub use traits::{
 pub use registry::ProviderRegistry;
 
 // Credential management
-pub use credentials::{Credential, CredentialSource, CredentialStore};
+pub use credentials::{
+    Credential, CredentialError, CredentialSource, CredentialStore, MmUpstreamCredentialStore,
+    ResolvedCredential, credential_source_label,
+};
 
 // Rate limiting
-pub use rate_limiter::{ProviderRateLimiter, RateLimiterRegistry, default_rpm_for};
+pub use rate_limiter::{
+    ALL_MM_PROVIDERS, MmRateLimiterRegistryExt, ProviderRateLimiter, RateLimiterRegistry,
+    check_rate_limited, default_rpm_for,
+};
 
 // Match scoring
-pub use match_scoring::{MatchScorer, ScoringWeights, score_result};
+pub use match_scoring::{
+    MatchScorer, MmScoringWeightsExt, ScoringWeights, rank_results, rank_results_with, score_result,
+};
 
 // Cover art utilities
 pub use cover_art::{
-    CoverArtSize, deduplicate, filter_by_min_size, is_valid_art_url, mime_type_for_url,
-    select_best, select_largest, select_smallest, url_has_image_extension,
+    CoverArtSize, CoverArtSizeExt, classify, deduplicate, filter_by_min_size, is_valid_art_url,
+    mime_type_for_url, select_best, select_best_min_side, select_largest, select_smallest,
+    url_has_image_extension,
 };
 
 // Music providers (concrete)
@@ -284,7 +293,7 @@ mod tests {
     /// Basic sanity check that `MatchScorer::score` returns a value in [0.0, 1.0+].
     #[test]
     fn match_scorer_scores_provider_result() {
-        let scorer = MatchScorer::new();
+        let scorer = MatchScorer::default();
         let query = music_query("Comfortably Numb", "Pink Floyd");
         let r = result("test", "Comfortably Numb", "Pink Floyd");
         let score = scorer.score(&query, &r);
@@ -301,34 +310,17 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// The default registry must include entries for all known provider names.
-    #[test]
-    fn rate_limiter_registry_has_default_limits_for_all() {
-        let registry = RateLimiterRegistry::with_all_providers();
-        let providers = [
-            "musicbrainz",
-            "spotify",
-            "apple_music",
-            "deezer",
-            "youtube_music",
-            "amazon_music",
-            "pandora",
-            "tidal",
-            "shazam",
-            "iheart",
-            "tmdb",
-            "thetvdb",
-            "omdb",
-            "apple_tv",
-            "itunes_store",
-            "apple_podcasts",
-            "isrc",
-            "eidr",
-            "iswc",
-        ];
-        for name in &providers {
-            // check() returns Ok for registered providers (not over-limit immediately)
+    #[tokio::test]
+    async fn rate_limiter_registry_has_default_limits_for_all() {
+        let registry =
+            <RateLimiterRegistry as MmRateLimiterRegistryExt>::with_all_mm_providers().await;
+        for name in ALL_MM_PROVIDERS {
+            // MmRateLimiterRegistryExt::check returns Ok for registered providers
+            // (not over-limit immediately).
             assert!(
-                registry.check(name).is_ok(),
+                MmRateLimiterRegistryExt::check(&registry, name)
+                    .await
+                    .is_ok(),
                 "Missing or over-limit rate limiter for provider '{name}'"
             );
         }
@@ -354,20 +346,26 @@ mod tests {
     // 8. CoverArtSize classification
     // -----------------------------------------------------------------------
 
-    /// `CoverArtSize::from_art` correctly classifies images by shortest dimension.
+    /// `CoverArtSize::from_art_min_side` correctly classifies images by shortest dimension.
     #[test]
     fn cover_art_size_from_provider_result() {
         // 600×600 → Medium (500–999 range)
         let medium = art("https://example.com/cover.jpg", 600, 600);
-        assert_eq!(CoverArtSize::from_art(&medium), CoverArtSize::Medium);
+        assert_eq!(
+            CoverArtSize::from_art_min_side(&medium),
+            CoverArtSize::Medium
+        );
 
         // 100×100 → Thumbnail (< 200)
         let thumb = art("https://example.com/thumb.jpg", 100, 100);
-        assert_eq!(CoverArtSize::from_art(&thumb), CoverArtSize::Thumbnail);
+        assert_eq!(
+            CoverArtSize::from_art_min_side(&thumb),
+            CoverArtSize::Thumbnail
+        );
 
         // 1200×1200 → Large (1000–1999 range)
         let xl = art("https://example.com/xl.jpg", 1200, 1200);
-        assert_eq!(CoverArtSize::from_art(&xl), CoverArtSize::Large);
+        assert_eq!(CoverArtSize::from_art_min_side(&xl), CoverArtSize::Large);
     }
 
     // -----------------------------------------------------------------------
@@ -474,7 +472,7 @@ mod tests {
     // 13. select_best picks the smallest image meeting the minimum
     // -----------------------------------------------------------------------
 
-    /// `select_best` returns the smallest image that meets the min-side constraint.
+    /// `select_best_min_side` returns the largest image that meets the min-side constraint.
     #[test]
     fn cover_art_select_best_picks_correct() {
         let arts = vec![
@@ -482,8 +480,8 @@ mod tests {
             art("https://example.com/500.jpg", 500, 500),
             art("https://example.com/1000.jpg", 1000, 1000),
         ];
-        // Min 400px — select_best returns the largest qualifying image
-        let best = select_best(&arts, 400).unwrap();
+        // Min 400px — select_best_min_side returns the largest qualifying image
+        let best = select_best_min_side(&arts, 400).unwrap();
         assert_eq!(best.width, Some(1000));
     }
 
@@ -510,7 +508,7 @@ mod tests {
     fn score_result_matches_scorer() {
         let query = music_query("Let It Be", "The Beatles");
         let r = result("test", "Let It Be", "The Beatles");
-        let scorer = MatchScorer::new();
+        let scorer = MatchScorer::default();
         let direct = scorer.score(&query, &r);
         let convenience = score_result(&query, &r);
         // Both should agree to within floating-point precision

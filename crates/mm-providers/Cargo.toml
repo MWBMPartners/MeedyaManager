@@ -44,17 +44,13 @@ oauth2 = { workspace = true }
 # JWT token handling for authenticated provider APIs
 jsonwebtoken = { workspace = true }
 
-# Rate limiting to respect provider API quotas
-governor = { workspace = true }
-
-# Fuzzy string matching for metadata result scoring
-fuzzy-matcher = { workspace = true }
-
-# Secure credential storage for API keys and tokens
-keyring = { workspace = true }
-
 # Async trait support — required by upstream `meedya_providers::MetadataProvider`
 async-trait = "0.1"
+
+# NOTE: `governor`, `fuzzy-matcher`, and `keyring` were removed in #135 as
+# part of the #133 infrastructure migration — those crates are now
+# transitively available through `meedya-core`'s `providers` feature
+# (which forwards to `meedya-providers`).
 
 [dev-dependencies]
 # HTTP mock server for provider API integration tests
