@@ -255,8 +255,7 @@ impl CredentialStore {
     /// config map and the per-provider keyring service name.
     fn build_upstream_store(&self, provider: &str) -> MmUpstreamCredentialStore {
         let service = Self::keyring_service(provider);
-        let mut store =
-            MmUpstreamCredentialStore::new(service, Some(self.local_file_path.clone()));
+        let mut store = MmUpstreamCredentialStore::new(service, Some(self.local_file_path.clone()));
 
         // Tier 2 — apply our config map. Upstream's `resolve()` looks under
         // the key `<provider>.<key>`, which is exactly the format used by
@@ -289,11 +288,7 @@ impl CredentialStore {
 
     /// Tier 1: look up `MM_<PROVIDER>_<KEY>` in the environment.
     fn from_mm_env(provider: &str, key: &str) -> Option<String> {
-        let var = format!(
-            "MM_{}_{}",
-            normalise_id(provider),
-            normalise_id(key)
-        );
+        let var = format!("MM_{}_{}", normalise_id(provider), normalise_id(key));
         std::env::var(&var).ok().filter(|v| !v.is_empty())
     }
 }

@@ -231,9 +231,11 @@ mod tests {
     async fn check_unregistered_provider_returns_ok() {
         // Unregistered providers are unthrottled in the MM convention.
         let registry = RateLimiterRegistry::new();
-        assert!(MmRateLimiterRegistryExt::check(&registry, "unregistered")
-            .await
-            .is_ok());
+        assert!(
+            MmRateLimiterRegistryExt::check(&registry, "unregistered")
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -241,9 +243,11 @@ mod tests {
         let registry = RateLimiterRegistry::new();
         let _ = registry.get_or_create("tmdb", 40).await;
         // First check should succeed.
-        assert!(MmRateLimiterRegistryExt::check(&registry, "tmdb")
-            .await
-            .is_ok());
+        assert!(
+            MmRateLimiterRegistryExt::check(&registry, "tmdb")
+                .await
+                .is_ok()
+        );
     }
 
     // --- MmRateLimiterRegistryExt::with_all_mm_providers ---

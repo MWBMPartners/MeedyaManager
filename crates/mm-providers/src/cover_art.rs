@@ -30,8 +30,8 @@ use crate::traits::CoverArtInfo;
 
 // Re-exports — primary surface from upstream.
 pub use meedya_core::providers::cover_art::{
-    classify, deduplicate, filter_by_min_size, is_valid_art_url, mime_type_for_url, select_best,
-    select_largest, select_smallest, url_has_image_extension, CoverArtSize,
+    CoverArtSize, classify, deduplicate, filter_by_min_size, is_valid_art_url, mime_type_for_url,
+    select_best, select_largest, select_smallest, url_has_image_extension,
 };
 
 // ---------------------------------------------------------------------------
@@ -87,9 +87,7 @@ pub fn select_best_min_side(arts: &[CoverArtInfo], min_side_px: u32) -> Option<&
     let qualifying = arts
         .iter()
         .filter(|a| a.width.unwrap_or(0) >= min_side_px && a.height.unwrap_or(0) >= min_side_px)
-        .max_by_key(|a| {
-            u64::from(a.width.unwrap_or(0)) * u64::from(a.height.unwrap_or(0))
-        });
+        .max_by_key(|a| u64::from(a.width.unwrap_or(0)) * u64::from(a.height.unwrap_or(0)));
     if qualifying.is_some() {
         return qualifying;
     }

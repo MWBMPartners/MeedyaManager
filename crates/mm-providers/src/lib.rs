@@ -87,8 +87,7 @@ pub use rate_limiter::{
 
 // Match scoring
 pub use match_scoring::{
-    MatchScorer, MmScoringWeightsExt, ScoringWeights, rank_results, rank_results_with,
-    score_result,
+    MatchScorer, MmScoringWeightsExt, ScoringWeights, rank_results, rank_results_with, score_result,
 };
 
 // Cover art utilities
@@ -319,7 +318,9 @@ mod tests {
             // MmRateLimiterRegistryExt::check returns Ok for registered providers
             // (not over-limit immediately).
             assert!(
-                MmRateLimiterRegistryExt::check(&registry, name).await.is_ok(),
+                MmRateLimiterRegistryExt::check(&registry, name)
+                    .await
+                    .is_ok(),
                 "Missing or over-limit rate limiter for provider '{name}'"
             );
         }
@@ -350,11 +351,17 @@ mod tests {
     fn cover_art_size_from_provider_result() {
         // 600×600 → Medium (500–999 range)
         let medium = art("https://example.com/cover.jpg", 600, 600);
-        assert_eq!(CoverArtSize::from_art_min_side(&medium), CoverArtSize::Medium);
+        assert_eq!(
+            CoverArtSize::from_art_min_side(&medium),
+            CoverArtSize::Medium
+        );
 
         // 100×100 → Thumbnail (< 200)
         let thumb = art("https://example.com/thumb.jpg", 100, 100);
-        assert_eq!(CoverArtSize::from_art_min_side(&thumb), CoverArtSize::Thumbnail);
+        assert_eq!(
+            CoverArtSize::from_art_min_side(&thumb),
+            CoverArtSize::Thumbnail
+        );
 
         // 1200×1200 → Large (1000–1999 range)
         let xl = art("https://example.com/xl.jpg", 1200, 1200);
