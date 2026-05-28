@@ -46,11 +46,20 @@
       "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/all.html\" -o /tmp/gtk4_all.html -w \"HTTP %{http_code}\\\\n\")",
       "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/trait.AccessibleExtManual.html\" -o /tmp/manual.html -w \"HTTP %{http_code}\\\\n\")",
       "Bash(curl -sL \"https://docs.rs/gtk4/0.9.7/gtk4/accessible/trait.AccessibleExtManual.html\" -o /tmp/manual.html -w \"HTTP %{http_code}\\\\n\")",
-      "Bash(cd \"/Users/lance.manasse/Projects/Coding and Development/MWBM Partners Ltd/GitHub/MeedyaSuite/MeedyaManager\" && cargo clean 2>&1 | tail -1 && rm -rf macos/.build windows/MeedyaManager/bin windows/MeedyaManager/obj windows/MeedyaManager.Tests/bin windows/MeedyaManager.Tests/obj ~/.cargo/registry/cache ~/.cargo/registry/src ~/.cargo/git/checkouts ~/.cargo/git/db 2>&1 | tail -1; echo \"cleanup done\")"
+      "Bash(cd \"/Users/lance.manasse/Projects/Coding and Development/MWBM Partners Ltd/GitHub/MeedyaSuite/MeedyaManager\" && cargo clean 2>&1 | tail -1 && rm -rf macos/.build windows/MeedyaManager/bin windows/MeedyaManager/obj windows/MeedyaManager.Tests/bin windows/MeedyaManager.Tests/obj ~/.cargo/registry/cache ~/.cargo/registry/src ~/.cargo/git/checkouts ~/.cargo/git/db 2>&1 | tail -1; echo \"cleanup done\")",
+      "Bash(cargo check *)",
+      "Bash(git branch *)",
+      "Bash(find /Users/lance.manasse/.cargo -type d -name \"MeedyaSuite-core*\" 2>/dev/null | head -3 && find /Users/lance.manasse/.cargo -name \"providers\" -type d 2>/dev/null | grep -i meedya | head -5)",
+      "Read(//Users/lance.manasse/.cargo/**)",
+      "Bash(cargo test *)",
+      "Bash(rm -rf /private/tmp/claude-501/*/2*/tasks/*.output /private/tmp/claude-501/*/2*/tool-results/*.txt)",
+      "Bash(rm -rf ~/.cargo/registry/cache ~/.cargo/registry/src ~/.cargo/git/checkouts ~/.cargo/git/db)",
+      "Bash(cargo tree *)"
     ],
     "additionalDirectories": [
       "/dev",
-      "/Users/lance.manasse/.cargo/registry/cache"
+      "/Users/lance.manasse/.cargo/registry/cache",
+      "/Users/lance.manasse/.cargo/registry/src"
     ]
   }
 }
