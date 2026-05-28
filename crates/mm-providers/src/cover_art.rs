@@ -55,23 +55,23 @@ pub trait CoverArtSizeExt {
 }
 
 impl CoverArtSizeExt for CoverArtSize {
-    fn from_art_min_side(art: &CoverArtInfo) -> CoverArtSize {
+    fn from_art_min_side(art: &CoverArtInfo) -> Self {
         let w = art.width.unwrap_or(0);
         let h = art.height.unwrap_or(0);
         if w == 0 || h == 0 {
-            return CoverArtSize::Unknown;
+            return Self::Unknown;
         }
-        CoverArtSize::from_dimension(w.min(h))
+        Self::from_dimension(w.min(h))
     }
 
     fn label(&self) -> &'static str {
         match self {
-            CoverArtSize::Unknown => "unknown",
-            CoverArtSize::Thumbnail => "thumbnail",
-            CoverArtSize::Small => "small",
-            CoverArtSize::Medium => "medium",
-            CoverArtSize::Large => "large",
-            CoverArtSize::ExtraLarge => "extra-large",
+            Self::Unknown => "unknown",
+            Self::Thumbnail => "thumbnail",
+            Self::Small => "small",
+            Self::Medium => "medium",
+            Self::Large => "large",
+            Self::ExtraLarge => "extra-large",
         }
     }
 }

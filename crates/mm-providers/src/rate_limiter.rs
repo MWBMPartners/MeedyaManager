@@ -150,7 +150,7 @@ impl MmRateLimiterRegistryExt for RateLimiterRegistry {
         // Build by repeated `get_or_create` calls so that any provider IDs
         // already covered by upstream's `with_defaults()` keep their canonical
         // RPM, and our extra IDs are filled in at the MM defaults.
-        let registry = RateLimiterRegistry::with_defaults();
+        let registry = Self::with_defaults();
         for &name in ALL_MM_PROVIDERS {
             // `get_or_create` is idempotent: if `name` is already in the
             // registry, the existing limiter is returned and `rpm` is ignored.
