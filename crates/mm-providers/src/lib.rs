@@ -77,7 +77,10 @@ pub use registry::ProviderRegistry;
 pub use credentials::{Credential, CredentialSource, CredentialStore};
 
 // Rate limiting
-pub use rate_limiter::{ProviderRateLimiter, RateLimiterRegistry, default_rpm_for};
+pub use rate_limiter::{
+    ALL_MM_PROVIDERS, MmRateLimiterRegistryExt, ProviderRateLimiter, RateLimiterRegistry,
+    check_rate_limited, default_rpm_for,
+};
 
 // Match scoring
 pub use match_scoring::{MatchScorer, ScoringWeights, score_result};
@@ -302,34 +305,15 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// The default registry must include entries for all known provider names.
-    #[test]
-    fn rate_limiter_registry_has_default_limits_for_all() {
-        let registry = RateLimiterRegistry::with_all_providers();
-        let providers = [
-            "musicbrainz",
-            "spotify",
-            "apple_music",
-            "deezer",
-            "youtube_music",
-            "amazon_music",
-            "pandora",
-            "tidal",
-            "shazam",
-            "iheart",
-            "tmdb",
-            "thetvdb",
-            "omdb",
-            "apple_tv",
-            "itunes_store",
-            "apple_podcasts",
-            "isrc",
-            "eidr",
-            "iswc",
-        ];
-        for name in &providers {
-            // check() returns Ok for registered providers (not over-limit immediately)
+    #[tokio::test]
+    async fn rate_limiter_registry_has_default_limits_for_all() {
+        let registry =
+            <RateLimiterRegistry as MmRateLimiterRegistryExt>::with_all_mm_providers().await;
+        for name in ALL_MM_PROVIDERS {
+            // MmRateLimiterRegistryExt::check returns Ok for registered providers
+            // (not over-limit immediately).
             assert!(
-                registry.check(name).is_ok(),
+                MmRateLimiterRegistryExt::check(&registry, name).await.is_ok(),
                 "Missing or over-limit rate limiter for provider '{name}'"
             );
         }
