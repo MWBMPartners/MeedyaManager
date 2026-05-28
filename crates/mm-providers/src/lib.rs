@@ -84,8 +84,9 @@ pub use match_scoring::{MatchScorer, ScoringWeights, score_result};
 
 // Cover art utilities
 pub use cover_art::{
-    CoverArtSize, deduplicate, filter_by_min_size, is_valid_art_url, mime_type_for_url,
-    select_best, select_largest, select_smallest, url_has_image_extension,
+    CoverArtSize, CoverArtSizeExt, classify, deduplicate, filter_by_min_size, is_valid_art_url,
+    mime_type_for_url, select_best, select_best_min_side, select_largest, select_smallest,
+    url_has_image_extension,
 };
 
 // Music providers (concrete)
@@ -354,20 +355,20 @@ mod tests {
     // 8. CoverArtSize classification
     // -----------------------------------------------------------------------
 
-    /// `CoverArtSize::from_art` correctly classifies images by shortest dimension.
+    /// `CoverArtSize::from_art_min_side` correctly classifies images by shortest dimension.
     #[test]
     fn cover_art_size_from_provider_result() {
         // 600×600 → Medium (500–999 range)
         let medium = art("https://example.com/cover.jpg", 600, 600);
-        assert_eq!(CoverArtSize::from_art(&medium), CoverArtSize::Medium);
+        assert_eq!(CoverArtSize::from_art_min_side(&medium), CoverArtSize::Medium);
 
         // 100×100 → Thumbnail (< 200)
         let thumb = art("https://example.com/thumb.jpg", 100, 100);
-        assert_eq!(CoverArtSize::from_art(&thumb), CoverArtSize::Thumbnail);
+        assert_eq!(CoverArtSize::from_art_min_side(&thumb), CoverArtSize::Thumbnail);
 
         // 1200×1200 → Large (1000–1999 range)
         let xl = art("https://example.com/xl.jpg", 1200, 1200);
-        assert_eq!(CoverArtSize::from_art(&xl), CoverArtSize::Large);
+        assert_eq!(CoverArtSize::from_art_min_side(&xl), CoverArtSize::Large);
     }
 
     // -----------------------------------------------------------------------
@@ -474,7 +475,7 @@ mod tests {
     // 13. select_best picks the smallest image meeting the minimum
     // -----------------------------------------------------------------------
 
-    /// `select_best` returns the smallest image that meets the min-side constraint.
+    /// `select_best_min_side` returns the largest image that meets the min-side constraint.
     #[test]
     fn cover_art_select_best_picks_correct() {
         let arts = vec![
@@ -482,8 +483,8 @@ mod tests {
             art("https://example.com/500.jpg", 500, 500),
             art("https://example.com/1000.jpg", 1000, 1000),
         ];
-        // Min 400px — select_best returns the largest qualifying image
-        let best = select_best(&arts, 400).unwrap();
+        // Min 400px — select_best_min_side returns the largest qualifying image
+        let best = select_best_min_side(&arts, 400).unwrap();
         assert_eq!(best.width, Some(1000));
     }
 
