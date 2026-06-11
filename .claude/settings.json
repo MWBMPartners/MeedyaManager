@@ -59,7 +59,9 @@
     "additionalDirectories": [
       "/dev",
       "/Users/lance.manasse/.cargo/registry/cache",
-      "/Users/lance.manasse/.cargo/registry/src"
+      "/Users/lance.manasse/.cargo/registry/src",
+      "/Users/lance.manasse/Projects/Coding and Development/MWBM Partners Ltd/GitHub/MeedyaSuite/MeedyaSuite-core/crates/meedya-providers/src",
+      "/Users/lance.manasse/Projects/Coding and Development/MWBM Partners Ltd/GitHub/MeedyaSuite/MeedyaSuite-core/crates/meedya-providers"
     ]
   }
 }
