@@ -119,6 +119,11 @@
       "id3": "TSRC",  "vorbis": "ISRC",          "mp4": null,     "ape": "ISRC"
     },
     {
+      "id": "iswc",         "name": "ISWC",        "category": "core",   "multi": false,
+      "desc": "International Standard Musical Work Code (composition identifier, e.g. \"T-034.524.680-1\")",
+      "id3": "TXXX:ISWC", "vorbis": "ISWC",        "mp4": null,     "ape": "ISWC"
+    },
+    {
       "id": "barcode",      "name": "Barcode",     "category": "core",   "multi": false,
       "desc": "Product barcode / UPC / EAN",
       "id3": "TXXX:BARCODE", "vorbis": "BARCODE", "mp4": null,     "ape": "Barcode"

@@ -361,6 +361,7 @@
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-08-03 | **#196 — Identifier-key convergence** — mm-providers META_* keys → core canonical extra_keys names (read-both shim for one release); ISWC tag registry entry (TXXX:ISWC); coherence guard tests (+4 tests). |
 | 2026-03-06 | **v1.3.1 — Workspace Lint Configuration** — Added `[workspace.lints]` with pedantic+nursery clippy groups across all 8 crates. Resolved all warnings (600+ auto-fixes, 17 manual fixes). Zero clippy warnings, 1,234 tests passing. Issue #129. |
 | 2026-03-05 | **M10 Complete** (`v1.0.0`) — Secure Media Server: `mm-server` crate (JWT/HS256, RFC 7233 range streaming, REST API handler stubs), `meedya serve` CLI command, Server tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~1076 → ~1166 total) |
 | 2026-03-05 | **M9 Complete** (`v0.10.0`) — Database Export: `mm-export` crate (`DatabaseExporter` trait, 5 backends, `SchemaBuilder` DDL), `meedya export` CLI command, Export tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~986 → ~1076 total) |
