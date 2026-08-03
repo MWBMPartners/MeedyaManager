@@ -785,7 +785,7 @@ mod tests {
         let ctx = test_ctx();
         let result = eval_func("Date", &args(&[]), &ctx).unwrap();
         // Should be in YYYY-MM-DD format
-        assert!(result.len() == 10);
+        assert_eq!(result.len(), 10);
         assert!(result.contains('-'));
     }
 
@@ -794,7 +794,7 @@ mod tests {
         let ctx = test_ctx();
         let result = eval_func("Date", &args(&["%Y"]), &ctx).unwrap();
         // Should be a 4-digit year
-        assert!(result.len() == 4);
+        assert_eq!(result.len(), 4);
         assert!(result.parse::<u32>().is_ok());
     }
 
