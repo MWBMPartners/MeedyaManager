@@ -540,8 +540,32 @@ fn run_search_blocking(
         // Register only MusicBrainz for the background search (no API key needed).
         // Additional providers (Spotify, TMDb, etc.) require credentials configured
         // by the user in Settings — they will be wired in a future patch.
-        // Use the standard MeedyaManager User-Agent (MusicBrainz requires a descriptive UA).
-        registry.register(MusicBrainzProvider::new(mm_core::useragent::build_user_agent()));
+        //
+        // Use the contact-bearing MeedyaManager User-Agent explicitly.
+        // MusicBrainz's usage policy requires a way to reach the application
+        // operator, so the UA carries a contact segment — by default
+        // "support@mwbmpartners.ltd https://www.mwbmpartners.ltd", or whatever
+        // the user has set via the `MUSICBRAINZ_CONTACT_EMAIL` environment
+        // variable (e.g. self-hosters who want MusicBrainz to contact *them*).
+        // `MusicBrainzProvider::new()` would append this automatically via
+        // `ensure_contact()` even if we passed the bare UA, but calling
+        // `build_user_agent_with_contact()` here makes that intent explicit
+        // at the call site rather than relying on an implicit fallback.
+        //
+        // Every request this provider makes goes through the shared,
+        // host-keyed rate limiter in `mm_providers::musicbrainz` (60
+        // requests/minute — 1 request/second, burst 1 — shared across the
+        // MusicBrainz, ISRC and ISWC providers). `mb_get()` awaits that
+        // limiter asynchronously, so a burst of searches serialises to one
+        // request per second rather than bursting. This all happens inside
+        // the `tokio::runtime::Builder::new_current_thread()` runtime built
+        // above, which lives entirely on this background `std::thread` — the
+        // `await` points here (including any wait on the rate limiter, and
+        // the bounded 429/503 `Retry-After` retry) block only this worker
+        // thread's local runtime, never the GTK main loop.
+        registry.register(MusicBrainzProvider::new(
+            mm_core::useragent::build_user_agent_with_contact(),
+        ));
 
         let mut search_query = SearchQuery {
             query: query.to_owned(),
