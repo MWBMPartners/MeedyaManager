@@ -12,7 +12,7 @@
 //   - Async `wait_until_ready()` suspends until a token is available (for pipeline use)
 //
 // Default rate limits (requests per minute):
-//   - MusicBrainz:  50   (free tier)
+//   - MusicBrainz:  60   (free tier — 1 req/sec is MusicBrainz's documented limit)
 //   - Spotify:      100  (standard tier)
 //   - Apple Music:  20   (JWT-based)
 //   - Deezer:       50   (public API)
@@ -28,13 +28,20 @@
 //   - Apple TV:     20   (JWT-based)
 //   - iTunes Store: 20   (public API)
 //   - Apple Podcasts: 20 (public API)
-//   - ISRC:         30   (registry)
+//   - ISRC:         60   (via MusicBrainz — shares MusicBrainz's 1 req/sec budget)
 //   - EIDR:         10   (paid API)
-//   - ISWC:         50   (via MusicBrainz)
+//   - ISWC:         60   (via MusicBrainz — shares MusicBrainz's 1 req/sec budget)
+//
+// NOTE: MusicBrainz, ISRC, and ISWC all resolve to the SAME host
+// (musicbrainz.org) under the hood, so their 60 RPM figures above are each
+// individually correct but MUST NOT be summed — `shared_host_limiter()`
+// below ensures the three providers draw from one shared 60 RPM bucket
+// rather than each getting an independent one (which would let combined
+// traffic hit MusicBrainz at up to 180 RPM, well over what they permit).
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 
@@ -49,7 +56,10 @@ use crate::traits::ProviderError;
 /// Unknown providers default to 10 RPM (conservative).
 pub fn default_rpm_for(provider: &str) -> u32 {
     match provider.to_lowercase().as_str() {
-        "musicbrainz" => 50,
+        // MusicBrainz, ISRC, and ISWC all hit musicbrainz.org and therefore
+        // share MusicBrainz's documented 1 req/sec (60 RPM) limit via
+        // `shared_host_limiter()` — see the module-level NOTE above.
+        "musicbrainz" => 60,
         "spotify" => 100,
         "apple_music" | "apple-music" => 20,
         "deezer" => 50,
@@ -65,11 +75,66 @@ pub fn default_rpm_for(provider: &str) -> u32 {
         "apple_tv" | "apple-tv" => 20,
         "itunes_store" | "itunes" => 20,
         "apple_podcasts" | "apple-podcasts" => 20,
-        "isrc" => 30,
+        "isrc" => 60,
         "eidr" => 10,
-        "iswc" => 50,
+        "iswc" => 60,
         _ => 10,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Shared per-host limiter (used by MusicBrainz + ISRC + ISWC)
+// ---------------------------------------------------------------------------
+
+/// Process-wide registry of shared rate limiters, keyed by `"host:port"`.
+///
+/// `OnceLock` gives us a lazily-initialised static without `unsafe` or an
+/// external `once_cell` dependency; the `Mutex` inside guards the `HashMap`
+/// itself, not any individual limiter (each limiter is internally
+/// synchronised by `governor`).
+static HOST_LIMITERS: OnceLock<Mutex<HashMap<String, Arc<DefaultDirectRateLimiter>>>> =
+    OnceLock::new();
+
+/// Return the shared rate limiter for `host_key`, creating one with the given
+/// `rpm` / `burst` quota the first time this `host_key` is seen.
+///
+/// All callers that pass the same `host_key` receive a clone of the SAME
+/// `Arc<DefaultDirectRateLimiter>` — this is precisely what lets MusicBrainz
+/// search, ISRC lookup, and ISWC lookup (three logically distinct providers
+/// that are all really just MusicBrainz under the hood) draw from ONE shared
+/// token bucket instead of three independent ones that would collectively
+/// let MusicBrainz-bound traffic run at up to 3x their documented limit.
+///
+/// `host_key` deliberately includes the port (see `musicbrainz::host_key()`),
+/// so that unit/integration tests spinning up per-test `wiremock` servers —
+/// each on its own OS-assigned port — never share a limiter and therefore
+/// never contend with, or slow down, each other's timing assertions.
+///
+/// The std `Mutex` is held ONLY long enough to look up (or insert) the
+/// `Arc` in the map — it is released before this function returns and is
+/// NEVER held across an `.await` point, so it cannot stall or deadlock any
+/// async task even though callers typically use the returned limiter from
+/// async code immediately afterwards.
+pub fn shared_host_limiter(host_key: &str, rpm: u32, burst: u32) -> Arc<DefaultDirectRateLimiter> {
+    // Lazily initialise the map on first use across the whole process.
+    let registry = HOST_LIMITERS.get_or_init(|| Mutex::new(HashMap::new()));
+
+    // Lock only to read-or-insert; a poisoned mutex (from a prior panic while
+    // holding the lock) still yields a usable guard via `into_inner()` rather
+    // than propagating the poison — a rate limiter is not worth crashing over.
+    let mut limiters = registry
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+    // `entry().or_insert_with()` avoids constructing a new limiter (and thus
+    // a new `Quota`) on the common path where `host_key` is already present.
+    Arc::clone(limiters.entry(host_key.to_owned()).or_insert_with(|| {
+        let rpm = NonZeroU32::new(rpm).expect("shared_host_limiter: rpm must be > 0");
+        let burst = NonZeroU32::new(burst).expect("shared_host_limiter: burst must be > 0");
+        Arc::new(RateLimiter::direct(
+            Quota::per_minute(rpm).allow_burst(burst),
+        ))
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +342,17 @@ mod tests {
 
     #[test]
     fn default_rpm_musicbrainz() {
-        assert_eq!(default_rpm_for("musicbrainz"), 50);
+        assert_eq!(default_rpm_for("musicbrainz"), 60);
+    }
+
+    #[test]
+    fn default_rpm_musicbrainz_family_all_60() {
+        // MusicBrainz, ISRC, and ISWC all resolve to musicbrainz.org and
+        // must therefore share the SAME documented 60 RPM limit — see the
+        // module-level NOTE on why these must never be summed.
+        assert_eq!(default_rpm_for("musicbrainz"), 60);
+        assert_eq!(default_rpm_for("isrc"), 60);
+        assert_eq!(default_rpm_for("iswc"), 60);
     }
 
     #[test]
@@ -298,7 +373,7 @@ mod tests {
 
     #[test]
     fn default_rpm_case_insensitive() {
-        assert_eq!(default_rpm_for("MusicBrainz"), 50);
+        assert_eq!(default_rpm_for("MusicBrainz"), 60);
         assert_eq!(default_rpm_for("SPOTIFY"), 100);
     }
 
@@ -320,7 +395,7 @@ mod tests {
     fn provider_rate_limiter_with_default_limit() {
         let limiter = ProviderRateLimiter::with_default_limit("musicbrainz");
         assert_eq!(limiter.provider(), "musicbrainz");
-        assert_eq!(limiter.requests_per_minute(), 50);
+        assert_eq!(limiter.requests_per_minute(), 60);
     }
 
     #[test]
@@ -413,7 +488,7 @@ mod tests {
         let mut registry = RateLimiterRegistry::new();
         registry.register_default("musicbrainz");
         let limiter = registry.get("musicbrainz").unwrap();
-        assert_eq!(limiter.requests_per_minute(), 50);
+        assert_eq!(limiter.requests_per_minute(), 60);
     }
 
     #[test]
@@ -462,6 +537,30 @@ mod tests {
         assert_eq!(registry.len(), 1);
         registry.register("b", 10);
         assert_eq!(registry.len(), 2);
+    }
+
+    // --- shared_host_limiter ---
+
+    #[test]
+    fn shared_host_limiter_same_key_returns_same_arc() {
+        // Use a unique key per test (module-qualified) so parallel test runs
+        // sharing the process-wide HOST_LIMITERS map never collide.
+        let a = shared_host_limiter("shared-test.example:443", 60, 1);
+        let b = shared_host_limiter("shared-test.example:443", 60, 1);
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same host_key must return the identical Arc so the budget is truly shared"
+        );
+    }
+
+    #[test]
+    fn shared_host_limiter_different_key_returns_different_arc() {
+        let a = shared_host_limiter("shared-test-a.example:443", 60, 1);
+        let b = shared_host_limiter("shared-test-b.example:443", 60, 1);
+        assert!(
+            !Arc::ptr_eq(&a, &b),
+            "different host_key values must NOT share a limiter"
+        );
     }
 
     // --- Async wait test ---
