@@ -50,6 +50,15 @@ pub mod podcasts;
 /// Identifier lookup services (ISRC via MusicBrainz, EIDR, ISWC via MusicBrainz).
 pub mod identifiers;
 
+/// Centralised MusicBrainz integration seam.
+///
+/// ALL endpoint URLs, query-string parameters, Lucene query syntax, response
+/// models, and the shared rate limiter / request executor for MusicBrainz
+/// live here and ONLY here. This exists because MusicBrainz has announced
+/// breaking search-API changes effective 2026-11-30 (spec not yet published)
+/// — see the module doc comment in `musicbrainz.rs` for the full migration plan.
+pub mod musicbrainz;
+
 /// Shared HTTP client factory — builds reqwest::Client with the correct User-Agent.
 pub(crate) mod http;
 
