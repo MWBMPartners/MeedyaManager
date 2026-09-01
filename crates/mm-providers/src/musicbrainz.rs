@@ -386,7 +386,7 @@ pub mod models {
         // whereas going through `serde_json::Value` lets us fall through to
         // `None` for absolutely any shape we don't recognise.
         let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
-        Ok(value.and_then(|v| match v {
+        let parsed = value.and_then(|v| match v {
             // `null` is already collapsed to `None` by `Option::deserialize`
             // above, but is listed here too for completeness/clarity.
             serde_json::Value::Null => None,
@@ -396,7 +396,18 @@ pub mod models {
             serde_json::Value::Bool(_)
             | serde_json::Value::Array(_)
             | serde_json::Value::Object(_) => None,
-        }))
+        });
+        // Reject non-finite results (NaN, +/-inf). `str::parse::<f64>()`
+        // happily accepts the literal strings `"NaN"` / `"inf"` / `"-inf"`,
+        // and `NaN.clamp(0.0, 1.0)` in Rust returns `NaN` rather than
+        // clamping it into range — so an upstream (or malicious) numeric
+        // string here could otherwise smuggle a NaN all the way into
+        // `ProviderResult.score`. No consumer currently mishandles that (the
+        // registry's scorer overwrites `score` before ranking), but treating
+        // it as "no usable score" here is the hygienic place to stop it,
+        // consistent with every other unrecognised shape already
+        // resolving to `None` rather than an error.
+        Ok(parsed.filter(|f| f.is_finite()))
     }
 
     // -----------------------------------------------------------------------
@@ -1087,6 +1098,35 @@ mod tests {
     #[test]
     fn score_null_is_none() {
         let rec: MbRecording = serde_json::from_str(r#"{"score": null}"#).unwrap();
+        assert_eq!(rec.score, None);
+    }
+
+    #[test]
+    fn score_string_nan_is_none() {
+        // FIX (issue #198): `"NaN".parse::<f64>()` succeeds in Rust, and
+        // `NaN.clamp(0.0, 1.0)` returns `NaN` rather than a clamped value —
+        // so without filtering, a numeric-string "NaN" would smuggle a NaN
+        // all the way into `ProviderResult.score`. `de_score()` must reject
+        // it as `None`, same as any other unrecognised shape.
+        //
+        // Note: a literal (unquoted) JSON `NaN` token — `{"score": NaN}` —
+        // is not valid JSON at all (`serde_json::from_str` errors on the
+        // whole document before `de_score()` ever runs), so that variant
+        // isn't representable as a test input here; the numeric-STRING form
+        // is the only way a NaN can reach `de_score()` in the first place.
+        let rec: MbRecording = serde_json::from_str(r#"{"score": "NaN"}"#).unwrap();
+        assert_eq!(rec.score, None);
+    }
+
+    #[test]
+    fn score_string_inf_is_none() {
+        let rec: MbRecording = serde_json::from_str(r#"{"score": "inf"}"#).unwrap();
+        assert_eq!(rec.score, None);
+    }
+
+    #[test]
+    fn score_string_negative_inf_is_none() {
+        let rec: MbRecording = serde_json::from_str(r#"{"score": "-inf"}"#).unwrap();
         assert_eq!(rec.score, None);
     }
 

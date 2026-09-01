@@ -62,6 +62,36 @@ pub fn validate_eidr(eidr: &str) -> bool {
     eidr.starts_with("10.5240/") && eidr.len() > 10
 }
 
+/// Structural check for a MusicBrainz Identifier (MBID) shape: 5
+/// hyphen-separated groups of hex digits, 8-4-4-4-12 characters long — e.g.
+/// `"b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"`.
+///
+/// This is NOT a strict RFC 4122 UUID validator (no version/variant nibble
+/// checks) — it exists only to catch obviously-not-an-MBID values (most
+/// importantly the empty string, which is what `ProviderResult.provider_id`
+/// defaults to when a search result carried no `id` at all) BEFORE spending a
+/// shared-budget rate-limit token on a lookup-by-id request that is
+/// guaranteed to fail. An empty `provider_id` turns `lookup_url()` into
+/// `{base}/ws/2/work/` — the collection/search endpoint, not a single
+/// resource — which is a guaranteed 4xx that still costs a request.
+///
+/// Deliberately hand-rolled rather than pulling in the `uuid` crate: this
+/// crate (`mm-providers`) doesn't already depend on it, and full RFC 4122
+/// compliance isn't needed for a pre-flight "is this worth a request at all"
+/// check.
+fn looks_like_mbid(id: &str) -> bool {
+    const GROUP_LENS: [usize; 5] = [8, 4, 4, 4, 12];
+    let groups: Vec<&str> = id.split('-').collect();
+    groups.len() == GROUP_LENS.len()
+        && groups
+            .iter()
+            .zip(GROUP_LENS)
+            .all(|(group, expected_len)| group.len() == expected_len)
+        && groups
+            .iter()
+            .all(|group| group.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
 // ---------------------------------------------------------------------------
 // 1. ISRC Provider (via MusicBrainz)
 // ---------------------------------------------------------------------------
@@ -543,8 +573,12 @@ impl MetadataProvider for EidrProvider {
 ///   — a plain work SEARCH response never includes `relations` (composer
 ///   credits), so `search()` issues ONE additional lookup-by-id requesting
 ///   `inc=artist-rels` for the first result only, to respect the shared 1
-///   rps budget. Any enrichment failure (network, parse, rate-limit)
-///   degrades gracefully to the un-enriched search results — see
+///   rps budget. Skipped entirely when that first result's `id` doesn't
+///   structurally look like an MBID (see `looks_like_mbid()`) — most
+///   notably when it's empty, which would otherwise turn the lookup URL into
+///   the collection endpoint and waste a rate-limit token on a guaranteed
+///   4xx. Any enrichment failure (network, parse, rate-limit) degrades
+///   gracefully to the un-enriched search results — see
 ///   `enrich_with_work_relations()`.
 ///
 /// Auth:   None (but a contact-bearing User-Agent is required)
@@ -765,9 +799,14 @@ impl MetadataProvider for IswcProvider {
             // fetch it — enriching ONLY the first result (not every result
             // in the page) to respect the shared 1 rps MusicBrainz budget;
             // a multi-result search that enriched every row would multiply
-            // outbound requests by up to `max_results`.
+            // outbound requests by up to `max_results`. Additionally gated
+            // on `looks_like_mbid()`: a work with no `id` at all (a search
+            // response that omitted it) has an empty `provider_id`, which
+            // would turn the lookup URL into `{base}/ws/2/work/` — the
+            // collection endpoint, not a single resource — a guaranteed 4xx
+            // that would still spend a rate-limit token for nothing.
             if let Some(first) = results.first_mut() {
-                if first.artist.is_none() {
+                if first.artist.is_none() && looks_like_mbid(&first.provider_id) {
                     Self::enrich_with_work_relations(
                         &self.client,
                         &self.user_agent,
@@ -775,6 +814,12 @@ impl MetadataProvider for IswcProvider {
                         first,
                     )
                     .await;
+                } else if first.artist.is_none() {
+                    debug!(
+                        provider = "iswc",
+                        work_id = %first.provider_id,
+                        "Skipping ISWC enrichment lookup: first result has no MBID-shaped id"
+                    );
                 }
             }
 
@@ -854,6 +899,28 @@ mod tests {
     #[test]
     fn validate_eidr_too_short() {
         assert!(!validate_eidr("10.5240/"));
+    }
+
+    #[test]
+    fn looks_like_mbid_valid_uuid() {
+        assert!(looks_like_mbid("b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"));
+    }
+
+    #[test]
+    fn looks_like_mbid_empty_string_is_false() {
+        // The exact case this guard exists for: `ProviderResult.provider_id`
+        // defaults to "" when a search result carried no `id`.
+        assert!(!looks_like_mbid(""));
+    }
+
+    #[test]
+    fn looks_like_mbid_wrong_group_lengths_is_false() {
+        assert!(!looks_like_mbid("not-a-real-mbid"));
+    }
+
+    #[test]
+    fn looks_like_mbid_non_hex_chars_is_false() {
+        assert!(!looks_like_mbid("zzzzzzzz-cf9e-42e0-be17-e2c3e1d2600d"));
     }
 
     // =========================================================================
@@ -963,7 +1030,7 @@ mod tests {
     // IsrcProvider — wiremock integration tests (search() end to end)
     // -------------------------------------------------------------------
 
-    use wiremock::matchers::{method, path, query_param};
+    use wiremock::matchers::{method, path, query_param, query_param_is_missing};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
@@ -1398,8 +1465,10 @@ mod tests {
     async fn iswc_provider_search_enriches_first_result_with_composer() {
         // A plain work-search response carries no `relations` at all — the
         // enrichment lookup is what supplies the composer credit (and, in
-        // this fixture, echoes the ISWC too).
-        let mbid = "mb-work-99";
+        // this fixture, echoes the ISWC too). Uses an MBID-shaped id — real
+        // MusicBrainz work IDs are UUIDs, and `looks_like_mbid()` (FIX for
+        // issue #198) now gates enrichment on that shape.
+        let mbid = "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d";
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/ws/2/work/"))
@@ -1413,9 +1482,9 @@ mod tests {
         Mock::given(method("GET"))
             .and(path(format!("/ws/2/work/{mbid}")))
             .and(query_param("inc", "artist-rels"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(
-                r#"{"id":"mb-work-99","title":"Bohemian Rhapsody","iswcs":["T0345246801"],"relations":[{"type":"composer","artist":{"name":"Freddie Mercury"}}]}"#,
-            ))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"id":"{mbid}","title":"Bohemian Rhapsody","iswcs":["T0345246801"],"relations":[{{"type":"composer","artist":{{"name":"Freddie Mercury"}}}}]}}"#
+            )))
             .expect(1)
             .mount(&server)
             .await;
@@ -1438,8 +1507,10 @@ mod tests {
     #[tokio::test]
     async fn iswc_provider_search_enrichment_failure_returns_unenriched_results() {
         // The enrichment lookup 500s — the overall search must still
-        // succeed, just without a composer credit.
-        let mbid = "mb-work-100";
+        // succeed, just without a composer credit. MBID-shaped id so the
+        // enrichment lookup is actually ATTEMPTED (and fails), rather than
+        // being pre-emptively skipped by `looks_like_mbid()`'s guard.
+        let mbid = "c20ccccc-df9e-42e0-be17-e2c3e1d2600e";
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/ws/2/work/"))
@@ -1473,7 +1544,7 @@ mod tests {
         // The search response already carries a composer via inlined
         // `relations` — no enrichment lookup should ever be sent, proven by
         // `.expect(0)` on that mock.
-        let mbid = "mb-work-101";
+        let mbid = "d30ddddd-ef9e-42e0-be17-e2c3e1d2600f";
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/ws/2/work/"))
@@ -1497,5 +1568,51 @@ mod tests {
         };
         let results = provider.search(query).await.expect("search should succeed");
         assert_eq!(results[0].artist.as_deref(), Some("Existing Composer"));
+    }
+
+    #[tokio::test]
+    async fn iswc_provider_search_no_id_skips_enrichment_request() {
+        // FIX (issue #198): a search result with no `id` at all has an
+        // EMPTY `provider_id`, which would turn the enrichment lookup URL
+        // into `{base}/ws/2/work/` — the collection/search endpoint, not a
+        // single-resource lookup — a guaranteed 4xx that still spends a
+        // rate-limit token. `looks_like_mbid()` must gate that off. Proven
+        // here by asserting `.expect(0)` on a mock that matches the SAME
+        // path the (guarded-against) enrichment request would hit, but
+        // WITHOUT the `query` param the initial search request carries —
+        // the two are otherwise indistinguishable by path alone since an
+        // empty id collapses the lookup-by-id URL onto the search URL.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/work/"))
+            .and(query_param("query", "iswc:T0345246801"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"works":[{"title":"No MBID Work"}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/work/"))
+            .and(query_param_is_missing("query"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let provider = IswcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            iswc: Some("T0345246801".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("search should succeed even with no id on the result");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].provider_id, "");
+        assert_eq!(results[0].artist, None);
     }
 }
