@@ -48,7 +48,7 @@
 //   search_params() / lookup_params() — query-string builders
 //   lucene_escape() / lucene_phrase() — Lucene syntax helpers
 //   normalise_isrc() / normalise_iswc() — identifier canonicalisation
-//   recording_query() / isrc_query() / iswc_query() — full Lucene queries
+//   recording_query() / recording_query_loose() / isrc_query() / iswc_query() — full Lucene queries
 //   models::*                    — response structs + mapping helpers
 //   mb_limiter_for() / ensure_contact() / mb_get() — shared request executor
 
@@ -236,6 +236,27 @@ pub fn normalise_iswc(raw: &str) -> String {
         .collect()
 }
 
+/// Shared field-joining logic behind `recording_query()` and
+/// `recording_query_loose()`: build the `recording:`/`artistname:` clause
+/// list, running each present value through `quote` (the only thing that
+/// differs between the two callers), then join the clauses with `" AND "`.
+/// Returns `None` when neither `title` nor `artist` is present, so callers
+/// can fall back to their own free-text handling.
+fn join_recording_fields(
+    title: Option<&str>,
+    artist: Option<&str>,
+    quote: impl Fn(&str) -> String,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(title) = title {
+        parts.push(format!("recording:{}", quote(title)));
+    }
+    if let Some(artist) = artist {
+        parts.push(format!("artistname:{}", quote(artist)));
+    }
+    (!parts.is_empty()).then(|| parts.join(" AND "))
+}
+
 /// Build the Lucene query for a MusicBrainz recording search.
 ///
 /// Mirrors the query-shape logic that used to live inline in
@@ -247,18 +268,36 @@ pub fn normalise_iswc(raw: &str) -> String {
 ///   `artistname:"<artist>"`, joined with `" AND "` when both are present.
 /// - Neither present → falls back to `lucene_escape(free_text)`.
 pub fn recording_query(title: Option<&str>, artist: Option<&str>, free_text: &str) -> String {
-    let mut parts = Vec::new();
-    if let Some(title) = title {
-        parts.push(format!("recording:{}", lucene_phrase(title)));
-    }
-    if let Some(artist) = artist {
-        parts.push(format!("artistname:{}", lucene_phrase(artist)));
-    }
-    if parts.is_empty() {
-        lucene_escape(free_text)
-    } else {
-        parts.join(" AND ")
-    }
+    join_recording_fields(title, artist, lucene_phrase).unwrap_or_else(|| lucene_escape(free_text))
+}
+
+/// Build a LOOSENED Lucene query for a MusicBrainz recording search — same
+/// fields as `recording_query()`, but with title/artist ESCAPED
+/// (`lucene_escape()`) rather than phrase-quoted.
+///
+/// This is the RETRY query `MusicBrainzProvider::search()` uses when a
+/// phrase-quoted `recording_query()` search comes back with zero results.
+/// A phrase query is an exact, ordered-token match, so real-world tag
+/// decorations a MusicBrainz title lacks — `(Remastered 2011)`, `(Live)`,
+/// `feat. X` — can make an otherwise-correct phrase query match nothing.
+/// Escaped (rather than phrase-quoted) terms still keep Lucene syntax
+/// neutered — the whole point of the original escaping fix — but no longer
+/// require the escaped tokens to appear as one exact contiguous phrase, so
+/// MusicBrainz's own relevance ranking gets a chance to find a near-match
+/// the strict phrase query couldn't. This restores (most of) the recall the
+/// old, pre-migration, unescaped/loose query accidentally provided, without
+/// reintroducing the Lucene-injection risk that query was buggy about.
+///
+/// - `title` and/or `artist` present → `recording:<escaped title>` and/or
+///   `artistname:<escaped artist>`, joined with `" AND "` when both present.
+/// - Neither present → falls back to `lucene_escape(free_text)` — identical
+///   to `recording_query()`'s free-text handling, since there is nothing
+///   left to "loosen" once a query is already a bag of escaped free-text
+///   words rather than a phrase. Callers should not actually invoke this
+///   path (see `MusicBrainzProvider::search()`'s retry-gating comment), but
+///   it degrades safely if they do.
+pub fn recording_query_loose(title: Option<&str>, artist: Option<&str>, free_text: &str) -> String {
+    join_recording_fields(title, artist, lucene_escape).unwrap_or_else(|| lucene_escape(free_text))
 }
 
 /// Build the Lucene query for an ISRC-based recording search:
@@ -865,6 +904,46 @@ mod tests {
         // '?' and '/' must come out backslash-escaped.
         let query = recording_query(None, None, "what is love?/reprise");
         assert_eq!(query, r"what is love\?\/reprise");
+    }
+
+    // -----------------------------------------------------------------------
+    // recording_query_loose
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn recording_query_loose_escapes_instead_of_phrase_quoting() {
+        // Same fields as the phrase-quoted form, but title/artist come out
+        // escaped (Lucene special chars backslashed) rather than wrapped in
+        // a `"..."` phrase — no quote characters should appear at all.
+        let query = recording_query_loose(Some("Comfortably Numb"), Some("Pink Floyd"), "");
+        assert_eq!(
+            query,
+            r"recording:Comfortably Numb AND artistname:Pink Floyd"
+        );
+        assert!(!query.contains('"'));
+    }
+
+    #[test]
+    fn recording_query_loose_title_only() {
+        let query = recording_query_loose(Some("Let It Be"), None, "");
+        assert_eq!(query, "recording:Let It Be");
+    }
+
+    #[test]
+    fn recording_query_loose_special_chars_are_escaped() {
+        let query = recording_query_loose(Some("AC/DC: Back?"), None, "");
+        assert_eq!(query, r"recording:AC\/DC\: Back\?");
+    }
+
+    #[test]
+    fn recording_query_loose_free_text_only_matches_recording_query() {
+        // With neither title nor artist, both functions degrade identically
+        // to escaped free text — there is nothing left to "loosen".
+        let free_text = "what is love?/reprise";
+        assert_eq!(
+            recording_query_loose(None, None, free_text),
+            recording_query(None, None, free_text)
+        );
     }
 
     // -----------------------------------------------------------------------

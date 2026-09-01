@@ -78,6 +78,11 @@ fn opt_str(s: impl Into<String>) -> Option<String> {
 /// announced 2026-11-30 breaking API change is a one-file fix). This struct
 /// only orchestrates: build a query, ask `musicbrainz` for a URL/params, hand
 /// both to `mb_get()`, then map the body through `musicbrainz::models`.
+///
+/// A title/artist search that phrase-quotes its terms and comes back with
+/// ZERO results is retried exactly once with a loosened, escaped-token query
+/// (`crate::musicbrainz::recording_query_loose()`) — see
+/// `retry_with_loosened_query()` and the retry-gating comment in `search()`.
 pub struct MusicBrainzProvider {
     client: Client,
     base_url: String,
@@ -158,6 +163,43 @@ impl MusicBrainzProvider {
 
         Ok(results)
     }
+
+    /// Retry a zero-result phrase-quoted recording search with a loosened,
+    /// escaped-token query (`crate::musicbrainz::recording_query_loose()`)
+    /// built from the same `title`/`artist`/`query` inputs. See `search()`'s
+    /// retry-gating comment for when this is (and isn't) called. Split out
+    /// as its own method purely to keep `search()` itself under the
+    /// project's function-length/complexity limits.
+    async fn retry_with_loosened_query(
+        &self,
+        query: &SearchQuery,
+        url: &str,
+    ) -> Result<Vec<ProviderResult>, ProviderError> {
+        let loose_query = crate::musicbrainz::recording_query_loose(
+            query.title.as_deref(),
+            query.artist.as_deref(),
+            &query.query,
+        );
+        let loose_params =
+            crate::musicbrainz::search_params(&loose_query, query.max_results, query.offset);
+
+        debug!(
+            provider = "musicbrainz",
+            query = &loose_query,
+            "Phrase-quoted search returned zero results; retrying with a loosened query"
+        );
+
+        let body = crate::musicbrainz::mb_get(
+            &self.client,
+            "musicbrainz",
+            &self.user_agent,
+            url,
+            &loose_params,
+        )
+        .await?;
+
+        Self::parse_recordings("musicbrainz", &body)
+    }
 }
 
 impl MetadataProvider for MusicBrainzProvider {
@@ -235,7 +277,29 @@ impl MetadataProvider for MusicBrainzProvider {
             )
             .await?;
 
-            Self::parse_recordings("musicbrainz", &body)
+            let results = Self::parse_recordings("musicbrainz", &body)?;
+
+            // FIX (issue #198): a phrase-quoted query is an exact, ordered-
+            // token match, so real-world tag decorations a MusicBrainz title
+            // lacks — "(Remastered 2011)", "(Live)", "feat. X" — can return
+            // zero hits where the pre-migration loose (buggy, unescaped)
+            // query might still have matched something. Retry ONCE with a
+            // loosened (escaped-token, not phrase-quoted) query built from
+            // the SAME inputs whenever the FIRST query actually used phrase
+            // quoting — i.e. `title` and/or `artist` were present. Never
+            // retried for the free-text-only path (already escaped, nothing
+            // left to loosen) or for an ISRC query (an exact-identifier
+            // match has nothing to "loosen" either). This costs one EXTRA
+            // rate-limit token, but ONLY in the miss case, and restores the
+            // recall the old loose query accidentally provided while
+            // keeping this migration's escaping fix intact.
+            let used_phrase_query =
+                query.isrc.is_none() && (query.title.is_some() || query.artist.is_some());
+            if results.is_empty() && used_phrase_query {
+                return self.retry_with_loosened_query(&query, &url).await;
+            }
+
+            Ok(results)
         })
     }
 }
@@ -1227,7 +1291,16 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/ws/2/recording/"))
             .and(query_param("query", expected_query.as_str()))
-            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            // A non-empty result here (rather than the previous
+            // `{"recordings":[]}`) is deliberate: this test's job is to
+            // prove the phrase-quoted query hits the wire correctly, not to
+            // exercise the zero-result loosened-query retry (see the
+            // `mb_search_*retr*` tests for that) — an empty result set here
+            // would trigger that retry against a server with no matching
+            // mock for the loosened query, and fail for an unrelated reason.
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"recordings":[{"id":"mb-1","title":"What's / This?: AND [More]"}]}"#,
+            ))
             .expect(1)
             .mount(&server)
             .await;
@@ -1374,6 +1447,113 @@ mod tests {
             ProviderError::RateLimited { provider } => assert_eq!(provider, "musicbrainz"),
             other => panic!("expected RateLimited, got {other:?}"),
         }
+    }
+
+    // -------------------------------------------------------------------
+    // MusicBrainz — zero-result loosened-query retry (issue #198)
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn mb_search_zero_results_retries_with_loosened_query() {
+        // Real-world tags carry decorations MusicBrainz titles lack (here,
+        // "(Remastered 2011)"), so the phrase-quoted query legitimately
+        // finds nothing while a loosened, escaped-token query still can.
+        let title = "Comfortably Numb (Remastered 2011)";
+        let artist = "Pink Floyd";
+        let phrase_query = format!(r#"recording:"{title}" AND artistname:"{artist}""#);
+        let loose_query = crate::musicbrainz::recording_query_loose(Some(title), Some(artist), "");
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", phrase_query.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // The SECOND request's `query` param must be exactly the loosened
+        // form — proven by matching on it precisely rather than just "any
+        // second request".
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", loose_query.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"recordings":[{"id":"mb-loose","title":"Comfortably Numb"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            title: Some(title.to_owned()),
+            artist: Some(artist.to_owned()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("a zero-result phrase search should retry and succeed via the loosened query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title.as_deref(), Some("Comfortably Numb"));
+    }
+
+    #[tokio::test]
+    async fn mb_search_nonzero_results_sends_only_one_request() {
+        // The mirror image of the retry test: a phrase-quoted search that
+        // finds something on the FIRST try must never trigger a retry —
+        // proven by `.expect(1)` on a mock with no `query` filter, so a
+        // stray second request of ANY shape would violate the expectation.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"recordings":[{"id":"mb-hit","title":"Found On First Try"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            title: Some("Some Title".into()),
+            artist: Some("Some Artist".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("a non-empty first search must not retry");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mb_search_free_text_only_zero_results_does_not_retry() {
+        // Free-text-only queries already went through `lucene_escape()` on
+        // the first attempt — there is nothing left to "loosen" — so a
+        // zero-result free-text search must NOT retry. Proven the same way
+        // as above: `.expect(1)` on an unfiltered mock.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            query: "some free text with no title or artist".into(),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("a zero-result free-text-only search should succeed without retrying");
+        assert!(results.is_empty());
     }
 
     // =========================================================================
