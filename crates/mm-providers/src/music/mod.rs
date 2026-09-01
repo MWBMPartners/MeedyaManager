@@ -1298,13 +1298,17 @@ mod tests {
         // `with_base_url()` runs the supplied UA through `ensure_contact()`,
         // which appends MusicBrainz's documented "UA ( contact )" segment
         // since "TestApp/1.0" contains neither '@' nor "://".
+        //
+        // The expected contact segment is derived from `mm_core::useragent::
+        // contact_string()` rather than hardcoded, so this assertion stays
+        // correct even if `MUSICBRAINZ_CONTACT_EMAIL` is set in the test's
+        // environment (e.g. by a CI runner) — the test never mutates env
+        // vars itself, it just reads whatever the runtime already resolves.
+        let expected_ua = format!("TestApp/1.0 ( {} )", mm_core::useragent::contact_string());
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/ws/2/recording/"))
-            .and(header(
-                "User-Agent",
-                "TestApp/1.0 ( support@mwbmpartners.ltd https://www.mwbmpartners.ltd )",
-            ))
+            .and(header("User-Agent", expected_ua.as_str()))
             .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
             .expect(1)
             .mount(&server)
