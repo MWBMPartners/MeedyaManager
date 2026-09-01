@@ -263,14 +263,49 @@ pub fn recording_query(title: Option<&str>, artist: Option<&str>, free_text: &st
 
 /// Build the Lucene query for an ISRC-based recording search:
 /// `isrc:<normalised-isrc>`.
+///
+/// Unlike `iswc_query()` below, this normalises unconditionally and never
+/// falls back to also sending the raw form. That asymmetry is intentional:
+/// MusicBrainz canonically stores AND displays ISRCs UNPUNCTUATED
+/// (`GBAYE0601498`, never `GB-AYE-06-01498`), so normalising here is a strict
+/// improvement over sending the user's raw (possibly hyphenated) input — it
+/// is not a change that risks breaking a previously-working query the way
+/// `iswc_query()`'s normalisation did (see that function's doc comment).
 pub fn isrc_query(isrc: &str) -> String {
     format!("isrc:{}", normalise_isrc(isrc))
 }
 
-/// Build the Lucene query for an ISWC-based work search:
-/// `iswc:<normalised-iswc>`.
+/// Build the Lucene query for an ISWC-based work search.
+///
+/// Emits BOTH the normalised (punctuation-stripped) form and the caller's
+/// original input as a phrase-quoted term, `OR`-ed together — e.g.
+/// `iswc:T0345246801 OR iswc:"T-034.524.680-1"` — UNLESS the raw input is
+/// already identical to its normalised form, in which case only the single
+/// bare term is emitted (no redundant `OR` clause).
+///
+/// Why both forms: MusicBrainz canonically stores and DISPLAYS ISWCs
+/// PUNCTUATED (`T-034.524.680-1`), unlike ISRCs. Whether MusicBrainz's search
+/// index actually normalises punctuation out of `iswc:` queries server-side
+/// is an analyzer implementation detail this project has no way to verify
+/// without live network access to musicbrainz.org — and got wrong once
+/// already: an earlier version of this function unconditionally stripped
+/// punctuation before this comment was written, which would have silently
+/// broken every previously-working punctuated-ISWC lookup if the server-side
+/// index does NOT normalise. Querying both forms costs nothing extra on the
+/// wire (still one HTTP request) and is correct regardless of which way that
+/// unverifiable analyzer behaviour actually goes.
+///
+/// The raw form is phrase-quoted (`lucene_phrase()`), not character-escaped,
+/// so its punctuation (`-`, `.`) can't be misparsed as Lucene query syntax.
 pub fn iswc_query(iswc: &str) -> String {
-    format!("iswc:{}", normalise_iswc(iswc))
+    let normalised = normalise_iswc(iswc);
+    if iswc == normalised {
+        // Already in canonical form — a second, redundant OR clause would
+        // just cost the server extra matching work for zero benefit.
+        format!("iswc:{normalised}")
+    } else {
+        format!("iswc:{normalised} OR iswc:{}", lucene_phrase(iswc))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -842,8 +877,27 @@ mod tests {
     }
 
     #[test]
-    fn iswc_query_normalises_and_prefixes() {
-        assert_eq!(iswc_query("T-034.524.680-1"), "iswc:T0345246801");
+    fn iswc_query_punctuated_input_emits_both_forms_joined_by_or() {
+        // Punctuated input differs from its normalised form, so both the
+        // bare normalised term AND the raw (phrase-quoted) form are sent,
+        // `OR`-ed together — see `iswc_query()`'s doc comment for why the
+        // server-side analyzer behaviour can't be verified offline.
+        let query = iswc_query("T-034.524.680-1");
+        assert_eq!(query, r#"iswc:T0345246801 OR iswc:"T-034.524.680-1""#);
+    }
+
+    #[test]
+    fn iswc_query_already_normalised_input_emits_single_bare_term() {
+        // Raw input already equals its normalised form — no redundant OR.
+        assert_eq!(iswc_query("T0345246801"), "iswc:T0345246801");
+    }
+
+    #[test]
+    fn iswc_query_raw_form_is_phrase_quoted() {
+        // The raw (punctuated) form must be phrase-quoted, not bare, so its
+        // hyphens/dots can't be misparsed as Lucene syntax.
+        let query = iswc_query("T-034.524.680-1");
+        assert!(query.contains(r#"iswc:"T-034.524.680-1""#));
     }
 
     // -----------------------------------------------------------------------
