@@ -486,11 +486,24 @@ impl MetadataProvider for EidrProvider {
 // 3. ISWC Provider (via MusicBrainz Works)
 // ---------------------------------------------------------------------------
 
-/// Looks up ISWC identifiers via MusicBrainz works API.
+/// Looks up ISWC identifiers via MusicBrainz's works API, with a follow-up
+/// enrichment lookup for composer credit / ISWC data the plain search
+/// response doesn't carry.
 ///
-/// Endpoint: `https://musicbrainz.org/ws/2/work/?query=iswc:<ISWC>`
-/// Auth:     None (but User-Agent required)
-/// Limits:   50 RPM
+/// Endpoint (SEARCH): `GET {base}/ws/2/work/?query=iswc:<ISWC>&limit=<n>&fmt=json`
+///
+/// Endpoint (ENRICHMENT, first result only): `GET {base}/ws/2/work/<mbid>?fmt=json&inc=artist-rels`
+///   — a plain work SEARCH response never includes `relations` (composer
+///   credits), so `search()` issues ONE additional lookup-by-id requesting
+///   `inc=artist-rels` for the first result only, to respect the shared 1
+///   rps budget. Any enrichment failure (network, parse, rate-limit)
+///   degrades gracefully to the un-enriched search results — see
+///   `enrich_with_work_relations()`.
+///
+/// Auth:   None (but a contact-bearing User-Agent is required)
+/// Limits: 60 RPM (1 request/second, burst 1) — a budget SHARED with
+///         `MusicBrainzProvider` and `IsrcProvider` (all three route through
+///         `crate::musicbrainz::mb_get()`'s one token bucket per host).
 pub struct IswcProvider {
     client: Client,
     base_url: String,
@@ -500,7 +513,7 @@ pub struct IswcProvider {
 
 impl IswcProvider {
     pub fn new(user_agent: impl Into<String>) -> Self {
-        Self::with_base_url(user_agent, "https://musicbrainz.org")
+        Self::with_base_url(user_agent, crate::musicbrainz::MB_DEFAULT_BASE_URL)
     }
 
     pub fn with_base_url(user_agent: impl Into<String>, base_url: impl Into<String>) -> Self {
@@ -508,7 +521,11 @@ impl IswcProvider {
         Self {
             client: crate::http::build_client(),
             base_url: base_url.into(),
-            user_agent,
+            // Ensure the User-Agent carries a contact address per
+            // MusicBrainz's usage policy — see `ensure_contact()`'s doc
+            // comment. An empty `user_agent` (the "provider not configured"
+            // signal `is_enabled()` checks for) is left unchanged.
+            user_agent: crate::musicbrainz::ensure_contact(user_agent),
             capabilities: Capabilities {
                 media_types: vec![MediaType::Identifier, MediaType::Music],
                 supports_search: false,
@@ -523,54 +540,113 @@ impl IswcProvider {
         }
     }
 
+    /// Parse a MusicBrainz work-SEARCH response into `ProviderResult`s. Name
+    /// and signature kept unchanged so the existing tests below keep
+    /// compiling without modification.
     fn parse_works(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
-        #[derive(Deserialize)]
-        struct MbWorksResponse {
-            works: Vec<MbWork>,
-        }
-        #[derive(Deserialize)]
-        struct MbWork {
-            id: Option<String>,
-            title: Option<String>,
-            iswcs: Option<Vec<String>>,
-            relations: Option<Vec<MbRelation>>,
-        }
-        #[derive(Deserialize)]
-        struct MbRelation {
-            #[serde(rename = "type")]
-            rel_type: Option<String>,
-            artist: Option<MbRelArtist>,
-        }
-        #[derive(Deserialize)]
-        struct MbRelArtist {
-            name: Option<String>,
-        }
-
-        let resp: MbWorksResponse =
+        // All response-shape knowledge now lives in `crate::musicbrainz` —
+        // this is just "deserialize the shared model, map each work". A
+        // plain search response's `relations` array is normally empty (see
+        // the struct-level doc comment above), so `work_composer()` usually
+        // yields `None` here — that gets filled in by the enrichment lookup
+        // in `search()` when it's worth the extra request.
+        let resp: crate::musicbrainz::models::MbWorkSearchResponse =
             serde_json::from_str(body).map_err(|e| parse_err("ISWC/MusicBrainz response", e))?;
 
         let results = resp
             .works
             .into_iter()
             .map(|work| {
-                // Find the composer from relations
-                let composer = work.relations.as_deref().and_then(|rels| {
-                    rels.iter()
-                        .find(|r| r.rel_type.as_deref() == Some("composer"))
-                        .and_then(|r| r.artist.as_ref()?.name.clone())
-                });
-
+                let composer = crate::musicbrainz::models::work_composer(&work.relations);
                 ProviderResult {
                     provider: provider_name.to_owned(),
                     provider_id: work.id.unwrap_or_default(),
                     title: work.title,
                     artist: composer,
-                    iswc: work.iswcs.and_then(|v| v.into_iter().next()),
+                    iswc: work.iswcs.into_iter().next(),
                     ..Default::default()
                 }
             })
             .collect();
         Ok(results)
+    }
+
+    /// Enrich `result` (the FIRST search result only — see `search()`'s doc
+    /// comment for why) with composer credit and/or ISWC data pulled from a
+    /// SINGLE work-relationship lookup-by-id.
+    ///
+    /// This is a best-effort enhancement, never a source of hard errors: any
+    /// failure along the way (the lookup request itself failing — network,
+    /// 404, RATE-LIMITED — or the response body failing to parse) is logged
+    /// and swallowed, leaving `result` exactly as the search response left
+    /// it. A caller who already has *a* result from search should never lose
+    /// it just because this optional follow-up request didn't pan out.
+    async fn enrich_with_work_relations(
+        client: &reqwest::Client,
+        user_agent: &str,
+        base_url: &str,
+        result: &mut ProviderResult,
+    ) {
+        // Lookup-by-id, requesting only the artist-relations sub-resource
+        // (composer credits) — cheaper than requesting everything.
+        let lookup_url = crate::musicbrainz::lookup_url(
+            base_url,
+            crate::musicbrainz::MbEntity::Work,
+            &result.provider_id,
+        );
+        let lookup_params = crate::musicbrainz::lookup_params(Some("artist-rels"));
+
+        // Network/HTTP failure (including RateLimited — mb_get() already
+        // applies its own retry-once policy before giving up) — degrade
+        // gracefully rather than losing the result we already have.
+        let body = match crate::musicbrainz::mb_get(
+            client,
+            "iswc",
+            user_agent,
+            &lookup_url,
+            &lookup_params,
+        )
+        .await
+        {
+            Ok(body) => body,
+            Err(e) => {
+                debug!(
+                    provider = "iswc",
+                    work_id = %result.provider_id,
+                    error = %e,
+                    "ISWC work-relations enrichment lookup failed; returning un-enriched result"
+                );
+                return;
+            }
+        };
+
+        // Parse failure — same graceful degradation, but logged at `warn`
+        // since a 2xx response with an unparseable body is more surprising
+        // than a network hiccup.
+        let work: crate::musicbrainz::models::MbWork = match serde_json::from_str(&body) {
+            Ok(work) => work,
+            Err(e) => {
+                warn!(
+                    provider = "iswc",
+                    work_id = %result.provider_id,
+                    error = %e,
+                    "ISWC work-relations enrichment response failed to parse; returning un-enriched result"
+                );
+                return;
+            }
+        };
+
+        // Merge whatever the enrichment lookup found. Composer is always
+        // taken from the enrichment response when present (the search
+        // result's own composer was `None`, or `search()` wouldn't have
+        // enriched at all); the ISWC is only backfilled if the search
+        // result didn't already carry one.
+        if let Some(composer) = crate::musicbrainz::models::work_composer(&work.relations) {
+            result.artist = Some(composer);
+        }
+        if result.iswc.is_none() {
+            result.iswc = work.iswcs.into_iter().next();
+        }
     }
 }
 
@@ -618,39 +694,50 @@ impl MetadataProvider for IswcProvider {
                 "Sending ISWC lookup request"
             );
 
-            let url = format!("{}/ws/2/work/", self.base_url);
-            let response = self
-                .client
-                .get(&url)
-                // User-Agent is set at client level by crate::http::build_client()
-                .header("Accept", "application/json")
-                .query(&[
-                    ("query", &format!("iswc:{iswc}")),
-                    ("limit", &query.max_results.to_string()),
-                    ("fmt", &"json".to_owned()),
-                ])
-                .send()
-                .await
-                .map_err(net_err)?;
+            // SEARCH: the works endpoint, queried by Lucene `iswc:<code>`.
+            let search_url =
+                crate::musicbrainz::search_url(&self.base_url, crate::musicbrainz::MbEntity::Work);
+            let search_params = crate::musicbrainz::search_params(
+                &crate::musicbrainz::iswc_query(iswc),
+                query.max_results,
+                0,
+            );
+            let body = crate::musicbrainz::mb_get(
+                &self.client,
+                "iswc",
+                &self.user_agent,
+                &search_url,
+                &search_params,
+            )
+            .await?;
+            let mut results = Self::parse_works("iswc", &body)?;
 
-            if !response.status().is_success() {
-                let s = response.status();
-                if s.as_u16() == 503 {
-                    return Err(ProviderError::RateLimited {
-                        provider: "iswc".into(),
-                    });
+            // ENRICHMENT: a plain work-search response never includes
+            // `relations`, so the first result's composer is normally
+            // `None` at this point. Issue ONE additional lookup-by-id to
+            // fetch it — enriching ONLY the first result (not every result
+            // in the page) to respect the shared 1 rps MusicBrainz budget;
+            // a multi-result search that enriched every row would multiply
+            // outbound requests by up to `max_results`.
+            if let Some(first) = results.first_mut() {
+                if first.artist.is_none() {
+                    Self::enrich_with_work_relations(
+                        &self.client,
+                        &self.user_agent,
+                        &self.base_url,
+                        first,
+                    )
+                    .await;
                 }
-                return Err(ProviderError::Network(format!("HTTP {s}")));
             }
 
-            let body = response.text().await.map_err(net_err)?;
-            Self::parse_works("iswc", &body)
+            Ok(results)
         })
     }
 }
 
 // ---------------------------------------------------------------------------
-// Tests — 38 tests
+// Tests — 41 tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -1071,5 +1158,114 @@ mod tests {
             p.search(q.clone()).await,
             Err(ProviderError::NotSupported { .. })
         ));
+    }
+
+    // -------------------------------------------------------------------
+    // IswcProvider — wiremock integration tests (search() end to end)
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn iswc_provider_search_enriches_first_result_with_composer() {
+        // A plain work-search response carries no `relations` at all — the
+        // enrichment lookup is what supplies the composer credit (and, in
+        // this fixture, echoes the ISWC too).
+        let mbid = "mb-work-99";
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/work/"))
+            .and(query_param("query", "iswc:T0345246801"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"works":[{{"id":"{mbid}","title":"Bohemian Rhapsody"}}]}}"#
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/ws/2/work/{mbid}")))
+            .and(query_param("inc", "artist-rels"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"id":"mb-work-99","title":"Bohemian Rhapsody","iswcs":["T0345246801"],"relations":[{"type":"composer","artist":{"name":"Freddie Mercury"}}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = IswcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            iswc: Some("T0345246801".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("search should succeed and be enriched");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].artist.as_deref(), Some("Freddie Mercury"));
+        assert_eq!(results[0].iswc.as_deref(), Some("T0345246801"));
+    }
+
+    #[tokio::test]
+    async fn iswc_provider_search_enrichment_failure_returns_unenriched_results() {
+        // The enrichment lookup 500s — the overall search must still
+        // succeed, just without a composer credit.
+        let mbid = "mb-work-100";
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/work/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"works":[{{"id":"{mbid}","title":"Some Work"}}]}}"#
+            )))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/ws/2/work/{mbid}")))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let provider = IswcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            iswc: Some("T0345246801".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("a failed enrichment lookup must not fail the overall search");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].artist, None);
+    }
+
+    #[tokio::test]
+    async fn iswc_provider_search_skips_enrichment_when_composer_already_present() {
+        // The search response already carries a composer via inlined
+        // `relations` — no enrichment lookup should ever be sent, proven by
+        // `.expect(0)` on that mock.
+        let mbid = "mb-work-101";
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/work/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"works":[{{"id":"{mbid}","title":"Already Enriched","relations":[{{"type":"composer","artist":{{"name":"Existing Composer"}}}}]}}]}}"#
+            )))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/ws/2/work/{mbid}")))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let provider = IswcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            iswc: Some("T0345246801".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider.search(query).await.expect("search should succeed");
+        assert_eq!(results[0].artist.as_deref(), Some("Existing Composer"));
     }
 }
