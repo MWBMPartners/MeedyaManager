@@ -21,6 +21,19 @@ Format: `## [Version] — YYYY-MM-DD`
 - `SearchQuery.offset` — MusicBrainz searches can now page past the first result window; `offset` is sent on the wire only when greater than zero.
 - Direct ISRC lookup — `IsrcProvider` now queries `GET /ws/2/isrc/<CODE>?fmt=json&inc=artist-credits+releases` as its primary path, falling back to the legacy `isrc:<code>` recording search only on a non-rate-limit failure (a `RateLimited` response from the primary lookup returns immediately, without a second request).
 - ISWC composer enrichment — `IswcProvider` now issues one additional `GET /ws/2/work/<mbid>?fmt=json&inc=artist-rels` lookup for the *first* search result to fetch composer credit that a plain work search doesn't include. Enrichment failure (network, parse, or rate limit) degrades gracefully to the un-enriched result rather than failing the lookup.
+- `crates/mm-providers/src/musicbrainz.rs` — `recording_query_loose()`, a loosened (escaped-token, not phrase-quoted) counterpart to `recording_query()`, sharing its field-joining logic via a new private `join_recording_fields()` helper. Used by `MusicBrainzProvider::search()`'s zero-result retry (see Fixed, below).
+- `crates/mm-providers/src/identifiers/mod.rs` — `looks_like_mbid()`, a structural (not RFC-4122-strict) MusicBrainz Identifier shape check, gating the ISWC enrichment lookup against wasting a rate-limit token on a guaranteed-4xx request.
+
+### Follow-up Hardening (post-review, same issue #198)
+
+An adversarial review of this branch's diff caught six further defects before merge, all fixed here:
+
+- **ISRC fallback didn't fire on a shape change or parse failure.** The direct `/ws/2/isrc/<code>` lookup's `Ok(body)` arm returned `Self::parse_isrc_lookup(...)` directly — so a 200 response with a changed/unrecognised JSON shape parsed (every field of `MbIsrcLookupResponse` is optional) to zero recordings and `search()` returned `Ok(vec![])` without ever trying the fallback, and a non-JSON body's `Err(Parse)` was likewise returned directly instead of falling through. Both contradicted this module's own documented fallback contract. Fixed: the lookup result is now inspected — a parse error OR a well-formed-but-empty result set both `warn!` and fall through to the existing recording-search fallback, exactly like every other non-rate-limit lookup failure. A genuine rate limit still returns immediately with no fallback, unchanged.
+- **ISWC punctuation normalisation risked silently breaking a working query.** `iswc_query()` was changed to always strip punctuation before this release (`iswc:T-034.524.680-1` → `iswc:T0345246801`), but MusicBrainz canonically stores and *displays* ISWCs punctuated, and whether its search index normalises punctuation server-side is an analyzer detail unverifiable without live network access. Fixed: `iswc_query()` now emits BOTH forms when the raw input differs from its normalised form — `iswc:T0345246801 OR iswc:"T-034.524.680-1"` (the raw form phrase-quoted so its punctuation can't be read as Lucene syntax) — falling back to the single bare term only when the input was already unpunctuated. `isrc_query()` is intentionally left normalising-only, with a comment explaining why that asymmetry is correct (ISRCs are canonically unpunctuated; ISWCs are not).
+- **Phrase-quoting had no zero-result fallback, regressing recall.** A phrase query is an exact, ordered-token match, so real-world tag decorations a MusicBrainz title lacks (`(Remastered 2011)`, `(Live)`, `feat. X`) could return zero hits where the pre-migration loose (buggy, unescaped) query might still have matched something, and there was no retry to recover. Fixed: `MusicBrainzProvider::search()` now retries exactly once with `recording_query_loose()` (escaped tokens, not phrase-quoted) whenever the first, phrase-quoted query returns zero results AND actually used phrase-quoting (title and/or artist present) — never for the free-text-only path or an ISRC query, and never costing a second request on a hit.
+- **ISWC enrichment could waste a request on an empty MBID.** When the first search result carried no `id`, `provider_id` defaulted to `""`, turning the enrichment lookup URL into `{base}/ws/2/work/` — the collection endpoint, not a single resource — a guaranteed 4xx that still spent a shared rate-limit token. Fixed: enrichment is now additionally gated on `looks_like_mbid(&first.provider_id)`.
+- **ISRC direct lookup ignored `max_results`.** The dedicated lookup endpoint takes no `limit` parameter, and the parsed results weren't truncated, so a caller could get more results back than requested. Fixed: `IsrcProvider::search()` now truncates a lookup hit to `query.max_results` (when `> 0`) before returning it, matching how `Registry::search()` treats the same field elsewhere.
+- **`de_score()` let non-finite scores through.** Numeric strings like `"NaN"` / `"inf"` parse successfully via `str::parse::<f64>()`, and `NaN.clamp(0.0, 1.0)` returns `NaN` in Rust rather than clamping it — so a malformed or malicious numeric-string score could reach `ProviderResult.score` as `NaN`. No consumer currently mishandles that (the registry's scorer overwrites `score` before ranking), but fixed for hygiene: `de_score()` now filters out any non-finite parsed value, resolving it to `None` like every other unrecognised shape.
 
 ### Changed
 
@@ -33,8 +46,9 @@ Format: `## [Version] — YYYY-MM-DD`
 
 - **Search results may change.** Queries for titles or artist names containing Lucene operator characters (`AND`, `OR`, `NOT`, `&`, `|`, `(`, `)`, `:`, `/`, etc. — think `AC/DC`, `Rock (Live)`, `Wait & See`) are now phrase-quoted and matched as literal text instead of being parsed as query syntax. Results for such titles should improve; a query that previously "worked" by accident because a Lucene operator happened to narrow the search may now return different (more correct) matches.
 - **UI search bursts now serialise to 1 request/second.** Because the rate limit is shared across the MusicBrainz, ISRC, and ISWC providers, several lookups fired in quick succession (e.g. from the lookup panel) queue behind the same token bucket rather than each getting an independent allowance.
-- **Unknown ISRCs may now cost two requests** instead of one: the direct lookup, then the recording-search fallback, when the ISRC isn't registered against the dedicated endpoint.
-- **ISWC lookups may now cost two requests** instead of one: the work search, then the composer-enrichment lookup for the first result (skipped when a composer is already present).
+- **Unknown ISRCs may now cost two requests** instead of one: the direct lookup, then the recording-search fallback, when the ISRC isn't registered against the dedicated endpoint (or when the endpoint's response can no longer be parsed, or parses to zero recordings).
+- **ISWC lookups may now cost two requests** instead of one: the work search, then the composer-enrichment lookup for the first result (skipped when a composer is already present, or when the first result has no MBID-shaped `id`).
+- **Title/artist searches that find nothing may now cost a second request.** A phrase-quoted `MusicBrainzProvider` search that returns zero results is retried once with a loosened (escaped-token) query built from the same title/artist — a search that finds something on the first try is unaffected.
 
 ### Fixed
 
@@ -43,6 +57,9 @@ Format: `## [Version] — YYYY-MM-DD`
 ### Documentation
 
 - `help/providers/musicbrainz.md`, `help/providers/isrc.md`, `help/providers/iswc.md` — corrected the User-Agent format, rate-limit figures, and Lucene-escaping description; documented pagination; added an "Upcoming MusicBrainz API changes" admonition; rewrote ISWC's "How the Lookup Works" to match the actual search-then-enrich implementation.
+- `help/providers/isrc.md` — updated the fallback description to cover all three triggers (request failure, unparseable body, well-formed-but-empty result) and documented the `max_results` truncation now applied to a direct lookup hit.
+- `help/providers/iswc.md` — documented the dual-form (punctuated + normalised) ISWC query and the MBID-shape guard on the enrichment lookup.
+- `help/providers/musicbrainz.md` — added a "Zero-Result Loosened Retry" section documenting the phrase-query retry behaviour and its gating conditions, cross-referenced from the "0 results" troubleshooting entry.
 - `help/configuration.md` — documented the `MUSICBRAINZ_CONTACT_EMAIL` environment variable.
 - `PROJECT_STATUS.md` — updated the M5 provider table with the current MusicBrainz/ISRC/ISWC implementation and test counts.
 
@@ -54,7 +71,7 @@ Format: `## [Version] — YYYY-MM-DD`
 
 - `cargo fmt --all` → **clean**
 - `cargo clippy -p mm-core -p mm-providers -p mm-cli --all-targets` → **0 warnings** (pre-existing `mm-cloud` clippy debt from the M7 milestone is tracked separately and out of scope here)
-- `cargo test --workspace` → **1,302 tests pass, 0 failures** (plus 6 doctests)
+- `cargo test --workspace` → **1,330 tests pass, 0 failures** (plus 6 doctests) — up from 1,302 after the post-review hardening pass added wiremock coverage for the ISRC shape/parse/empty fallback, the dual-form ISWC query, the loosened-retry, the MBID enrichment guard, the `max_results` truncation, and non-finite score filtering
 
 ---
 

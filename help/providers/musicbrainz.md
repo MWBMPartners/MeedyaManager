@@ -121,6 +121,18 @@ MeedyaManager automatically uses ISRC lookup when an ISRC tag is available. See 
 
 When title and/or artist are known, MeedyaManager builds a Lucene query with each value **phrase-quoted** (e.g. `recording:"Bohemian Rhapsody" AND artistname:"Queen"`), so punctuation and Lucene operators that legitimately appear in a title or artist name (`AC/DC`, `Wait & See`, a track titled literally `Rock (Live)`) are treated as literal text rather than query syntax. A free-text fallback query (used only when neither title nor artist is known) is instead **character-escaped**, which still leaves bare `AND`/`OR`/`NOT` words typed by the user as live Lucene operators — a documented limitation of free-text search.
 
+### Zero-Result Loosened Retry
+
+A phrase-quoted query is an **exact, ordered-token match** — it requires the title/artist to appear verbatim, in that order, with nothing in between. Real-world file tags often carry decorations a MusicBrainz title doesn't have (`Comfortably Numb (Remastered 2011)`, `Track Name (Live)`, `Song feat. Someone Else`), so a phrase query built from such a tag can legitimately come back with zero results even though a close match exists in the database.
+
+When that happens — and ONLY when the original query actually used phrase-quoting, i.e. a title and/or artist were supplied — MeedyaManager retries **exactly once** with a loosened query built from the same inputs: the same `recording:`/`artistname:` fields, but with each value character-escaped (`lucene_escape()`) instead of phrase-quoted. Escaping still keeps Lucene operators neutered (the whole point of the original phrase-quoting fix), but no longer requires the tokens to appear as one exact contiguous phrase, giving MusicBrainz's own relevance ranking a chance to find a near-match the strict phrase query couldn't.
+
+This retry is skipped for:
+- a **free-text-only** query (no title/artist) — it already went through character-escaping on the first attempt, so there is nothing left to loosen;
+- an **ISRC** query — an exact-identifier match has nothing to "loosen".
+
+The retry costs one extra request against the shared rate-limit budget, but only in the miss case — a query that finds something on the first try never triggers it.
+
 ### Pagination
 
 Searches accept an `offset` in addition to the result limit, so a caller can page through more results than fit in a single response. `offset` is only sent on the wire when it is greater than zero — an explicit `offset=0` is treated identically to omitting it, so requests and logs stay uncluttered for the common first-page case.
@@ -175,6 +187,7 @@ MeedyaManager automatically constructs cover art URLs when a release MBID is ava
 - The recording may not be in the MusicBrainz database (community-contributed)
 - Search terms may be too specific or contain special characters
 - MusicBrainz uses Lucene query syntax — MeedyaManager phrase-quotes title and artist automatically (see [Search Query Building](#search-query-building) above) and character-escapes free-text fallback queries, but unusual metadata may still cause issues
+- A phrase-quoted query that finds nothing is automatically retried once with a loosened query (see [Zero-Result Loosened Retry](#zero-result-loosened-retry) above) — if you still see zero results after that, the recording genuinely isn't a close match for anything in the database under either query shape
 
 **Solutions:**
 1. Try searching on [musicbrainz.org](https://musicbrainz.org/) directly to verify the recording exists

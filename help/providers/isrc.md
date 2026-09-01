@@ -50,9 +50,16 @@ MeedyaManager looks up an ISRC in two stages against MusicBrainz:
    GET https://musicbrainz.org/ws/2/isrc/GBUM71029604?fmt=json&inc=artist-credits+releases
    ```
 
-2. **Recording search (fallback).** If the direct lookup fails for any reason OTHER than a rate limit — a 404 "not registered", a network error, an unparseable body, or the endpoint having moved — MeedyaManager falls back to a general recording search queried by `isrc:<code>`, the same endpoint MusicBrainz's own search provider uses. This costs one extra request for ISRCs the dedicated endpoint doesn't recognise, but keeps lookups working if `/ws/2/isrc/` changes shape in MusicBrainz's announced 2026-11-30 breaking release.
+2. **Recording search (fallback).** MeedyaManager falls back to a general recording search queried by `isrc:<code>` — the same endpoint MusicBrainz's own search provider uses — whenever the direct lookup didn't produce a genuine, usable hit. That covers THREE cases, all treated identically:
+   - a request-level failure other than a rate limit (a 404 "not registered", a network error, or the endpoint having moved);
+   - a 200 response whose body doesn't parse as JSON at all; and
+   - a 200 response that parses cleanly but yields **zero recordings**.
+
+   That third case matters because every field of the lookup response is optional: if `/ws/2/isrc/` changes shape under MusicBrainz's announced 2026-11-30 breaking release, a restructured response can parse without error yet carry no recordings — a silent miss rather than a loud one. Treating "parsed OK but empty" the same as "failed to parse" is what makes the fallback actually cover that scenario instead of quietly returning zero results. This fallback costs one extra request for ISRCs the dedicated endpoint doesn't recognise (or whose response this build can no longer make sense of).
 
 A **rate-limited** response from the direct lookup is returned immediately, without attempting the fallback — piling a second request onto a server that just asked us to back off would be exactly the wrong response.
+
+> **Result limit.** The direct lookup endpoint takes no `limit` parameter of its own — MusicBrainz returns every recording registered against the ISRC. MeedyaManager truncates the parsed results to the requested result count itself, so a direct hit never returns more results than the fallback search would.
 
 ---
 

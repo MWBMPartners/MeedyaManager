@@ -115,13 +115,15 @@ The ISWC provider currently requires the file to already carry an **ISWC tag** �
 
    This returns the matching work(s) — title and ISWC — but a plain search response never includes composer credits.
 
-2. **Enrichment (first result only).** Because composer data isn't in the search response, the provider issues ONE additional lookup-by-id for the *first* result, requesting the artist-relations sub-resource:
+   > **Punctuated input queries both forms.** MusicBrainz canonically stores and displays ISWCs punctuated (`T-034.524.680-1`), unlike ISRCs. Whether MusicBrainz's search index normalises punctuation out of `iswc:` queries server-side is an analyzer detail this project has no way to verify without live network access — so when your ISWC tag is punctuated, MeedyaManager queries BOTH forms, `OR`-ed together: `iswc:T0345246801 OR iswc:"T-034.524.680-1"` (the punctuated form phrase-quoted, so its hyphens/dots can't be read as Lucene syntax). An already-bare, unpunctuated ISWC tag is queried as a single term with no redundant `OR`. This costs nothing extra on the wire — still one HTTP request either way.
+
+2. **Enrichment (first result only, when it looks like a real MBID).** Because composer data isn't in the search response, the provider issues ONE additional lookup-by-id for the *first* result, requesting the artist-relations sub-resource:
 
    ```text
    GET https://musicbrainz.org/ws/2/work/<mbid>?fmt=json&inc=artist-rels
    ```
 
-   Only the first result is enriched — enriching every row in a multi-result search would multiply outbound requests by up to the result limit, which the shared 1 request/second budget can't absorb. If this lookup fails for any reason (network error, rate limit, an unparseable response), it degrades gracefully: the composer is simply left unset and the un-enriched search result is returned rather than failing the whole lookup.
+   Only the first result is enriched — enriching every row in a multi-result search would multiply outbound requests by up to the result limit, which the shared 1 request/second budget can't absorb. MeedyaManager also skips this lookup entirely when the first result's `id` doesn't structurally look like a MusicBrainz Identifier (a UUID-shaped value) — most notably when a search result carried no `id` at all, which would otherwise turn the lookup URL into the works *collection* endpoint rather than a single resource: a guaranteed error that would still spend a rate-limit token for nothing. If the lookup is attempted and fails for any reason (network error, rate limit, an unparseable response), it degrades gracefully: the composer is simply left unset and the un-enriched search result is returned rather than failing the whole lookup.
 
 If the file has no ISWC tag at all, the provider cannot resolve one and returns no results.
 
