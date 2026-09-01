@@ -215,6 +215,8 @@ Configures which metadata providers are enabled and supplies their credentials. 
 ```json5
 providers: {
   // MusicBrainz — free, no credentials required
+  // (contact details in its User-Agent header can be customised via the
+  // MUSICBRAINZ_CONTACT_EMAIL environment variable — see below)
   musicbrainz_enabled: true,
 
   // Discogs — requires a personal access token
@@ -245,6 +247,7 @@ providers: {
 | Field | Type | Default | Description |
 | ----- | ---- | ------- | ----------- |
 | `musicbrainz_enabled` | bool | `true` | Enable MusicBrainz lookups (no key needed) |
+| *(env only)* `MUSICBRAINZ_CONTACT_EMAIL` | string | compiled-in default | Overrides the contact details sent in MusicBrainz's required User-Agent header — see [providers/musicbrainz.md](providers/musicbrainz.md#authentication) |
 | `discogs_enabled` | bool | `false` | Enable Discogs lookups |
 | `discogs_token` | string or null | `null` | Discogs personal access token |
 | `spotify_enabled` | bool | `false` | Enable Spotify lookups |
@@ -272,6 +275,9 @@ API keys can be stored as environment variables instead of in the config file, w
 | `MM_SPOTIFY_CLIENT_SECRET` | `providers.spotify_client_secret` | Spotify |
 | `MM_TMDB_API_KEY` | `providers.tmdb_api_key` | TMDb |
 | `MM_ACOUSTID_API_KEY` | `providers.acoustid_api_key` | AcoustID |
+| `MUSICBRAINZ_CONTACT_EMAIL` | *(no config field — env only)* | MusicBrainz |
+
+> `MUSICBRAINZ_CONTACT_EMAIL` is not an API key — MusicBrainz has none — it customises the contact details (email/URL) sent in the required User-Agent header for the MusicBrainz, ISRC, and ISWC providers. See [providers/musicbrainz.md](providers/musicbrainz.md#authentication).
 
 Environment variables always take priority over values in `settings.json5`.
 

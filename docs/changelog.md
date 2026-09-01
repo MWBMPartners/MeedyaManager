@@ -8,6 +8,56 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
+## [v1.3.2] — 2026-09-01 — MusicBrainz API Hardening (Issue #198)
+
+> **MusicBrainz migration seam** — Centralised every piece of MusicBrainz-specific knowledge (endpoints, query building, Lucene escaping, response parsing) into one module, added a contact-bearing User-Agent, enforced the shared rate limit for real, and hardened the ISRC/ISWC providers with direct lookups and graceful-degradation enrichment — all in preparation for MusicBrainz's announced breaking API changes.
+
+### Added
+
+- `crates/mm-providers/src/musicbrainz.rs` — **New migration seam module.** The single place holding every MusicBrainz endpoint URL, query-string parameter name, Lucene query-building/escaping rule, and tolerant response model (`MbRecordingSearchResponse`, `MbRecording`, `MbIsrcLookupResponse`, `MbWorkSearchResponse`, `MbWork`, etc.). No other module builds a MusicBrainz URL, hand-writes Lucene syntax, or parses a MusicBrainz response directly.
+- `crates/mm-providers/src/musicbrainz.rs` — `mb_get()`, the single request chokepoint all three MusicBrainz-backed providers (search, ISRC, ISWC) now route through. Waits on the shared rate limiter, sends the request, and on a `429`/`503` response performs exactly one retry honouring the server's `Retry-After` header (capped at 10 seconds) before surfacing `ProviderError::RateLimited`.
+- `crates/mm-providers/src/musicbrainz.rs` — `mb_limiter_for()` / `shared_host_limiter()` — a host-keyed token bucket (60 requests/minute, 1 request/second, burst 1) shared by the MusicBrainz, ISRC, and ISWC providers, so all three draw from ONE budget instead of three independent ones.
+- `crates/mm-core/src/useragent.rs` — `build_user_agent_with_contact()` / `contact_string()` — a contact-bearing User-Agent, `MeedyaManager/<version> (<platform>) ( support@mwbmpartners.ltd https://www.mwbmpartners.ltd )` by default, overridable at runtime via the `MUSICBRAINZ_CONTACT_EMAIL` environment variable (useful for self-hosters who want MusicBrainz to contact them, not MWBM Partners Ltd). `crates/mm-providers/src/musicbrainz.rs`'s `ensure_contact()` applies this automatically to any provider User-Agent that doesn't already carry an `@` or `://`.
+- `SearchQuery.offset` — MusicBrainz searches can now page past the first result window; `offset` is sent on the wire only when greater than zero.
+- Direct ISRC lookup — `IsrcProvider` now queries `GET /ws/2/isrc/<CODE>?fmt=json&inc=artist-credits+releases` as its primary path, falling back to the legacy `isrc:<code>` recording search only on a non-rate-limit failure (a `RateLimited` response from the primary lookup returns immediately, without a second request).
+- ISWC composer enrichment — `IswcProvider` now issues one additional `GET /ws/2/work/<mbid>?fmt=json&inc=artist-rels` lookup for the *first* search result to fetch composer credit that a plain work search doesn't include. Enrichment failure (network, parse, or rate limit) degrades gracefully to the un-enriched result rather than failing the lookup.
+
+### Changed
+
+- Lucene query building now **phrase-quotes** title and artist (`recording:"..."`/`artistname:"..."`) instead of merely stripping `"` characters, and character-escapes the full Lucene special-character set (`+ - & | ! ( ) { } [ ] ^ " ~ * ? : \ /`) for free-text fallback queries.
+- The MusicBrainz rate limit is now **actually enforced** end to end (previously best-effort); `429` and `503` responses both map to `ProviderError::RateLimited`.
+- `crates/mm-providers/src/music/mod.rs` — `MusicBrainzProvider` now delegates all endpoint/query/response handling to `crate::musicbrainz`, dropping its own hand-rolled URL and Lucene-escaping logic.
+- `crates/mm-gtk/src/ui/lookup_panel.rs` — the background lookup thread now builds its `MusicBrainzProvider` from `mm_core::useragent::build_user_agent_with_contact()` explicitly, rather than relying on `ensure_contact()`'s implicit fallback, to make the contact-bearing intent obvious at the call site.
+
+### Behavioural Changes
+
+- **Search results may change.** Queries for titles or artist names containing Lucene operator characters (`AND`, `OR`, `NOT`, `&`, `|`, `(`, `)`, `:`, `/`, etc. — think `AC/DC`, `Rock (Live)`, `Wait & See`) are now phrase-quoted and matched as literal text instead of being parsed as query syntax. Results for such titles should improve; a query that previously "worked" by accident because a Lucene operator happened to narrow the search may now return different (more correct) matches.
+- **UI search bursts now serialise to 1 request/second.** Because the rate limit is shared across the MusicBrainz, ISRC, and ISWC providers, several lookups fired in quick succession (e.g. from the lookup panel) queue behind the same token bucket rather than each getting an independent allowance.
+- **Unknown ISRCs may now cost two requests** instead of one: the direct lookup, then the recording-search fallback, when the ISRC isn't registered against the dedicated endpoint.
+- **ISWC lookups may now cost two requests** instead of one: the work search, then the composer-enrichment lookup for the first result (skipped when a composer is already present).
+
+### Fixed
+
+- `crates/mm-providers/src/music/mod.rs` — a wiremock test asserted the User-Agent against a hardcoded contact string; it now derives the expected value from `mm_core::useragent::contact_string()` so the test stays correct whether or not `MUSICBRAINZ_CONTACT_EMAIL` is set in the environment.
+
+### Documentation
+
+- `help/providers/musicbrainz.md`, `help/providers/isrc.md`, `help/providers/iswc.md` — corrected the User-Agent format, rate-limit figures, and Lucene-escaping description; documented pagination; added an "Upcoming MusicBrainz API changes" admonition; rewrote ISWC's "How the Lookup Works" to match the actual search-then-enrich implementation.
+- `help/configuration.md` — documented the `MUSICBRAINZ_CONTACT_EMAIL` environment variable.
+- `PROJECT_STATUS.md` — updated the M5 provider table with the current MusicBrainz/ISRC/ISWC implementation and test counts.
+
+### Pending
+
+- ⚠️ MusicBrainz has announced breaking changes to its search API, effective **2026-11-30**. The replacement specification is not yet published. All MusicBrainz-specific endpoint, query, and response-parsing knowledge is now centralised in `crates/mm-providers/src/musicbrainz.rs` so that the eventual migration is a one-file change rather than a codebase-wide hunt.
+
+### Verification
+
+- `cargo fmt --all` → **clean**
+- `cargo clippy -p mm-core -p mm-providers -p mm-cli --all-targets` → **0 warnings** (pre-existing `mm-cloud` clippy debt from the M7 milestone is tracked separately and out of scope here)
+- `cargo test --workspace` → **1,302 tests pass, 0 failures** (plus 6 doctests)
+
+---
+
 ## [v1.3.1] — 2026-03-06 — Workspace Lint Configuration & Code Quality
 
 > **Code quality hardening** — Added `[workspace.lints]` configuration with pedantic and nursery clippy groups, resolved all warnings across the entire workspace, zero clippy warnings.

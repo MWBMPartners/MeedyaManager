@@ -9,13 +9,14 @@ This guide explains how to configure and use the **ISRC Lookup** metadata provid
 ## 📋 Table of Contents
 
 1. [Overview](#overview)
-2. [Authentication](#authentication)
-3. [Configuration](#configuration)
-4. [Available Data](#available-data)
-5. [Custom Tags](#custom-tags)
-6. [ISRC Format Reference](#isrc-format-reference)
-7. [Troubleshooting](#troubleshooting)
-8. [Legal Notes](#legal-notes)
+2. [How the Lookup Works](#how-the-lookup-works)
+3. [Authentication](#authentication)
+4. [Configuration](#configuration)
+5. [Available Data](#available-data)
+6. [Custom Tags](#custom-tags)
+7. [ISRC Format Reference](#isrc-format-reference)
+8. [Troubleshooting](#troubleshooting)
+9. [Legal Notes](#legal-notes)
 
 ---
 
@@ -32,6 +33,26 @@ This provider is useful for:
 - **Enriching** metadata by federated lookup across multiple sources
 
 The ISRC provider uses a **federated approach** — it queries MusicBrainz as its primary source and can optionally cross-reference results with Spotify and Deezer if those providers are configured and available.
+
+---
+
+> ⚠️ **Upcoming MusicBrainz API changes (2026-11-30)** — MusicBrainz has announced breaking changes to its search API, effective **30 November 2026**. The replacement specification has not been published yet, so this project cannot describe the deltas in advance. Every piece of MusicBrainz-specific knowledge this provider depends on — endpoint URLs, query parameters, and response parsing — is centralised in one file, [`crates/mm-providers/src/musicbrainz.rs`](../../crates/mm-providers/src/musicbrainz.rs), so that when the new spec lands, the update can be applied in a single place instead of a hunt-and-peck across the codebase. This guide will be updated once the new behaviour ships.
+
+---
+
+## How the Lookup Works
+
+MeedyaManager looks up an ISRC in two stages against MusicBrainz:
+
+1. **Direct lookup (primary).** A single, cheap, exact-match request against the dedicated ISRC endpoint:
+
+   ```text
+   GET https://musicbrainz.org/ws/2/isrc/GBUM71029604?fmt=json&inc=artist-credits+releases
+   ```
+
+2. **Recording search (fallback).** If the direct lookup fails for any reason OTHER than a rate limit — a 404 "not registered", a network error, an unparseable body, or the endpoint having moved — MeedyaManager falls back to a general recording search queried by `isrc:<code>`, the same endpoint MusicBrainz's own search provider uses. This costs one extra request for ISRCs the dedicated endpoint doesn't recognise, but keeps lookups working if `/ws/2/isrc/` changes shape in MusicBrainz's announced 2026-11-30 breaking release.
+
+A **rate-limited** response from the direct lookup is returned immediately, without attempting the fallback — piling a second request onto a server that just asked us to back off would be exactly the wrong response.
 
 ---
 
@@ -92,7 +113,10 @@ You can optionally configure the provider's behaviour in `config/settings.json5`
       use_deezer: true,
 
       // MusicBrainz rate limit: requests per second (default: 1.0)
-      // MusicBrainz enforces a 1 request/second limit for unauthenticated access
+      // MusicBrainz enforces a 60-requests/minute (1 request/second, burst 1)
+      // limit for unauthenticated access — enforced automatically by a
+      // shared limiter covering the MusicBrainz, ISRC, and ISWC providers
+      // together, so this setting cannot exceed that shared budget
       musicbrainz_rate_limit: 1.0,
     }
   }
@@ -188,10 +212,10 @@ The ISRC in your file's tags does not match the expected 12-character format. Co
 
 ### Rate limit warnings from MusicBrainz
 
-MusicBrainz enforces a rate limit of 1 request per second for unauthenticated access. If processing many files:
+MusicBrainz enforces a rate limit of 60 requests/minute (1 request/second, burst 1) for unauthenticated access, shared across the MusicBrainz, ISRC, and ISWC providers together. If processing many files:
 
-1. MeedyaManager's rate limiter handles this automatically
-2. Processing will proceed at approximately 1 file per second for ISRC lookups
+1. MeedyaManager's rate limiter handles this automatically, including one automatic retry on a `429`/`503` that honours the server's `Retry-After` header
+2. Processing will proceed at approximately 1 file per second for ISRC lookups — an unregistered ISRC that falls back to a recording search costs a second request, so those files take roughly twice as long
 3. This rate cannot be increased without a MusicBrainz authentication token (future feature)
 
 ### GTIN/barcode not found

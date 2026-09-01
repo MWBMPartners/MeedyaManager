@@ -30,7 +30,11 @@ The MusicBrainz provider uses the **MusicBrainz Web Service API (v2)** to search
 - MusicBrainz IDs (MBIDs): unique UUIDs for recordings, releases, and artists
 - Cover art via the **Cover Art Archive** — a companion service providing album artwork
 - No API key required — only a User-Agent header
-- Strict 1 request per second rate limit (enforced automatically)
+- 60 requests/minute (1 request/second, burst 1), enforced automatically by a shared limiter covering the MusicBrainz, ISRC and ISWC providers
+
+---
+
+> ⚠️ **Upcoming MusicBrainz API changes (2026-11-30)** — MusicBrainz has announced breaking changes to its search API, effective **30 November 2026**. The replacement specification has not been published yet, so this project cannot describe the deltas in advance. Every piece of MusicBrainz-specific knowledge — endpoint URLs, query parameters, Lucene query syntax, and response parsing — is centralised in one file, [`crates/mm-providers/src/musicbrainz.rs`](../../crates/mm-providers/src/musicbrainz.rs), so that when the new spec lands, the update can be applied in a single place instead of a hunt-and-peck across the codebase. This guide will be updated once the new behaviour ships.
 
 ---
 
@@ -41,10 +45,21 @@ MusicBrainz does **not** require an API key or account. The only requirement is 
 ### What MeedyaManager sends
 
 ```text
-User-Agent: MeedyaManager/1.4 (lance.manasse@mwbmpartners.com)
+User-Agent: MeedyaManager/1.3.0 (Linux; x86_64) ( support@mwbmpartners.ltd https://www.mwbmpartners.ltd )
 ```
 
-This header follows MusicBrainz's mandatory format: `AppName/Version (contact_email)`.
+This follows MusicBrainz's documented `"AppName/Version ( contact-info )"` convention: the standard MeedyaManager User-Agent (name, version, platform), followed by a parenthesised contact segment so the MusicBrainz operators can reach us if our traffic ever misbehaves.
+
+### Customising the contact address
+
+The contact segment defaults to MWBM Partners Ltd's support address, but self-hosters who would rather MusicBrainz contact *them* directly can override it at runtime with the `MUSICBRAINZ_CONTACT_EMAIL` environment variable — no rebuild required:
+
+```env
+# .env
+MUSICBRAINZ_CONTACT_EMAIL=you@example.com
+```
+
+With that set, MeedyaManager sends `User-Agent: MeedyaManager/1.3.0 (Linux; x86_64) ( you@example.com )` instead. Leaving it unset (or empty) falls back to the compiled-in default shown above.
 
 ### No setup required
 
@@ -100,7 +115,15 @@ When an ISRC code is already present in the file's metadata, MusicBrainz can per
 GET https://musicbrainz.org/ws/2/isrc/GBUM71029604?fmt=json&inc=artist-credits+releases
 ```
 
-MeedyaManager automatically uses ISRC lookup when an ISRC tag is available.
+MeedyaManager automatically uses ISRC lookup when an ISRC tag is available. See [isrc.md](isrc.md) for the dedicated ISRC provider's full lookup-plus-fallback behaviour.
+
+### Search Query Building
+
+When title and/or artist are known, MeedyaManager builds a Lucene query with each value **phrase-quoted** (e.g. `recording:"Bohemian Rhapsody" AND artistname:"Queen"`), so punctuation and Lucene operators that legitimately appear in a title or artist name (`AC/DC`, `Wait & See`, a track titled literally `Rock (Live)`) are treated as literal text rather than query syntax. A free-text fallback query (used only when neither title nor artist is known) is instead **character-escaped**, which still leaves bare `AND`/`OR`/`NOT` words typed by the user as live Lucene operators — a documented limitation of free-text search.
+
+### Pagination
+
+Searches accept an `offset` in addition to the result limit, so a caller can page through more results than fit in a single response. `offset` is only sent on the wire when it is greater than zero — an explicit `offset=0` is treated identically to omitting it, so requests and logs stay uncluttered for the common first-page case.
 
 ---
 
@@ -151,19 +174,20 @@ MeedyaManager automatically constructs cover art URLs when a release MBID is ava
 **Possible causes:**
 - The recording may not be in the MusicBrainz database (community-contributed)
 - Search terms may be too specific or contain special characters
-- MusicBrainz uses Lucene query syntax — MeedyaManager escapes special characters automatically, but unusual metadata may still cause issues
+- MusicBrainz uses Lucene query syntax — MeedyaManager phrase-quotes title and artist automatically (see [Search Query Building](#search-query-building) above) and character-escapes free-text fallback queries, but unusual metadata may still cause issues
 
 **Solutions:**
 1. Try searching on [musicbrainz.org](https://musicbrainz.org/) directly to verify the recording exists
 2. Consider tagging your files with MusicBrainz Picard first, which adds MBIDs and ISRCs
 3. ISRC lookup is more accurate than text search — ensure ISRC tags are present where possible
 
-### HTTP 503 — Rate limit exceeded
+### HTTP 429 / HTTP 503 — Rate limit exceeded
 
-**Cause:** MusicBrainz strictly enforces **1 request per second**. Exceeding this results in temporary IP blocks.
+**Cause:** MusicBrainz strictly enforces **60 requests/minute (1 request/second, burst 1)** across all traffic, not per feature. Exceeding this results in a `429 Too Many Requests` or `503 Service Unavailable` response, and repeat offenders risk temporary IP blocks.
 
 **Solution:**
-- MeedyaManager's built-in rate limiter should prevent this
+- MeedyaManager's built-in rate limiter should prevent this — it is a single shared budget covering the MusicBrainz, ISRC, and ISWC providers together, so a search and an ISRC/ISWC lookup running back-to-back still serialise to 1 request/second rather than each getting their own allowance
+- A `429`/`503` that does get through is retried automatically ONCE, honouring the server's `Retry-After` header (capped at 10 seconds) — a second consecutive throttle, or a `Retry-After` that is absent or too large, is surfaced as a rate-limit error rather than retried further
 - If you see this error, it may be caused by another application also accessing MusicBrainz from the same IP address
 - Wait a few minutes for the block to expire (typically 1-5 minutes)
 
@@ -172,8 +196,8 @@ MeedyaManager automatically constructs cover art URLs when a release MBID is ava
 **Cause:** Missing or invalid User-Agent header.
 
 **Solution:**
-- This should not occur during normal MeedyaManager operation (the header is hardcoded)
-- If you see this after modifying the source code, ensure the User-Agent follows the format: `AppName/Version (contact_email)`
+- This should not occur during normal MeedyaManager operation (the contact-bearing header is applied automatically — see [Authentication](#authentication) above)
+- If you see this after modifying the source code, ensure the User-Agent follows the format: `AppName/Version ( contact-info )`
 
 ### Cover art not found (HTTP 404 from Cover Art Archive)
 
@@ -188,7 +212,7 @@ MeedyaManager automatically constructs cover art URLs when a release MBID is ava
 - MusicBrainz is a project of the [MetaBrainz Foundation](https://metabrainz.org/), a non-profit organisation
 - The MusicBrainz database is licensed under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (public domain)
 - The Cover Art Archive is a joint project of MusicBrainz and the Internet Archive
-- Rate limits (1 request/second) must be respected — excessive requests may result in IP bans
+- Rate limits (60 requests/minute — 1 request/second, burst 1) must be respected — excessive requests may result in IP bans
 - There are no API key requirements, fees, or registration processes
 - MeedyaManager stores MBIDs as custom metadata tags; these are open identifiers and freely usable
 

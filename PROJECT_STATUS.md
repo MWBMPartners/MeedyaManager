@@ -10,9 +10,9 @@
 
 | Item | Status |
 | ---- | ------ |
-| **Current Milestone** | Post-M10 — v1.3.1 code quality — **Complete** |
-| **Overall Progress** | **100%** core milestones complete; cross-cutting enhancements + lint hardening complete |
-| **Latest Version** | `v1.3.1` |
+| **Current Milestone** | Post-M10 — v1.3.2 MusicBrainz API hardening — **Complete** |
+| **Overall Progress** | **100%** core milestones complete; cross-cutting enhancements + lint hardening + MusicBrainz hardening complete |
+| **Latest Version** | `v1.3.2` |
 | **Python v1.x** | Archived at tag `v1.5-M6-python-final` |
 | **Build Status** | ![CI](https://github.com/MWBMPartners/MeedyaManager/actions/workflows/ci-rust.yml/badge.svg) |
 
@@ -152,7 +152,7 @@
 
 > Started: 2026-03-05 | Completed: 2026-03-05 | Version: `v0.6.0`
 
-**Progress: 100%** | Issues: #73-#84 | **332 tests**
+**Progress: 100%** | Issues: #73-#84 (hardened further under #198) | **438 tests**
 
 | Deliverable | Status | Tests |
 | ----------- | ------ | ----- |
@@ -162,7 +162,8 @@
 | `match_scoring.rs` — weighted fuzzy scoring, MatchScorer, ScoringWeights, rank_results() | Done | 40 |
 | `cover_art.rs` — CoverArtSize, select/filter/deduplicate helpers, URL validators | Done | 20 |
 | `registry.rs` — ProviderRegistry, search() fan-out, search_provider(), find_by_name() | Done | 25 |
-| `MusicBrainzProvider` — XML2 REST, ISRC lookup | Done | 20 |
+| `musicbrainz.rs` — centralised MusicBrainz migration seam: endpoints, Lucene query building/escaping, tolerant response models, shared rate limiter, `ensure_contact()`, `mb_get()` (#198) | Done | 44 |
+| `MusicBrainzProvider` — endpoints/queries routed through `musicbrainz.rs`, contact-bearing UA, phrase-quoted Lucene search, offset pagination (#198) | Done | 57 |
 | `SpotifyProvider` — OAuth2 client-credentials, album art | Done | 18 |
 | `AppleMusicProvider` — iTunes Search API, hi-res cover | Done | 14 |
 | `DeezerProvider` — public JSON API, ISRC via endpoint | Done | 18 |
@@ -173,9 +174,9 @@
 | `AppleTvProvider` — iTunes movie search, hi-res cover | Done | 8 |
 | `ItunesStoreProvider` — iTunes tvShow/tvSeason search | Done | 10 |
 | `ApplePodcastsProvider` — iTunes podcast search, feed_url/episode_count in extra | Done | 12 |
-| `IsrcProvider` — MusicBrainz recording by ISRC | Done | 10 |
+| `IsrcProvider` — direct `/ws/2/isrc/<CODE>` lookup with recording-search fallback (#198) | Done | 14 |
 | `EidrProvider` — EIDR registry Basic-auth | Done | 10 |
-| `IswcProvider` — MusicBrainz work by ISWC | Done | 10 |
+| `IswcProvider` — work search by ISWC + first-result composer enrichment via `inc=artist-rels` (#198) | Done | 9 |
 | `lib.rs` integration smoke tests (15 tests) | Done | 15 |
 
 ---
@@ -361,6 +362,7 @@
 
 | Date | Activity |
 | ---- | -------- |
+| 2026-09-01 | **v1.3.2 — MusicBrainz API Hardening** — Centralised all MusicBrainz endpoint/query/response logic into `crates/mm-providers/src/musicbrainz.rs`, added a contact-bearing User-Agent (`MUSICBRAINZ_CONTACT_EMAIL` override), real Lucene phrase-quoting/escaping, an actually-enforced shared 1 rps rate limiter (429/503 + `Retry-After`), ISRC direct lookup with search fallback, and ISWC first-result composer enrichment. Prepared for MusicBrainz's announced 2026-11-30 breaking API changes. 1,302 tests passing. Issue #198. |
 | 2026-03-06 | **v1.3.1 — Workspace Lint Configuration** — Added `[workspace.lints]` with pedantic+nursery clippy groups across all 8 crates. Resolved all warnings (600+ auto-fixes, 17 manual fixes). Zero clippy warnings, 1,234 tests passing. Issue #129. |
 | 2026-03-05 | **M10 Complete** (`v1.0.0`) — Secure Media Server: `mm-server` crate (JWT/HS256, RFC 7233 range streaming, REST API handler stubs), `meedya serve` CLI command, Server tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~1076 → ~1166 total) |
 | 2026-03-05 | **M9 Complete** (`v0.10.0`) — Database Export: `mm-export` crate (`DatabaseExporter` trait, 5 backends, `SchemaBuilder` DDL), `meedya export` CLI command, Export tab on all 3 platforms (GTK4/macOS/Windows); ~90 new tests (~986 → ~1076 total) |
@@ -380,4 +382,4 @@
 
 > *This file is updated with each significant change. For detailed changelog, see [docs/changelog.md](docs/changelog.md).*
 >
-> *Last updated: 2026-03-06 (v1.3.1 — Workspace lint configuration & code quality hardening)*
+> *Last updated: 2026-09-01 (v1.3.2 — MusicBrainz API hardening, Issue #198)*

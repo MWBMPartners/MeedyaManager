@@ -43,6 +43,10 @@ One ISWC can have many ISRCs (every cover version, live recording, and remix of 
 
 ---
 
+> ⚠️ **Upcoming MusicBrainz API changes (2026-11-30)** — MusicBrainz has announced breaking changes to its search API, effective **30 November 2026**. The replacement specification has not been published yet, so this project cannot describe the deltas in advance. Every piece of MusicBrainz-specific knowledge this provider depends on — endpoint URLs, query parameters, and response parsing — is centralised in one file, [`crates/mm-providers/src/musicbrainz.rs`](../../crates/mm-providers/src/musicbrainz.rs), so that when the new spec lands, the update can be applied in a single place instead of a hunt-and-peck across the codebase. This guide will be updated once the new behaviour ships.
+
+---
+
 ## Authentication
 
 **No authentication is required.** The ISWC provider uses MusicBrainz's public web service API, which is freely accessible without an API key or account.
@@ -50,10 +54,12 @@ One ISWC can have many ISRCs (every cover version, live recording, and remix of 
 MusicBrainz does require that API consumers identify themselves with a meaningful `User-Agent` header. MeedyaManager automatically sets this to:
 
 ```text
-MeedyaManager/1.0 (https://github.com/MWBMPartners/MeedyaManager)
+User-Agent: MeedyaManager/1.3.0 (Linux; x86_64) ( support@mwbmpartners.ltd https://www.mwbmpartners.ltd )
 ```
 
-> **Note:** MusicBrainz enforces a rate limit of approximately 1 request per second for unauthenticated access. MeedyaManager's built-in rate limiter handles this automatically.
+This follows MusicBrainz's documented `"AppName/Version ( contact-info )"` convention — see [musicbrainz.md](musicbrainz.md#authentication) for the full format and for how to override the contact address with the `MUSICBRAINZ_CONTACT_EMAIL` environment variable.
+
+> **Note:** MusicBrainz enforces a rate limit of 60 requests/minute (1 request/second, burst 1) for unauthenticated access, shared across the MusicBrainz, ISRC, and ISWC providers together. MeedyaManager's built-in rate limiter handles this automatically.
 
 ---
 
@@ -82,10 +88,15 @@ You can optionally configure the provider's behaviour in `config/settings.json5`
       // Whether to look up ISWC from recording relations (default: true)
       // If a file has an ISRC or MusicBrainz recording ID but no ISWC,
       // this option enables looking up the associated work and its ISWC
+      // (planned; the current provider requires an existing ISWC tag — see
+      // "How the Lookup Works" below)
       lookup_from_recording: true,
 
       // MusicBrainz rate limit: requests per second (default: 1.0)
-      // MusicBrainz enforces a 1 request/second limit for unauthenticated access
+      // MusicBrainz enforces a 60-requests/minute (1 request/second, burst 1)
+      // limit for unauthenticated access — enforced automatically by a
+      // shared limiter covering the MusicBrainz, ISRC, and ISWC providers
+      // together, so this setting cannot exceed that shared budget
       musicbrainz_rate_limit: 1.0,
     }
   }
@@ -94,12 +105,25 @@ You can optionally configure the provider's behaviour in `config/settings.json5`
 
 ### How the Lookup Works
 
-The ISWC provider follows this resolution chain:
+The ISWC provider currently requires the file to already carry an **ISWC tag** — it does not (yet) chain through an ISRC or MusicBrainz recording ID to discover one. Given a valid ISWC, the lookup proceeds in two stages:
 
-1. **If the file already has an ISWC tag:** Validates the format and looks up the work on MusicBrainz to fetch additional metadata (title, composers).
-2. **If the file has an ISRC but no ISWC:** Looks up the recording by ISRC on MusicBrainz, follows the "recording-of" work relation, and retrieves the associated ISWC.
-3. **If the file has a MusicBrainz recording ID:** Follows the work relation directly to find the associated ISWC.
-4. **If none of the above:** The provider cannot resolve an ISWC for this file and returns no results.
+1. **Search.** The provider queries MusicBrainz's works endpoint by Lucene `iswc:<code>`:
+
+   ```text
+   GET https://musicbrainz.org/ws/2/work/?query=iswc:T0345246801&limit=<n>&fmt=json
+   ```
+
+   This returns the matching work(s) — title and ISWC — but a plain search response never includes composer credits.
+
+2. **Enrichment (first result only).** Because composer data isn't in the search response, the provider issues ONE additional lookup-by-id for the *first* result, requesting the artist-relations sub-resource:
+
+   ```text
+   GET https://musicbrainz.org/ws/2/work/<mbid>?fmt=json&inc=artist-rels
+   ```
+
+   Only the first result is enriched — enriching every row in a multi-result search would multiply outbound requests by up to the result limit, which the shared 1 request/second budget can't absorb. If this lookup fails for any reason (network error, rate limit, an unparseable response), it degrades gracefully: the composer is simply left unset and the un-enriched search result is returned rather than failing the whole lookup.
+
+If the file has no ISWC tag at all, the provider cannot resolve one and returns no results.
 
 ---
 
@@ -175,7 +199,7 @@ MeedyaManager validates ISWCs against these rules:
 
 - **Not all recordings have associated works in MusicBrainz.** MusicBrainz's work coverage is extensive but not complete. Older, obscure, or independently released tracks may not have work entries.
 - **Check MusicBrainz directly.** Search for the recording at [musicbrainz.org](https://musicbrainz.org) and check if it has a "recording of" work relationship.
-- **Ensure the file has identifying metadata.** The provider needs at least one of: an existing ISWC tag, an ISRC tag, or a MusicBrainz recording ID to perform a lookup.
+- **Ensure the file has an ISWC tag.** The provider currently resolves work-level metadata FROM an existing ISWC — it does not yet discover an ISWC starting from an ISRC tag or MusicBrainz recording ID alone (see [How the Lookup Works](#how-the-lookup-works)).
 
 ### "Invalid ISWC format" warning
 
@@ -195,11 +219,11 @@ The ISWC in your file's tags does not match the expected format. Common causes:
 
 ### Rate limit warnings from MusicBrainz
 
-MusicBrainz enforces 1 request per second for unauthenticated access:
+MusicBrainz enforces 60 requests/minute (1 request/second, burst 1) for unauthenticated access, shared across the MusicBrainz, ISRC, and ISWC providers together:
 
-1. MeedyaManager's rate limiter handles this automatically
-2. ISWC lookups may require 2-3 requests per file (recording lookup + work lookup + relations)
-3. Large batch processing will proceed at approximately 1 file every 2-3 seconds
+1. MeedyaManager's rate limiter handles this automatically, including one automatic retry on a `429`/`503` that honours the server's `Retry-After` header
+2. ISWC lookups may require two requests per file: the work search, plus the composer-enrichment lookup for the first result (skipped when the search result already carries a composer)
+3. Large batch processing will proceed at approximately 1 file every 1-2 seconds
 4. This rate cannot be increased without MusicBrainz authentication (future feature)
 
 ### Multiple works found for one recording
