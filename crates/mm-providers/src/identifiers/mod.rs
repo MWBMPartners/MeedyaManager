@@ -77,10 +77,17 @@ pub fn validate_eidr(eidr: &str) -> bool {
 /// network error, unparseable body, an endpoint that no longer exists, ...)
 /// `search()` falls back to the general recording-search endpoint queried by
 /// `isrc:<code>` — the same endpoint/query `MusicBrainzProvider` itself uses
-/// for ISRC searches. That fallback costs one extra request for ISRCs the
-/// dedicated endpoint doesn't recognise, but is the resilience path that
-/// keeps ISRC lookups working if `/ws/2/isrc/` moves or changes shape in
-/// MusicBrainz's announced 2026-11-30 breaking release. A RATE-LIMITED
+/// for ISRC searches. The SAME fallback also fires when the lookup returns a
+/// 2xx with a body that parses cleanly but yields ZERO recordings — because
+/// every field of `MbIsrcLookupResponse` is optional, a response whose shape
+/// has drifted (e.g. the endpoint's JSON restructured under the announced
+/// 2026-11-30 breaking release) parses successfully into an empty result set
+/// rather than raising a parse error, so "parsed OK but empty" gets treated
+/// as equally suspect as "failed to parse" — neither is trusted as a genuine
+/// zero-result answer on its own. That fallback costs one extra request for
+/// ISRCs the dedicated endpoint doesn't recognise (or whose response this
+/// build no longer understands), but is the resilience path that keeps ISRC
+/// lookups working if `/ws/2/isrc/` moves or changes shape. A RATE-LIMITED
 /// primary response is returned directly WITHOUT attempting the fallback —
 /// see the comment in `search()` for why.
 ///
@@ -250,16 +257,56 @@ impl MetadataProvider for IsrcProvider {
             )
             .await
             {
-                // Lookup succeeded — done, no fallback needed.
-                Ok(body) => return Self::parse_isrc_lookup("isrc", &code, &body),
+                // The HTTP call succeeded — but that alone doesn't mean this
+                // is a genuine hit. Every field of `MbIsrcLookupResponse` is
+                // optional, so a 200 whose body has drifted out from under us
+                // (the endpoint changing shape) parses cleanly into ZERO
+                // recordings rather than raising a parse error. Treat that
+                // the same as an outright parse failure below: both are
+                // "the lookup didn't really answer the question", so both
+                // fall through to the legacy search fallback instead of this
+                // returning a misleadingly-confident `Ok(vec![])`.
+                Ok(body) => match Self::parse_isrc_lookup("isrc", &code, &body) {
+                    Ok(mut results) if !results.is_empty() => {
+                        // A genuine hit — done, no fallback needed. The
+                        // dedicated lookup endpoint takes no `limit`
+                        // parameter of its own (MusicBrainz returns every
+                        // recording registered against the ISRC), so
+                        // truncate here to honour `query.max_results`
+                        // ourselves — `0` means "no limit", matching how
+                        // `Registry::search()` treats the same field.
+                        if query.max_results > 0 {
+                            results.truncate(query.max_results);
+                        }
+                        return Ok(results);
+                    }
+                    Ok(_) => {
+                        warn!(
+                            provider = "isrc",
+                            isrc = %code,
+                            "ISRC lookup parsed OK but yielded zero recordings \
+                             (possible endpoint shape change); falling back \
+                             to recording search"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            provider = "isrc",
+                            isrc = %code,
+                            error = %e,
+                            "ISRC lookup response failed to parse; falling \
+                             back to recording search"
+                        );
+                    }
+                },
                 // The server just told us to back off. Piling a SECOND
                 // request onto it via the fallback search below would be
                 // exactly the wrong response to a rate limit, so surface
                 // this directly instead of trying the fallback path.
                 Err(e @ ProviderError::RateLimited { .. }) => return Err(e),
                 // Any other failure (404 "not registered", a network error,
-                // an unparseable body, the endpoint having moved, ...) is
-                // NOT fatal — fall through to the legacy search fallback.
+                // the endpoint having moved, ...) is NOT fatal — fall
+                // through to the legacy search fallback.
                 Err(e) => {
                     warn!(
                         provider = "isrc",
@@ -1045,6 +1092,189 @@ mod tests {
             ProviderError::RateLimited { provider } => assert_eq!(provider, "isrc"),
             other => panic!("expected RateLimited, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_unrecognised_shape_falls_back_to_search() {
+        // A 200 body that parses cleanly (every field of
+        // `MbIsrcLookupResponse` is optional) but doesn't carry a
+        // `recordings` array we recognise must be treated the same as an
+        // outright parse failure — falling through to the search fallback
+        // rather than returning a misleadingly-confident `Ok(vec![])`. This
+        // is exactly the shape-changed-under-us scenario the 2026-11-30
+        // migration seam exists for.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"unexpected":"shape"}"#))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", "isrc:GBAYE0601498"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(
+                    r#"{"recordings":[{"id":"mb-3","title":"Shape Changed Track"}]}"#,
+                ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GBAYE0601498".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("an unrecognised-but-valid lookup shape should fall back to search");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title.as_deref(), Some("Shape Changed Track"));
+    }
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_non_json_body_falls_back_to_search() {
+        // A 200 whose body isn't even valid JSON — `parse_isrc_lookup()`
+        // returns `Err(Parse)`, which must ALSO fall through to the search
+        // fallback rather than being returned directly.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html>not json</html>"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", "isrc:GBAYE0601498"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(
+                    r#"{"recordings":[{"id":"mb-4","title":"Non JSON Fallback"}]}"#,
+                ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GBAYE0601498".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("a non-JSON lookup body should fall back to search");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title.as_deref(), Some("Non JSON Fallback"));
+    }
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_empty_recordings_falls_back_to_search() {
+        // A well-formed 200 whose `recordings` array is simply empty (e.g.
+        // the ISRC genuinely isn't registered under this endpoint's index)
+        // must also fall back — not just outright parse failures.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"isrc":"GBAYE0601498","recordings":[]}"#),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", "isrc:GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"recordings":[{"id":"mb-5","title":"Empty Lookup Fallback"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GBAYE0601498".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("an empty-but-well-formed lookup should fall back to search");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title.as_deref(), Some("Empty Lookup Fallback"));
+    }
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_hit_never_calls_fallback_search() {
+        // The mirror image of the three fallback tests above: a lookup that
+        // DOES return real recordings must never touch the fallback search
+        // endpoint at all — proven via `.expect(0)`.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"isrc":"GBAYE0601498","recordings":[{"id":"mb-6","title":"Real Hit"}]}"#,
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GBAYE0601498".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("a genuine lookup hit should return directly without a fallback request");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title.as_deref(), Some("Real Hit"));
+    }
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_hit_truncates_to_max_results() {
+        // FIX (issue #198): the dedicated lookup endpoint takes no `limit`
+        // parameter of its own, so `search()` must truncate the parsed
+        // lookup results to `query.max_results` itself, the same way
+        // `Registry::search()` truncates the merged results from every
+        // other path.
+        let server = MockServer::start().await;
+        let recordings = (1..=5)
+            .map(|n| format!(r#"{{"id":"mb-{n}","title":"Track {n}"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"isrc":"GBAYE0601498","recordings":[{recordings}]}}"#
+            )))
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GBAYE0601498".into()),
+            max_results: 2,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("lookup hit should succeed");
+        assert_eq!(results.len(), 2);
     }
 
     // =========================================================================
