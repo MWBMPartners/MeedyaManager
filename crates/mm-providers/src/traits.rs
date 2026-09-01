@@ -133,6 +133,10 @@ pub struct SearchQuery {
     /// Maximum number of results to return
     pub max_results: usize,
 
+    /// Result offset for pagination (0 = first page).
+    #[serde(default)]
+    pub offset: usize,
+
     /// Country/locale code for region-specific results (ISO 3166-1 alpha-2)
     pub country: Option<String>,
 }

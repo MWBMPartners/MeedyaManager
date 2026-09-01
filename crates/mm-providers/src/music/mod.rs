@@ -65,34 +65,58 @@ fn opt_str(s: impl Into<String>) -> Option<String> {
 
 /// Searches the MusicBrainz open database.
 ///
-/// Endpoint: `https://musicbrainz.org/ws/2/recording/`
-/// Auth:     None required (but a User-Agent string is required)
-/// Limits:   50 RPM (free tier)
+/// Endpoint: `GET {base}/ws/2/recording/?query=<lucene>&limit=<n>&offset=<n>&fmt=json`
+/// Auth:     None required (but a contact-bearing User-Agent string is required)
+/// Limits:   60 RPM (1 request/second, burst 1) — MusicBrainz documents this as
+///           a SHARED budget across ALL of musicbrainz.org, not per feature, so
+///           this provider, `IsrcProvider`, and `IswcProvider` all draw from one
+///           token bucket keyed by host (see `crate::musicbrainz::mb_get()`).
+///
+/// All MusicBrainz-specific knowledge (endpoint URLs, query params, Lucene
+/// escaping, response shapes) lives in the `crate::musicbrainz` module seam —
+/// see that module's doc comment for the full rationale (it exists so the
+/// announced 2026-11-30 breaking API change is a one-file fix). This struct
+/// only orchestrates: build a query, ask `musicbrainz` for a URL/params, hand
+/// both to `mb_get()`, then map the body through `musicbrainz::models`.
 pub struct MusicBrainzProvider {
     client: Client,
     base_url: String,
     enabled: bool,
     capabilities: Capabilities,
-    /// Required by MusicBrainz API: identifies the application making requests
-    #[allow(dead_code)]
+    /// Required by MusicBrainz API: identifies the application making
+    /// requests. Sent as the literal `User-Agent` header on every request via
+    /// `mb_get()` (no longer relying solely on the client-level default UA),
+    /// so it is genuinely read at request time — no `#[allow(dead_code)]`.
     user_agent: String,
 }
 
 impl MusicBrainzProvider {
     /// Create a provider with the standard MusicBrainz endpoint.
     pub fn new(user_agent: impl Into<String>) -> Self {
-        Self::with_base_url(user_agent, "https://musicbrainz.org")
+        Self::with_base_url(user_agent, crate::musicbrainz::MB_DEFAULT_BASE_URL)
     }
 
     /// Create a provider with a custom base URL (useful for test mocking).
     pub fn with_base_url(user_agent: impl Into<String>, base_url: impl Into<String>) -> Self {
         let user_agent = user_agent.into();
+        // Compute `enabled` from the PRE-`ensure_contact` input's emptiness.
+        // This is semantically identical to checking the POST-ensure_contact
+        // value: `ensure_contact()` explicitly leaves an empty string
+        // unchanged (see its doc comment), so "was a user_agent supplied at
+        // all" is unaffected by whether contact info later gets appended to
+        // it — but checking the raw input keeps this "is the provider
+        // configured" signal obviously tied to what the CALLER passed in,
+        // not to an implementation detail of the contact-appending helper.
         let enabled = !user_agent.is_empty();
         Self {
             client: crate::http::build_client(),
             base_url: base_url.into(),
             enabled,
-            user_agent,
+            // Ensure the User-Agent carries a contact address per
+            // MusicBrainz's usage policy (an unreachable UA risks silent
+            // deprioritisation or a ban) — appends one only when non-empty
+            // and not already contact-bearing. See `ensure_contact()`.
+            user_agent: crate::musicbrainz::ensure_contact(user_agent),
             capabilities: Capabilities {
                 media_types: vec![MediaType::Music],
                 supports_search: true,
@@ -108,85 +132,28 @@ impl MusicBrainzProvider {
     }
 
     /// Parse a MusicBrainz recording search response into `ProviderResult`s.
+    ///
+    /// All response-shape knowledge (field names, tolerant score parsing,
+    /// the artist/album/year mapping) now lives in `crate::musicbrainz` —
+    /// this function is just "deserialize, then map each recording". Name
+    /// and signature are kept unchanged so the existing parse tests below
+    /// keep compiling without modification.
     fn parse_recordings(
         provider_name: &str,
         body: &str,
     ) -> Result<Vec<ProviderResult>, ProviderError> {
-        #[derive(Deserialize)]
-        struct MbResponse {
-            recordings: Vec<MbRecording>,
-        }
-
-        #[derive(Deserialize)]
-        struct MbRecording {
-            id: Option<String>,
-            title: Option<String>,
-            #[serde(rename = "artist-credit")]
-            artist_credit: Option<Vec<MbArtistCredit>>,
-            releases: Option<Vec<MbRelease>>,
-            isrcs: Option<Vec<String>>,
-            length: Option<u64>,
-            score: Option<u32>,
-        }
-
-        #[derive(Deserialize)]
-        struct MbArtistCredit {
-            artist: Option<MbArtist>,
-        }
-
-        #[derive(Deserialize)]
-        struct MbArtist {
-            name: Option<String>,
-        }
-
-        #[derive(Deserialize)]
-        struct MbRelease {
-            title: Option<String>,
-            date: Option<String>,
-            #[serde(rename = "track-count")]
-            #[allow(dead_code)]
-            track_count: Option<u32>,
-        }
-
-        let resp: MbResponse =
+        // Deserialize into the shared response model. `deny_unknown_fields`
+        // is deliberately never applied there, so extra MusicBrainz fields
+        // we don't map are tolerated rather than failing the whole parse.
+        let resp: crate::musicbrainz::models::MbRecordingSearchResponse =
             serde_json::from_str(body).map_err(|e| parse_err("MusicBrainz response", e))?;
 
+        // Map every parsed recording through the shared mapping helper —
+        // identical field-for-field mapping to what used to live inline here.
         let results = resp
             .recordings
             .into_iter()
-            .map(|rec| {
-                // Combine artist-credit names
-                let artist = rec.artist_credit.as_deref().map(|credits| {
-                    credits
-                        .iter()
-                        .filter_map(|c| c.artist.as_ref()?.name.as_deref())
-                        .collect::<Vec<_>>()
-                        .join("; ")
-                });
-
-                // Use the first release for album/year info
-                let first_release = rec.releases.as_deref().and_then(|r| r.first());
-                let album = first_release.and_then(|r| r.title.clone());
-                let year = first_release
-                    .and_then(|r| r.date.as_deref())
-                    .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
-
-                // MusicBrainz score is 0–100; normalise to [0.0, 1.0]
-                let score = f64::from(rec.score.unwrap_or(0)) / 100.0;
-
-                ProviderResult {
-                    provider: provider_name.to_owned(),
-                    provider_id: rec.id.unwrap_or_default(),
-                    title: rec.title,
-                    artist,
-                    album,
-                    year,
-                    isrc: rec.isrcs.and_then(|v| v.into_iter().next()),
-                    duration_secs: rec.length.map(|ms| ms as f64 / 1000.0),
-                    score,
-                    ..Default::default()
-                }
-            })
+            .map(|rec| crate::musicbrainz::models::recording_to_result(provider_name, rec))
             .collect();
 
         Ok(results)
@@ -219,58 +186,55 @@ impl MetadataProvider for MusicBrainzProvider {
                 return Err(ProviderError::Disabled("musicbrainz".into()));
             }
 
-            // Build query string: ISRC takes priority over free-text
+            // Build the Lucene query via the shared `musicbrainz` module: an
+            // ISRC takes priority over free-text (an exact identifier match
+            // is strictly better than a fuzzy title/artist search), otherwise
+            // fall back to a title/artist (or free-text) recording query.
+            // `recording_query()` phrase-quotes title/artist so operator-like
+            // characters in real titles (e.g. `AC/DC: Back? [Live] AND More`)
+            // are treated as literal text, not Lucene syntax — see that
+            // function's doc comment for the full escaping-policy rationale.
             let lucene_query = if let Some(isrc) = &query.isrc {
-                format!("isrc:{isrc}")
+                crate::musicbrainz::isrc_query(isrc)
             } else {
-                let mut parts = Vec::new();
-                if let Some(title) = &query.title {
-                    parts.push(format!("recording:{}", title.replace('"', "")));
-                }
-                if let Some(artist) = &query.artist {
-                    parts.push(format!("artistname:{}", artist.replace('"', "")));
-                }
-                if parts.is_empty() {
-                    query.query.clone()
-                } else {
-                    parts.join(" AND ")
-                }
+                crate::musicbrainz::recording_query(
+                    query.title.as_deref(),
+                    query.artist.as_deref(),
+                    &query.query,
+                )
             };
 
-            let url = format!("{}/ws/2/recording/", self.base_url);
+            // Endpoint URL and query-string parameters, both built by the
+            // shared module so this provider never hand-writes MusicBrainz
+            // wire format. `query.offset` flows straight through — 0 is
+            // omitted from the actual request by `search_params()`.
+            let url = crate::musicbrainz::search_url(
+                &self.base_url,
+                crate::musicbrainz::MbEntity::Recording,
+            );
+            let params =
+                crate::musicbrainz::search_params(&lucene_query, query.max_results, query.offset);
+
             debug!(
                 provider = "musicbrainz",
                 query = &lucene_query,
+                offset = query.offset,
                 "Sending search request"
             );
 
-            let response = self
-                .client
-                .get(&url)
-                // User-Agent is set at the client level by crate::http::build_client()
-                // so no per-request override is needed. MusicBrainz receives our
-                // standard "MeedyaManager/<version> (<platform>)" header automatically.
-                .header("Accept", "application/json")
-                .query(&[
-                    ("query", &lucene_query as &str),
-                    ("limit", &query.max_results.to_string()),
-                    ("fmt", "json"),
-                ])
-                .send()
-                .await
-                .map_err(net_err)?;
+            // Execute the rate-limited, contact-header-bearing GET. `mb_get()`
+            // owns the shared 1 rps token bucket, the 429/503 retry-once
+            // policy, and non-2xx → `ProviderError::Network` mapping — no
+            // inline HTTP handling remains in this provider.
+            let body = crate::musicbrainz::mb_get(
+                &self.client,
+                "musicbrainz",
+                &self.user_agent,
+                &url,
+                &params,
+            )
+            .await?;
 
-            if !response.status().is_success() {
-                let status = response.status();
-                if status.as_u16() == 503 {
-                    return Err(ProviderError::RateLimited {
-                        provider: "musicbrainz".into(),
-                    });
-                }
-                return Err(ProviderError::Network(format!("HTTP {status}")));
-            }
-
-            let body = response.text().await.map_err(net_err)?;
             Self::parse_recordings("musicbrainz", &body)
         })
     }
@@ -1113,7 +1077,7 @@ stub_provider!(
 );
 
 // ---------------------------------------------------------------------------
-// Tests — 70 tests
+// Tests — 57 tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -1202,6 +1166,210 @@ mod tests {
         let json = r#"{"recordings": [{"id": "x", "length": 240000, "score": 50}]}"#;
         let results = MusicBrainzProvider::parse_recordings("musicbrainz", json).unwrap();
         assert!((results[0].duration_secs.unwrap() - 240.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn mb_parse_recordings_float_score_normalises() {
+        // MusicBrainz documents `score` as an integer 0-100, but has also
+        // been observed sending it as a JSON float — de_score() tolerates
+        // that, and the mapping still normalises to [0.0, 1.0].
+        let json = r#"{"recordings": [{"id": "x", "score": 87.5}]}"#;
+        let results = MusicBrainzProvider::parse_recordings("musicbrainz", json).unwrap();
+        assert!((results[0].score - 0.875).abs() < 1e-9);
+    }
+
+    #[test]
+    fn mb_parse_recordings_absent_score_defaults_to_zero() {
+        // No `score` key at all (not even `null`) — de_score() yields `None`,
+        // which recording_to_result() maps to a default score of 0.0 rather
+        // than failing the parse.
+        let json = r#"{"recordings": [{"id": "x"}]}"#;
+        let results = MusicBrainzProvider::parse_recordings("musicbrainz", json).unwrap();
+        assert_eq!(results[0].score, 0.0);
+    }
+
+    #[test]
+    fn mb_parse_recordings_missing_recordings_key_is_empty_ok() {
+        // MusicBrainz omits the `recordings` key entirely on some zero-result
+        // responses rather than sending `[]` — `#[serde(default)]` on that
+        // field must turn this into an empty `Ok(vec![])`, not a parse error.
+        let json = r"{}";
+        let results = MusicBrainzProvider::parse_recordings("musicbrainz", json).unwrap();
+        assert!(results.is_empty());
+    }
+
+    // -------------------------------------------------------------------
+    // MusicBrainz — wiremock integration tests (search() end to end)
+    // -------------------------------------------------------------------
+    //
+    // These exercise the full `search()` path — Lucene query building,
+    // URL/param construction, and the `mb_get()` executor — against a real
+    // (mocked) HTTP server, proving the wire-level behaviour that unit tests
+    // on `parse_recordings()` alone can't: what actually gets escaped,
+    // headered, and paginated on the way out.
+
+    use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn mb_search_sends_phrase_quoted_query_on_the_wire() {
+        // A title containing Lucene operator-like characters (`/`, `?`,
+        // `:`, `[`, `]`, the bare word `AND`) must reach the server
+        // phrase-quoted, not merely quote-stripped — proving the
+        // `.replace('"', "")` pseudo-escaping this migration deletes is
+        // truly gone and `recording_query()`'s phrase-quoting is what's
+        // actually on the wire.
+        let title = "What's / This?: AND [More]";
+        let artist = "Test Artist";
+        let expected_query = format!(r#"recording:"{title}" AND artistname:"{artist}""#);
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", expected_query.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            title: Some(title.to_owned()),
+            artist: Some(artist.to_owned()),
+            max_results: 5,
+            ..Default::default()
+        };
+        provider
+            .search(query)
+            .await
+            .expect("search should succeed against the mock");
+    }
+
+    #[tokio::test]
+    async fn mb_search_includes_offset_param_when_nonzero() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("offset", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            query: "test".into(),
+            max_results: 5,
+            offset: 100,
+            ..Default::default()
+        };
+        provider
+            .search(query)
+            .await
+            .expect("search with a nonzero offset should succeed");
+    }
+
+    #[tokio::test]
+    async fn mb_search_omits_offset_param_when_zero() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param_is_missing("offset"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            query: "test".into(),
+            max_results: 5,
+            offset: 0,
+            ..Default::default()
+        };
+        provider
+            .search(query)
+            .await
+            .expect("search with a zero offset should succeed");
+    }
+
+    #[tokio::test]
+    async fn mb_search_sends_contact_bearing_user_agent() {
+        // `with_base_url()` runs the supplied UA through `ensure_contact()`,
+        // which appends MusicBrainz's documented "UA ( contact )" segment
+        // since "TestApp/1.0" contains neither '@' nor "://".
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(header(
+                "User-Agent",
+                "TestApp/1.0 ( support@mwbmpartners.ltd https://www.mwbmpartners.ltd )",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            query: "test".into(),
+            max_results: 5,
+            ..Default::default()
+        };
+        provider
+            .search(query)
+            .await
+            .expect("search should succeed against the mock");
+    }
+
+    #[tokio::test]
+    async fn mb_search_503_maps_to_rate_limited() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            query: "test".into(),
+            max_results: 5,
+            ..Default::default()
+        };
+        let err = provider
+            .search(query)
+            .await
+            .expect_err("a bare 503 (no Retry-After) should surface as RateLimited");
+        match err {
+            ProviderError::RateLimited { provider } => assert_eq!(provider, "musicbrainz"),
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn mb_search_429_maps_to_rate_limited() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            query: "test".into(),
+            max_results: 5,
+            ..Default::default()
+        };
+        let err = provider
+            .search(query)
+            .await
+            .expect_err("a bare 429 (no Retry-After) should surface as RateLimited");
+        match err {
+            ProviderError::RateLimited { provider } => assert_eq!(provider, "musicbrainz"),
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
     }
 
     // =========================================================================
