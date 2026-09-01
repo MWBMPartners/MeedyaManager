@@ -13,7 +13,7 @@
 
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::traits::{
     Capabilities, MediaType, MetadataProvider, ProviderError, ProviderResult, SearchQuery,
@@ -66,11 +66,28 @@ pub fn validate_eidr(eidr: &str) -> bool {
 // 1. ISRC Provider (via MusicBrainz)
 // ---------------------------------------------------------------------------
 
-/// Looks up ISRC identifiers via MusicBrainz recording search.
+/// Looks up ISRC identifiers, primarily via MusicBrainz's dedicated ISRC
+/// lookup endpoint, falling back to a recording search for resilience.
 ///
-/// Endpoint: `https://musicbrainz.org/ws/2/recording/?query=isrc:<ISRC>`
-/// Auth:     None (but User-Agent required)
-/// Limits:   30 RPM
+/// Endpoint (PRIMARY): `GET {base}/ws/2/isrc/<CODE>?fmt=json&inc=artist-credits+releases`
+///   — a direct, cheap, exact-match lookup by ISRC code. `<CODE>` is the
+///   normalised (uppercased, hyphen-stripped) ISRC — see `normalise_isrc()`.
+///
+/// On any lookup failure OTHER than a rate limit (404 "not registered",
+/// network error, unparseable body, an endpoint that no longer exists, ...)
+/// `search()` falls back to the general recording-search endpoint queried by
+/// `isrc:<code>` — the same endpoint/query `MusicBrainzProvider` itself uses
+/// for ISRC searches. That fallback costs one extra request for ISRCs the
+/// dedicated endpoint doesn't recognise, but is the resilience path that
+/// keeps ISRC lookups working if `/ws/2/isrc/` moves or changes shape in
+/// MusicBrainz's announced 2026-11-30 breaking release. A RATE-LIMITED
+/// primary response is returned directly WITHOUT attempting the fallback —
+/// see the comment in `search()` for why.
+///
+/// Auth:   None (but a contact-bearing User-Agent is required)
+/// Limits: 60 RPM (1 request/second, burst 1) — a budget SHARED with
+///         `MusicBrainzProvider` and `IswcProvider` (all three route through
+///         `crate::musicbrainz::mb_get()`'s one token bucket per host).
 pub struct IsrcProvider {
     client: Client,
     base_url: String,
@@ -80,7 +97,7 @@ pub struct IsrcProvider {
 
 impl IsrcProvider {
     pub fn new(user_agent: impl Into<String>) -> Self {
-        Self::with_base_url(user_agent, "https://musicbrainz.org")
+        Self::with_base_url(user_agent, crate::musicbrainz::MB_DEFAULT_BASE_URL)
     }
 
     pub fn with_base_url(user_agent: impl Into<String>, base_url: impl Into<String>) -> Self {
@@ -88,7 +105,11 @@ impl IsrcProvider {
         Self {
             client: crate::http::build_client(),
             base_url: base_url.into(),
-            user_agent,
+            // Ensure the User-Agent carries a contact address per
+            // MusicBrainz's usage policy — see `ensure_contact()`'s doc
+            // comment. An empty `user_agent` (the "provider not configured"
+            // signal `is_enabled()` checks for) is left unchanged.
+            user_agent: crate::musicbrainz::ensure_contact(user_agent),
             capabilities: Capabilities {
                 media_types: vec![MediaType::Identifier, MediaType::Music],
                 supports_search: false,
@@ -103,69 +124,58 @@ impl IsrcProvider {
         }
     }
 
+    /// Parse a MusicBrainz recording-SEARCH response (the fallback path) into
+    /// `ProviderResult`s. Name/signature kept unchanged so the existing
+    /// tests below keep compiling without modification.
     fn parse_recordings(
         provider_name: &str,
         body: &str,
     ) -> Result<Vec<ProviderResult>, ProviderError> {
-        #[derive(Deserialize)]
-        struct MbResponse {
-            recordings: Vec<MbRecording>,
-        }
-        #[derive(Deserialize)]
-        struct MbRecording {
-            id: Option<String>,
-            title: Option<String>,
-            #[serde(rename = "artist-credit")]
-            artist_credit: Option<Vec<MbCredit>>,
-            releases: Option<Vec<MbRelease>>,
-            isrcs: Option<Vec<String>>,
-            length: Option<u64>,
-        }
-        #[derive(Deserialize)]
-        struct MbCredit {
-            artist: Option<MbArtist>,
-        }
-        #[derive(Deserialize)]
-        struct MbArtist {
-            name: Option<String>,
-        }
-        #[derive(Deserialize)]
-        struct MbRelease {
-            title: Option<String>,
-            date: Option<String>,
-        }
-
-        let resp: MbResponse =
+        // All response-shape knowledge now lives in `crate::musicbrainz` —
+        // this is just "deserialize the shared model, map each recording".
+        let resp: crate::musicbrainz::models::MbRecordingSearchResponse =
             serde_json::from_str(body).map_err(|e| parse_err("ISRC/MusicBrainz response", e))?;
 
         let results = resp
             .recordings
             .into_iter()
-            .map(|rec| {
-                let artist = rec.artist_credit.as_deref().map(|credits| {
-                    credits
-                        .iter()
-                        .filter_map(|c| c.artist.as_ref()?.name.as_deref())
-                        .collect::<Vec<_>>()
-                        .join("; ")
-                });
-                let first_release = rec.releases.as_deref().and_then(|r| r.first());
-                let album = first_release.and_then(|r| r.title.clone());
-                let year = first_release
-                    .and_then(|r| r.date.as_deref())
-                    .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
+            .map(|rec| crate::musicbrainz::models::recording_to_result(provider_name, rec))
+            .collect();
+        Ok(results)
+    }
 
-                ProviderResult {
-                    provider: provider_name.to_owned(),
-                    provider_id: rec.id.unwrap_or_default(),
-                    title: rec.title,
-                    artist,
-                    album,
-                    year,
-                    isrc: rec.isrcs.and_then(|v| v.into_iter().next()),
-                    duration_secs: rec.length.map(|ms| ms as f64 / 1000.0),
-                    ..Default::default()
+    /// Parse a response from the dedicated ISRC LOOKUP endpoint (the primary
+    /// path, `GET /ws/2/isrc/<code>`) into `ProviderResult`s.
+    ///
+    /// This endpoint's embedded recordings omit their own `isrcs` array
+    /// unless the caller additionally requests `inc=isrcs` — which `search()`
+    /// deliberately doesn't, since every recording this endpoint returns is
+    /// by definition registered against the ISRC we just looked up, so
+    /// echoing it back via `inc=isrcs` would be a redundant extra field. That
+    /// means `recording_to_result()` leaves `result.isrc` as `None` here;
+    /// this function fills it back in with the ISRC we actually queried
+    /// (`isrc`, already normalised by the caller) whenever that happens.
+    fn parse_isrc_lookup(
+        provider_name: &str,
+        isrc: &str,
+        body: &str,
+    ) -> Result<Vec<ProviderResult>, ProviderError> {
+        let resp: crate::musicbrainz::models::MbIsrcLookupResponse =
+            serde_json::from_str(body).map_err(|e| parse_err("ISRC lookup response", e))?;
+
+        let results = resp
+            .recordings
+            .into_iter()
+            .map(|rec| {
+                let mut result =
+                    crate::musicbrainz::models::recording_to_result(provider_name, rec);
+                // Backfill the queried ISRC when the recording carried no
+                // `isrcs` of its own (see doc comment above for why that's
+                // the normal case for this endpoint).
+                if result.isrc.is_none() {
+                    result.isrc = Some(isrc.to_owned());
                 }
+                result
             })
             .collect();
         Ok(results)
@@ -210,38 +220,83 @@ impl MetadataProvider for IsrcProvider {
                 return Err(ProviderError::Parse(format!("Invalid ISRC format: {isrc}")));
             }
 
+            // Canonicalise once up front: used as the lookup URL's path
+            // segment, inside the fallback's Lucene `isrc:` query, and to
+            // backfill `ProviderResult.isrc` on lookup hits (see
+            // `parse_isrc_lookup()`).
+            let code = crate::musicbrainz::normalise_isrc(isrc);
+
             debug!(
                 provider = "isrc",
-                isrc = isrc,
+                isrc = %code,
                 "Sending ISRC lookup request"
             );
 
-            let url = format!("{}/ws/2/recording/", self.base_url);
-            let response = self
-                .client
-                .get(&url)
-                // User-Agent is set at client level by crate::http::build_client()
-                .header("Accept", "application/json")
-                .query(&[
-                    ("query", &format!("isrc:{isrc}")),
-                    ("limit", &query.max_results.to_string()),
-                    ("fmt", &"json".to_owned()),
-                ])
-                .send()
-                .await
-                .map_err(net_err)?;
+            // PRIMARY PATH: the dedicated /ws/2/isrc/<code> endpoint — one
+            // cheap, exact-match request instead of a full Lucene search.
+            let lookup_url = crate::musicbrainz::lookup_url(
+                &self.base_url,
+                crate::musicbrainz::MbEntity::Isrc,
+                &code,
+            );
+            let lookup_params = crate::musicbrainz::lookup_params(Some("artist-credits+releases"));
 
-            if !response.status().is_success() {
-                let s = response.status();
-                if s.as_u16() == 503 {
-                    return Err(ProviderError::RateLimited {
-                        provider: "isrc".into(),
-                    });
+            match crate::musicbrainz::mb_get(
+                &self.client,
+                "isrc",
+                &self.user_agent,
+                &lookup_url,
+                &lookup_params,
+            )
+            .await
+            {
+                // Lookup succeeded — done, no fallback needed.
+                Ok(body) => return Self::parse_isrc_lookup("isrc", &code, &body),
+                // The server just told us to back off. Piling a SECOND
+                // request onto it via the fallback search below would be
+                // exactly the wrong response to a rate limit, so surface
+                // this directly instead of trying the fallback path.
+                Err(e @ ProviderError::RateLimited { .. }) => return Err(e),
+                // Any other failure (404 "not registered", a network error,
+                // an unparseable body, the endpoint having moved, ...) is
+                // NOT fatal — fall through to the legacy search fallback.
+                Err(e) => {
+                    warn!(
+                        provider = "isrc",
+                        isrc = %code,
+                        error = %e,
+                        "ISRC lookup failed; falling back to recording search"
+                    );
                 }
-                return Err(ProviderError::Network(format!("HTTP {s}")));
             }
 
-            let body = response.text().await.map_err(net_err)?;
+            // FALLBACK PATH: the general recording-search endpoint, queried
+            // by Lucene `isrc:<code>` — the same endpoint `MusicBrainzProvider`
+            // itself uses for ISRC searches. This costs one extra request for
+            // ISRCs the dedicated lookup endpoint doesn't recognise (or when
+            // that endpoint is unreachable altogether), but is the
+            // resilience path that keeps ISRC lookups working if
+            // `/ws/2/isrc/` moves or changes shape in MusicBrainz's
+            // announced 2026-11-30 breaking release.
+            let search_url = crate::musicbrainz::search_url(
+                &self.base_url,
+                crate::musicbrainz::MbEntity::Recording,
+            );
+            let search_params = crate::musicbrainz::search_params(
+                &crate::musicbrainz::isrc_query(&code),
+                query.max_results,
+                0,
+            );
+
+            let body = crate::musicbrainz::mb_get(
+                &self.client,
+                "isrc",
+                &self.user_agent,
+                &search_url,
+                &search_params,
+            )
+            .await?;
+
             Self::parse_recordings("isrc", &body)
         })
     }
@@ -595,7 +650,7 @@ impl MetadataProvider for IswcProvider {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — 30 tests
+// Tests — 38 tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -749,6 +804,160 @@ mod tests {
             p.search(q.clone()).await,
             Err(ProviderError::Parse(_))
         ));
+    }
+
+    #[test]
+    fn isrc_provider_parse_isrc_lookup_backfills_queried_isrc() {
+        // The dedicated ISRC lookup endpoint's embedded recordings omit
+        // their own `isrcs` array unless `inc=isrcs` is requested — which
+        // `search()` deliberately doesn't (see `parse_isrc_lookup()`'s doc
+        // comment). `parse_isrc_lookup()` must backfill the queried ISRC
+        // in that (normal) case.
+        let json = r#"{
+            "isrc": "GBAYE0601498",
+            "recordings": [{
+                "id": "mb-rec-2",
+                "title": "Some Track"
+            }]
+        }"#;
+        let results = IsrcProvider::parse_isrc_lookup("isrc", "GBAYE0601498", json).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].isrc.as_deref(), Some("GBAYE0601498"));
+    }
+
+    // -------------------------------------------------------------------
+    // IsrcProvider — wiremock integration tests (search() end to end)
+    // -------------------------------------------------------------------
+
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_hit_uses_normalised_path_and_inc() {
+        // Passing a HYPHENATED ISRC in proves normalise_isrc() runs before
+        // the lookup URL is built — the mock only matches the canonical,
+        // unhyphenated path segment.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .and(query_param("inc", "artist-credits+releases"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"isrc":"GBAYE0601498","recordings":[{"id":"mb-1","title":"T"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GB-AYE-06-01498".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("lookup hit should return results");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].isrc.as_deref(), Some("GBAYE0601498"));
+    }
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_404_falls_back_to_search() {
+        // Lookup 404s (ISRC not registered under the dedicated endpoint);
+        // the fallback recording search then succeeds.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", "isrc:GBAYE0601498"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(
+                    r#"{"recordings":[{"id":"mb-2","title":"Fallback Track","isrcs":["GBAYE0601498"]}]}"#,
+                ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GBAYE0601498".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let results = provider
+            .search(query)
+            .await
+            .expect("fallback search should return results");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title.as_deref(), Some("Fallback Track"));
+    }
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_and_search_both_404_is_network_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GBAYE0601498".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let err = provider
+            .search(query)
+            .await
+            .expect_err("both lookup and fallback 404ing should surface as Network");
+        assert!(matches!(err, ProviderError::Network(_)));
+    }
+
+    #[tokio::test]
+    async fn isrc_provider_search_lookup_rate_limited_skips_fallback() {
+        // A 429 on the PRIMARY lookup must be surfaced directly — the
+        // fallback recording-search endpoint must NEVER be hit, proven here
+        // via `.expect(0)` on its mock (piling a second request onto an
+        // already-throttling server would defeat the point of backing off).
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/isrc/GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let provider = IsrcProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            isrc: Some("GBAYE0601498".into()),
+            max_results: 5,
+            ..Default::default()
+        };
+        let err = provider
+            .search(query)
+            .await
+            .expect_err("a rate-limited lookup must not fall back to search");
+        match err {
+            ProviderError::RateLimited { provider } => assert_eq!(provider, "isrc"),
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
     }
 
     // =========================================================================
