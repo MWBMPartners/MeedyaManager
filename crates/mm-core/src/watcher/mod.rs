@@ -6,9 +6,10 @@
 // polling backend for network/cloud-mounted drives where inotify/FSEvents
 // may not work.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use notify::{
     Config as NotifyConfig, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
@@ -183,6 +184,66 @@ pub fn convert_event(event: &Event) -> Vec<WatchEvent> {
     events
 }
 
+/// Coalesces rapid-fire filesystem events for the same path within a
+/// configured debounce window (issue #45).
+///
+/// A single logical change — a copy, a tag write, an editor's save-then-touch
+/// — routinely produces several raw OS notifications for the same path in
+/// quick succession. Without this, `meedya watch` prints (and downstream
+/// consumers like auto-organise would act on) one line per raw notification
+/// instead of one per real change.
+///
+/// This is deliberately the *debounce* half of #45 only. The other half —
+/// a polling backend (`notify::PollWatcher`) for network/cloud-mounted
+/// drives where inotify/FSEvents don't fire at all — needs a
+/// backend-selection strategy (when to prefer polling over native events)
+/// and is out of scope here; `notify_config.with_poll_interval` below is
+/// consequently dead weight until that follow-up constructs a
+/// `PollWatcher` instead of `RecommendedWatcher`.
+///
+/// Uses only `std` (`HashMap<PathBuf, Instant>`) — no new dependency such as
+/// `notify-debouncer-full`, which would touch `Cargo.lock`.
+#[derive(Debug, Default)]
+struct Debouncer {
+    /// Minimum spacing required between two emitted events for the same
+    /// path. A window of zero disables debouncing (every event emits).
+    window: Duration,
+    /// Last instant an event for a given path was *emitted* (not merely
+    /// seen) — the window is measured from this, not from the previous raw
+    /// event, so a burst longer than the window still collapses to one
+    /// emission per window rather than trickling one through per gap.
+    last_emitted: HashMap<PathBuf, Instant>,
+}
+
+impl Debouncer {
+    /// Build a debouncer with the given coalescing window.
+    fn new(window: Duration) -> Self {
+        Self {
+            window,
+            last_emitted: HashMap::new(),
+        }
+    }
+
+    /// Returns `true` if an event for `path` observed at `now` should be
+    /// passed through to the caller, recording `now` as the new baseline
+    /// when it does. Returns `false` when `path` had an emitted event less
+    /// than `window` ago — the caller should drop this event as a
+    /// duplicate of the one already emitted.
+    fn should_emit(&mut self, path: &Path, now: Instant) -> bool {
+        if let Some(&last) = self.last_emitted.get(path) {
+            // `duration_since` saturates at zero rather than panicking if
+            // `now` predates `last` (clock artefacts), which correctly
+            // falls through to "still within window" — never emits a
+            // release note the window plainly hasn't cleared.
+            if now.duration_since(last) < self.window {
+                return false;
+            }
+        }
+        self.last_emitted.insert(path.to_path_buf(), now);
+        true
+    }
+}
+
 /// Start watching directories and return a receiver for events.
 ///
 /// Spawns a background thread that listens for OS file events and
@@ -193,8 +254,16 @@ pub fn start_watcher(
     let (tx, rx) = mpsc::channel();
     let config_clone = config.clone();
 
-    // Create the notify watcher with debounce config
-    let _debounce = Duration::from_millis(config.debounce_ms);
+    // Coalesce duplicate raw notifications per path using the *configured*
+    // debounce window — previously this value was computed into a
+    // throwaway binding and never used, so `debounce_ms` had no effect at
+    // all (issue #45).
+    let mut debouncer = Debouncer::new(Duration::from_millis(config.debounce_ms));
+
+    // NOTE: `with_poll_interval` only affects `notify::PollWatcher`, which
+    // is never constructed here (see `Debouncer` doc comment above) — this
+    // call is currently inert for `RecommendedWatcher` and is left in place
+    // only so the follow-up polling-fallback work has a config to build on.
     let notify_config = NotifyConfig::default().with_poll_interval(Duration::from_secs(2));
 
     let watcher_tx = tx;
@@ -203,6 +272,7 @@ pub fn start_watcher(
             match result {
                 Ok(event) => {
                     let watch_events = convert_event(&event);
+                    let now = Instant::now();
                     for we in watch_events {
                         // Apply filtering
                         let path = match &we {
@@ -212,7 +282,18 @@ pub fn start_watcher(
                             WatchEvent::Renamed(_, to) => to,
                         };
 
-                        if !should_ignore(path, &config_clone) && watcher_tx.send(we).is_err() {
+                        if should_ignore(path, &config_clone) {
+                            continue;
+                        }
+
+                        // Drop duplicate notifications for the same path
+                        // within the debounce window before they ever
+                        // reach the channel.
+                        if !debouncer.should_emit(path, now) {
+                            continue;
+                        }
+
+                        if watcher_tx.send(we).is_err() {
                             // Receiver dropped — stop
                             return;
                         }
@@ -511,5 +592,60 @@ mod tests {
         assert_eq!(config.debounce_ms, 500);
         assert!(config.include_extensions.is_empty());
         assert!(!config.exclude_extensions.is_empty());
+    }
+
+    // ─── Debounce coalescing (issue #45) ───────────────────────────────────
+    //
+    // These drive the coalescing helper directly with injected `Instant`
+    // values rather than the real filesystem watcher, so the assertions are
+    // deterministic — no `sleep`-and-hope races against the OS event queue.
+
+    #[test]
+    fn debounce_coalesces_same_path_within_window() {
+        let mut debouncer = Debouncer::new(Duration::from_millis(500));
+        let path = PathBuf::from("/music/song.mp3");
+        let t0 = Instant::now();
+
+        // First event for a path is always emitted.
+        assert!(debouncer.should_emit(&path, t0));
+        // A second event for the SAME path, well inside the debounce
+        // window, must be coalesced (not re-emitted).
+        assert!(!debouncer.should_emit(&path, t0 + Duration::from_millis(100)));
+    }
+
+    #[test]
+    fn debounce_same_path_outside_window_yields_two() {
+        let mut debouncer = Debouncer::new(Duration::from_millis(500));
+        let path = PathBuf::from("/music/song.mp3");
+        let t0 = Instant::now();
+
+        assert!(debouncer.should_emit(&path, t0));
+        // Past the window — this is a genuinely new event, not a dup.
+        assert!(debouncer.should_emit(&path, t0 + Duration::from_millis(600)));
+    }
+
+    #[test]
+    fn debounce_different_paths_are_independent() {
+        let mut debouncer = Debouncer::new(Duration::from_millis(500));
+        let path_a = PathBuf::from("/music/a.mp3");
+        let path_b = PathBuf::from("/music/b.mp3");
+        let t0 = Instant::now();
+
+        // Two different paths at the same instant must both be emitted —
+        // debouncing is per-path, never global.
+        assert!(debouncer.should_emit(&path_a, t0));
+        assert!(debouncer.should_emit(&path_b, t0));
+    }
+
+    #[test]
+    fn debounce_zero_window_never_coalesces() {
+        // debounce_ms = 0 must behave as "debouncing disabled", not as an
+        // always-coalesce window.
+        let mut debouncer = Debouncer::new(Duration::from_millis(0));
+        let path = PathBuf::from("/music/song.mp3");
+        let t0 = Instant::now();
+
+        assert!(debouncer.should_emit(&path, t0));
+        assert!(debouncer.should_emit(&path, t0));
     }
 }
