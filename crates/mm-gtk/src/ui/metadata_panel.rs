@@ -310,17 +310,36 @@ impl MetadataPanel {
                     })
                     .collect();
 
-                match metadata::write_tags(&file_path, &tag_map) {
-                    Ok(()) => {
-                        // Commit edits to state
-                        state_clone.borrow_mut().commit_edits();
+                // Route through the integrity guard, never the raw metadata layer
+                // directly: the guard is the only place Test Mode is enforced
+                // (issue #128), so a direct call would overwrite the user's
+                // original even with "don't touch my files" switched on.
+                let result = mm_core::integrity::write_tags_safe(&file_path, &tag_map);
+
+                if result.success {
+                    // Commit edits to state
+                    state_clone.borrow_mut().commit_edits();
+
+                    // The guard reports the file it actually wrote.  A different
+                    // path means Test Mode diverted us to a `_MeedyaManager`
+                    // copy — tell the user where their edits went, otherwise a
+                    // bare "saved" implies their own file changed.
+                    if result.path == file_path {
                         status_label_clone.set_text("✓ Tags saved successfully.");
-                        save_btn_clone.set_sensitive(false);
-                        revert_btn_clone.set_sensitive(false);
+                    } else {
+                        status_label_clone.set_text(&format!(
+                            "✓ Tags saved to {} (Test Mode — original untouched).",
+                            result.path.display()
+                        ));
                     }
-                    Err(e) => {
-                        status_label_clone.set_text(&format!("⚠ Save failed: {e}"));
-                    }
+
+                    save_btn_clone.set_sensitive(false);
+                    revert_btn_clone.set_sensitive(false);
+                } else {
+                    status_label_clone.set_text(&format!(
+                        "⚠ Save failed: {}",
+                        result.error.as_deref().unwrap_or("unknown error")
+                    ));
                 }
             });
         }

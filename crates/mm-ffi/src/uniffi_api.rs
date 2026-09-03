@@ -20,6 +20,8 @@ use std::sync::{Arc, Mutex};
 
 use mm_core::classify;
 use mm_core::config::AppConfig;
+// The integrity guard — the only sanctioned way to mutate a media file.
+use mm_core::integrity;
 use mm_core::metadata::{self, TagMap};
 use mm_core::renamer::{self, SanitizeConfig};
 use mm_core::rule_engine::{
@@ -207,6 +209,18 @@ pub fn get_metadata(path: String) -> Result<Vec<TagEntry>, MmFfiError> {
 ///
 /// Only the tags in `tags` are written; existing tags not in the list are
 /// preserved. Multi-value tags can be passed with "; " as the delimiter.
+///
+/// ## Behaviour changes callers must know about
+///
+/// * **Test Mode is honoured.**  With Test Mode enabled the original file is
+///   left byte-for-byte untouched and the tags land on a `_MeedyaManager`
+///   copy beside it (issue #128).  A subsequent write accumulates onto that
+///   same copy.
+/// * **Unknown keys are rejected.**  A key with no `ItemKey` mapping used to
+///   be dropped silently, so the call returned `Ok` having changed nothing.
+///   It now returns `MmFfiError::Metadata` naming the key and listing the
+///   valid ones (issue #206).  Use `mm_core::metadata::known_tag_keys` — or
+///   simply write back keys obtained from `get_metadata`.
 #[uniffi::export]
 pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiError> {
     let file_path = PathBuf::from(&path);
@@ -234,17 +248,50 @@ pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiErro
         })
         .collect();
 
-    metadata::write_tags(&file_path, &tag_map).map_err(MmFfiError::from)
+    // Route through the integrity guard rather than the raw metadata layer:
+    // the guard is the only enforcement point for Test Mode (issue #128), so
+    // a direct call would overwrite the user's original file even with Test
+    // Mode on.  The guard also gives us the atomic-rename + hash-verify
+    // behaviour the native UIs would otherwise have to reimplement.
+    let result = integrity::write_tags_safe(&file_path, &tag_map);
+
+    if result.success {
+        Ok(())
+    } else {
+        Err(MmFfiError::Metadata(
+            result
+                .error
+                .unwrap_or_else(|| "metadata write failed".to_string()),
+        ))
+    }
 }
 
 /// Remove a single tag field from a media file.
 ///
-/// Uses the canonical lowercase key (e.g. "title", "artist", "album").
-/// This is a no-op if the key is not recognised or not present.
+/// Uses the canonical lowercase key (e.g. "title", "artist", "album") — see
+/// `mm_core::metadata::known_tag_keys` for the full list.  Removing a key the
+/// file does not carry succeeds; passing a key that is not in the mapping at
+/// all now returns `MmFfiError::Metadata` rather than silently succeeding
+/// (issue #206) — see the note on `write_metadata`.
+///
+/// Honours Test Mode: with it enabled the original file is left untouched and
+/// the removal is applied to the `_MeedyaManager` copy.
 #[uniffi::export]
 pub fn remove_tag(path: String, tag_key: String) -> Result<(), MmFfiError> {
     let file_path = PathBuf::from(&path);
-    metadata::remove_tag(&file_path, &tag_key).map_err(MmFfiError::from)
+
+    // Integrity guard, not the raw metadata layer — see `write_metadata`.
+    let result = integrity::remove_tag_safe(&file_path, &tag_key);
+
+    if result.success {
+        Ok(())
+    } else {
+        Err(MmFfiError::Metadata(
+            result
+                .error
+                .unwrap_or_else(|| "tag removal failed".to_string()),
+        ))
+    }
 }
 
 /// Read audio technical properties from a media file.
@@ -527,5 +574,164 @@ fn watch_event_to_ffi(event: WatchEvent) -> WatchEventFfi {
             path: from.to_string_lossy().into_owned(),
             new_path: to.to_string_lossy().into_owned(),
         },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+// `std::env::set_var`/`remove_var` are `unsafe` in Edition 2024 because they
+// race with concurrent readers.  The test below serialises its mutation behind
+// ENV_LOCK and restores the variable from `Drop`, which is the discipline the
+// marker asks for.  (The crate already has a blanket `#![allow(unsafe_code)]`
+// for the FFI scaffolding; this attribute documents the intent locally.)
+#[allow(unsafe_code)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// Process-wide lock for `MM_CONFIG_DIR` within the mm-ffi test binary.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// RAII guard that points `MM_CONFIG_DIR` at a private directory for the
+    /// lifetime of one test and cleans up on drop — including on an assertion
+    /// panic, which a trailing `remove_var` would skip.
+    ///
+    /// Built by hand rather than with `tempfile` because mm-ffi has no
+    /// dev-dependency on it and adding one would touch `Cargo.lock`.
+    struct ConfigDirGuard {
+        dir: PathBuf,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl ConfigDirGuard {
+        fn new(tag: &str) -> Self {
+            let lock = ENV_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+            // Nanosecond clock + a tag keeps concurrent runs from colliding.
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let dir = std::env::temp_dir().join(format!("mm_ffi_{tag}_{nanos}"));
+            std::fs::create_dir_all(&dir).unwrap();
+
+            unsafe {
+                std::env::set_var("MM_CONFIG_DIR", &dir);
+            }
+            Self { dir, _lock: lock }
+        }
+
+        fn path(&self) -> &Path {
+            &self.dir
+        }
+    }
+
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            unsafe {
+                std::env::remove_var("MM_CONFIG_DIR");
+            }
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// Build a minimal but *real* WAV file on disk.
+    ///
+    /// lofty refuses a bare 44-byte header with no `data` payload, so the
+    /// fixture carries 0.1 s of 8 kHz 16-bit mono silence (1,644 bytes total).
+    fn write_wav_fixture(path: &Path) {
+        const DATA_LEN: u32 = 1600;
+
+        let mut bytes: Vec<u8> = Vec::with_capacity(44 + DATA_LEN as usize);
+        bytes.extend_from_slice(b"RIFF"); // RIFF container magic
+        bytes.extend_from_slice(&(36 + DATA_LEN).to_le_bytes()); // size after this field
+        bytes.extend_from_slice(b"WAVE"); // RIFF form type
+        bytes.extend_from_slice(b"fmt "); // format chunk id (note trailing space)
+        bytes.extend_from_slice(&16u32.to_le_bytes()); // PCM format chunk is 16 bytes
+        bytes.extend_from_slice(&1u16.to_le_bytes()); // audio format: 1 = PCM
+        bytes.extend_from_slice(&1u16.to_le_bytes()); // channels: mono
+        bytes.extend_from_slice(&8000u32.to_le_bytes()); // sample rate: 8 kHz
+        bytes.extend_from_slice(&16000u32.to_le_bytes()); // byte rate = rate x align
+        bytes.extend_from_slice(&2u16.to_le_bytes()); // block align: 1ch x 16-bit
+        bytes.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+        bytes.extend_from_slice(b"data"); // sample data chunk id
+        bytes.extend_from_slice(&DATA_LEN.to_le_bytes()); // sample data length
+        bytes.extend_from_slice(&vec![0u8; DATA_LEN as usize]); // silence
+
+        std::fs::write(path, &bytes).expect("WAV fixture must be writable");
+    }
+
+    /// The FFI write path must obey Test Mode exactly as the CLI does — the
+    /// native UIs call straight into it, so an unguarded write here would let
+    /// macOS/Windows clobber originals the user asked us not to touch.
+    #[test]
+    fn write_metadata_respects_test_mode() {
+        let guard = ConfigDirGuard::new("testmode");
+
+        let original = guard.path().join("track.wav");
+        write_wav_fixture(&original);
+        let before = std::fs::read(&original).unwrap();
+
+        mm_core::test_mode::enable().expect("test mode must enable under the isolated config dir");
+
+        write_metadata(
+            original.display().to_string(),
+            vec![TagEntry {
+                key: "title".to_string(),
+                value: "Diverted".to_string(),
+            }],
+        )
+        .expect("write_metadata should succeed in Test Mode");
+
+        assert_eq!(
+            std::fs::read(&original).unwrap(),
+            before,
+            "Test Mode must leave the original byte-for-byte untouched"
+        );
+
+        let copy = guard.path().join("track_MeedyaManager.wav");
+        assert!(copy.exists(), "Test Mode copy {} missing", copy.display());
+
+        let tags = mm_core::metadata::extract_tags(&copy).unwrap();
+        assert_eq!(
+            tags.get("title").map(Vec::as_slice),
+            Some(&["Diverted".to_string()][..]),
+            "the copy must carry the new title"
+        );
+    }
+
+    /// An unmapped key now reaches the caller as an error instead of a silent
+    /// success — the behaviour change that matters most to the native UIs.
+    #[test]
+    fn write_metadata_rejects_unknown_key() {
+        let guard = ConfigDirGuard::new("unknownkey");
+
+        let p = guard.path().join("track.wav");
+        write_wav_fixture(&p);
+        let before = std::fs::read(&p).unwrap();
+
+        let err = write_metadata(
+            p.display().to_string(),
+            vec![TagEntry {
+                key: "bogus_key".to_string(),
+                value: "1".to_string(),
+            }],
+        )
+        .expect_err("an unmapped key must not report success");
+
+        assert!(
+            matches!(err, MmFfiError::Metadata(ref m) if m.contains("bogus_key")),
+            "expected a Metadata error naming the key, got: {err:?}"
+        );
+        assert_eq!(
+            std::fs::read(&p).unwrap(),
+            before,
+            "a rejected write must not touch the file"
+        );
     }
 }

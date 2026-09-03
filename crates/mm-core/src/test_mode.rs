@@ -209,8 +209,72 @@ fn save_manifest(manifest: &TestModeManifest) -> MmResult<()> {
 // ---------------------------------------------------------------------------
 
 /// Return `true` if test mode is currently enabled.
+///
+/// ## Failure policy: fail **open**
+///
+/// If the manifest cannot be loaded (missing permissions, truncated file,
+/// hand-edited JSON) this logs an `error!` naming the manifest path and
+/// returns `false` — i.e. Test Mode is treated as OFF and writes go to the
+/// user's real files.
+///
+/// Failing *closed* was considered and rejected: `is_enabled` shares
+/// `load_manifest` with [`enable`] and [`disable`], so a manifest that cannot
+/// be parsed would also make those two error out.  The user would then be
+/// stuck in a Test Mode they cannot turn off without hand-deleting the file,
+/// with no message telling them where it lives.  The loud `error!` is the
+/// compensating control: the corrupt manifest is impossible to miss in the
+/// logs, and the path to delete is right there in the message.
 pub fn is_enabled() -> bool {
-    load_manifest().map(|m| m.enabled).unwrap_or(false)
+    match load_manifest() {
+        Ok(manifest) => manifest.enabled,
+        Err(e) => {
+            // Resolve the path for the message on a best-effort basis — if
+            // even the config dir cannot be resolved we still want to log.
+            let where_ = manifest_path().map_or_else(
+                |_| "<config dir unresolved>".to_string(),
+                |p| p.display().to_string(),
+            );
+            error!(
+                manifest = %where_,
+                %e,
+                "test mode: manifest unreadable — assuming DISABLED (writes will \
+                 touch your original files).  Delete or repair the manifest to \
+                 restore Test Mode."
+            );
+            false
+        }
+    }
+}
+
+/// Return the enabled flag from the manifest, propagating a load failure.
+///
+/// This is the fallible counterpart to [`is_enabled`]: it lets a caller that
+/// *can* show the user an error (a CLI status command, say) distinguish
+/// "Test Mode is off" from "the manifest is broken", which the fail-open
+/// `is_enabled` deliberately conflates.
+///
+/// # Errors
+/// Returns `MmError::Config` if the manifest cannot be read or parsed.
+pub fn manifest_status() -> MmResult<bool> {
+    Ok(load_manifest()?.enabled)
+}
+
+/// Return the tracked Test Mode copy for `original`, if the manifest has one.
+///
+/// Keyed exactly as [`record_file`] writes it — `original.to_string_lossy()` —
+/// so the lookup and the insert can never disagree about the key shape.
+///
+/// The integrity layer uses this to *accumulate* successive edits on one copy.
+/// Without it, a second edit in Test Mode re-copied the pristine original over
+/// the copy and silently discarded the first edit (issue #128).
+///
+/// Returns `None` when the file is untracked, and also when the manifest
+/// cannot be loaded — the caller's correct response in both cases is to make
+/// a fresh copy.
+pub fn tracked_copy_for(original: &Path) -> Option<PathBuf> {
+    let manifest = load_manifest().ok()?;
+    let key = original.to_string_lossy().to_string();
+    manifest.files.get(&key).map(|entry| entry.copy.clone())
 }
 
 /// Enable test mode.  Records the enable timestamp in the manifest.
@@ -595,5 +659,101 @@ mod tests {
         unsafe {
             std::env::remove_var("MM_CONFIG_DIR");
         }
+    }
+
+    // ── tracked_copy_for / manifest_status — issue #128 ─────────────────────
+
+    /// RAII guard pointing `MM_CONFIG_DIR` at a private tempdir.
+    ///
+    /// Restoring on `Drop` (rather than a trailing `remove_var`) means an
+    /// assertion panic cannot leak the override into sibling tests.
+    struct ConfigDirGuard {
+        // Dropped top-to-bottom: tempdir removed before the lock is released.
+        dir: TempDir,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl ConfigDirGuard {
+        fn new() -> Self {
+            let lock = crate::config::ENV_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let dir = TempDir::new().unwrap();
+            unsafe {
+                std::env::set_var("MM_CONFIG_DIR", dir.path());
+            }
+            Self { dir, _lock: lock }
+        }
+
+        fn path(&self) -> &Path {
+            self.dir.path()
+        }
+    }
+
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            unsafe {
+                std::env::remove_var("MM_CONFIG_DIR");
+            }
+        }
+    }
+
+    #[test]
+    fn tracked_copy_for_returns_none_when_untracked() {
+        let _guard = ConfigDirGuard::new();
+
+        // Nothing recorded yet, so nothing to find.
+        assert_eq!(tracked_copy_for(Path::new("/music/never_seen.mp3")), None);
+    }
+
+    #[test]
+    fn tracked_copy_for_finds_a_recorded_copy() {
+        let _guard = ConfigDirGuard::new();
+
+        let original = Path::new("/music/track.mp3");
+        let copy = test_mode_path(original);
+        record_file(original, &copy).unwrap();
+
+        assert_eq!(
+            tracked_copy_for(original),
+            Some(copy),
+            "the lookup must use the same key shape `record_file` writes"
+        );
+        // A different file is still untracked.
+        assert_eq!(tracked_copy_for(Path::new("/music/other.mp3")), None);
+    }
+
+    #[test]
+    fn is_enabled_corrupt_manifest_returns_false_without_panic() {
+        let guard = ConfigDirGuard::new();
+
+        // Hand-mangled manifest: valid UTF-8, invalid JSON.
+        let manifest = guard.path().join(MANIFEST_FILENAME);
+        fs::write(&manifest, b"{ this is not json").unwrap();
+
+        // Fail OPEN: unreadable manifest is reported as "Test Mode off" rather
+        // than propagating, so `enable()`/`disable()` stay reachable.  The
+        // compensating control is the `error!` log naming the manifest path.
+        assert!(
+            !is_enabled(),
+            "a corrupt manifest must fail open (false), not panic"
+        );
+
+        // The fallible counterpart must, by contrast, surface the problem.
+        assert!(
+            manifest_status().is_err(),
+            "manifest_status must propagate what is_enabled swallows"
+        );
+    }
+
+    #[test]
+    fn manifest_status_reports_the_enabled_flag() {
+        let _guard = ConfigDirGuard::new();
+
+        assert!(!manifest_status().unwrap(), "a fresh manifest is disabled");
+        enable().unwrap();
+        assert!(manifest_status().unwrap());
+        disable().unwrap();
+        assert!(!manifest_status().unwrap());
     }
 }

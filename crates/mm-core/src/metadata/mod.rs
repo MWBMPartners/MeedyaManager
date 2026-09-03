@@ -465,6 +465,53 @@ pub fn item_key_to_mm_key(ik: &ItemKey) -> Option<&'static str> {
         .map(|(mm_key, _)| mm_key)
 }
 
+/// Return every MeedyaManager tag key that can actually be persisted to a file.
+///
+/// Derived from [`tag_key_mappings`], which is the single source of truth for
+/// the key ↔ `ItemKey` bridge, so this list can never drift from what
+/// [`write_tags`] and [`remove_tag`] will accept.
+///
+/// Callers use it to validate user-supplied keys *before* starting any I/O —
+/// see `mm-cli`'s `edit` command, which needs the whole batch to be
+/// all-or-nothing.
+///
+/// Note the deliberate omissions: `podcast_title`, `podcast_id` and
+/// `podcast_category` have `TAG_*` constants but no lofty `ItemKey`, so they
+/// cannot round-trip through any tag container we support and are therefore
+/// *not* valid write keys.
+///
+/// # Examples
+/// ```
+/// # use mm_core::metadata::{known_tag_keys, TAG_TITLE};
+/// assert!(known_tag_keys().contains(&TAG_TITLE));
+/// assert!(!known_tag_keys().contains(&"bogus_key"));
+/// ```
+pub fn known_tag_keys() -> Vec<&'static str> {
+    tag_key_mappings().into_iter().map(|(key, _)| key).collect()
+}
+
+/// Build the `MmError::Metadata` returned when a caller supplies a tag key
+/// with no `ItemKey` mapping.
+///
+/// The message names every offending key *and* enumerates the valid ones,
+/// because the caller is usually a human typing `--set` on a command line (or
+/// a UI developer guessing at a key name) and a bare "unknown key" would leave
+/// them no way forward.
+fn unknown_tag_key_error(keys: &[&str]) -> MmError {
+    // Quote each offending key so an empty or whitespace-only key is visible.
+    let offenders = keys
+        .iter()
+        .map(|k| format!("'{k}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    MmError::Metadata(format!(
+        "unknown tag key{plural} {offenders} — valid keys: {valid}",
+        plural = if keys.len() == 1 { "" } else { "s" },
+        valid = known_tag_keys().join(", ")
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers — file probing
 // ---------------------------------------------------------------------------
@@ -665,30 +712,49 @@ fn get_or_create_primary_tag(tagged_file: &mut lofty::file::TaggedFile) -> &mut 
 /// # Errors
 /// Returns an error if the file cannot be opened, read, or saved.
 pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
+    // -- Validate every key BEFORE touching the file (issue #206) ----------
+    //
+    // A key with no `ItemKey` mapping cannot be persisted by any tag format
+    // we support.  Previously such keys were dropped inside the write loop,
+    // so `meedya edit --set bogus=1` reported "✓ Set" having changed nothing.
+    // Rejecting up-front also makes the write all-or-nothing: on a bad key we
+    // never open the file, so the caller's other keys are not half-applied.
+    let mut unknown: Vec<&str> = tags
+        .keys()
+        .filter(|key| mm_key_to_item_key(key).is_none())
+        .map(String::as_str)
+        .collect();
+    if !unknown.is_empty() {
+        // TagMap is a HashMap, so its iteration order is randomised per
+        // process — sort so the message is reproducible in logs and tests.
+        unknown.sort_unstable();
+        return Err(unknown_tag_key_error(&unknown));
+    }
+
     // Open and read the existing file so we can preserve its tags
     let mut tagged_file = open_tagged_file(path)?;
 
     // Get (or create) the primary tag for this file format
     let tag = get_or_create_primary_tag(&mut tagged_file);
 
-    // Write each entry from the supplied map into the tag
+    // Write each entry from the supplied map into the tag.
+    // Every key is known to map — the validation pass above returned early
+    // otherwise — so no key can be dropped on the floor here.
     for (key, values) in tags {
-        // Look up the lofty ItemKey for this MeedyaManager key
-        if let Some(item_key) = mm_key_to_item_key(key) {
-            // Join multi-value into a single "; "-delimited string
-            let joined = join_multi_value(values);
+        let item_key = mm_key_to_item_key(key)
+            .expect("validated above: every key in `tags` has an ItemKey mapping");
 
-            // Remove existing items for this key to avoid duplicates
-            tag.remove_key(&item_key);
+        // Join multi-value into a single "; "-delimited string
+        let joined = join_multi_value(values);
 
-            // Insert the new value (skip if the joined string is empty)
-            if !joined.is_empty() {
-                let item = TagItem::new(item_key, ItemValue::Text(joined));
-                tag.push(item);
-            }
+        // Remove existing items for this key to avoid duplicates
+        tag.remove_key(&item_key);
+
+        // Insert the new value (skip if the joined string is empty)
+        if !joined.is_empty() {
+            let item = TagItem::new(item_key, ItemValue::Text(joined));
+            tag.push(item);
         }
-        // Keys not in our mapping are silently ignored — callers should
-        // use the TAG_* constants for reliable round-tripping.
     }
 
     // Persist to disk using default write options (preserves format quirks)
@@ -699,17 +765,18 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
 
 /// Remove a specific tag field from the file at `path`.
 ///
-/// The `key` should be one of the `TAG_*` constants.  If the key is not
-/// recognised or the file has no such tag, this is a no-op (not an error).
+/// The `key` must be one of the `TAG_*` constants (see [`known_tag_keys`]).
+/// Removing a key the file does not carry is a successful no-op; supplying a
+/// key that is not in our mapping at all is an **error** (issue #206) — it is
+/// always a caller mistake, and returning `Ok(())` for it used to make
+/// `meedya edit --remove bogus` report success having done nothing.
 ///
 /// # Errors
-/// Returns an error if the file cannot be opened, read, or saved.
+/// Returns `MmError::Metadata` if `key` has no `ItemKey` mapping, or if the
+/// file cannot be opened, read, or saved.
 pub fn remove_tag(path: &Path, key: &str) -> MmResult<()> {
-    // Only proceed if the key maps to a known ItemKey
-    let item_key = match mm_key_to_item_key(key) {
-        Some(ik) => ik,
-        None => return Ok(()), // unknown key -> silent no-op
-    };
+    // Reject an unmapped key before any I/O — see the doc comment above.
+    let item_key = mm_key_to_item_key(key).ok_or_else(|| unknown_tag_key_error(&[key]))?;
 
     // Open and read the existing file
     let mut tagged_file = open_tagged_file(path)?;
@@ -1693,5 +1760,85 @@ mod tests {
         // time.  TagMap is HashMap<CommonTag, Vec<String>>.
         let m: upstream::TagMap = upstream::TagMap::new();
         assert!(m.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Strict tag-key validation — issue #206
+    //
+    // A key with no `ItemKey` mapping used to be dropped on the floor by
+    // `write_tags` (and turned into a silent `Ok(())` by `remove_tag`), so a
+    // typo in a CLI `--set` or an FFI caller's key reported success having
+    // changed nothing.  Both entry points must now refuse the write.
+    // -----------------------------------------------------------------------
+
+    /// Build a minimal but *real* WAV file on disk.
+    ///
+    /// lofty refuses a bare 44-byte header with no `data` payload, so the
+    /// fixture carries 0.1 s of 8 kHz 16-bit mono silence (1,600 bytes of
+    /// samples, 1,644 bytes total).  That is the smallest file lofty will
+    /// both parse and write RIFF INFO tags back into.
+    fn write_wav_fixture(path: &std::path::Path) {
+        // 0.1 s x 8,000 frames/s x 2 bytes/frame = 1,600 bytes of samples.
+        const DATA_LEN: u32 = 1600;
+
+        let mut bytes: Vec<u8> = Vec::with_capacity(44 + DATA_LEN as usize);
+        bytes.extend_from_slice(b"RIFF"); // RIFF container magic
+        bytes.extend_from_slice(&(36 + DATA_LEN).to_le_bytes()); // size after this field
+        bytes.extend_from_slice(b"WAVE"); // RIFF form type
+        bytes.extend_from_slice(b"fmt "); // format chunk id (note trailing space)
+        bytes.extend_from_slice(&16u32.to_le_bytes()); // PCM format chunk is 16 bytes
+        bytes.extend_from_slice(&1u16.to_le_bytes()); // audio format: 1 = PCM
+        bytes.extend_from_slice(&1u16.to_le_bytes()); // channels: mono
+        bytes.extend_from_slice(&8000u32.to_le_bytes()); // sample rate: 8 kHz
+        bytes.extend_from_slice(&16000u32.to_le_bytes()); // byte rate = rate x align
+        bytes.extend_from_slice(&2u16.to_le_bytes()); // block align: 1ch x 16-bit
+        bytes.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+        bytes.extend_from_slice(b"data"); // sample data chunk id
+        bytes.extend_from_slice(&DATA_LEN.to_le_bytes()); // sample data length
+        bytes.extend_from_slice(&vec![0u8; DATA_LEN as usize]); // silence
+
+        std::fs::write(path, &bytes).expect("WAV fixture must be writable");
+    }
+
+    #[test]
+    fn write_tags_rejects_unknown_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("track.wav");
+        write_wav_fixture(&p);
+
+        // `bogus_key` has no ItemKey mapping, so there is no way to persist it.
+        let mut tags = TagMap::new();
+        tags.insert("bogus_key".to_string(), vec!["1".to_string()]);
+
+        let err = write_tags(&p, &tags)
+            .expect_err("an unmapped tag key must be rejected, never silently dropped");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("bogus_key"),
+            "the error must name the offending key, got: {msg}"
+        );
+        assert!(
+            msg.contains(TAG_TITLE),
+            "the error must list the valid keys, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn remove_tag_rejects_unknown_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("track.wav");
+        write_wav_fixture(&p);
+
+        let err = remove_tag(&p, "bogus_key")
+            .expect_err("removing an unmapped tag key must be an error, not a silent no-op");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("bogus_key"),
+            "the error must name the offending key, got: {msg}"
+        );
+        assert!(
+            msg.contains(TAG_TITLE),
+            "the error must list the valid keys, got: {msg}"
+        );
     }
 }
