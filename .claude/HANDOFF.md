@@ -292,7 +292,74 @@ GitHub's reflog retention. Push a tag immediately if you need it permanently.
   id** (Fable 5.1 is `claude-fable-5-1`), so they were corrected to the aliases `fable` and
   `haiku`. As written they would not have resolved.
 
-## 10. Change log for this handoff file
+## 10. Round 1 — alpha-readiness work packages (in progress)
+
+Planned by a Fable deep-planning pass on 2026-09-03 against tip `3eefc1d`. All seven candidate
+issues were re-verified as still real on the current tree. Packages are **file-disjoint by
+construction** so implementers can run in parallel; a merge conflict means an implementer strayed
+outside its file list and the merge should be rejected.
+
+**Hard rule for every package: no new dependencies.** `Cargo.lock` is the one file every worktree
+would collide on.
+
+| Pkg | Closes | Wave | Model | Files (exclusive) |
+| --- | --- | --- | --- | --- |
+| **G** `P0-CONFIGDIR` | #212 | 0 | sonnet | `mm-core` config/state/health/test_mode/integrity/filetype_registry/tag_registry/settings_bundle, `mm-gtk` app+settings_panel, `mm-ffi` config lines |
+| **E** `P0-LICENSE` | #207 | 0 | haiku | `LICENSE`, `release.yml`, `linux/deb`, `linux/snap`, `linux/appimage` |
+| **A** `P1-SCAN` | #201, scan half of #206 | 1 | opus | `mm-cli` scan.rs, `mm-core` renamer.rs + evaluator.rs, `mm-gtk` scan_panel |
+| **B** `P1-TESTMODE` | #128, edit half of #206 | 1 | opus | `mm-core` integrity/test_mode/metadata, `mm-cli` edit.rs, `mm-gtk` metadata_panel, `mm-ffi` |
+| **C** `P1-STUBS-CLI` | #205 CLI half, export DSN of #206 | 1 | sonnet | `mm-cli` export/serve/lookup/main/output |
+| **F** `P1-SETTINGS` | #211 | 1 | sonnet | `config/settings.json5` + schema, `mm-core` config/mod.rs, 2 help pages |
+| **D** `P1-STUBS-UI` | #205 UI half | 1 | sonnet | GTK/macOS/Windows Server+Export+Cloud views |
+| **DOCS** | — | 2 | sonnet | changelog, PROJECT_STATUS, help pages, this file |
+
+**Why G goes first, alone:** it owns files B and F later need, and it introduces `MM_CONFIG_DIR` —
+the test-isolation primitive without which B's regression tests would write to the developer's real
+config directory. There is currently **no such hook**, and `dirs` 6.0 ignores `XDG_CONFIG_HOME` on
+macOS, so `integrity.rs:128` reads the real manifest during `cargo test` today.
+
+### Two findings worse than the filed issues
+
+- **#201 is wider than reported.** `mm-ffi/src/uniffi_api.rs:144-170` and
+  `mm-gtk/src/ui/scan_panel.rs:353` both call raw `std::fs::rename`, bypassing `execute_rename`
+  entirely — a CLI-only fix protects nothing else. Separately there is a **path-traversal hole**:
+  `renamer/mod.rs:222` and `:307` do `output_dir.join(parent_parts)` with unsanitised template
+  directory components, and `evaluate_template` does not strip separators. An artist tag of
+  `/tmp/x` makes `Path::join` *replace* `output_dir`; `../x` escapes it. This is in the API that
+  mm-ffi and mm-gtk already call.
+- **#212 is 14 sites, not 6**, spread across three crates.
+
+Also noted: `simulate_rename_with_rules` (`renamer/mod.rs:260-338`) already does intra-batch
+conflict tracking and directory splitting correctly but has **zero callers and zero tests**.
+
+### Decisions taken for Round 1 (reversible; flagged to the owner)
+
+1. **#212** — standardise on uppercase `MeedyaManager`; **no migration code**. Never released
+   (only tag is the Python-era `v1.0-M1`), and macOS APFS is case-insensitive so both names already
+   resolve to one directory. Only a Linux pre-alpha developer could hold a stale
+   `~/.config/meedyamanager/`; handled with a changelog line.
+2. **`MM_CONFIG_DIR`** — new user-facing override, adopted. Doubles as the test-isolation primitive
+   and as a useful "run the alpha in a sandbox" instruction for testers.
+3. **#201 `conflict_strategy`** — implement `skip` and `rename` (counter suffix). Treat
+   `overwrite` and `ask` as warn-and-skip this round: `overwrite` means deliberately re-enabling
+   the data-loss path, and `ask` needs a confirm prompt that does not exist yet.
+4. **#205** — add `ExitCode::NOT_IMPLEMENTED = 3` so scripts can distinguish "not built" from
+   "failed" (1) and "partial" (2). Keep the commands visible in `--help`, because
+   `--show-schema`, `--check-config` and `--show-routes` all do real work.
+5. **#128 corrupt manifest** — `is_enabled()` fails **open** (returns `false`) with an `error!`
+   log, not closed. Failing closed would make `enable()`/`disable()` error out too, locking the
+   user out of Test Mode until they delete the file by hand.
+6. **#206 strictness at the core** — `write_tags`/`remove_tag` reject unmapped keys, rather than
+   validating only in the CLI, because the FFI path lies identically today.
+
+### Local verification limits (record in every package report)
+
+`mm-gtk` is outside the workspace and needs GTK4/pkg-config, which is **not installed** here.
+Xcode is not installed (Command Line Tools only). Windows cannot be built. CI on the eventual PR to
+`alpha` is the authority for those files — and per §1 that will be the **first CI run ever** on
+this branch (#204).
+
+## 11. Change log for this handoff file
 
 - **2026-09-03 (later)** — provider rewiring and the full documentation rewrite landed; commit
   table, final verification numbers and next actions recorded. Added the warning that no CI has
