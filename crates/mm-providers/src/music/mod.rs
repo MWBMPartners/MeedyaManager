@@ -82,6 +82,13 @@ fn insert_duration(result: &mut ProviderResult, secs: f64) {
     }
 }
 
+/// Result-count fallback used when a `SearchQuery` leaves `max_results` unset.
+///
+/// The upstream `SearchQuery.max_results` is `Option<usize>` (the pre-migration
+/// local type made it a bare `usize`), so every provider needs *some* default
+/// page size; 10 matches what the CLI and registry already request explicitly.
+const DEFAULT_MAX_RESULTS: usize = 10;
+
 /// Resolve a free-text search term from `SearchQuery`. Combines title and artist
 /// because the upstream `SearchQuery` has no free-text `query` field.
 fn search_term(query: &SearchQuery) -> String {
@@ -99,21 +106,39 @@ fn search_term(query: &SearchQuery) -> String {
 
 /// Searches the MusicBrainz open database.
 ///
-/// Endpoint: `https://musicbrainz.org/ws/2/recording/`
-/// Auth:     None required (but a User-Agent string is required)
-/// Limits:   50 RPM (free tier)
+/// Endpoint: `GET {base}/ws/2/recording/?query=<lucene>&limit=<n>&fmt=json`
+/// Auth:     None required (but a contact-bearing User-Agent string is required)
+/// Limits:   60 RPM (1 request/second, burst 1) — MusicBrainz documents this as
+///           a SHARED budget across ALL of musicbrainz.org, not per feature, so
+///           this provider, `IsrcProvider`, and `IswcProvider` all draw from one
+///           token bucket keyed by host (see `crate::musicbrainz::mb_get()`).
+///
+/// All MusicBrainz-specific knowledge (endpoint URLs, query params, Lucene
+/// escaping, response shapes) lives in the `crate::musicbrainz` module seam —
+/// see that module's doc comment for the full rationale (it exists so the
+/// announced 2026-11-30 breaking API change is a one-file fix). This struct
+/// only orchestrates: build a query, ask `musicbrainz` for a URL/params, hand
+/// both to `mb_get()`, then map the body through `musicbrainz::models`.
+///
+/// A title/artist search that phrase-quotes its terms and comes back with
+/// ZERO results is retried exactly once with a loosened, escaped-token query
+/// (`crate::musicbrainz::recording_query_loose()`) — see
+/// `retry_with_loosened_query()` and the retry-gating comment in `search()`.
 pub struct MusicBrainzProvider {
     client: Client,
     base_url: String,
-    /// Required by MusicBrainz API: identifies the application making requests
-    #[allow(dead_code)]
+    /// Required by MusicBrainz API: identifies the application making
+    /// requests. Sent as the literal `User-Agent` header on every request by
+    /// `crate::musicbrainz::mb_get()` rather than relying solely on the
+    /// client-level default UA, so it is genuinely read at request time —
+    /// hence no `#[allow(dead_code)]` here any more.
     user_agent: String,
 }
 
 impl MusicBrainzProvider {
     /// Create a provider with the standard MusicBrainz endpoint.
     pub fn new(user_agent: impl Into<String>) -> Self {
-        Self::with_base_url(user_agent, "https://musicbrainz.org")
+        Self::with_base_url(user_agent, crate::musicbrainz::MB_DEFAULT_BASE_URL)
     }
 
     /// Create a provider with a custom base URL (useful for test mocking).
@@ -121,104 +146,95 @@ impl MusicBrainzProvider {
         Self {
             client: crate::http::build_client(),
             base_url: base_url.into(),
-            user_agent: user_agent.into(),
+            // Ensure the User-Agent carries a contact address per
+            // MusicBrainz's usage policy (an unreachable UA risks silent
+            // deprioritisation or a ban) — `ensure_contact()` appends one
+            // only when the UA is non-empty and not already contact-bearing,
+            // so the "was a User-Agent supplied at all" signal `configured()`
+            // reads below is deliberately left intact for the empty case.
+            user_agent: crate::musicbrainz::ensure_contact(user_agent.into()),
         }
     }
 
     /// True when a User-Agent string is configured. Required by MusicBrainz API.
+    ///
+    /// Reading the POST-`ensure_contact()` value is safe: that helper
+    /// explicitly leaves an empty string unchanged (see its doc comment), so
+    /// an unconfigured provider stays unconfigured and a configured one can
+    /// never be emptied by the contact-appending step.
     fn configured(&self) -> bool {
         !self.user_agent.is_empty()
     }
 
     /// Parse a MusicBrainz recording search response into `ProviderResult`s.
+    ///
+    /// All response-shape knowledge (field names, tolerant score parsing, the
+    /// artist/album/year mapping) lives in `crate::musicbrainz::models` — this
+    /// function is just "deserialize, then map each recording", so a
+    /// 2026-11-30 wire-format change is a one-file fix over there rather than
+    /// a hunt through every provider.
     fn parse_recordings(
         provider_name: &str,
         body: &str,
     ) -> Result<Vec<ProviderResult>, ProviderError> {
-        #[derive(Deserialize)]
-        struct MbResponse {
-            recordings: Vec<MbRecording>,
-        }
-
-        #[derive(Deserialize)]
-        struct MbRecording {
-            id: Option<String>,
-            title: Option<String>,
-            #[serde(rename = "artist-credit")]
-            artist_credit: Option<Vec<MbArtistCredit>>,
-            releases: Option<Vec<MbRelease>>,
-            isrcs: Option<Vec<String>>,
-            length: Option<u64>,
-            score: Option<u32>,
-        }
-
-        #[derive(Deserialize)]
-        struct MbArtistCredit {
-            artist: Option<MbArtist>,
-        }
-
-        #[derive(Deserialize)]
-        struct MbArtist {
-            name: Option<String>,
-        }
-
-        #[derive(Deserialize)]
-        struct MbRelease {
-            title: Option<String>,
-            date: Option<String>,
-            #[serde(rename = "track-count")]
-            #[allow(dead_code)]
-            track_count: Option<u32>,
-        }
-
-        let resp: MbResponse =
+        // Deserialize into the shared response model. `deny_unknown_fields` is
+        // deliberately never applied there, so extra MusicBrainz fields we
+        // don't map are tolerated rather than failing the whole parse.
+        let resp: crate::musicbrainz::models::MbRecordingSearchResponse =
             serde_json::from_str(body).map_err(|e| parse_err("MusicBrainz response", e))?;
 
+        // Map every parsed recording through the shared mapping helper, which
+        // also fills the upstream `metadata` blob's `META_*` keys (provider id,
+        // duration) that the upstream `ProviderResult` has no fields for.
         let results = resp
             .recordings
             .into_iter()
-            .map(|rec| {
-                // Combine artist-credit names
-                let artist = rec.artist_credit.as_deref().map(|credits| {
-                    credits
-                        .iter()
-                        .filter_map(|c| c.artist.as_ref()?.name.as_deref())
-                        .collect::<Vec<_>>()
-                        .join("; ")
-                });
-
-                // Use the first release for album/year info
-                let first_release = rec.releases.as_deref().and_then(|r| r.first());
-                let album = first_release.and_then(|r| r.title.clone());
-                let year = first_release
-                    .and_then(|r| r.date.as_deref())
-                    .and_then(|d| d[..4.min(d.len())].parse::<u32>().ok());
-
-                // MusicBrainz score is 0–100; normalise to [0.0, 1.0]
-                let score = f64::from(rec.score.unwrap_or(0)) / 100.0;
-
-                let mut result = ProviderResult::new(provider_name);
-                result.title = rec.title;
-                result.artist = artist;
-                result.album = album;
-                result.year = year;
-                result.isrc = rec.isrcs.and_then(|v| v.into_iter().next());
-                result.score = score;
-
-                if let Some(id) = rec.id {
-                    result
-                        .metadata
-                        .insert(META_PROVIDER_ID.into(), Value::String(id));
-                }
-                if let Some(ms) = rec.length {
-                    insert_duration(&mut result, ms as f64 / 1000.0);
-                }
-
-                result
-            })
+            .map(|rec| crate::musicbrainz::models::recording_to_result(provider_name, rec))
             .collect();
 
         Ok(results)
+    }
+
+    /// Retry a zero-result phrase-quoted recording search with a loosened,
+    /// escaped-token query (`crate::musicbrainz::recording_query_loose()`)
+    /// built from the same `title`/`artist`/free-text inputs. See `search()`'s
+    /// retry-gating comment for when this is (and isn't) called. Split out as
+    /// its own method purely to keep `search()` itself under the project's
+    /// function-length/complexity limits.
+    async fn retry_with_loosened_query(
+        &self,
+        query: &SearchQuery,
+        free_text: &str,
+        url: &str,
+    ) -> Result<Vec<ProviderResult>, ProviderError> {
+        let loose_query = crate::musicbrainz::recording_query_loose(
+            query.title.as_deref(),
+            query.artist.as_deref(),
+            free_text,
+        );
+        // Offset is hardcoded to 0 — see the equivalent comment in `search()`.
+        let loose_params = crate::musicbrainz::search_params(
+            &loose_query,
+            query.max_results.unwrap_or(DEFAULT_MAX_RESULTS),
+            0,
+        );
+
+        debug!(
+            provider = "musicbrainz",
+            query = &loose_query,
+            "Phrase-quoted search returned zero results; retrying with a loosened query"
+        );
+
+        let body = crate::musicbrainz::mb_get(
+            &self.client,
+            "musicbrainz",
+            &self.user_agent,
+            url,
+            &loose_params,
+        )
+        .await?;
+
+        Self::parse_recordings("musicbrainz", &body)
     }
 }
 
@@ -241,57 +257,90 @@ impl MetadataProvider for MusicBrainzProvider {
             return Err(ProviderError::NotConfigured("musicbrainz".into()));
         }
 
-        // Build query string: ISRC takes priority over free-text
+        // The upstream `SearchQuery` carries no free-text `query` field, so
+        // the free-text fallback term is derived from title + artist by the
+        // crate-local `search_term()` helper. In practice that means this
+        // value is only ever non-empty when `recording_query()` is already
+        // going to use the structured (phrase-quoted) title/artist clauses
+        // instead — it exists to keep the shared query builder's three-arm
+        // contract intact, not because a free-text-only search can reach it.
+        let free_text = search_term(query);
+
+        // Build the Lucene query via the shared `musicbrainz` module: an ISRC
+        // takes priority over free-text (an exact identifier match is strictly
+        // better than a fuzzy title/artist search), otherwise fall back to a
+        // title/artist recording query. `recording_query()` PHRASE-QUOTES
+        // title/artist so operator-like characters in real titles (e.g.
+        // `AC/DC: Back? [Live] AND More`) are treated as literal text rather
+        // than Lucene syntax — this replaces the old `.replace('"', "")`
+        // pseudo-escaping that issue #198 flagged as a Lucene-injection
+        // defect. See `recording_query()`'s doc comment for the full policy.
         let lucene_query = if let Some(isrc) = &query.isrc {
-            format!("isrc:{isrc}")
+            crate::musicbrainz::isrc_query(isrc)
         } else {
-            let mut parts = Vec::new();
-            if let Some(title) = &query.title {
-                parts.push(format!("recording:{}", title.replace('"', "")));
-            }
-            if let Some(artist) = &query.artist {
-                parts.push(format!("artistname:{}", artist.replace('"', "")));
-            }
-            if parts.is_empty() {
-                search_term(query)
-            } else {
-                parts.join(" AND ")
-            }
+            crate::musicbrainz::recording_query(
+                query.title.as_deref(),
+                query.artist.as_deref(),
+                &free_text,
+            )
         };
 
-        let url = format!("{}/ws/2/recording/", self.base_url);
+        // Endpoint URL and query-string parameters, both built by the shared
+        // module so this provider never hand-writes MusicBrainz wire format.
+        let url =
+            crate::musicbrainz::search_url(&self.base_url, crate::musicbrainz::MbEntity::Recording);
+        // Offset is hardcoded to 0: paginated MusicBrainz searches are blocked
+        // on the upstream `SearchQuery` gaining an `offset` field (issue #198).
+        // `search_params()` omits `offset` from the wire entirely when it is 0.
+        let params = crate::musicbrainz::search_params(
+            &lucene_query,
+            query.max_results.unwrap_or(DEFAULT_MAX_RESULTS),
+            0,
+        );
+
         debug!(
             provider = "musicbrainz",
             query = &lucene_query,
             "Sending search request"
         );
 
-        let limit = query.max_results.unwrap_or(10).to_string();
-        let response = self
-            .client
-            .get(&url)
-            // User-Agent is set at the client level by crate::http::build_client()
-            // so no per-request override is needed.
-            .header("Accept", "application/json")
-            .query(&[
-                ("query", &lucene_query as &str),
-                ("limit", &limit),
-                ("fmt", "json"),
-            ])
-            .send()
-            .await
-            .map_err(net_err)?;
+        // Execute the rate-limited, contact-header-bearing GET. `mb_get()`
+        // owns the shared 1 rps token bucket, the 429/503 `Retry-After`
+        // retry-once policy, and non-2xx → `ProviderError::NetworkError`
+        // mapping — no inline HTTP handling remains in this provider.
+        let body = crate::musicbrainz::mb_get(
+            &self.client,
+            "musicbrainz",
+            &self.user_agent,
+            &url,
+            &params,
+        )
+        .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            if status.as_u16() == 503 {
-                return Err(ProviderError::RateLimited("musicbrainz".into()));
-            }
-            return Err(ProviderError::NetworkError(format!("HTTP {status}")));
+        let results = Self::parse_recordings("musicbrainz", &body)?;
+
+        // FIX (issue #198): a phrase-quoted query is an exact, ordered-token
+        // match, so real-world tag decorations a MusicBrainz title lacks —
+        // "(Remastered 2011)", "(Live)", "feat. X" — can return zero hits
+        // where the pre-hardening loose (buggy, unescaped) query might still
+        // have matched something. Retry ONCE with a loosened (escaped-token,
+        // not phrase-quoted) query built from the SAME inputs whenever the
+        // FIRST query actually used phrase quoting — i.e. `title` and/or
+        // `artist` were present. Never retried when neither was present (the
+        // free-text path is already escaped, nothing left to loosen) or for an
+        // ISRC query (an exact-identifier match has nothing to "loosen"
+        // either). This costs one EXTRA rate-limit token, but ONLY in the miss
+        // case, and restores the recall the old loose query accidentally
+        // provided while keeping the escaping fix intact.
+        let used_phrase_query =
+            query.isrc.is_none() && (query.title.is_some() || query.artist.is_some());
+        if results.is_empty() && used_phrase_query {
+            return self
+                .retry_with_loosened_query(query, &free_text, &url)
+                .await;
         }
 
-        let body = response.text().await.map_err(net_err)?;
-        Self::parse_recordings("musicbrainz", &body)
+        Ok(results)
     }
 }
 
@@ -1144,6 +1193,360 @@ mod tests {
             .and_then(serde_json::Value::as_f64)
             .unwrap();
         assert!((duration - 240.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn mb_parse_recordings_float_score_normalises() {
+        // MusicBrainz documents `score` as an integer 0-100, but has also
+        // been observed sending it as a JSON float — the shared model's
+        // `de_score()` tolerates that, and the mapping still normalises to
+        // [0.0, 1.0] rather than failing the whole response.
+        let json = r#"{"recordings": [{"id": "x", "score": 87.5}]}"#;
+        let results = MusicBrainzProvider::parse_recordings("musicbrainz", json).unwrap();
+        assert!((results[0].score - 0.875).abs() < 1e-9);
+    }
+
+    #[test]
+    fn mb_parse_recordings_absent_score_defaults_to_zero() {
+        // No `score` key at all (not even `null`) — `de_score()` yields
+        // `None`, which `recording_to_result()` maps to a default score of
+        // 0.0 rather than failing the parse.
+        let json = r#"{"recordings": [{"id": "x"}]}"#;
+        let results = MusicBrainzProvider::parse_recordings("musicbrainz", json).unwrap();
+        assert_eq!(results[0].score, 0.0);
+    }
+
+    #[test]
+    fn mb_parse_recordings_missing_recordings_key_is_empty_ok() {
+        // MusicBrainz omits the `recordings` key entirely on some zero-result
+        // responses rather than sending `[]` — `#[serde(default)]` on the
+        // shared model's field must turn this into an empty `Ok(vec![])`, not
+        // a parse error. (The pre-#198 hand-rolled struct in this file had a
+        // non-defaulted `recordings` field and DID fail here.)
+        let json = r"{}";
+        let results = MusicBrainzProvider::parse_recordings("musicbrainz", json).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn mb_parse_recordings_populates_provider_id_metadata() {
+        // The upstream `ProviderResult` has no `provider_id` field, so the
+        // MBID lands in the `metadata` blob under `META_PROVIDER_ID` (and, as
+        // an MBID, in the first-class `musicbrainz_id` field too).
+        let json = r#"{"recordings": [{"id": "abc123", "title": "T"}]}"#;
+        let results = MusicBrainzProvider::parse_recordings("musicbrainz", json).unwrap();
+        assert_eq!(
+            results[0]
+                .metadata
+                .get(META_PROVIDER_ID)
+                .and_then(serde_json::Value::as_str),
+            Some("abc123")
+        );
+        assert_eq!(results[0].musicbrainz_id.as_deref(), Some("abc123"));
+    }
+
+    // -------------------------------------------------------------------
+    // MusicBrainz — wiremock integration tests (search() end to end)
+    // -------------------------------------------------------------------
+    //
+    // These exercise the full `search()` path — Lucene query building,
+    // URL/param construction, and the `mb_get()` executor — against a real
+    // (mocked) HTTP server, proving the wire-level behaviour that unit tests
+    // on `parse_recordings()` alone can't: what actually gets escaped,
+    // headered, and rate-limited on the way out.
+
+    use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn mb_search_sends_phrase_quoted_query_on_the_wire() {
+        // A title containing Lucene operator-like characters (`/`, `?`, `:`,
+        // `[`, `]`, the bare word `AND`) must reach the server phrase-quoted,
+        // not merely quote-stripped — proving the `.replace('"', "")`
+        // pseudo-escaping issue #198 flagged is truly gone and
+        // `recording_query()`'s phrase-quoting is what's actually on the wire.
+        let title = "What's / This?: AND [More]";
+        let artist = "Test Artist";
+        let expected_query = format!(r#"recording:"{title}" AND artistname:"{artist}""#);
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", expected_query.as_str()))
+            // A non-empty result here is deliberate: this test's job is to
+            // prove the phrase-quoted query hits the wire correctly, not to
+            // exercise the zero-result loosened-query retry (see the
+            // `mb_search_*retr*` tests for that) — an empty result set here
+            // would trigger that retry against a server with no matching mock
+            // for the loosened query, and fail for an unrelated reason.
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"recordings":[{"id":"mb-1","title":"What's / This?: AND [More]"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            title: Some(title.to_owned()),
+            artist: Some(artist.to_owned()),
+            max_results: Some(5),
+            ..Default::default()
+        };
+        provider
+            .search(&query)
+            .await
+            .expect("search should succeed against the mock");
+    }
+
+    #[tokio::test]
+    async fn mb_search_omits_offset_param() {
+        // The upstream `SearchQuery` has no `offset` field, so `search()`
+        // always passes 0 and `search_params()` omits the parameter entirely
+        // (pagination is blocked on that upstream field — issue #198). The
+        // nonzero-offset half of this behaviour is covered by
+        // `musicbrainz::tests::search_params_includes_offset_when_nonzero`.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param_is_missing("offset"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        // Neither title nor artist, so the loosened-query retry never fires
+        // and exactly one request reaches the mock.
+        let query = SearchQuery {
+            max_results: Some(5),
+            ..Default::default()
+        };
+        provider
+            .search(&query)
+            .await
+            .expect("search should succeed without an offset parameter");
+    }
+
+    #[tokio::test]
+    async fn mb_search_sends_contact_bearing_user_agent() {
+        // `with_base_url()` runs the supplied UA through `ensure_contact()`,
+        // which appends MusicBrainz's documented "UA ( contact )" segment
+        // since "TestApp/1.0" contains neither '@' nor "://".
+        //
+        // The expected contact segment is derived from
+        // `mm_core::useragent::contact_string()` rather than hardcoded, so
+        // this assertion stays correct even if `MUSICBRAINZ_CONTACT_EMAIL` is
+        // set in the test's environment (e.g. by a CI runner) — the test never
+        // mutates env vars itself, it just reads what the runtime resolves.
+        let expected_ua = format!("TestApp/1.0 ( {} )", mm_core::useragent::contact_string());
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(header("User-Agent", expected_ua.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            max_results: Some(5),
+            ..Default::default()
+        };
+        provider
+            .search(&query)
+            .await
+            .expect("search should succeed against the mock");
+    }
+
+    #[tokio::test]
+    async fn mb_search_503_maps_to_rate_limited() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            max_results: Some(5),
+            ..Default::default()
+        };
+        let err = provider
+            .search(&query)
+            .await
+            .expect_err("a bare 503 (no Retry-After) should surface as RateLimited");
+        match err {
+            ProviderError::RateLimited(provider) => assert_eq!(provider, "musicbrainz"),
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn mb_search_429_maps_to_rate_limited() {
+        // The pre-#198 inline HTTP handling in this provider only special-cased
+        // 503; 429 fell through to a generic network error. Routing through
+        // `mb_get()` means both throttling statuses now map to `RateLimited`.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(429))
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            max_results: Some(5),
+            ..Default::default()
+        };
+        let err = provider
+            .search(&query)
+            .await
+            .expect_err("a bare 429 (no Retry-After) should surface as RateLimited");
+        match err {
+            ProviderError::RateLimited(provider) => assert_eq!(provider, "musicbrainz"),
+            other => panic!("expected RateLimited, got {other:?}"),
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // MusicBrainz — zero-result loosened-query retry (issue #198)
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn mb_search_zero_results_retries_with_loosened_query() {
+        // Real-world tags carry decorations MusicBrainz titles lack (here,
+        // "(Remastered 2011)"), so the phrase-quoted query legitimately finds
+        // nothing while a loosened, escaped-token query still can.
+        let title = "Comfortably Numb (Remastered 2011)";
+        let artist = "Pink Floyd";
+        let phrase_query = format!(r#"recording:"{title}" AND artistname:"{artist}""#);
+        let loose_query = crate::musicbrainz::recording_query_loose(Some(title), Some(artist), "");
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", phrase_query.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // The SECOND request's `query` param must be exactly the loosened
+        // form — proven by matching on it precisely rather than just "any
+        // second request".
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", loose_query.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"recordings":[{"id":"mb-loose","title":"Comfortably Numb"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            title: Some(title.to_owned()),
+            artist: Some(artist.to_owned()),
+            max_results: Some(5),
+            ..Default::default()
+        };
+        let results = provider
+            .search(&query)
+            .await
+            .expect("a zero-result phrase search should retry and succeed via the loosened query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title.as_deref(), Some("Comfortably Numb"));
+    }
+
+    #[tokio::test]
+    async fn mb_search_nonzero_results_sends_only_one_request() {
+        // The mirror image of the retry test: a phrase-quoted search that
+        // finds something on the FIRST try must never trigger a retry —
+        // proven by `.expect(1)` on a mock with no `query` filter, so a stray
+        // second request of ANY shape would violate the expectation.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"recordings":[{"id":"mb-hit","title":"Found On First Try"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            title: Some("Some Title".into()),
+            artist: Some("Some Artist".into()),
+            max_results: Some(5),
+            ..Default::default()
+        };
+        let results = provider
+            .search(&query)
+            .await
+            .expect("a non-empty first search must not retry");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mb_search_isrc_query_zero_results_does_not_retry() {
+        // An ISRC query is an exact-identifier match — there is nothing to
+        // "loosen" — so a zero-result ISRC search must NOT retry. Proven via
+        // `.expect(1)` on an unfiltered mock.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .and(query_param("query", "isrc:GBAYE0601498"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        // Title and artist are present too, to prove the ISRC branch — not
+        // merely "no title/artist" — is what suppresses the retry.
+        let query = SearchQuery {
+            isrc: Some("GB-AYE-06-01498".into()),
+            title: Some("Some Title".into()),
+            artist: Some("Some Artist".into()),
+            max_results: Some(5),
+            ..Default::default()
+        };
+        let results = provider
+            .search(&query)
+            .await
+            .expect("a zero-result ISRC search should succeed without retrying");
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mb_search_without_title_or_artist_zero_results_does_not_retry() {
+        // With neither title nor artist, `recording_query()` takes its
+        // free-text branch, which is already `lucene_escape()`d — there is
+        // nothing left to "loosen" — so a zero-result search must NOT retry.
+        // (Upstream `SearchQuery` has no free-text field, so `search_term()`
+        // yields an empty term here; the retry gate is what's under test.)
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ws/2/recording/"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"recordings":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = MusicBrainzProvider::with_base_url("TestApp/1.0", server.uri());
+        let query = SearchQuery {
+            max_results: Some(5),
+            ..Default::default()
+        };
+        let results = provider
+            .search(&query)
+            .await
+            .expect("a zero-result free-text search should succeed without retrying");
+        assert!(results.is_empty());
     }
 
     // =========================================================================
