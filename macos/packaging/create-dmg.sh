@@ -60,7 +60,14 @@ cp "macos/.build/release/MeedyaManager" "${CONTENTS}/MacOS/${APP_NAME}"
 cp "target/release/libmm_ffi.dylib" "${CONTENTS}/Frameworks/"
 
 # Fix up the dylib rpath so the app bundle can find it at
-# @executable_path/../Frameworks/libmm_ffi.dylib (standard macOS bundle rpath)
+# @executable_path/../Frameworks/libmm_ffi.dylib (standard macOS bundle rpath).
+#
+# This is the one command in this script that is deliberately still suppressed.
+# Package.swift does not yet link the FFI framework (the MM_FFI_AVAILABLE define
+# is commented out), so the Swift executable currently has NO @rpath reference
+# to libmm_ffi.dylib and install_name_tool has nothing to rewrite. Depending on
+# the toolchain that is either a silent no-op or a warning on stderr — neither
+# should abort the DMG build. Make this strict once the XCFramework is linked.
 install_name_tool -change \
     "@rpath/libmm_ffi.dylib" \
     "@executable_path/../Frameworks/libmm_ffi.dylib" \
@@ -70,9 +77,10 @@ install_name_tool -change \
 cp "macos/MeedyaManager/Info.plist" "${CONTENTS}/Info.plist"
 
 # Copy GPL-2.0-or-later licence file into bundle Resources.
-# GPL-2.0-or-later requires the licence to accompany every distributed binary.
-cp "LICENSE" "${CONTENTS}/Resources/LICENSE" 2>/dev/null || \
-    echo "::warning::LICENSE file not found at repo root — skipping"
+# LICENSE is tracked in the repo, so this cannot legitimately fail. It is NOT
+# suppressed: shipping a GPL binary with no licence text is a compliance
+# failure, so the build should stop instead (#207).
+cp "LICENSE" "${CONTENTS}/Resources/LICENSE"
 
 # ---------------------------------------------------------------------------
 # 3. Code sign the app bundle

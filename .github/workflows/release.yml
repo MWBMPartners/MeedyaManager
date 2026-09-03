@@ -1,6 +1,24 @@
 # (C) 2025-2026 MWBM Partners Ltd
 # MeedyaManager — Release Build
-# Triggered by pushing a tag matching v* (e.g. v2.0.0-alpha.2)
+#
+# Triggered by pushing a tag matching v* (e.g. v1.4.0-alpha.1), or manually via
+# workflow_dispatch for a dry run that builds every platform without publishing.
+#
+# Build-failure policy (issue #202):
+#   * Copy / archive / checksum commands are NOT suppressed. This workflow had
+#     never run, and every copy was wrapped in `2>/dev/null || true`, so seven
+#     copies of binaries that do not exist failed silently and the tar.gz that
+#     was attached to the release contained only LICENSE. A packaging step that
+#     cannot find its input must fail the job, loudly.
+#   * The two Windows jobs are `continue-on-error: true` — Windows CI has never
+#     been green (issue #148) and must not block a macOS/Linux alpha.
+#   * `create-release` therefore uses `if: always()` with explicit result checks
+#     for macOS and the two Linux jobs only.
+#
+# Binary names (do not "correct" these back):
+#   * CLI  = `meedya`      (crates/mm-cli/Cargo.toml `[[bin]] name`), `meedya.exe` on Windows
+#   * GTK  = `meedya-gtk`  (crates/mm-gtk/Cargo.toml `[[bin]] name`)
+#   `mm-cli` / `mm-gtk` are *crate* names and are not produced as files.
 
 name: Release Build
 
@@ -8,6 +26,21 @@ on:
   push:
     tags:
       - "v*"
+  # Manual trigger — the only way to exercise this pipeline without cutting a
+  # tag. With `publish` left unticked the platform jobs run and upload their
+  # artefacts, but no GitHub Release is created.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (semver, no leading 'v'). Leave blank to use [workspace.package].version from Cargo.toml."
+        required: false
+        type: string
+        default: ""
+      publish:
+        description: "Create the draft GitHub Release. Leave unticked for a build-only dry run."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -17,7 +50,7 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Prepare — extract version from tag, validate, set artifact name prefix
+  # Prepare — resolve the version (tag or dispatch input), validate, set prefix
   # ---------------------------------------------------------------------------
   prepare:
     name: Prepare Release
@@ -31,48 +64,110 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract release metadata from tag
+      - name: Resolve release metadata
         id: meta
+        env:
+          # Read through the environment rather than spliced into the script
+          # body, so an odd input (quotes, spaces) cannot break the script.
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          # Strip 'v' prefix from tag to get semver
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "artifact_prefix=MeedyaManager-${VERSION}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
 
-          # Determine if this is a pre-release (contains hyphen)
-          if echo "$VERSION" | grep -q '-'; then
-            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            # Tag push — strip the leading 'v' to get the semver string.
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+            SOURCE="tag ${TAG}"
+          elif [ -n "${INPUT_VERSION}" ]; then
+            # Manual run with an explicit version.
+            VERSION="${INPUT_VERSION}"
+            SOURCE="workflow_dispatch input"
           else
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            # Manual run with a blank version — read the workspace version.
+            # (GitHub Actions cannot express a file-derived default, so the
+            #  input defaults to "" and the fallback happens here.)
+            VERSION=$(awk -F'"' '
+              /^\[workspace\.package\]/ { in_table = 1; next }
+              in_table && /^\[/           { exit }
+              in_table && /^version[[:space:]]*=/ { print $2; exit }
+            ' Cargo.toml)
+            SOURCE="Cargo.toml [workspace.package].version"
           fi
 
-          echo "## Release: v${VERSION}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Pre-release: $(echo "$VERSION" | grep -q '-' && echo 'yes' || echo 'no')" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Verify tag matches Cargo.toml version
-        run: |
-          CARGO_VER=$(grep -A 20 '\[workspace\.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
-          TAG_VER="${{ steps.meta.outputs.version }}"
-          if [ "$CARGO_VER" != "$TAG_VER" ]; then
-            echo "::error::Tag version ($TAG_VER) does not match Cargo.toml ($CARGO_VER)"
-            echo "Run the version-bump workflow first: gh workflow run version-bump.yml -f version=$TAG_VER"
+          if [ -z "${VERSION}" ]; then
+            echo "::error::Could not determine a version to build"
             exit 1
           fi
-          echo "Tag matches Cargo.toml: $CARGO_VER"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "artifact_prefix=MeedyaManager-${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # A semver pre-release carries a hyphen (1.4.0-alpha.1).
+          if echo "${VERSION}" | grep -q -- '-'; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            PRERELEASE="yes"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            PRERELEASE="no"
+          fi
+
+          {
+            echo "## Release: v${VERSION}"
+            echo ""
+            echo "- Version source: ${SOURCE}"
+            echo "- Pre-release: ${PRERELEASE}"
+            echo "- Publish a GitHub Release: ${{ github.event_name == 'push' || inputs.publish }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify version matches Cargo.toml
+        run: |
+          set -euo pipefail
+          CARGO_VER=$(awk -F'"' '
+            /^\[workspace\.package\]/ { in_table = 1; next }
+            in_table && /^\[/           { exit }
+            in_table && /^version[[:space:]]*=/ { print $2; exit }
+          ' Cargo.toml)
+          BUILD_VER="${{ steps.meta.outputs.version }}"
+
+          if [ "${CARGO_VER}" = "${BUILD_VER}" ]; then
+            echo "Version matches Cargo.toml: ${CARGO_VER}"
+            exit 0
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            # A tag that disagrees with Cargo.toml would ship binaries stamped
+            # with the wrong version — hard failure.
+            echo "::error::Tag version (${BUILD_VER}) does not match Cargo.toml (${CARGO_VER})"
+            echo "Run the version-bump workflow first: gh workflow run version-bump.yml -f version=${BUILD_VER}"
+            exit 1
+          fi
+
+          # Manual dry runs are allowed to disagree — warn only, so the pipeline
+          # can be exercised without touching Cargo.toml.
+          echo "::warning::Requested version (${BUILD_VER}) does not match Cargo.toml (${CARGO_VER}) — binaries will report ${CARGO_VER}"
 
       - name: Extract release notes from CHANGELOG
-        id: notes
         run: |
+          set -euo pipefail
           VERSION="${{ steps.meta.outputs.version }}"
-          # Extract the section for this version from CHANGELOG.md
-          # Match from "## [vX.Y.Z]" until the next "## [v" or end of file
-          NOTES=$(sed -n "/^## \[v${VERSION}\]/,/^## \[v/{ /^## \[v${VERSION}\]/d; /^## \[v/d; p; }" docs/changelog.md)
-          if [ -z "$NOTES" ]; then
+
+          # docs/changelog.md headings look like:
+          #   ## [v1.3.0] — 2026-03-06 — Test Mode, Privacy Policy, …
+          # Match the literal "## [v<version>]" prefix (awk `index(...) == 1`,
+          # so no regex metacharacter escaping is needed for the dots) and print
+          # until the next "## [" heading.
+          NOTES=$(awk -v hdr="## [v${VERSION}]" '
+            index($0, hdr) == 1 { inside = 1; next }
+            inside && /^## \[/  { exit }
+            inside              { print }
+          ' docs/changelog.md)
+
+          if [ -z "${NOTES}" ]; then
             NOTES="No changelog entry found for v${VERSION}. See [docs/changelog.md](docs/changelog.md) for details."
+            echo "::warning::No '## [v${VERSION}]' heading in docs/changelog.md — release notes will be a placeholder"
           fi
-          # Write to file for the release step
-          echo "$NOTES" > /tmp/release-notes.md
+
+          printf '%s\n' "${NOTES}" > /tmp/release-notes.md
           echo "Release notes extracted for v${VERSION}"
 
       - name: Upload release notes
@@ -80,13 +175,18 @@ jobs:
         with:
           name: release-notes
           path: /tmp/release-notes.md
+          if-no-files-found: error
 
   # ---------------------------------------------------------------------------
   # macOS — Apple Silicon (arm64)
   # ---------------------------------------------------------------------------
   release-macos:
     name: macOS arm64
-    runs-on: macos-15
+    # macos-26: Package.swift declares swift-tools-version 6.3, which needs
+    # Xcode 26.3+ (Swift 6.3). The macOS 15 image's default Xcode 16.4 is only
+    # Swift 6.1 — too old, which is why this job no longer uses it. Kept in
+    # step with ci-macos.yml; change both together.
+    runs-on: macos-26
     needs: prepare
 
     steps:
@@ -99,9 +199,14 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
+      # Builds every workspace member, including the `meedya` CLI binary and
+      # the mm-ffi cdylib. mm-gtk is excluded from the workspace and is not
+      # built on macOS at all (it is Linux-only).
       - name: Build Rust workspace (release)
         run: cargo build --release --workspace
 
+      # Explicit, even though mm-ffi is a workspace member: it documents the
+      # dependency of the Swift app on libmm_ffi.dylib and is a cache hit.
       - name: Build mm-ffi dynamic library
         run: cargo build -p mm-ffi --release
 
@@ -109,66 +214,74 @@ jobs:
         working-directory: macos
         run: swift build -c release
 
-      - name: Code sign and package macOS DMG
+      # No Apple signing secrets are configured, so create-dmg.sh emits a
+      # warning and falls through to an unsigned, un-notarised hdiutil DMG.
+      # That path uses only tools present on every macOS runner, so the script
+      # is invoked strictly — a genuine failure must fail the job.
+      - name: Package macOS DMG
         env:
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
           APPLE_TEAM_ID:      ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID:           ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
-          bash macos/packaging/create-dmg.sh "${VERSION}" || \
-            echo "::warning::DMG creation incomplete — Apple credentials may not be set"
+        run: bash macos/packaging/create-dmg.sh "${{ needs.prepare.outputs.version }}"
 
       - name: Package macOS artifacts
         run: |
+          set -euo pipefail
           PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
           mkdir -p staging
 
-          # Copy Rust libraries
-          cp target/release/libmm_ffi.dylib staging/ 2>/dev/null || true
-          cp target/release/mm-cli staging/ 2>/dev/null || true
+          # Rust outputs. `meedya` is the CLI binary name (crate mm-cli).
+          cp target/release/libmm_ffi.dylib staging/
+          cp target/release/meedya staging/
 
-          # Copy Swift build output
-          cp macos/.build/release/MeedyaManager staging/ 2>/dev/null || true
+          # Swift build output — the SwiftUI executable.
+          cp macos/.build/release/MeedyaManager staging/
 
-          # Copy DMG if produced by the packaging script
-          cp "${PREFIX}-macos-arm64.dmg" staging/ 2>/dev/null || true
-
-          # Copy LICENSE file
-          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
-          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
-          # licence text is a compliance failure, so the release should stop instead (#207).
+          # GPL-2.0-or-later requires the licence to accompany every binary (#207).
           cp LICENSE staging/
 
-          # Generate SHA256 checksums
-          cd staging
-          for f in *; do
-            [ -f "$f" ] && shasum -a 256 "$f" >> "${PREFIX}-macos-arm64.sha256"
-          done
+          # COPYFILE_DISABLE stops BSD tar writing AppleDouble "._" companions
+          # for the extended attributes macOS puts on freshly built binaries.
+          COPYFILE_DISABLE=1 tar -czf "${PREFIX}-macos-arm64.tar.gz" \
+            -C staging MeedyaManager meedya libmm_ffi.dylib LICENSE
 
-          # Create tarball (binaries + dylib + LICENSE)
-          tar -czf "../${PREFIX}-macos-arm64.tar.gz" MeedyaManager mm-cli libmm_ffi.dylib LICENSE 2>/dev/null || true
-          cd ..
-          shasum -a 256 "${PREFIX}-macos-arm64.tar.gz" >> "staging/${PREFIX}-macos-arm64.sha256" 2>/dev/null || true
+          # One checksum file per platform, covering the artefacts we upload.
+          shasum -a 256 \
+            "${PREFIX}-macos-arm64.tar.gz" \
+            "${PREFIX}-macos-arm64.dmg" \
+            > "${PREFIX}-macos-arm64.sha256"
+
+          echo "Staged for macOS arm64:"
+          ls -l staging
+          cat "${PREFIX}-macos-arm64.sha256"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
+          # Explicit filenames, not globs: create-dmg.sh also writes a
+          # "<dmg>.sha256" sidecar, and uploading both it and the per-platform
+          # .sha256 would duplicate lines in the consolidated SHA256SUMS.
           path: |
             ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.tar.gz
-            staging/*.sha256
-            staging/*.dmg
-          if-no-files-found: warn
+            ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.dmg
+            ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.sha256
+          if-no-files-found: error
 
   # ---------------------------------------------------------------------------
   # Windows — x64
+  #
+  # continue-on-error: the Windows build has never been green (issue #148).
+  # It stays in the matrix so regressions remain visible, but it must not
+  # block a macOS/Linux alpha.
   # ---------------------------------------------------------------------------
   release-windows-x64:
     name: Windows x64
     runs-on: windows-latest
     needs: prepare
+    continue-on-error: true
     # Expose signing secret as env var so it can be checked in `if:` conditions
     # (the `secrets` context is not available directly in `if:` expressions)
     env:
@@ -203,7 +316,7 @@ jobs:
       # Windows Authenticode signing via signtool.exe.
       # Requires WINDOWS_CERT_PFX (Base64-encoded PFX) and
       # WINDOWS_CERT_PASSWORD in GitHub repository secrets.
-      # See docs/Dev_Notes.md — "GitHub Secrets Configuration" for setup.
+      # See Dev_Notes.md — "GitHub Secrets Configuration" for setup.
       - name: Code sign Windows binaries (x64)
         if: env.WINDOWS_CERT_PFX != ''
         shell: pwsh
@@ -236,46 +349,64 @@ jobs:
 
       - name: Code sign Windows binaries (x64, skipped)
         if: env.WINDOWS_CERT_PFX == ''
-        run: echo "::warning::WINDOWS_CERT_PFX not set — code signing skipped (see docs/Dev_Notes.md)"
+        run: echo "::warning::WINDOWS_CERT_PFX not set — code signing skipped (see Dev_Notes.md)"
 
       - name: Package Windows x64 artifacts
         shell: bash
         run: |
+          set -euo pipefail
           PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
           mkdir -p staging
 
-          # Copy Rust binaries
-          cp target/release/mm_ffi.dll staging/ 2>/dev/null || true
-          cp target/release/mm-cli.exe staging/ 2>/dev/null || true
+          # Rust outputs. `meedya.exe` is the CLI binary name (crate mm-cli).
+          cp target/release/mm_ffi.dll staging/
+          cp target/release/meedya.exe staging/
 
-          # Copy .NET publish output
-          cp -r windows/MeedyaManager/bin/Release/net8.0-windows*/win-x64/publish/* staging/ 2>/dev/null || true
+          # .NET publish output (TFM is net8.0-windows10.0.22621.0).
+          cp -r windows/MeedyaManager/bin/Release/net8.0-windows*/win-x64/publish/* staging/
 
-          # Copy LICENSE file
-          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
-          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
-          # licence text is a compliance failure, so the release should stop instead (#207).
+          # GPL-2.0-or-later requires the licence to accompany every binary (#207).
           cp LICENSE staging/
 
-          # Generate SHA256 checksums
-          cd staging
-          sha256sum * > "${PREFIX}-windows-x64.sha256" 2>/dev/null || true
+          # The publish output contains subdirectories (runtimes/, Assets/…),
+          # so checksum every regular file rather than globbing the top level.
+          # Written outside staging/ so it cannot list itself.
+          ( cd staging && find . -type f -print0 | sort -z \
+              | xargs -0 sha256sum ) > "${PREFIX}-windows-x64.sha256"
+
+          echo "Staged for Windows x64:"
+          ls -l staging
+
+      # upload-artifact will not preserve a bare directory usefully, and the
+      # previous version uploaded `staging/` unarchived. Zip it first.
+      - name: Archive Windows x64 staging directory
+        shell: pwsh
+        run: |
+          $prefix = "${{ needs.prepare.outputs.artifact_prefix }}"
+          Compress-Archive -Path "staging/*" -DestinationPath "${prefix}-windows-x64.zip" -Force
+          $hash = (Get-FileHash "${prefix}-windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
+          Add-Content -Path "${prefix}-windows-x64.sha256" -Value "$hash  ${prefix}-windows-x64.zip"
+          Write-Output "Created ${prefix}-windows-x64.zip"
 
       - name: Upload Windows x64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
           path: |
-            staging/
+            ${{ needs.prepare.outputs.artifact_prefix }}-windows-x64.zip
+            ${{ needs.prepare.outputs.artifact_prefix }}-windows-x64.sha256
+          # `warn`, not `error`: this job is allowed to fail (#148) and an
+          # upload failure here would only add noise.
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
-  # Windows — arm64
+  # Windows — arm64  (continue-on-error, see the x64 job comment)
   # ---------------------------------------------------------------------------
   release-windows-arm64:
     name: Windows arm64
     runs-on: windows-latest
     needs: prepare
+    continue-on-error: true
     env:
       WINDOWS_CERT_PFX:      ${{ secrets.WINDOWS_CERT_PFX }}
       WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
@@ -327,37 +458,48 @@ jobs:
 
       - name: Code sign Windows binaries (arm64, skipped)
         if: env.WINDOWS_CERT_PFX == ''
-        run: echo "::warning::WINDOWS_CERT_PFX not set — code signing skipped (see docs/Dev_Notes.md)"
+        run: echo "::warning::WINDOWS_CERT_PFX not set — code signing skipped (see Dev_Notes.md)"
 
       - name: Package Windows arm64 artifacts
         shell: bash
         run: |
+          set -euo pipefail
           PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
           mkdir -p staging
+          TARGET=target/aarch64-pc-windows-msvc/release
 
-          # Copy Rust binaries
-          cp target/aarch64-pc-windows-msvc/release/mm_ffi.dll staging/ 2>/dev/null || true
-          cp target/aarch64-pc-windows-msvc/release/mm-cli.exe staging/ 2>/dev/null || true
+          # Rust outputs. `meedya.exe` is the CLI binary name (crate mm-cli).
+          cp "${TARGET}/mm_ffi.dll" staging/
+          cp "${TARGET}/meedya.exe" staging/
 
-          # Copy .NET publish output
-          cp -r windows/MeedyaManager/bin/Release/net8.0-windows*/win-arm64/publish/* staging/ 2>/dev/null || true
+          # .NET publish output (TFM is net8.0-windows10.0.22621.0).
+          cp -r windows/MeedyaManager/bin/Release/net8.0-windows*/win-arm64/publish/* staging/
 
-          # Copy LICENSE file
-          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
-          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
-          # licence text is a compliance failure, so the release should stop instead (#207).
+          # GPL-2.0-or-later requires the licence to accompany every binary (#207).
           cp LICENSE staging/
 
-          # Generate SHA256 checksums
-          cd staging
-          sha256sum * > "${PREFIX}-windows-arm64.sha256" 2>/dev/null || true
+          ( cd staging && find . -type f -print0 | sort -z \
+              | xargs -0 sha256sum ) > "${PREFIX}-windows-arm64.sha256"
+
+          echo "Staged for Windows arm64:"
+          ls -l staging
+
+      - name: Archive Windows arm64 staging directory
+        shell: pwsh
+        run: |
+          $prefix = "${{ needs.prepare.outputs.artifact_prefix }}"
+          Compress-Archive -Path "staging/*" -DestinationPath "${prefix}-windows-arm64.zip" -Force
+          $hash = (Get-FileHash "${prefix}-windows-arm64.zip" -Algorithm SHA256).Hash.ToLower()
+          Add-Content -Path "${prefix}-windows-arm64.sha256" -Value "$hash  ${prefix}-windows-arm64.zip"
+          Write-Output "Created ${prefix}-windows-arm64.zip"
 
       - name: Upload Windows arm64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-arm64
           path: |
-            staging/
+            ${{ needs.prepare.outputs.artifact_prefix }}-windows-arm64.zip
+            ${{ needs.prepare.outputs.artifact_prefix }}-windows-arm64.sha256
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
@@ -384,49 +526,64 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Build Rust workspace and GTK4 frontend (release)
+      - name: Build Rust workspace (release)
         run: cargo build --release --workspace
 
-      - name: Build .deb package
-        run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
-          bash linux/deb/build-deb.sh "${VERSION}" || echo "::warning::.deb build incomplete — dpkg-deb may not be available"
+      # mm-gtk is `exclude`d from the workspace (gettextrs needs Linux system
+      # libs that break macOS/Windows CI), so `--workspace` never builds it.
+      # `--target-dir target` is required: without it the binary lands in
+      # crates/mm-gtk/target/release/ and the packaging step below misses it.
+      - name: Build GTK4 frontend (release)
+        run: cargo build --release --manifest-path crates/mm-gtk/Cargo.toml --target-dir target
 
-      - name: Build AppImage
-        run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
-          bash linux/appimage/build-appimage.sh "${VERSION}" || echo "::warning::AppImage build incomplete — appimagetool may not be available"
+      # dpkg-deb ships with ubuntu-latest, so this is invoked strictly.
+      # Emits meedyamanager_<debian-version>_amd64.deb at the repo root.
+      - name: Build .deb package
+        run: bash linux/deb/build-deb.sh "${{ needs.prepare.outputs.version }}"
+
+      # ---------------------------------------------------------------------
+      # AppImage is deliberately NOT built for this release line.
+      #
+      # linux/appimage/build-appimage.sh assembles an AppDir but does not
+      # bundle GTK4/libadwaita and their transitive dependencies, so the
+      # resulting file is not self-contained and fails on any host whose GTK
+      # is older than the builder's. A broken AppImage costs more tester
+      # goodwill than no AppImage, so the step is omitted and the release body
+      # says so explicitly. Re-enable by restoring:
+      #
+      #   - name: Build AppImage
+      #     run: bash linux/appimage/build-appimage.sh "${{ needs.prepare.outputs.version }}"
+      #
+      # once the script performs a real ldd walk (or uses linuxdeploy).
+      # ---------------------------------------------------------------------
 
       - name: Package Linux x64 artifacts
         run: |
+          set -euo pipefail
           PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
           mkdir -p staging
 
-          # Copy binaries
-          cp target/release/mm-gtk staging/ 2>/dev/null || true
-          cp target/release/mm-cli staging/ 2>/dev/null || true
-          cp target/release/libmm_ffi.so staging/ 2>/dev/null || true
+          # `meedya-gtk` (crate mm-gtk) and `meedya` (crate mm-cli) are the
+          # real binary names — there is no file called mm-gtk or mm-cli.
+          cp target/release/meedya-gtk staging/
+          cp target/release/meedya staging/
+          cp target/release/libmm_ffi.so staging/
 
-          # Copy .deb if built
-          cp "meedyamanager_${{ needs.prepare.outputs.version }}_amd64.deb" staging/ 2>/dev/null || true
-
-          # Copy AppImage if built
-          cp "MeedyaManager-${{ needs.prepare.outputs.version }}-x86_64.AppImage" staging/ 2>/dev/null || true
-
-          # Copy LICENSE file
-          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
-          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
-          # licence text is a compliance failure, so the release should stop instead (#207).
+          # GPL-2.0-or-later requires the licence to accompany every binary (#207).
           cp LICENSE staging/
 
-          # Generate SHA256 checksums
-          cd staging
-          sha256sum * > "${PREFIX}-linux-x64.sha256" 2>/dev/null || true
+          tar -czf "${PREFIX}-linux-x64.tar.gz" \
+            -C staging meedya-gtk meedya libmm_ffi.so LICENSE
 
-          # Create tarball of all binaries and LICENSE
-          tar -czf "../${PREFIX}-linux-x64.tar.gz" mm-gtk mm-cli libmm_ffi.so LICENSE 2>/dev/null || true
-          cd ..
-          sha256sum "${PREFIX}-linux-x64.tar.gz" >> "staging/${PREFIX}-linux-x64.sha256" 2>/dev/null || true
+          # Globbed rather than reconstructed: build-deb.sh maps a semver
+          # pre-release hyphen to a Debian tilde (1.4.0-alpha.1 →
+          # 1.4.0~alpha.1), so the filename is not simply "${VERSION}".
+          DEB=$(ls meedyamanager_*_amd64.deb)
+          sha256sum "${PREFIX}-linux-x64.tar.gz" "${DEB}" > "${PREFIX}-linux-x64.sha256"
+
+          echo "Staged for Linux x64:"
+          ls -l staging
+          cat "${PREFIX}-linux-x64.sha256"
 
       - name: Upload Linux x64 artifacts
         uses: actions/upload-artifact@v4
@@ -434,10 +591,9 @@ jobs:
           name: linux-x64
           path: |
             ${{ needs.prepare.outputs.artifact_prefix }}-linux-x64.tar.gz
-            staging/*.sha256
-            staging/*.deb
-            staging/*.AppImage
-          if-no-files-found: warn
+            ${{ needs.prepare.outputs.artifact_prefix }}-linux-x64.sha256
+            meedyamanager_*_amd64.deb
+          if-no-files-found: error
 
   # ---------------------------------------------------------------------------
   # Linux — arm64 (cross-compilation)
@@ -465,7 +621,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       # Note: Full cross-compilation for GTK4 arm64 requires a sysroot with
-      # arm64 GTK4/Libadwaita libraries. For now, only core + CLI are built.
+      # arm64 GTK4/Libadwaita libraries. For now, only core + CLI + FFI are
+      # built — this platform ships no desktop GUI.
       - name: Build Rust core and CLI (release, arm64)
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -475,24 +632,28 @@ jobs:
 
       - name: Package Linux arm64 artifacts
         run: |
+          set -euo pipefail
           PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
           mkdir -p staging
           TARGET=target/aarch64-unknown-linux-gnu/release
 
-          cp ${TARGET}/mm-cli staging/ 2>/dev/null || true
-          cp ${TARGET}/libmm_ffi.so staging/ 2>/dev/null || true
+          # `meedya` is the CLI binary name (crate mm-cli).
+          cp "${TARGET}/meedya" staging/
+          cp "${TARGET}/libmm_ffi.so" staging/
 
-          # Copy LICENSE file
-          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
-          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
-          # licence text is a compliance failure, so the release should stop instead (#207).
+          # GPL-2.0-or-later requires the licence to accompany every binary (#207).
           cp LICENSE staging/
 
-          cd staging
-          sha256sum * > "${PREFIX}-linux-arm64.sha256" 2>/dev/null || true
-          tar -czf "../${PREFIX}-linux-arm64.tar.gz" .
-          cd ..
-          sha256sum "${PREFIX}-linux-arm64.tar.gz" >> "staging/${PREFIX}-linux-arm64.sha256"
+          # Explicit member list, so the archive can never pick up a stray
+          # checksum file written into staging/ by an earlier step.
+          tar -czf "${PREFIX}-linux-arm64.tar.gz" \
+            -C staging meedya libmm_ffi.so LICENSE
+
+          sha256sum "${PREFIX}-linux-arm64.tar.gz" > "${PREFIX}-linux-arm64.sha256"
+
+          echo "Staged for Linux arm64:"
+          ls -l staging
+          cat "${PREFIX}-linux-arm64.sha256"
 
       - name: Upload Linux arm64 artifacts
         uses: actions/upload-artifact@v4
@@ -500,15 +661,26 @@ jobs:
           name: linux-arm64
           path: |
             ${{ needs.prepare.outputs.artifact_prefix }}-linux-arm64.tar.gz
-            staging/*.sha256
-          if-no-files-found: warn
+            ${{ needs.prepare.outputs.artifact_prefix }}-linux-arm64.sha256
+          if-no-files-found: error
 
   # ---------------------------------------------------------------------------
   # Create GitHub Release
+  #
+  # Runs on a tag push, or on a manual run with `publish` ticked. `if: always()`
+  # plus explicit result checks means the two continue-on-error Windows jobs
+  # cannot block the release, while a genuine macOS or Linux failure still does.
   # ---------------------------------------------------------------------------
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    if: >-
+      always()
+      && (github.event_name == 'push' || inputs.publish)
+      && needs.prepare.result == 'success'
+      && needs.release-macos.result == 'success'
+      && needs.release-linux-x64.result == 'success'
+      && needs.release-linux-arm64.result == 'success'
     needs:
       - prepare
       - release-macos
@@ -526,30 +698,87 @@ jobs:
         with:
           path: release-artifacts
 
+      - name: List downloaded artifacts
+        run: find release-artifacts -type f | sort
+
       - name: Consolidate checksums
         run: |
+          set -euo pipefail
           PREFIX="${{ needs.prepare.outputs.artifact_prefix }}"
           # Merge all per-platform checksum files into one
           find release-artifacts -name "*.sha256" -exec cat {} \; | sort > "${PREFIX}-SHA256SUMS.txt"
           echo "Consolidated checksums:"
           cat "${PREFIX}-SHA256SUMS.txt"
 
-      - name: Extract release notes
+      - name: Assemble release body
         run: |
-          if [ -f release-artifacts/release-notes/release-notes.md ]; then
-            cp release-artifacts/release-notes/release-notes.md /tmp/body.md
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          # Report what actually arrived rather than the Windows jobs' `result`:
+          # a job marked `continue-on-error: true` is reported as `success` in
+          # the needs context even when its steps failed, so the presence of the
+          # archives is the only trustworthy signal.
+          if compgen -G 'release-artifacts/windows-*/*.zip' > /dev/null; then
+            WIN_STATUS="Windows archives **are** attached to this release."
           else
-            echo "See [CHANGELOG](docs/changelog.md) for details." > /tmp/body.md
+            WIN_STATUS="**No Windows archives are attached** — the Windows jobs did not produce one."
           fi
+
+          {
+            echo "## ⚠️ Unsigned alpha build — read before installing"
+            echo ""
+            echo "This build is **unsigned and un-notarised**. No code-signing secrets are"
+            echo "configured for this repository, so:"
+            echo ""
+            echo "- **macOS** — the \`.dmg\` is not signed with a Developer ID and has not been"
+            echo "  notarised by Apple. Gatekeeper will refuse to open it on first launch;"
+            echo "  right-click the app and choose *Open*, or clear the quarantine attribute"
+            echo "  with \`xattr -dr com.apple.quarantine /Applications/MeedyaManager.app\`."
+            echo "- **Windows** — the executables carry no Authenticode signature, so"
+            echo "  SmartScreen will warn. The Windows jobs are also marked"
+            echo "  \`continue-on-error\` (issue #148), so they may produce nothing at all."
+            echo "  ${WIN_STATUS}"
+            echo "- **Linux** — the \`.deb\` is unsigned; \`apt\` will install it with"
+            echo "  \`dpkg -i\` but will not verify a repository signature."
+            echo ""
+            echo "**No AppImage is included.** \`linux/appimage/build-appimage.sh\` does not"
+            echo "yet bundle GTK4/libadwaita, so the AppImage it produces is not"
+            echo "self-contained and would fail on most hosts. It is deliberately omitted"
+            echo "rather than shipped broken. Use the \`.deb\` or the \`.tar.gz\` on Linux."
+            echo ""
+            echo "Verify every download against \`MeedyaManager-${VERSION}-SHA256SUMS.txt\`."
+            echo ""
+            echo "---"
+            echo ""
+          } > /tmp/body.md
+
+          if [ -f release-artifacts/release-notes/release-notes.md ]; then
+            cat release-artifacts/release-notes/release-notes.md >> /tmp/body.md
+          else
+            echo "See [CHANGELOG](docs/changelog.md) for details." >> /tmp/body.md
+          fi
+
+          echo "--- release body ---"
+          cat /tmp/body.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          # Explicit tag_name so a `publish: true` manual run (which has no tag
+          # ref) still targets the right tag.
+          tag_name: "v${{ needs.prepare.outputs.version }}"
           name: "MeedyaManager v${{ needs.prepare.outputs.version }}"
           body_path: /tmp/body.md
           draft: true
           prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+          # The Windows jobs may have failed (#148), so an unmatched *.zip glob
+          # must not fail the release.
+          fail_on_unmatched_files: false
           files: |
             release-artifacts/**/*.tar.gz
+            release-artifacts/**/*.dmg
+            release-artifacts/**/*.deb
+            release-artifacts/**/*.zip
             release-artifacts/**/*.sha256
             ${{ needs.prepare.outputs.artifact_prefix }}-SHA256SUMS.txt
