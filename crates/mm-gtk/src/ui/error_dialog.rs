@@ -8,10 +8,10 @@
 // Usage:
 //   show_error(window, "Save Failed", "The file could not be written. Check permissions.");
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 /// Show a modal error dialog attached to `parent`.
 ///
@@ -54,7 +54,7 @@ pub fn build_confirm_dialog(
     destructive: bool,
 ) -> adw::AlertDialog {
     let dialog = adw::AlertDialog::new(Some(heading), Some(body));
-    dialog.add_response("cancel",  "Cancel");
+    dialog.add_response("cancel", "Cancel");
     dialog.add_response("confirm", confirm_label);
     dialog.set_default_response(Some("cancel"));
     dialog.set_close_response("cancel");

@@ -19,12 +19,15 @@
 //   🌐 Server    — HTTPS media server with JWT authentication (M10)
 //   🔧 Settings  — application configuration (with save)
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
-use super::{cloud_panel, export_panel, lookup_panel, metadata_panel, rules_panel, scan_panel, server_panel, settings_panel};
+use super::{
+    cloud_panel, export_panel, lookup_panel, metadata_panel, rules_panel, scan_panel, server_panel,
+    settings_panel,
+};
 
 /// Build and return the fully constructed main application window.
 ///
@@ -33,13 +36,13 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     // -----------------------------------------------------------------------
     // Create panels (each returns its root widget + owns its internal state)
     // -----------------------------------------------------------------------
-    let scan     = scan_panel::ScanPanel::new();
+    let scan = scan_panel::ScanPanel::new();
     let metadata = metadata_panel::MetadataPanel::new();
-    let lookup   = lookup_panel::LookupPanel::new();
-    let rules    = rules_panel::RulesPanel::new();
-    let cloud    = cloud_panel::CloudPanel::new();
-    let export   = export_panel::ExportPanel::new();
-    let server   = server_panel::ServerPanel::new();
+    let lookup = lookup_panel::LookupPanel::new();
+    let rules = rules_panel::RulesPanel::new();
+    let cloud = cloud_panel::CloudPanel::new();
+    let export = export_panel::ExportPanel::new();
+    let server = server_panel::ServerPanel::new();
     let settings = settings_panel::SettingsPanel::new();
 
     // -----------------------------------------------------------------------
@@ -47,25 +50,53 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     // -----------------------------------------------------------------------
     let tab_view = adw::TabView::new();
 
-    let add_tab = |view: &adw::TabView,
-                   widget: &gtk::Widget,
-                   title: &str,
-                   icon_name: &str| -> adw::TabPage {
-        let page = view.append(widget);
-        page.set_title(title);
-        let icon = gtk::gio::ThemedIcon::new(icon_name);
-        page.set_icon(Some(&icon));
-        page
-    };
+    let add_tab =
+        |view: &adw::TabView, widget: &gtk::Widget, title: &str, icon_name: &str| -> adw::TabPage {
+            let page = view.append(widget);
+            page.set_title(title);
+            let icon = gtk::gio::ThemedIcon::new(icon_name);
+            page.set_icon(Some(&icon));
+            page
+        };
 
-    add_tab(&tab_view, scan.widget(),     "Library",  "folder-open-symbolic");
+    add_tab(&tab_view, scan.widget(), "Library", "folder-open-symbolic");
     add_tab(&tab_view, metadata.widget(), "Metadata", "tag-symbolic");
-    add_tab(&tab_view, lookup.widget(),   "Lookup",   "system-search-symbolic");
-    add_tab(&tab_view, rules.widget(),    "Rules",    "preferences-system-symbolic");
-    add_tab(&tab_view, cloud.widget(),    "Cloud",    "network-wireless-symbolic");
-    add_tab(&tab_view, export.widget(),   "Export",   "drive-harddisk-symbolic");
-    add_tab(&tab_view, server.widget(),   "Server",   "network-server-symbolic");
-    add_tab(&tab_view, settings.widget(), "Settings", "emblem-system-symbolic");
+    add_tab(
+        &tab_view,
+        lookup.widget(),
+        "Lookup",
+        "system-search-symbolic",
+    );
+    add_tab(
+        &tab_view,
+        rules.widget(),
+        "Rules",
+        "preferences-system-symbolic",
+    );
+    add_tab(
+        &tab_view,
+        cloud.widget(),
+        "Cloud",
+        "network-wireless-symbolic",
+    );
+    add_tab(
+        &tab_view,
+        export.widget(),
+        "Export",
+        "drive-harddisk-symbolic",
+    );
+    add_tab(
+        &tab_view,
+        server.widget(),
+        "Server",
+        "network-server-symbolic",
+    );
+    add_tab(
+        &tab_view,
+        settings.widget(),
+        "Settings",
+        "emblem-system-symbolic",
+    );
 
     // -----------------------------------------------------------------------
     // AdwTabBar — horizontal tab strip
@@ -119,9 +150,7 @@ pub fn build(app: &adw::Application) -> adw::ApplicationWindow {
     // AdwBanner — update notification (hidden by default; shown when a newer
     // version is detected by the background update checker in mm-update)
     // -----------------------------------------------------------------------
-    let update_banner = adw::Banner::new(
-        "A new version of MeedyaManager is available."
-    );
+    let update_banner = adw::Banner::new("A new version of MeedyaManager is available.");
     // "Download" button opens the GitHub releases page in the default browser
     update_banner.set_button_label(Some("Download"));
     update_banner.connect_button_clicked(|_| {

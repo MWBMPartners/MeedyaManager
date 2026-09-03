@@ -12,10 +12,10 @@
 //   GtkScrolledWindow  →  GtkTextView (event log)
 //   GtkButton "Clear Log"
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use crate::ui::accessibility;
 
@@ -26,20 +26,40 @@ use crate::ui::accessibility;
 /// Static metadata for one cloud provider row.
 struct ProviderInfo {
     /// Internal identifier (matches mm-cloud provider name).
-    id:      &'static str,
+    id: &'static str,
     /// Display name shown in the UI.
-    label:   &'static str,
+    label: &'static str,
     /// `true` for providers not yet implemented (MEGA, iCloud).
     is_stub: bool,
 }
 
 /// The ordered list of cloud providers.
 const PROVIDERS: &[ProviderInfo] = &[
-    ProviderInfo { id: "onedrive",    label: "OneDrive",     is_stub: false },
-    ProviderInfo { id: "googledrive", label: "Google Drive", is_stub: false },
-    ProviderInfo { id: "dropbox",     label: "Dropbox",      is_stub: false },
-    ProviderInfo { id: "mega",        label: "MEGA",         is_stub: true  },
-    ProviderInfo { id: "icloud",      label: "iCloud Drive", is_stub: true  },
+    ProviderInfo {
+        id: "onedrive",
+        label: "OneDrive",
+        is_stub: false,
+    },
+    ProviderInfo {
+        id: "googledrive",
+        label: "Google Drive",
+        is_stub: false,
+    },
+    ProviderInfo {
+        id: "dropbox",
+        label: "Dropbox",
+        is_stub: false,
+    },
+    ProviderInfo {
+        id: "mega",
+        label: "MEGA",
+        is_stub: true,
+    },
+    ProviderInfo {
+        id: "icloud",
+        label: "iCloud Drive",
+        is_stub: true,
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -78,7 +98,7 @@ impl CloudPanel {
         // stays revealed for the lifetime of the tab so testers never mistake
         // the form for a working sync. See issue #205.
         let preview_banner = adw::Banner::new(
-            "Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)"
+            "Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)",
         );
         preview_banner.set_revealed(true);
         root.append(&preview_banner);
@@ -145,7 +165,10 @@ impl CloudPanel {
             .margin_bottom(12)
             .build();
         accessibility::set_label(&clear_btn, "Clear event log");
-        accessibility::set_description(&clear_btn, "Removes all cloud storage events from the log.");
+        accessibility::set_description(
+            &clear_btn,
+            "Removes all cloud storage events from the log.",
+        );
 
         {
             let lb = log_buf.clone();
@@ -172,15 +195,16 @@ impl CloudPanel {
 fn build_provider_row(info: &ProviderInfo) -> adw::ActionRow {
     let row = adw::ActionRow::builder()
         .title(info.label)
-        .subtitle(if info.is_stub { "Coming Soon" } else { "Not Connected" })
+        .subtitle(if info.is_stub {
+            "Coming Soon"
+        } else {
+            "Not Connected"
+        })
         .build();
 
     if info.is_stub {
         // Stub providers show a disabled label instead of a button.
-        let stub_label = gtk::Label::builder()
-            .label("—")
-            .sensitive(false)
-            .build();
+        let stub_label = gtk::Label::builder().label("—").sensitive(false).build();
         row.add_suffix(&stub_label);
         return row;
     }
@@ -195,8 +219,20 @@ fn build_provider_row(info: &ProviderInfo) -> adw::ActionRow {
         .css_classes(["suggested-action"])
         .sensitive(false)
         .build();
-    accessibility::set_label(&btn, &format!("Connect {} (disabled — not functional in this alpha)", info.label));
-    accessibility::set_description(&btn, &format!("Connecting {} is disabled in this alpha; mm-cloud does not yet make a real network call. See issue #205.", info.label));
+    accessibility::set_label(
+        &btn,
+        &format!(
+            "Connect {} (disabled — not functional in this alpha)",
+            info.label
+        ),
+    );
+    accessibility::set_description(
+        &btn,
+        &format!(
+            "Connecting {} is disabled in this alpha; mm-cloud does not yet make a real network call. See issue #205.",
+            info.label
+        ),
+    );
 
     row.add_suffix(&btn);
     row

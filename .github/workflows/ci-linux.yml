@@ -35,6 +35,19 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Check mm-gtk formatting
+        # mm-gtk is excluded from the workspace, so `cargo fmt --all` in
+        # ci-rust.yml never reaches it.  Until this step existed the crate had
+        # drifted to 136 unformatted sites, in files nobody had edited for
+        # months, because nothing anywhere checked it.  Formatting is the one
+        # gate that can run before the crate compiles, so it goes first.
+        #
+        # NOTE: clippy is deliberately NOT run here yet.  The crate cannot be
+        # compiled on a non-Linux developer machine (GTK4 + gettextrs system
+        # libraries), so a lint gate would be unverifiable locally and would
+        # most likely land red.  Add it once this job is reliably green.
+        run: cargo fmt --manifest-path crates/mm-gtk/Cargo.toml --check
+
       - name: Build mm-gtk crate
         # mm-gtk is excluded from the workspace (gettextrs needs Linux system libs).
         # Build it via its own manifest path.

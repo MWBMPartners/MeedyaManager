@@ -30,10 +30,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use mm_core::metadata::{self, TagMap};
 
@@ -64,9 +64,7 @@ impl MetadataPanel {
             .editable(false) // read-only — path is set by dialog only
             .build();
 
-        let open_btn = gtk::Button::builder()
-            .label("Open…")
-            .build();
+        let open_btn = gtk::Button::builder().label("Open…").build();
 
         let file_row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -77,7 +75,13 @@ impl MetadataPanel {
             .margin_bottom(8)
             .build();
 
-        file_row.append(&gtk::Label::builder().label("File").width_chars(8).xalign(0.0).build());
+        file_row.append(
+            &gtk::Label::builder()
+                .label("File")
+                .width_chars(8)
+                .xalign(0.0)
+                .build(),
+        );
         file_row.append(&file_entry);
         file_row.append(&open_btn);
 
@@ -212,13 +216,25 @@ impl MetadataPanel {
         // AT-SPI2 accessibility labels (Issue #128)
         // ------------------------------------------------------------------
         accessibility::set_label(&file_entry, "Selected file path");
-        accessibility::set_description(&file_entry, "Shows the path of the currently loaded media file.");
+        accessibility::set_description(
+            &file_entry,
+            "Shows the path of the currently loaded media file.",
+        );
         accessibility::set_label(&open_btn, "Open media file");
-        accessibility::set_description(&open_btn, "Opens a file picker to choose a media file for tag editing.");
+        accessibility::set_description(
+            &open_btn,
+            "Opens a file picker to choose a media file for tag editing.",
+        );
         accessibility::set_label(&revert_btn, "Revert changes");
-        accessibility::set_description(&revert_btn, "Discards all unsaved tag edits and reloads the file.");
+        accessibility::set_description(
+            &revert_btn,
+            "Discards all unsaved tag edits and reloads the file.",
+        );
         accessibility::set_label(&save_btn, "Save metadata tags");
-        accessibility::set_description(&save_btn, "Writes all edited tags back to the media file on disk.");
+        accessibility::set_description(
+            &save_btn,
+            "Writes all edited tags back to the media file on disk.",
+        );
         accessibility::set_label(&status_label, "Metadata status");
 
         // ------------------------------------------------------------------
@@ -253,8 +269,10 @@ impl MetadataPanel {
                     let filter = gtk::FileFilter::new();
                     filter.set_name(Some("Media files"));
                     // Common audio extensions
-                    for ext in &["mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "aiff",
-                                  "wv", "ape", "mp4", "mkv", "avi", "mov"] {
+                    for ext in &[
+                        "mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "aiff", "wv", "ape",
+                        "mp4", "mkv", "avi", "mov",
+                    ] {
                         filter.add_suffix(ext);
                     }
 
@@ -306,7 +324,10 @@ impl MetadataPanel {
                             .filter(|s| !s.is_empty())
                             .map(|s| s.to_owned())
                             .collect::<Vec<_>>();
-                        (key.clone(), if values.is_empty() { vec![val] } else { values })
+                        (
+                            key.clone(),
+                            if values.is_empty() { vec![val] } else { values },
+                        )
                     })
                     .collect();
 
@@ -419,13 +440,17 @@ fn load_file(
         s.file_path = Some(path.clone());
         s.tags = flat.clone();
         s.pending_edits.clear();
-        s.status = format!("Loaded: {}", path.file_name().unwrap_or_default().to_string_lossy());
+        s.status = format!(
+            "Loaded: {}",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        );
     }
     status_label.set_text(&state.borrow().status);
 
     // Load audio properties for the info bar
     if let Ok(props) = metadata::extract_audio_properties(path) {
-        let codec = path.extension()
+        let codec = path
+            .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("?")
             .to_ascii_uppercase();
@@ -448,14 +473,7 @@ fn load_file(
     sorted_tags.sort_by(|a, b| a.0.cmp(&b.0));
 
     for (key, value) in &sorted_tags {
-        let row = build_tag_row(
-            key,
-            value,
-            state,
-            entry_map,
-            save_btn,
-            revert_btn,
-        );
+        let row = build_tag_row(key, value, state, entry_map, save_btn, revert_btn);
         tags_list.append(&row);
     }
 
@@ -484,13 +502,12 @@ fn build_tag_row(
         .build();
 
     // Editable value entry (right column)
-    let entry = gtk::Entry::builder()
-        .text(value)
-        .hexpand(true)
-        .build();
+    let entry = gtk::Entry::builder().text(value).hexpand(true).build();
 
     // Register this entry in the map
-    entry_map.borrow_mut().insert(key.to_string(), entry.clone());
+    entry_map
+        .borrow_mut()
+        .insert(key.to_string(), entry.clone());
 
     // Mark edits as pending when the entry changes
     {
@@ -501,10 +518,10 @@ fn build_tag_row(
         let revert_btn_clone = revert_btn.clone();
 
         entry.connect_changed(move |e| {
-            state_clone.borrow_mut().pending_edits.insert(
-                key_owned.clone(),
-                e.text().to_string(),
-            );
+            state_clone
+                .borrow_mut()
+                .pending_edits
+                .insert(key_owned.clone(), e.text().to_string());
             save_btn_clone.set_sensitive(true);
             revert_btn_clone.set_sensitive(true);
         });

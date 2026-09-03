@@ -82,17 +82,22 @@ impl ScanState {
             return "No files scanned yet.".to_string();
         }
         let total = self.previews.len();
-        let renamed = self.previews.iter().filter(|p| !p.unchanged && !p.conflict).count();
+        let renamed = self
+            .previews
+            .iter()
+            .filter(|p| !p.unchanged && !p.conflict)
+            .count();
         let unchanged = self.previews.iter().filter(|p| p.unchanged).count();
         let conflicts = self.previews.iter().filter(|p| p.conflict).count();
-        format!(
-            "{total} files — {renamed} to rename, {unchanged} unchanged, {conflicts} conflicts"
-        )
+        format!("{total} files — {renamed} to rename, {unchanged} unchanged, {conflicts} conflicts")
     }
 
     /// Return only the previews that are ready to execute (no conflict, not unchanged).
     pub fn executable_previews(&self) -> Vec<&RenamePreview> {
-        self.previews.iter().filter(|p| !p.unchanged && !p.conflict).collect()
+        self.previews
+            .iter()
+            .filter(|p| !p.unchanged && !p.conflict)
+            .collect()
     }
 
     /// Return the number of conflicting previews.
@@ -207,7 +212,12 @@ impl RulesState {
         let template = "<Artist> - <Title>".to_owned();
         let preview_output = Self::apply_sample(&sample_tags, &template);
 
-        Self { template, validation: None, preview_output, sample_tags }
+        Self {
+            template,
+            validation: None,
+            preview_output,
+            sample_tags,
+        }
     }
 
     /// Compute the live preview by substituting sample tags into the template.
@@ -281,14 +291,31 @@ impl LookupState {
         let mut providers = HashMap::new();
         // Concrete providers — enabled by default
         for name in &[
-            "musicbrainz", "spotify", "apple_music", "deezer",
-            "tmdb", "thetvdb", "omdb", "apple_tv", "itunes_store",
-            "apple_podcasts", "isrc", "eidr", "iswc",
+            "musicbrainz",
+            "spotify",
+            "apple_music",
+            "deezer",
+            "tmdb",
+            "thetvdb",
+            "omdb",
+            "apple_tv",
+            "itunes_store",
+            "apple_podcasts",
+            "isrc",
+            "eidr",
+            "iswc",
         ] {
             providers.insert(name.to_string(), true);
         }
         // Stub providers — disabled by default (no public API)
-        for name in &["youtube_music", "amazon_music", "pandora", "tidal", "shazam", "iheart"] {
+        for name in &[
+            "youtube_music",
+            "amazon_music",
+            "pandora",
+            "tidal",
+            "shazam",
+            "iheart",
+        ] {
             providers.insert(name.to_string(), false);
         }
 
@@ -305,7 +332,8 @@ impl LookupState {
 
     /// Return names of all enabled providers, sorted alphabetically.
     pub fn enabled_providers(&self) -> Vec<&str> {
-        let mut names: Vec<&str> = self.providers
+        let mut names: Vec<&str> = self
+            .providers
             .iter()
             // Rust 2024 forbids `&pattern` inside an implicitly-borrowing
             // closure parameter, so destructure plainly and deref twice
@@ -420,9 +448,24 @@ mod tests {
     fn scan_state_summary_with_previews() {
         let mut s = ScanState::new();
         s.previews = vec![
-            RenamePreview { source: "/a.mp3".into(), destination: "/n.mp3".into(), conflict: false, unchanged: false },
-            RenamePreview { source: "/b.mp3".into(), destination: "/b.mp3".into(), conflict: false, unchanged: true  },
-            RenamePreview { source: "/c.mp3".into(), destination: "/x.mp3".into(), conflict: true,  unchanged: false },
+            RenamePreview {
+                source: "/a.mp3".into(),
+                destination: "/n.mp3".into(),
+                conflict: false,
+                unchanged: false,
+            },
+            RenamePreview {
+                source: "/b.mp3".into(),
+                destination: "/b.mp3".into(),
+                conflict: false,
+                unchanged: true,
+            },
+            RenamePreview {
+                source: "/c.mp3".into(),
+                destination: "/x.mp3".into(),
+                conflict: true,
+                unchanged: false,
+            },
         ];
         let sum = s.preview_summary();
         assert!(sum.contains("3 files"));
@@ -435,9 +478,24 @@ mod tests {
     fn scan_state_executable_previews() {
         let mut s = ScanState::new();
         s.previews = vec![
-            RenamePreview { source: "/a.mp3".into(), destination: "/na.mp3".into(), conflict: false, unchanged: false },
-            RenamePreview { source: "/b.mp3".into(), destination: "/b.mp3".into(),  conflict: false, unchanged: true  },
-            RenamePreview { source: "/c.mp3".into(), destination: "/x.mp3".into(),  conflict: true,  unchanged: false },
+            RenamePreview {
+                source: "/a.mp3".into(),
+                destination: "/na.mp3".into(),
+                conflict: false,
+                unchanged: false,
+            },
+            RenamePreview {
+                source: "/b.mp3".into(),
+                destination: "/b.mp3".into(),
+                conflict: false,
+                unchanged: true,
+            },
+            RenamePreview {
+                source: "/c.mp3".into(),
+                destination: "/x.mp3".into(),
+                conflict: true,
+                unchanged: false,
+            },
         ];
         assert_eq!(s.executable_previews().len(), 1);
     }
@@ -446,9 +504,24 @@ mod tests {
     fn scan_state_conflict_count() {
         let mut s = ScanState::new();
         s.previews = vec![
-            RenamePreview { source: "/a.mp3".into(), destination: "/x.mp3".into(), conflict: true,  unchanged: false },
-            RenamePreview { source: "/b.mp3".into(), destination: "/y.mp3".into(), conflict: true,  unchanged: false },
-            RenamePreview { source: "/c.mp3".into(), destination: "/c.mp3".into(), conflict: false, unchanged: true  },
+            RenamePreview {
+                source: "/a.mp3".into(),
+                destination: "/x.mp3".into(),
+                conflict: true,
+                unchanged: false,
+            },
+            RenamePreview {
+                source: "/b.mp3".into(),
+                destination: "/y.mp3".into(),
+                conflict: true,
+                unchanged: false,
+            },
+            RenamePreview {
+                source: "/c.mp3".into(),
+                destination: "/c.mp3".into(),
+                conflict: false,
+                unchanged: true,
+            },
         ];
         assert_eq!(s.conflict_count(), 2);
     }
@@ -457,9 +530,24 @@ mod tests {
     fn scan_state_unchanged_count() {
         let mut s = ScanState::new();
         s.previews = vec![
-            RenamePreview { source: "/a.mp3".into(), destination: "/a.mp3".into(), conflict: false, unchanged: true  },
-            RenamePreview { source: "/b.mp3".into(), destination: "/b.mp3".into(), conflict: false, unchanged: true  },
-            RenamePreview { source: "/c.mp3".into(), destination: "/n.mp3".into(), conflict: false, unchanged: false },
+            RenamePreview {
+                source: "/a.mp3".into(),
+                destination: "/a.mp3".into(),
+                conflict: false,
+                unchanged: true,
+            },
+            RenamePreview {
+                source: "/b.mp3".into(),
+                destination: "/b.mp3".into(),
+                conflict: false,
+                unchanged: true,
+            },
+            RenamePreview {
+                source: "/c.mp3".into(),
+                destination: "/n.mp3".into(),
+                conflict: false,
+                unchanged: false,
+            },
         ];
         assert_eq!(s.unchanged_count(), 2);
     }
@@ -472,16 +560,23 @@ mod tests {
     #[test]
     fn scan_state_can_execute_true_when_renameable() {
         let mut s = ScanState::new();
-        s.previews = vec![
-            RenamePreview { source: "/a.mp3".into(), destination: "/new.mp3".into(), conflict: false, unchanged: false },
-        ];
+        s.previews = vec![RenamePreview {
+            source: "/a.mp3".into(),
+            destination: "/new.mp3".into(),
+            conflict: false,
+            unchanged: false,
+        }];
         assert!(s.can_execute());
     }
 
     #[test]
     fn default_template_is_valid() {
         let result = mm_core::rule_engine::parse_template(&ScanState::new().template);
-        assert!(result.is_ok(), "Default template should parse without error: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Default template should parse without error: {:?}",
+            result.err()
+        );
     }
 
     // ========================
@@ -670,7 +765,10 @@ mod tests {
     #[test]
     fn lookup_state_clear_results() {
         let mut s = LookupState::new();
-        s.results.push(LookupResult { title: Some("Track".into()), ..Default::default() });
+        s.results.push(LookupResult {
+            title: Some("Track".into()),
+            ..Default::default()
+        });
         s.selected = Some(0);
         s.clear_results();
         assert!(!s.has_results());
@@ -680,10 +778,19 @@ mod tests {
     #[test]
     fn lookup_state_selected_result() {
         let mut s = LookupState::new();
-        s.results.push(LookupResult { title: Some("Track 1".into()), ..Default::default() });
-        s.results.push(LookupResult { title: Some("Track 2".into()), ..Default::default() });
+        s.results.push(LookupResult {
+            title: Some("Track 1".into()),
+            ..Default::default()
+        });
+        s.results.push(LookupResult {
+            title: Some("Track 2".into()),
+            ..Default::default()
+        });
         s.selected = Some(1);
-        assert_eq!(s.selected_result().unwrap().title.as_deref(), Some("Track 2"));
+        assert_eq!(
+            s.selected_result().unwrap().title.as_deref(),
+            Some("Track 2")
+        );
     }
 
     #[test]
@@ -745,7 +852,11 @@ mod tests {
 
     #[test]
     fn lookup_result_clone_is_independent() {
-        let mut r = LookupResult { title: Some("A".into()), score: 0.9, ..Default::default() };
+        let mut r = LookupResult {
+            title: Some("A".into()),
+            score: 0.9,
+            ..Default::default()
+        };
         let r2 = r.clone();
         r.title = Some("B".into());
         assert_eq!(r2.title.as_deref(), Some("A"));

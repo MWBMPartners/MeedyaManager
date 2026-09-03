@@ -12,10 +12,10 @@
 //   one-time informational dialog.  This protects user files from potential bugs
 //   in unreleased code.
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use mm_core::test_mode;
 
@@ -35,9 +35,7 @@ pub fn run(app_id: &str) {
 
     // Create the application instance with our reverse-DNS identifier.
     // GTK uses the application ID for D-Bus session uniqueness checks.
-    let app = adw::Application::builder()
-        .application_id(app_id)
-        .build();
+    let app = adw::Application::builder().application_id(app_id).build();
 
     // Register the activate handler — called on first launch and when a
     // second instance tries to start (GTK raises the existing window instead)
@@ -115,9 +113,7 @@ fn on_activate(app: &adw::Application) {
 /// Its presence means the user was already shown the pre-release dialog
 /// for this particular version.
 fn prerelease_sentinel_exists(version: &str) -> bool {
-    sentinel_path(version)
-        .map(|p| p.exists())
-        .unwrap_or(false)
+    sentinel_path(version).map(|p| p.exists()).unwrap_or(false)
 }
 
 /// Write the sentinel file so that subsequent launches of the same

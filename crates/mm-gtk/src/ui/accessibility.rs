@@ -81,14 +81,14 @@ pub fn set_expanded<W: AccessibleExtManual>(widget: &W, expanded: bool) {
 pub fn tab_label(index: usize) -> Option<&'static str> {
     // Tab order must match `main_window::build()` add_tab() call order.
     const LABELS: [&str; 8] = [
-        "Library",   // 0 — folder scan + rename preview
-        "Metadata",  // 1 — tag editor + cover art
-        "Lookup",    // 2 — metadata provider search
-        "Rules",     // 3 — rename template builder
-        "Cloud",     // 4 — cloud storage monitor
-        "Export",    // 5 — database export
-        "Server",    // 6 — secure media server
-        "Settings",  // 7 — application settings
+        "Library",  // 0 — folder scan + rename preview
+        "Metadata", // 1 — tag editor + cover art
+        "Lookup",   // 2 — metadata provider search
+        "Rules",    // 3 — rename template builder
+        "Cloud",    // 4 — cloud storage monitor
+        "Export",   // 5 — database export
+        "Server",   // 6 — secure media server
+        "Settings", // 7 — application settings
     ];
     LABELS.get(index).copied()
 }
@@ -138,7 +138,10 @@ mod tests {
         for i in 0..EXPECTED_TAB_COUNT {
             let desc = tab_description(i);
             assert!(desc.is_some(), "Missing description for tab index {i}");
-            assert!(!desc.unwrap().is_empty(), "Empty description for tab index {i}");
+            assert!(
+                !desc.unwrap().is_empty(),
+                "Empty description for tab index {i}"
+            );
         }
     }
 
@@ -150,9 +153,7 @@ mod tests {
     #[test]
     fn tab_labels_are_unique() {
         // Collect all labels and check for duplicates
-        let labels: Vec<_> = (0..EXPECTED_TAB_COUNT)
-            .filter_map(tab_label)
-            .collect();
+        let labels: Vec<_> = (0..EXPECTED_TAB_COUNT).filter_map(tab_label).collect();
         let unique: std::collections::HashSet<_> = labels.iter().collect();
         assert_eq!(labels.len(), unique.len(), "Tab labels must all be unique");
     }
@@ -187,8 +188,10 @@ mod tests {
         // Labels must not contain HTML/angle brackets
         for i in 0..EXPECTED_TAB_COUNT {
             let label = tab_label(i).unwrap();
-            assert!(!label.contains('<') && !label.contains('>'),
-                "Tab {i} label must not contain HTML: '{label}'");
+            assert!(
+                !label.contains('<') && !label.contains('>'),
+                "Tab {i} label must not contain HTML: '{label}'"
+            );
         }
     }
 }

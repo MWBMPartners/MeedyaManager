@@ -27,10 +27,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use crate::state::{LookupResult, LookupState};
 use crate::ui::accessibility;
@@ -69,7 +69,13 @@ impl LookupPanel {
             .orientation(gtk::Orientation::Horizontal)
             .spacing(8)
             .build();
-        title_row.append(&gtk::Label::builder().label("Query").width_chars(8).xalign(0.0).build());
+        title_row.append(
+            &gtk::Label::builder()
+                .label("Query")
+                .width_chars(8)
+                .xalign(0.0)
+                .build(),
+        );
         title_row.append(&title_entry);
 
         // Artist row
@@ -77,7 +83,13 @@ impl LookupPanel {
             .orientation(gtk::Orientation::Horizontal)
             .spacing(8)
             .build();
-        artist_row.append(&gtk::Label::builder().label("Artist").width_chars(8).xalign(0.0).build());
+        artist_row.append(
+            &gtk::Label::builder()
+                .label("Artist")
+                .width_chars(8)
+                .xalign(0.0)
+                .build(),
+        );
         artist_row.append(&artist_entry);
         artist_row.append(&search_btn);
 
@@ -107,25 +119,25 @@ impl LookupPanel {
 
         // All known provider display names + internal names
         let provider_info: Vec<(&str, &str)> = vec![
-            ("musicbrainz",   "MusicBrainz"),
-            ("spotify",       "Spotify"),
-            ("apple_music",   "Apple Music"),
-            ("deezer",        "Deezer"),
-            ("tmdb",          "TMDb"),
-            ("thetvdb",       "TheTVDB"),
-            ("omdb",          "OMDb"),
-            ("apple_tv",      "Apple TV"),
-            ("itunes_store",  "iTunes Store"),
-            ("apple_podcasts","Apple Podcasts"),
-            ("isrc",          "ISRC"),
-            ("eidr",          "EIDR"),
-            ("iswc",          "ISWC"),
+            ("musicbrainz", "MusicBrainz"),
+            ("spotify", "Spotify"),
+            ("apple_music", "Apple Music"),
+            ("deezer", "Deezer"),
+            ("tmdb", "TMDb"),
+            ("thetvdb", "TheTVDB"),
+            ("omdb", "OMDb"),
+            ("apple_tv", "Apple TV"),
+            ("itunes_store", "iTunes Store"),
+            ("apple_podcasts", "Apple Podcasts"),
+            ("isrc", "ISRC"),
+            ("eidr", "EIDR"),
+            ("iswc", "ISWC"),
             ("youtube_music", "YouTube Music*"),
-            ("amazon_music",  "Amazon Music*"),
-            ("pandora",       "Pandora*"),
-            ("tidal",         "Tidal*"),
-            ("shazam",        "Shazam*"),
-            ("iheart",        "iHeart*"),
+            ("amazon_music", "Amazon Music*"),
+            ("pandora", "Pandora*"),
+            ("tidal", "Tidal*"),
+            ("shazam", "Shazam*"),
+            ("iheart", "iHeart*"),
         ];
 
         let providers_flow = gtk::FlowBox::builder()
@@ -139,7 +151,12 @@ impl LookupPanel {
             .build();
 
         for (name, display) in &provider_info {
-            let enabled = state.borrow().providers.get(*name).copied().unwrap_or(false);
+            let enabled = state
+                .borrow()
+                .providers
+                .get(*name)
+                .copied()
+                .unwrap_or(false);
             let check = gtk::CheckButton::builder()
                 .label(*display)
                 .active(enabled)
@@ -225,9 +242,7 @@ impl LookupPanel {
             .sensitive(false)
             .build();
 
-        let clear_btn = gtk::Button::builder()
-            .label("Clear")
-            .build();
+        let clear_btn = gtk::Button::builder().label("Clear").build();
 
         let btn_row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -244,15 +259,30 @@ impl LookupPanel {
         // AT-SPI2 accessibility labels (Issue #128)
         // ------------------------------------------------------------------
         accessibility::set_label(&title_entry, "Search query");
-        accessibility::set_description(&title_entry, "Enter a track, show, or podcast title to search across all enabled providers.");
+        accessibility::set_description(
+            &title_entry,
+            "Enter a track, show, or podcast title to search across all enabled providers.",
+        );
         accessibility::set_label(&artist_entry, "Artist hint (optional)");
-        accessibility::set_description(&artist_entry, "Optionally narrow the search by providing an artist name.");
+        accessibility::set_description(
+            &artist_entry,
+            "Optionally narrow the search by providing an artist name.",
+        );
         accessibility::set_label(&search_btn, "Search providers");
-        accessibility::set_description(&search_btn, "Searches all enabled metadata providers for the entered query.");
+        accessibility::set_description(
+            &search_btn,
+            "Searches all enabled metadata providers for the entered query.",
+        );
         accessibility::set_label(&apply_btn, "Apply result to file");
-        accessibility::set_description(&apply_btn, "Writes the selected result's tags to the currently open media file.");
+        accessibility::set_description(
+            &apply_btn,
+            "Writes the selected result's tags to the currently open media file.",
+        );
         accessibility::set_label(&clear_btn, "Clear results");
-        accessibility::set_description(&clear_btn, "Clears the search results and resets the lookup form.");
+        accessibility::set_description(
+            &clear_btn,
+            "Clears the search results and resets the lookup form.",
+        );
         accessibility::set_label(&status_label, "Lookup status");
 
         // ------------------------------------------------------------------
@@ -278,14 +308,14 @@ impl LookupPanel {
         // Signal: Search button
         // ------------------------------------------------------------------
         {
-            let state_c     = Rc::clone(&state);
-            let status_c    = status_label.clone();
-            let spinner_c   = spinner.clone();
-            let results_c   = results_list.clone();
-            let detail_c    = detail_label.clone();
-            let apply_c     = apply_btn.clone();
-            let title_c     = title_entry.clone();
-            let artist_c    = artist_entry.clone();
+            let state_c = Rc::clone(&state);
+            let status_c = status_label.clone();
+            let spinner_c = spinner.clone();
+            let results_c = results_list.clone();
+            let detail_c = detail_label.clone();
+            let apply_c = apply_btn.clone();
+            let title_c = title_entry.clone();
+            let artist_c = artist_entry.clone();
 
             search_btn.connect_clicked(move |_| {
                 let query = title_c.text().to_string();
@@ -331,12 +361,12 @@ impl LookupPanel {
                 });
 
                 // Poll for results on the GLib main thread
-                let state_poll  = Rc::clone(&state_c);
+                let state_poll = Rc::clone(&state_c);
                 let status_poll = status_c.clone();
                 let spinner_poll = spinner_c.clone();
                 let results_poll = results_c.clone();
-                let detail_poll  = detail_c.clone();
-                let apply_poll   = apply_c.clone();
+                let detail_poll = detail_c.clone();
+                let apply_poll = apply_c.clone();
 
                 gtk::glib::idle_add_local(move || {
                     match rx.try_recv() {
@@ -372,8 +402,11 @@ impl LookupPanel {
                                     if let Some(r) = state_c2.borrow().selected_result() {
                                         let detail = format!(
                                             "Provider: {} · ID: {} · Score: {:.2}{}",
-                                            r.provider, r.provider_id, r.score,
-                                            r.cover_art_url.as_deref()
+                                            r.provider,
+                                            r.provider_id,
+                                            r.score,
+                                            r.cover_art_url
+                                                .as_deref()
                                                 .map(|u| format!(" · Cover: {u}"))
                                                 .unwrap_or_default()
                                         );
@@ -405,13 +438,13 @@ impl LookupPanel {
         // Signal: Clear button
         // ------------------------------------------------------------------
         {
-            let state_c   = Rc::clone(&state);
+            let state_c = Rc::clone(&state);
             let results_c = results_list.clone();
-            let status_c  = status_label.clone();
-            let detail_c  = detail_label.clone();
-            let apply_c   = apply_btn.clone();
-            let title_c   = title_entry.clone();
-            let artist_c  = artist_entry.clone();
+            let status_c = status_label.clone();
+            let detail_c = detail_label.clone();
+            let apply_c = apply_btn.clone();
+            let title_c = title_entry.clone();
+            let artist_c = artist_entry.clone();
 
             clear_btn.connect_clicked(move |_| {
                 state_c.borrow_mut().clear_results();
@@ -431,7 +464,7 @@ impl LookupPanel {
         // Signal: Apply button (placeholder — requires open file context)
         // ------------------------------------------------------------------
         {
-            let state_c  = Rc::clone(&state);
+            let state_c = Rc::clone(&state);
             let status_c = status_label.clone();
 
             apply_btn.connect_clicked(move |_| {
@@ -534,7 +567,7 @@ fn run_search_blocking(
     };
 
     rt.block_on(async move {
-        use mm_providers::{ProviderRegistry, SearchQuery, MusicBrainzProvider};
+        use mm_providers::{MusicBrainzProvider, ProviderRegistry, SearchQuery};
 
         let mut registry = ProviderRegistry::new();
         // Register only MusicBrainz for the background search (no API key needed).
@@ -574,23 +607,30 @@ fn run_search_blocking(
         if !artist.is_empty() {
             search_query.artist = Some(artist.to_owned());
         }
-        search_query.title = if query.is_empty() { None } else { Some(query.to_owned()) };
+        search_query.title = if query.is_empty() {
+            None
+        } else {
+            Some(query.to_owned())
+        };
 
         let results = registry.search(&search_query).await;
 
-        results.into_iter().map(|r| {
-            let cover_art_url = r.cover_art.into_iter().next().map(|a| a.url);
-            LookupResult {
-                provider:      r.provider,
-                title:         r.title,
-                artist:        r.artist,
-                album:         r.album,
-                year:          r.year,
-                genre:         r.genre,
-                provider_id:   r.provider_id,
-                score:         r.score,
-                cover_art_url,
-            }
-        }).collect()
+        results
+            .into_iter()
+            .map(|r| {
+                let cover_art_url = r.cover_art.into_iter().next().map(|a| a.url);
+                LookupResult {
+                    provider: r.provider,
+                    title: r.title,
+                    artist: r.artist,
+                    album: r.album,
+                    year: r.year,
+                    genre: r.genre,
+                    provider_id: r.provider_id,
+                    score: r.score,
+                    cover_art_url,
+                }
+            })
+            .collect()
     })
 }

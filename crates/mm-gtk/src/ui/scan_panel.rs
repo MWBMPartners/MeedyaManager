@@ -26,13 +26,13 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
-use mm_core::renamer::{self, SanitizeConfig};
 use mm_core::metadata;
+use mm_core::renamer::{self, SanitizeConfig};
 
 use crate::state::ScanState;
 use crate::ui::accessibility;
@@ -60,9 +60,7 @@ impl ScanPanel {
             .hexpand(true)
             .build();
 
-        let browse_btn = gtk::Button::builder()
-            .label("Browse…")
-            .build();
+        let browse_btn = gtk::Button::builder().label("Browse…").build();
 
         let folder_row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -164,17 +162,35 @@ impl ScanPanel {
         // AT-SPI2 accessibility labels (Issue #128)
         // ------------------------------------------------------------------
         accessibility::set_label(&folder_entry, "Source folder path");
-        accessibility::set_description(&folder_entry, "Enter a folder path or drag a folder from the file manager.");
+        accessibility::set_description(
+            &folder_entry,
+            "Enter a folder path or drag a folder from the file manager.",
+        );
         accessibility::set_label(&browse_btn, "Browse for folder");
-        accessibility::set_description(&browse_btn, "Opens a folder picker to choose the directory to scan.");
+        accessibility::set_description(
+            &browse_btn,
+            "Opens a folder picker to choose the directory to scan.",
+        );
         accessibility::set_label(&template_entry, "Rename template");
-        accessibility::set_description(&template_entry, "Enter a MusicBee-style template using angle-bracket tags such as Artist, Title, Album.");
+        accessibility::set_description(
+            &template_entry,
+            "Enter a MusicBee-style template using angle-bracket tags such as Artist, Title, Album.",
+        );
         accessibility::set_label(&recursive_check, "Include sub-folders");
-        accessibility::set_description(&recursive_check, "When checked, scans all nested subdirectories recursively.");
+        accessibility::set_description(
+            &recursive_check,
+            "When checked, scans all nested subdirectories recursively.",
+        );
         accessibility::set_label(&scan_btn, "Scan folder");
-        accessibility::set_description(&scan_btn, "Scans the selected folder for media files and shows rename previews.");
+        accessibility::set_description(
+            &scan_btn,
+            "Scans the selected folder for media files and shows rename previews.",
+        );
         accessibility::set_label(&execute_btn, "Execute renames");
-        accessibility::set_description(&execute_btn, "Permanently renames all previewed files on disk. This cannot be undone.");
+        accessibility::set_description(
+            &execute_btn,
+            "Permanently renames all previewed files on disk. This cannot be undone.",
+        );
         accessibility::set_label(&summary_label, "Scan status");
 
         // ------------------------------------------------------------------
@@ -182,11 +198,12 @@ impl ScanPanel {
         // ------------------------------------------------------------------
 
         // DropTarget accepts URIs (files/folders dragged from Files/Nautilus)
-        let drop_target = gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
+        let drop_target =
+            gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
 
         {
             let folder_entry_dnd = folder_entry.clone();
-            let state_dnd        = Rc::clone(&state);
+            let state_dnd = Rc::clone(&state);
 
             drop_target.connect_drop(move |_, value, _, _| {
                 if let Ok(file) = value.get::<gtk::gio::File>() {
@@ -374,7 +391,8 @@ impl ScanPanel {
                 execute_btn_clone.set_sensitive(false);
 
                 if errors == 0 {
-                    summary_label_clone.set_text(&format!("✓ Renamed {renamed} files successfully."));
+                    summary_label_clone
+                        .set_text(&format!("✓ Renamed {renamed} files successfully."));
                 } else {
                     summary_label_clone.set_text(&format!(
                         "⚠ Renamed {renamed} files; {errors} errors (see log)."
@@ -405,7 +423,7 @@ fn run_scan(
     template: &str,
     recursive: bool,
 ) -> Result<Vec<mm_core::renamer::RenamePreview>, String> {
-    use mm_core::classify::{classify_by_extension, MediaGroup};
+    use mm_core::classify::{MediaGroup, classify_by_extension};
 
     // Collect recognised media files from the directory
     let mut files_with_tags: Vec<(PathBuf, std::collections::HashMap<String, String>)> = Vec::new();
@@ -428,10 +446,9 @@ fn run_scan(
         }
 
         // Extract tags; use empty map if reading fails
-        let flat: std::collections::HashMap<String, String> =
-            metadata::extract_tags(&path)
-                .map(|tm| tm.into_iter().map(|(k, v)| (k, v.join("; "))).collect())
-                .unwrap_or_default();
+        let flat: std::collections::HashMap<String, String> = metadata::extract_tags(&path)
+            .map(|tm| tm.into_iter().map(|(k, v)| (k, v.join("; "))).collect())
+            .unwrap_or_default();
 
         files_with_tags.push((path, flat));
     }
@@ -441,13 +458,9 @@ fn run_scan(
     }
 
     // Simulate renames using mm-core renamer
-    let summary = renamer::simulate_rename(
-        &files_with_tags,
-        template,
-        dir,
-        &SanitizeConfig::default(),
-    )
-    .map_err(|e| e.to_string())?;
+    let summary =
+        renamer::simulate_rename(&files_with_tags, template, dir, &SanitizeConfig::default())
+            .map_err(|e| e.to_string())?;
 
     Ok(summary.previews)
 }
@@ -472,13 +485,15 @@ fn collect_dir(dir: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>> 
 /// Each row shows:  [source filename] → [destination filename]  [badge]
 fn build_preview_row(preview: &mm_core::renamer::RenamePreview) -> gtk::Box {
     // Source filename (basename only for readability)
-    let src_name = preview.source
+    let src_name = preview
+        .source
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| preview.source.to_string_lossy().into_owned());
 
     // Destination filename
-    let dst_name = preview.destination
+    let dst_name = preview
+        .destination
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| preview.destination.to_string_lossy().into_owned());

@@ -35,10 +35,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use mm_core::config::AppConfig;
 use mm_core::test_mode;
@@ -59,11 +59,11 @@ impl SettingsPanel {
 
         // Build a snapshot of the editable fields from the loaded config
         let snapshot = Rc::new(RefCell::new(SettingsSnapshot {
-            dry_run:     config.dry_run,
-            recursive:   config.watch.recursive,
+            dry_run: config.dry_run,
+            recursive: config.watch.recursive,
             debounce_ms: config.watch.debounce_ms,
-            log_level:   config.logging.level.clone(),
-            redact_pii:  config.logging.redact_pii,
+            log_level: config.logging.level.clone(),
+            redact_pii: config.logging.redact_pii,
         }));
 
         // ------------------------------------------------------------------
@@ -71,7 +71,7 @@ impl SettingsPanel {
         // ------------------------------------------------------------------
 
         let config_path = mm_config_path();
-        let config_dir  = mm_config_dir();
+        let config_dir = mm_config_dir();
 
         let path_label = gtk::Label::builder()
             .label(&format!("Config: {config_path}"))
@@ -90,7 +90,10 @@ impl SettingsPanel {
             .margin_end(4)
             .build();
         accessibility::set_label(&open_folder_btn, "Open config folder");
-        accessibility::set_description(&open_folder_btn, "Opens the folder containing the settings file in the file manager.");
+        accessibility::set_description(
+            &open_folder_btn,
+            "Opens the folder containing the settings file in the file manager.",
+        );
         {
             let dir = config_dir.clone();
             open_folder_btn.connect_clicked(move |_| {
@@ -102,11 +105,12 @@ impl SettingsPanel {
         }
 
         // "Copy Path" button — copies the config path to clipboard
-        let copy_path_btn = gtk::Button::builder()
-            .label("Copy Path")
-            .build();
+        let copy_path_btn = gtk::Button::builder().label("Copy Path").build();
         accessibility::set_label(&copy_path_btn, "Copy config file path");
-        accessibility::set_description(&copy_path_btn, "Copies the settings file path to the clipboard.");
+        accessibility::set_description(
+            &copy_path_btn,
+            "Copies the settings file path to the clipboard.",
+        );
         {
             let path = config_path.clone();
             copy_path_btn.connect_clicked(move |btn| {
@@ -173,11 +177,18 @@ impl SettingsPanel {
 
         let debounce_adj = gtk::Adjustment::new(
             snapshot.borrow().debounce_ms as f64,
-            50.0, 5000.0, 50.0, 100.0, 0.0,
+            50.0,
+            5000.0,
+            50.0,
+            100.0,
+            0.0,
         );
         let debounce_spin = gtk::SpinButton::new(Some(&debounce_adj), 50.0, 0);
         accessibility::set_label(&debounce_spin, "Debounce interval in milliseconds");
-        accessibility::set_description(&debounce_spin, "Milliseconds to wait before processing a file-system event. Range: 50 to 5000.");
+        accessibility::set_description(
+            &debounce_spin,
+            "Milliseconds to wait before processing a file-system event. Range: 50 to 5000.",
+        );
 
         {
             let snap = Rc::clone(&snapshot);
@@ -203,14 +214,17 @@ impl SettingsPanel {
 
         let level_combo = gtk::DropDown::from_strings(&["trace", "debug", "info", "warn", "error"]);
         accessibility::set_label(&level_combo, "Log level");
-        accessibility::set_description(&level_combo, "Controls the verbosity of structured log output.");
+        accessibility::set_description(
+            &level_combo,
+            "Controls the verbosity of structured log output.",
+        );
         let current_level_idx = match snapshot.borrow().log_level.as_str() {
             "trace" => 0u32,
             "debug" => 1,
-            "info"  => 2,
-            "warn"  => 3,
+            "info" => 2,
+            "warn" => 3,
             "error" => 4,
-            _       => 2,
+            _ => 2,
         };
         level_combo.set_selected(current_level_idx);
 
@@ -257,7 +271,7 @@ impl SettingsPanel {
 
         // Read the current test-mode state from the persistent manifest
         let test_mode_enabled = test_mode::is_enabled();
-        let tracked_count     = test_mode::tracked_file_count();
+        let tracked_count = test_mode::tracked_file_count();
 
         // Toggle row — enables/disables test mode globally
         let test_mode_row = adw::SwitchRow::new();
@@ -265,7 +279,7 @@ impl SettingsPanel {
         test_mode_row.set_subtitle(
             "Edits create copies with a _MeedyaManager suffix instead of \
              overwriting originals. Tracked files are recorded in a manifest \
-             so they survive restarts."
+             so they survive restarts.",
         );
         test_mode_row.set_active(test_mode_enabled);
 
@@ -331,16 +345,14 @@ impl SettingsPanel {
             let tl = tracked_label.clone();
             let cb = commit_btn.clone();
             let rb = revert_btn.clone();
-            revert_btn.connect_clicked(move |_| {
-                match test_mode::revert_files() {
-                    Ok(()) => {
-                        tl.set_label("Tracked files: 0 (reverted)");
-                        cb.set_sensitive(false);
-                        rb.set_sensitive(false);
-                    }
-                    Err(e) => {
-                        tl.set_label(&format!("Revert error: {e}"));
-                    }
+            revert_btn.connect_clicked(move |_| match test_mode::revert_files() {
+                Ok(()) => {
+                    tl.set_label("Tracked files: 0 (reverted)");
+                    cb.set_sensitive(false);
+                    rb.set_sensitive(false);
+                }
+                Err(e) => {
+                    tl.set_label(&format!("Revert error: {e}"));
                 }
             });
         }
@@ -379,14 +391,11 @@ impl SettingsPanel {
                                  No  = keep both originals and copies (revert)"
                             )),
                         );
-                        dialog.add_response("no",  "No");
+                        dialog.add_response("no", "No");
                         dialog.add_response("yes", "Yes");
                         dialog.set_default_response(Some("no"));
                         dialog.set_close_response("no");
-                        dialog.set_response_appearance(
-                            "yes",
-                            adw::ResponseAppearance::Destructive,
-                        );
+                        dialog.set_response_appearance("yes", adw::ResponseAppearance::Destructive);
 
                         // Clone references for the async response handler
                         let tl2 = tl.clone();
@@ -421,9 +430,7 @@ impl SettingsPanel {
 
                         // Present the dialog. We need a parent window for proper
                         // modal behaviour; walk up the widget tree to find it.
-                        let parent = row
-                            .root()
-                            .and_then(|r| r.downcast::<gtk::Window>().ok());
+                        let parent = row.root().and_then(|r| r.downcast::<gtk::Window>().ok());
                         dialog.present(parent.as_ref());
                     }
 
@@ -457,7 +464,7 @@ impl SettingsPanel {
         test_mode_group.set_title("Test Mode (Safe Edit Mode)");
         test_mode_group.set_description(Some(
             "When enabled, file edits create copies with a _MeedyaManager suffix. \
-             Use Commit to replace originals or Revert to keep both."
+             Use Commit to replace originals or Revert to keep both.",
         ));
         test_mode_group.add(&test_mode_row);
         test_mode_group.add(&test_mode_info_row);
@@ -537,12 +544,15 @@ impl SettingsPanel {
             .margin_bottom(12)
             .build();
         accessibility::set_label(&save_btn, "Save settings");
-        accessibility::set_description(&save_btn, "Writes the current settings to the config file on disk.");
+        accessibility::set_description(
+            &save_btn,
+            "Writes the current settings to the config file on disk.",
+        );
 
         {
-            let snap     = Rc::clone(&snapshot);
-            let sl       = status_label.clone();
-            let buf      = text_buffer.clone();
+            let snap = Rc::clone(&snapshot);
+            let sl = status_label.clone();
+            let buf = text_buffer.clone();
             let path_str = config_path.clone();
 
             save_btn.connect_clicked(move |_| {
@@ -550,10 +560,10 @@ impl SettingsPanel {
                 let mut cfg = AppConfig::load().unwrap_or_default();
                 {
                     let s = snap.borrow();
-                    cfg.dry_run          = s.dry_run;
-                    cfg.watch.recursive  = s.recursive;
+                    cfg.dry_run = s.dry_run;
+                    cfg.watch.recursive = s.recursive;
                     cfg.watch.debounce_ms = s.debounce_ms;
-                    cfg.logging.level    = s.log_level.clone();
+                    cfg.logging.level = s.log_level.clone();
                     cfg.logging.redact_pii = s.redact_pii;
                 }
 
@@ -670,17 +680,14 @@ fn mm_config_dir() -> String {
 /// Creates the parent directory if it does not exist.
 /// Returns the serialised JSON string on success.
 fn save_config(cfg: &AppConfig, path_str: &str) -> Result<String, String> {
-    let json = serde_json::to_string_pretty(cfg)
-        .map_err(|e| format!("serialise error: {e}"))?;
+    let json = serde_json::to_string_pretty(cfg).map_err(|e| format!("serialise error: {e}"))?;
 
     let path = std::path::Path::new(path_str);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("create dir: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("create dir: {e}"))?;
     }
 
-    std::fs::write(path, &json)
-        .map_err(|e| format!("write error: {e}"))?;
+    std::fs::write(path, &json).map_err(|e| format!("write error: {e}"))?;
 
     Ok(json)
 }
