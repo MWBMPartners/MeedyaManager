@@ -40,6 +40,24 @@ pub enum MissingTagMode {
     Error,
 }
 
+impl std::str::FromStr for MissingTagMode {
+    /// Unknown spellings are reported rather than silently defaulting, so a
+    /// typo in `settings.json5` cannot quietly change renaming behaviour.
+    type Err = MmError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        // Case-insensitive: config files are hand-edited by users.
+        match value.trim().to_ascii_lowercase().as_str() {
+            "empty" => Ok(Self::Empty),
+            "literal" => Ok(Self::Literal),
+            "error" => Ok(Self::Error),
+            other => Err(MmError::Config(format!(
+                "unknown missing_tag_mode {other:?} (expected \"empty\", \"literal\" or \"error\")"
+            ))),
+        }
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // EvalContext
 // ───────────────────────────────────────────────────────────────────────────
@@ -379,6 +397,27 @@ mod tests {
     // ── Missing tag modes ───────────────────────────────────────────
 
     /// Missing tag with Empty mode returns empty string
+    #[test]
+    fn missing_tag_mode_parses_from_config_strings() {
+        use std::str::FromStr;
+        // Case-insensitive because settings.json5 is hand-edited.
+        assert_eq!(
+            MissingTagMode::from_str("empty").unwrap(),
+            MissingTagMode::Empty
+        );
+        assert_eq!(
+            MissingTagMode::from_str(" Literal ").unwrap(),
+            MissingTagMode::Literal
+        );
+        assert_eq!(
+            MissingTagMode::from_str("ERROR").unwrap(),
+            MissingTagMode::Error
+        );
+        // A typo must be reported, not silently treated as the default —
+        // it would otherwise change every computed destination path.
+        assert!(MissingTagMode::from_str("emtpy").is_err());
+    }
+
     #[test]
     fn missing_tag_empty_mode() {
         let tags = TagMap::new();

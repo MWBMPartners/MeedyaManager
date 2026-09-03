@@ -350,7 +350,13 @@ impl ScanPanel {
                 let mut errors = 0usize;
 
                 for preview in state.executable_previews() {
-                    if let Err(e) = std::fs::rename(&preview.source, &preview.destination) {
+                    // Go through mm-core rather than calling std::fs::rename
+                    // directly: the core mover re-checks the destination
+                    // immediately before the move, so a preview whose
+                    // `conflict` flag has gone stale (another process, or the
+                    // user, created the file while the list sat on screen)
+                    // can no longer silently overwrite it.
+                    if let Err(e) = renamer::execute_rename(preview) {
                         tracing::error!(
                             "Rename failed: {} → {}: {}",
                             preview.source.display(),
