@@ -8,7 +8,7 @@
 **Last updated:** 2026-09-03
 **Updated by:** Claude Opus 5 (1M context), session `07a21012`
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → will PR into **`alpha`**
-**Branch HEAD:** `58ea003` (merge commit)
+**Branch HEAD:** `b42e8b4`
 
 ---
 
@@ -30,8 +30,11 @@ propose ranked next work for the alpha releases.
 | 8 | Documentation rewrite (51 `.md` files incl. all 19 provider pages) | ✅ done (`a4d45dc`, `b0bb469`, `6f69478`) |
 | 9 | Refresh `.claude/CLAUDE.md` + Claude memory | ✅ done |
 | 10 | Present ranked new-work proposals to owner | ✅ done (28 proposals, delivered in chat) |
-| 11 | **Open the PR to `alpha`** | ⏳ owner's call — not created, per the no-PR-stacking rule |
-| 12 | Post-PR dev-cache cleanup (per `.claude/CLAUDE.md`) | ⏳ after the PR exists |
+| 11 | **Branch consolidation** — 4 stale branches folded into this one | ✅ done (see §9) |
+| 12 | Delete the 4 consolidated branches | ⏳ gated on an independent verification pass |
+| 13 | Autonomous new-work rounds (owner asked to proceed, not just propose) | ⏳ next |
+| 14 | **Open the PR to `alpha`** | ⏳ owner's call — not created, per the no-PR-stacking rule |
+| 15 | Post-PR dev-cache cleanup (per `.claude/CLAUDE.md`) | ⏳ after the PR exists |
 
 ### Commits on this branch (all pushed)
 
@@ -43,10 +46,13 @@ propose ranked next work for the alpha releases.
 | `a4d45dc` | Documentation rewrite — 32 files, 121 audited inaccuracies |
 | `b0bb469` | Test-count corrections + changelog historical caveat |
 | `6f69478` | All 19 `help/providers/` pages rewritten |
+| `1767a76` | Handoff finalised for the reconciliation session |
+| `437f286` | Merge `claude/issue-196-identifier-convergence` (closes #196) |
+| `b42e8b4` | Consolidate `.claude/` config from the two stale config branches |
 
-**Final verification:** `cargo test --workspace` = **1,240 passed, 0 failed**;
-`cargo clippy -p mm-core -p mm-providers -p mm-cli --all-targets -- -D warnings` clean;
-working tree clean.
+**Latest verification:** `cargo test --workspace` = **1,244 passed, 0 failed**;
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --exclude mm-cloud -- -D warnings`
+clean (`mm-cloud` carries ~40 known pre-existing errors — issue #200).
 
 > ⚠️ **CI has never run on this branch.** Every workflow triggers on `main` only, so nothing here
 > has been through CI — that is issue #204. Expect the first PR to `alpha` to surface failures,
@@ -67,12 +73,12 @@ exists. Do not write a spec for a server that cannot run. See §3.
 ### Repository facts
 
 - **9 crate directories**, 8 workspace members (`mm-gtk` excluded — needs Linux-only `gettextrs`).
-  `mm-update` is the undocumented 9th crate. Root `Cargo.toml` has **no `exclude` key** — open
-  issue #199 (fixed on `main` by `1d2576d`, and that fix is now merged in here).
+  `mm-update` is the 9th crate. Root `Cargo.toml` now carries `exclude = ["crates/mm-gtk"]` so the
+  crate resolves standalone (issue #199, fixed and closed 2026-09-03).
 - **44,183 Rust LOC; 1,392 `#[test]`/`#[tokio::test]` functions.** Docs claiming "8 crates" and
   217/399/444 tests are stale.
-- `cargo test --workspace`: **1,240 passed, 0 failed** (1,207 immediately after the merge; the
-  provider rewiring in `2b08392` added 33 tests).
+- `cargo test --workspace`: **1,244 passed, 0 failed** (1,207 after the `main` merge; the provider
+  rewiring in `2b08392` added 33, and the #196 merge in `437f286` added 4 guard tests).
 - Version is **1.3.0** in `Cargo.toml`, `Info.plist` and `Package.appxmanifest`. Versions 1.3.1
   and 1.3.2 were **never cut** despite changelog entries for them. Linux/WinGet manifests are
   unsynced (snap/deb say `0.9.0`, WinGet `1.0.0`, flatpak has a placeholder commit pin).
@@ -244,7 +250,49 @@ The docs audit found **121 specific inaccuracies** across **55 `.md` files**. Hi
    **#80** (the five stub music providers), **#104** and **#106** (App Store / Microsoft Store
    submissions).
 
-## 9. Change log for this handoff file
+## 9. Branch consolidation (2026-09-03)
+
+The repository had six work-in-progress branches. `alpha`, `beta` and `main` were all already
+**fully contained** in this branch after the `58ea003` merge, so the audit reduced to four.
+
+| Branch | Tip SHA | Verdict | Action taken |
+| --- | --- | --- | --- |
+| `claude/issue-196-identifier-convergence` | `2c1f184` | **Real unmerged work** | Merged (`437f286`) |
+| `chore/claude-config-recovery-2026-07-20` | `e05ca2d` | Useful `.claude/` config | Cherry-picked (`b42e8b4`) |
+| `feature/134-mm-core-metadata-migration` | `4e67f2a` | Only a settings.json tweak | Cherry-picked (`b42e8b4`) |
+| `feature/MeedyaManager_MeedyaSuite-core_integration` | `7254932` | **Superseded entirely** | Nothing to take |
+
+**Recovery:** every SHA above is recorded here deliberately. If a deleted branch is ever needed,
+`git fetch origin <sha>` / `git branch <name> <sha>` restores it as long as the object survives
+GitHub's reflog retention. Push a tag immediately if you need it permanently.
+
+### Why each verdict
+
+- **`claude/issue-196-identifier-convergence`** — the only branch carrying unmerged production
+  code, and the reason #196 was reopened. It converges the eight `META_*` constants onto
+  MeedyaSuite-core's canonical unprefixed `extra_keys` names, adds `read_meta()` +
+  `LEGACY_META_PREFIX` as a one-release read-both shim, adds a drift-guard test, adds the `iswc`
+  entry to `config/tags.json5`, and fixes the `manual_assert_eq` pair that was making the clippy
+  gate red (#197). It merged with **only two conflicts, both documentation** — no code conflicts —
+  because last session's rewiring touched `musicbrainz.rs`, `rate_limiter.rs`, `music/mod.rs` and
+  `identifiers/mod.rs`, while #196 touches `traits.rs`.
+- **`feature/MeedyaManager_MeedyaSuite-core_integration`** — its two commits are an *earlier draft*
+  of work that later landed on `main` properly via PR #159 (`0c2a366`) and the deny.toml fixes
+  #149/#151/#153. Merging it would have been actively harmful: a two-dot diff showed it reverting
+  ~11,500 lines, deleting `musicbrainz.rs`, `pr-gate.yml`, this handoff file and the whole
+  documentation rewrite, and rolling `deny.toml` back to a pre-v2 schema.
+- **`feature/134-mm-core-metadata-migration`** — the name is misleading. Its metadata migration was
+  already merged to `main` via PR #163; the only thing left on the branch was a two-line
+  `.claude/settings.json` permissions addition.
+- **`chore/claude-config-recovery-2026-07-20`** — restored the two subagent definitions and the
+  `dev-team` plugin enablement. **`.claude/settings.local.json` was deliberately excluded**: it is
+  per-developer machine config and the branch's copy had accumulated permissions for an unrelated
+  Python-era project. It is now gitignored so it cannot be committed by accident.
+- The recovered agent definitions specified `model: claude-fable-5`, which is **not a valid model
+  id** (Fable 5.1 is `claude-fable-5-1`), so they were corrected to the aliases `fable` and
+  `haiku`. As written they would not have resolved.
+
+## 10. Change log for this handoff file
 
 - **2026-09-03 (later)** — provider rewiring and the full documentation rewrite landed; commit
   table, final verification numbers and next actions recorded. Added the warning that no CI has
