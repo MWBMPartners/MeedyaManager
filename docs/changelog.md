@@ -100,6 +100,33 @@ An adversarial review of this branch's diff caught six further defects before me
 
 ---
 
+### Identifier-key convergence (Issue #196)
+
+> **`META_*` provider-metadata keys converge onto MeedyaSuite-core's canonical `extra_keys` names** — the local `mm_`-prefixed spellings (`mm_iswc`, `mm_provider_id`, …) are replaced by the unprefixed forms core itself uses (`iswc`, `provider_id`, …), plus a new ISWC file-tag registry entry. No existing on-disk data is affected: `ProviderResult.metadata` is in-memory only for every provider in this crate — nothing persists it to disk or writes it into file tags (verified across all crates as part of #196) — so there was no `mm_`-keyed data anywhere to migrate.
+
+### Changed
+
+- `crates/mm-providers/src/traits.rs` — the 8 `META_*` constants (`META_ALBUM_ARTIST`, `META_TRACK_TOTAL`, `META_ISWC`, `META_EIDR`, `META_CONTENT_ADVISORY`, `META_DURATION_SECS`, `META_BPM`, `META_PROVIDER_ID`) changed value from an `mm_`-prefixed string to the unprefixed canonical form, e.g. `mm_iswc` → `iswc`, `mm_provider_id` → `provider_id`. All 8 verified 1:1 against MeedyaSuite-core's `extra_keys` names. Every producer/consumer in the tree already goes through these consts, so this is the entire convergence — no other production file needed editing.
+
+### Added
+
+- `read_meta()` + `LEGACY_META_PREFIX` in `traits.rs` — a read-only, one-release compatibility shim that looks up the canonical (unprefixed) key first and falls back to the legacy `mm_`-prefixed alias. Documented honestly as defence for out-of-tree/in-flight consumers only — it does **not** protect any existing tagged file, because none was ever written with an `mm_`-keyed value. Scheduled for removal after one release (`TODO(#196)` in-code).
+- `meta_keys_are_canonical_core_extra_keys` guard test (`traits.rs`) — asserts the 8 `META_*` constants against independent hardcoded literals (not derived from the consts, to avoid a tautology) so the `mm_iswc`-vs-`iswc` drift cannot silently recur.
+- `read_meta_prefers_canonical_key` / `read_meta_falls_back_to_legacy_mm_prefixed_key` tests (`traits.rs`) — mutation-proof coverage of `read_meta()`'s precedence and fallback behaviour.
+- `config/tags.json5` — new `iswc` tag registry entry (`category: "core"`, `id3: "TXXX:ISWC"`, `vorbis: "ISWC"`, `mp4: null`, `ape: "ISWC"`), placed adjacent to `isrc`. ISWC only — EIDR deliberately excluded: it is a video-work identifier with no established id3/vorbis frame convention and no upstream `CommonTag::Eidr` even on core's unmerged identifier-registry branch. This entry adds ISWC to the UI/template registry (tag pickers, `<ISWC>` template name, FFI `list_known_tags`); it does not wire file read/write (no lofty `ItemKey` exists for ISWC yet — separate, dep-gated future work).
+- `tag_by_id_iswc` test (`crates/mm-core/src/metadata/tag_registry.rs`) — asserts the new `iswc` registry entry matches core's `CommonTag::Iswc` frame mappings.
+
+### Verification
+
+- `cargo fmt --all --check` → clean.
+- `cargo test --workspace --exclude mm-gtk` → **1,153 passed / 0 failed** (measured baseline on this branch before #196: 1,149 / 0). Per-crate deltas: `mm-providers` lib 203 → **206** (+`meta_keys_are_canonical_core_extra_keys`, +2 `read_meta` tests); `mm-core` lib 513 → **514** (+`tag_by_id_iswc`; the `-- tag_registry` filter goes 47 → 48). No other crate's count changed.
+- `cargo clippy --workspace --all-targets --exclude mm-gtk -- -D warnings` → **clean**. The code added by #196 was clippy-clean throughout. A **pre-existing, unrelated** `clippy::manual_assert_eq` pair in `crates/mm-core/src/rule_engine/functions.rs:788,797` (present on `main`, NOT in #196's diff) was making the shared gate red — root cause is the floating-`stable` toolchain promoting a `nursery` lint under `-D warnings` (tracked as **#197**). Fixed in a **separate commit** on this branch (`assert!(x == n)` → `assert_eq!`) purely to unblock the gate; the durable toolchain-pin fix is #197. Full-scope check (`clippy` with no `-D`) confirmed these were the only 2 workspace clippy warnings.
+- Mutation-proven RED-then-restored (per the #196 build spec's §4/§5, each reverted via a file-backup restore, never `git checkout`): (a) `META_ISWC` reverted to `"mm_iswc"` → `meta_keys_are_canonical_core_extra_keys` FAILED; (b) `read_meta()`'s `.or_else` fallback deleted → `read_meta_falls_back_to_legacy_mm_prefixed_key` FAILED; (c) the two lookups in `read_meta()` swapped → `read_meta_prefers_canonical_key` FAILED; (d) the new `iswc` entry deleted from `tags.json5` → `tag_by_id_iswc` FAILED. All four restored and re-verified green.
+- Repo-wide literal grep for `mm_album_artist|mm_track_total|mm_iswc|mm_eidr|mm_content_advisory|mm_duration_secs|mm_bpm|mm_provider_id` across `crates/`, `config/`, `docs/` → zero key-literal matches; the only hits are explanatory comments in `traits.rs` describing the legacy prefix (the actual legacy lookup is built from the `LEGACY_META_PREFIX` const, never a literal `mm_iswc`-style string).
+- `Cargo.lock` — untouched (no dependency changes).
+
+---
+
 ### Workspace Lint Configuration & Code Quality
 
 > **Code quality hardening** — Added `[workspace.lints]` configuration with pedantic and nursery clippy groups, resolved all warnings across the entire workspace, zero clippy warnings.

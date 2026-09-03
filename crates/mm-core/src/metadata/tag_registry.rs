@@ -370,6 +370,18 @@ mod tests {
         assert!(t.multi, "artist is multi-value");
     }
 
+    /// #196: the ISWC identifier tag is registered and matches core's
+    /// CommonTag::Iswc frame mappings (id3 TXXX:ISWC / vorbis ISWC).
+    #[test]
+    fn tag_by_id_iswc() {
+        let t = tag_by_id("iswc").expect("'iswc' tag must be in registry (#196)");
+        assert_eq!(t.name, "ISWC");
+        assert_eq!(t.category, TagCategory::Core);
+        assert!(!t.multi);
+        assert_eq!(t.id3.as_deref(), Some("TXXX:ISWC"));
+        assert_eq!(t.vorbis.as_deref(), Some("ISWC"));
+    }
+
     #[test]
     fn tag_by_id_is_case_insensitive() {
         assert!(tag_by_id("TITLE").is_some());
