@@ -56,7 +56,16 @@
       "Bash(rm -rf ~/.cargo/registry/cache ~/.cargo/registry/src ~/.cargo/git/checkouts ~/.cargo/git/db)",
       "Bash(cargo tree *)",
       "WebFetch(domain:www.dpmsound.com)",
-      "WebFetch(domain:trac.ffmpeg.org)"
+      "WebFetch(domain:trac.ffmpeg.org)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(xargs:*)",
+      "Bash(command -v:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh repo view:*)",
+      "WebFetch(domain:github.com)"
     ],
     "additionalDirectories": [
       "/dev",
