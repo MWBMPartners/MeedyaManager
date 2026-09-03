@@ -307,7 +307,10 @@ impl LookupState {
     pub fn enabled_providers(&self) -> Vec<&str> {
         let mut names: Vec<&str> = self.providers
             .iter()
-            .filter(|(_, &enabled)| enabled)
+            // Rust 2024 forbids `&pattern` inside an implicitly-borrowing
+            // closure parameter, so destructure plainly and deref twice
+            // (HashMap iter yields &(&K, &V), so enabled: &&bool).
+            .filter(|(_, enabled)| **enabled)
             .map(|(name, _)| name.as_str())
             .collect();
         names.sort();

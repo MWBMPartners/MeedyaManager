@@ -35,6 +35,10 @@ struct CloudProviderEntry: Identifiable {
 // MARK: – CloudModel
 
 /// Observable model owning the list of cloud provider states.
+/// @MainActor: state is read by SwiftUI views (which run on MainActor) and
+/// mutated by user actions; isolating to MainActor satisfies Swift 6 strict
+/// concurrency without adding capture-list ceremony at every call site.
+@MainActor
 @Observable
 final class CloudModel {
 
@@ -79,8 +83,12 @@ final class CloudModel {
         providers[idx].isConnected = true
         providers[idx].syncStatus  = "Syncing…"
         appendEvent("[\(providers[idx].label)] Connecting…")
-        // Simulate a successful sync after a brief delay.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+        // Simulate a successful sync after a brief delay. Use Task + sleep
+        // (the Swift 6 idiom) instead of DispatchQueue.main.asyncAfter — the
+        // latter's closure isn't isolated, so passing `self` is flagged as a
+        // sending-self data-race risk under strict concurrency.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
             guard let self else { return }
             if let i = self.providers.firstIndex(where: { $0.id == id }) {
                 self.providers[i].syncStatus = "Synced"

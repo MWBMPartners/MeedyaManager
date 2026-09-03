@@ -11,6 +11,9 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# MeedyaSuite-core — shared metadata and codec infrastructure
+meedya-core = { workspace = true }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 json5 = { workspace = true }

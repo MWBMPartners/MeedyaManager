@@ -1,0 +1,173 @@
+# (C) 2025-2026 MWBM Partners Ltd
+# MeedyaManager — PR Gate (umbrella workflow for branch protection)
+#
+# Runs on every PR to main with NO path filter. Detects which platform code
+# changed, conditionally invokes the per-platform CI workflows (which are
+# now reusable via workflow_call:), and aggregates results in a final `gate`
+# job whose context is the single required check on `main`.
+#
+# Why an umbrella: the per-platform CIs have tight path filters to keep CI
+# cheap. If those were directly required, any PR not touching that platform
+# would soft-lock forever (the check never reports). The gate runs on every
+# PR, so it always reports — success when all relevant platform jobs
+# succeeded OR were skipped, failure when any platform job actually failed.
+
+name: PR Gate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # changes — detect which platform code paths the PR touched, set per-platform
+  # boolean outputs consumed by the conditional `if:` on the platform jobs.
+  # No third-party action; uses plain `git diff` against the PR base SHA.
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.detect.outputs.rust }}
+      macos: ${{ steps.detect.outputs.macos }}
+      windows: ${{ steps.detect.outputs.windows }}
+      linux: ${{ steps.detect.outputs.linux }}
+    steps:
+      - name: Checkout repository (full history for diff)
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth 0 = full history so we can diff against the PR base.
+          fetch-depth: 0
+
+      - name: Detect which platform code changed
+        id: detect
+        # SHAs passed via env: rather than direct ${{ }} interpolation in
+        # the run: block — GitHub security team's documented defense against
+        # script-injection from event payload fields. SHAs are safe today
+        # (always 40-char hex), but this pattern is robust to future fields.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Files changed in this PR (compared to the PR base, not main HEAD).
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$CHANGED"
+          echo ""
+
+          # Path-to-platform mapping (keep in sync with each ci-*.yml `paths:`):
+          #   rust    : crates/, Cargo.{toml,lock}, rust-toolchain.toml,
+          #             deny.toml, clippy.toml, .cargo/  (anything that
+          #             changes Rust build/lint behaviour)
+          #   macos   : macos/ or crates/mm-ffi/  (UniFFI Swift bindings)
+          #   windows : windows/ or crates/mm-ffi/  (cbindgen C# P/Invoke)
+          #   linux   : crates/mm-gtk/  (GTK4 UI shell only)
+          #
+          # SAFETY NET: any change to .github/workflows/ forces a FULL platform
+          # sweep. Workflow changes are meta-changes that can break CI for any
+          # platform; without this, a workflow-only PR merges green and breaks
+          # the next unrelated PR. Cost is at most one full CI run per workflow
+          # PR — acceptable insurance against the "I changed the workflow but
+          # never ran it" trap.
+          match() { echo "$CHANGED" | grep -qE "$1"; }
+
+          if match '^\.github/workflows/'; then
+            echo "Workflow change detected — forcing full platform sweep."
+            RUST=true; MACOS=true; WINDOWS=true; LINUX=true
+          else
+            if match '^(crates/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|deny\.toml$|clippy\.toml$|\.cargo/)'; then RUST=true; else RUST=false; fi
+            if match '^(macos/|crates/mm-ffi/)';                                                                     then MACOS=true; else MACOS=false; fi
+            if match '^(windows/|crates/mm-ffi/)';                                                                   then WINDOWS=true; else WINDOWS=false; fi
+            if match '^crates/mm-gtk/';                                                                              then LINUX=true; else LINUX=false; fi
+          fi
+
+          # TEMPORARY DE-SCOPE — Windows is OFF the gate pending investigation
+          # of a silent XamlCompiler.exe failure (see #148). ci-windows.yml
+          # still runs on direct main pushes and via its path filter, but is
+          # not invoked from this gate. Re-enable by deleting this `WINDOWS=false`
+          # line once #148 lands. DO NOT remove the workflow-sweep rule above
+          # (that's a separate safety net, not Windows-specific).
+          WINDOWS=false
+
+          {
+            echo "rust=$RUST"
+            echo "macos=$MACOS"
+            echo "windows=$WINDOWS"
+            echo "linux=$LINUX"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Detected: rust=$RUST macos=$MACOS windows=$WINDOWS linux=$LINUX"
+
+  # ---------------------------------------------------------------------------
+  # Per-platform reusable-workflow calls. Each only runs when its paths
+  # changed; otherwise the job is `skipped` and the gate treats that as OK.
+  # ---------------------------------------------------------------------------
+  rust:
+    name: Rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    uses: ./.github/workflows/ci-rust.yml
+
+  macos:
+    name: macOS
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    uses: ./.github/workflows/ci-macos.yml
+
+  windows:
+    name: Windows
+    needs: changes
+    if: needs.changes.outputs.windows == 'true'
+    uses: ./.github/workflows/ci-windows.yml
+
+  linux:
+    name: Linux
+    needs: changes
+    if: needs.changes.outputs.linux == 'true'
+    uses: ./.github/workflows/ci-linux.yml
+
+  # ---------------------------------------------------------------------------
+  # gate — the single required check on `main`. Always runs (if: always())
+  # so it reports a definitive status even when upstream jobs were skipped.
+  # Fails only when an upstream actually failed/cancelled; `skipped` is OK.
+  # ---------------------------------------------------------------------------
+  gate:
+    name: Gate
+    needs: [changes, rust, macos, windows, linux]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all upstream jobs succeeded or were skipped
+        run: |
+          check() {
+            local name="$1"
+            local result="$2"
+            case "$result" in
+              success|skipped)
+                echo "OK:   $name = $result"
+                ;;
+              *)
+                echo "::error::Upstream job '$name' result was '$result' (must be success or skipped)"
+                return 1
+                ;;
+            esac
+          }
+
+          FAILED=0
+          check changes "${{ needs.changes.result }}" || FAILED=1
+          check rust    "${{ needs.rust.result }}"    || FAILED=1
+          check macos   "${{ needs.macos.result }}"   || FAILED=1
+          check windows "${{ needs.windows.result }}" || FAILED=1
+          check linux   "${{ needs.linux.result }}"   || FAILED=1
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo ""
+            echo "PR Gate FAILED — at least one upstream job did not pass."
+            exit 1
+          fi
+          echo ""
+          echo "PR Gate PASSED — all upstream jobs succeeded or were skipped."

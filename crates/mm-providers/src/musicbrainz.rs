@@ -362,8 +362,9 @@ pub fn iswc_query(iswc: &str) -> String {
 /// those harmless additions into hard parse failures for us.
 pub mod models {
     use serde::Deserialize;
+    use serde_json::Value;
 
-    use crate::traits::ProviderResult;
+    use crate::traits::{META_DURATION_SECS, META_PROVIDER_ID, ProviderResult};
 
     // -----------------------------------------------------------------------
     // Score deserialization
@@ -599,20 +600,38 @@ pub mod models {
         // value (e.g. the observed-but-undocumented float form).
         let score = rec.score.map_or(0.0, |s| (s / 100.0).clamp(0.0, 1.0));
 
-        ProviderResult {
-            provider: provider_name.to_owned(),
-            provider_id: rec.id.unwrap_or_default(),
-            title: rec.title,
-            artist,
-            album,
-            year,
-            // First registered ISRC, if any — a recording can have several
-            // (e.g. across re-releases) but ProviderResult carries only one.
-            isrc: rec.isrcs.into_iter().next(),
-            duration_secs: rec.length.map(|ms| ms as f64 / 1000.0),
-            score,
-            ..Default::default()
+        // The upstream `ProviderResult` (adopted in #133/#135) has no
+        // `provider` / `provider_id` / `duration_secs` fields: the provider is
+        // `provider_name`, and the other two live in the `metadata` map under
+        // the `META_*` keys declared in `crate::traits` — the same convention
+        // every other migrated provider in this crate uses.
+        let mut result = ProviderResult::new(provider_name);
+        result.title = rec.title;
+        result.artist = artist;
+        result.album = album;
+        result.year = year;
+        // First registered ISRC, if any — a recording can have several
+        // (e.g. across re-releases) but ProviderResult carries only one.
+        result.isrc = rec.isrcs.into_iter().next();
+        result.score = score;
+
+        if let Some(id) = rec.id {
+            // Upstream carries a first-class `musicbrainz_id`, so populate it
+            // as well as the generic provider-id key — this result IS an MBID.
+            result.musicbrainz_id = Some(id.clone());
+            result
+                .metadata
+                .insert(META_PROVIDER_ID.into(), Value::String(id));
         }
+        if let Some(ms) = rec.length
+            && let Some(num) = serde_json::Number::from_f64(ms as f64 / 1000.0)
+        {
+            result
+                .metadata
+                .insert(META_DURATION_SECS.into(), Value::Number(num));
+        }
+
+        result
     }
 
     /// Extract the composer credit from a work's `relations` array — the
@@ -760,9 +779,11 @@ async fn retry_once_after_rate_limit(
     // give up immediately rather than retrying blind.
     let Some(delay_secs) = retry_after_secs(first_response).filter(|&s| s <= RETRY_AFTER_MAX_SECS)
     else {
-        return Err(ProviderError::RateLimited {
-            provider: provider_name.to_owned(),
-        });
+        // Upstream's `ProviderError::RateLimited` is a tuple variant carrying
+        // just the provider name (`meedya-providers/src/traits.rs:21`), unlike
+        // the struct variant the local error enum used before the #133/#135
+        // migration.
+        return Err(ProviderError::RateLimited(provider_name.to_owned()));
     };
 
     // Honour the server's requested backoff before trying again.
@@ -775,23 +796,25 @@ async fn retry_once_after_rate_limit(
 
     let response = mb_get_once(client, user_agent, url, params)
         .await
-        .map_err(|e| ProviderError::Network(e.to_string()))?;
+        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
     if response.status().is_success() {
         return response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(e.to_string()));
+            .map_err(|e| ProviderError::NetworkError(e.to_string()));
     }
 
     let status = response.status();
     if status.as_u16() == 429 || status.as_u16() == 503 {
         // Second consecutive throttle — stop retrying, surface RateLimited.
-        return Err(ProviderError::RateLimited {
-            provider: provider_name.to_owned(),
-        });
+        // Upstream's `ProviderError::RateLimited` is a tuple variant carrying
+        // just the provider name (`meedya-providers/src/traits.rs:21`), unlike
+        // the struct variant the local error enum used before the #133/#135
+        // migration.
+        return Err(ProviderError::RateLimited(provider_name.to_owned()));
     }
-    Err(ProviderError::Network(format!("HTTP {status}")))
+    Err(ProviderError::NetworkError(format!("HTTP {status}")))
 }
 
 /// Execute a rate-limited, contact-header-bearing GET against MusicBrainz.
@@ -818,7 +841,7 @@ pub async fn mb_get(
     // Step 2: the first attempt.
     let response = mb_get_once(client, user_agent, url, params)
         .await
-        .map_err(|e| ProviderError::Network(e.to_string()))?;
+        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
     // Step 3: success — hand back the raw body for the caller to parse via
     // the `models` sub-module.
@@ -826,7 +849,7 @@ pub async fn mb_get(
         return response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(e.to_string()));
+            .map_err(|e| ProviderError::NetworkError(e.to_string()));
     }
 
     // Step 4: rate-limited — delegate to the retry helper.
@@ -844,7 +867,7 @@ pub async fn mb_get(
     }
 
     // Step 5: any other non-2xx status.
-    Err(ProviderError::Network(format!("HTTP {status}")))
+    Err(ProviderError::NetworkError(format!("HTTP {status}")))
 }
 
 // ---------------------------------------------------------------------------
@@ -853,11 +876,14 @@ pub async fn mb_get(
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+
     use super::models::{
         MbArtistCredit, MbRecording, MbRelArtist, MbRelation, MbRelease, recording_to_result,
         work_composer,
     };
     use super::*;
+    use crate::traits::{META_DURATION_SECS, META_PROVIDER_ID};
 
     // -----------------------------------------------------------------------
     // lucene_escape / lucene_phrase
@@ -1198,14 +1224,27 @@ mod tests {
 
         let result = recording_to_result("musicbrainz", rec);
 
-        assert_eq!(result.provider, "musicbrainz");
-        assert_eq!(result.provider_id, "mbid-1");
+        assert_eq!(result.provider_name, "musicbrainz");
+        assert_eq!(result.musicbrainz_id.as_deref(), Some("mbid-1"));
+        assert_eq!(
+            result
+                .metadata
+                .get(META_PROVIDER_ID)
+                .and_then(Value::as_str),
+            Some("mbid-1")
+        );
         assert_eq!(result.title.as_deref(), Some("Comfortably Numb"));
         assert_eq!(result.artist.as_deref(), Some("Pink Floyd; David Gilmour"));
         assert_eq!(result.album.as_deref(), Some("The Wall"));
         assert_eq!(result.year, Some(1979));
         assert_eq!(result.isrc.as_deref(), Some("GBAYE7900123"));
-        assert_eq!(result.duration_secs, Some(384.0));
+        assert_eq!(
+            result
+                .metadata
+                .get(META_DURATION_SECS)
+                .and_then(Value::as_f64),
+            Some(384.0)
+        );
         assert_eq!(result.score, 1.0);
     }
 
@@ -1415,7 +1454,7 @@ mod tests {
             .await
             .expect_err("mb_get should fail without a usable Retry-After");
         match err {
-            ProviderError::RateLimited { provider } => assert_eq!(provider, "musicbrainz"),
+            ProviderError::RateLimited(provider) => assert_eq!(provider, "musicbrainz"),
             other => panic!("expected RateLimited, got {other:?}"),
         }
     }
@@ -1461,7 +1500,7 @@ mod tests {
         let err = mb_get(&client, "isrc", "ua", &url, &params)
             .await
             .expect_err("mb_get should surface a 404 as a Network error");
-        assert!(matches!(err, ProviderError::Network(_)));
+        assert!(matches!(err, ProviderError::NetworkError(_)));
     }
 
     #[tokio::test]

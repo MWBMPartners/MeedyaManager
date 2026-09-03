@@ -22,7 +22,14 @@
 //   accessibility::set_description(&my_button, "Scans the selected directory for media files.");
 
 use gtk4 as gtk;
-use gtk::prelude::AccessibleExt;
+// update_property() and update_state() live on AccessibleExtManual (the
+// hand-written extension trait for methods that gir can't auto-generate).
+// They take slices of the typed `gtk::accessible::Property` / `State` enums,
+// where each variant carries its own value — NOT tuples of
+// `(AccessibleProperty, &dyn ToValue)` (that earlier form was wrong API,
+// not just a missing trait import).
+use gtk::accessible::{Property, State};
+use gtk::prelude::AccessibleExtManual;
 
 // ── Label helpers ─────────────────────────────────────────────────────────
 
@@ -30,24 +37,19 @@ use gtk::prelude::AccessibleExt;
 ///
 /// The label is announced by Orca when the widget receives focus.
 /// It is equivalent to HTML `aria-label`.
-pub fn set_label<W: AccessibleExt>(widget: &W, label: &str) {
-    // GTK4 AccessibleExt::update_property() accepts an array of (property, value) pairs.
-    // AccessibleProperty::Label corresponds to AT-SPI2 "accessible-name".
-    widget.update_property(&[(
-        gtk::AccessibleProperty::Label,
-        &label,
-    )]);
+pub fn set_label<W: AccessibleExtManual>(widget: &W, label: &str) {
+    // GTK4 AccessibleExtManual::update_property() accepts a slice of
+    // gtk::accessible::Property values; each variant carries its own value.
+    // Property::Label corresponds to AT-SPI2 "accessible-name".
+    widget.update_property(&[Property::Label(label)]);
 }
 
 /// Set the accessible description (secondary hint) on a GTK4 widget.
 ///
 /// The description is a longer clarifying hint read after the label,
 /// analogous to HTML `aria-description` or a tooltip for screen readers.
-pub fn set_description<W: AccessibleExt>(widget: &W, description: &str) {
-    widget.update_property(&[(
-        gtk::AccessibleProperty::Description,
-        &description,
-    )]);
+pub fn set_description<W: AccessibleExtManual>(widget: &W, description: &str) {
+    widget.update_property(&[Property::Description(description)]);
 }
 
 // ── State helpers ─────────────────────────────────────────────────────────
@@ -57,14 +59,16 @@ pub fn set_description<W: AccessibleExt>(widget: &W, description: &str) {
 /// Orca announces "busy" when the state transitions to true, and
 /// re-announces the widget role when it transitions back to false.
 /// Use this during scan, rename, export, and server-start operations.
-pub fn set_busy<W: AccessibleExt>(widget: &W, busy: bool) {
+pub fn set_busy<W: AccessibleExtManual>(widget: &W, busy: bool) {
     // AT-SPI2 AccessibleState::Busy maps to aria-busy in web terms.
-    widget.update_state(&[(gtk::AccessibleState::Busy, &busy)]);
+    widget.update_state(&[State::Busy(busy)]);
 }
 
 /// Mark a widget as expanded or collapsed (e.g. a disclosure group).
-pub fn set_expanded<W: AccessibleExt>(widget: &W, expanded: bool) {
-    widget.update_state(&[(gtk::AccessibleState::Expanded, &expanded)]);
+pub fn set_expanded<W: AccessibleExtManual>(widget: &W, expanded: bool) {
+    // State::Expanded carries Option<bool>: Some(true)=expanded,
+    // Some(false)=collapsed, None=indeterminate (AT-SPI2 semantics).
+    widget.update_state(&[State::Expanded(Some(expanded))]);
 }
 
 // ── Tab label helper ──────────────────────────────────────────────────────

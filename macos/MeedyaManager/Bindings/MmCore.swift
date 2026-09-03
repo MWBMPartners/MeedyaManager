@@ -42,9 +42,13 @@ struct FfiRenamePreview {
 /// Use `MmCore.shared` throughout the application.
 /// All methods are `async throws` to support long-running operations
 /// without blocking the main thread.
-final class MmCore {
+final class MmCore: @unchecked Sendable {
 
-    // Shared singleton — thread-safe because @MainActor enforces serialisation
+    // Shared singleton. @unchecked Sendable on the class is the documented
+    // Swift 6 escape hatch for types with no mutable state — MmCore has none
+    // (all stored properties are forbidden by convention; methods are pure
+    // FFI calls or stateless stubs). Maintain this invariant: do NOT add
+    // mutable stored properties without revisiting the Sendable conformance.
     static let shared = MmCore()
     private init() {}
 
@@ -95,7 +99,7 @@ final class MmCore {
         }.value
         #else
         // Stub: scan using FileManager, return placeholder previews
-        return await Task.detached(priority: .userInitiated) {
+        return try await Task.detached(priority: .userInitiated) {
             try self.stubScanDirectory(directory: directory, template: template)
         }.value
         #endif

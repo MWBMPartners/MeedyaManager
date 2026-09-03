@@ -99,7 +99,11 @@ struct ProviderEntryTests {
     func concrete_enabled() {
         let logic = LookupModelLogic()
         let concrete = logic.providers.filter { !$0.isStub }
-        #expect(concrete.allSatisfy(\.enabled))
+        // Use explicit closure rather than \.enabled keypath: Swift Testing's
+        // #expect macro expansion confuses keypath-vs-rethrows analysis and
+        // emits "call can throw, but it is not marked with 'try'" even
+        // though neither side actually throws.
+        #expect(concrete.allSatisfy { $0.enabled })
     }
 
     @Test("toggleProvider disables an enabled provider")

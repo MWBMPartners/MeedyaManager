@@ -118,11 +118,12 @@
 
 ## Git & CI/CD
 
-- **8 GitHub Actions workflows:**
-  - `ci-rust.yml` — Cargo fmt + clippy + test + version-sync (3-OS matrix)
-  - `ci-macos.yml` — Build mm-ffi + SwiftUI app (macos-14)
-  - `ci-windows.yml` — Build mm-ffi + WinUI 3 app (windows-latest)
-  - `ci-linux.yml` — Build mm-gtk with GTK4/Libadwaita (ubuntu-latest)
+- **9 GitHub Actions workflows:**
+  - `pr-gate.yml` — **Umbrella for PR branch protection.** No path filter; runs on every PR, detects changed paths, conditionally invokes the 4 platform CIs as reusable workflows, aggregates results in a `Gate` job. The `Gate` context is the single required check on `main`. See "Branch protection" section below.
+  - `ci-rust.yml` — Cargo fmt + clippy + test + version-sync (3-OS matrix). **Reusable** (`workflow_call:`) — invoked by `pr-gate.yml` for PRs; native `push:` trigger still fires on direct main pushes.
+  - `ci-macos.yml` — Build mm-ffi + SwiftUI app (macos-26, Xcode 26.4.1, Swift 6.3). **Reusable.** Runner is macos-26 (not macos-latest) because `Package.swift` requires `swift-tools-version: 6.3` which needs Xcode 26.3+.
+  - `ci-windows.yml` — Build mm-ffi + WinUI 3 app (windows-latest). **Reusable.**
+  - `ci-linux.yml` — Build mm-gtk with GTK4/Libadwaita (ubuntu-latest). **Reusable.**
   - `version-bump.yml` — Automated version bumping across all files (manual trigger)
   - `release.yml` — 5-platform release builds + checksums + GitHub Release (tag trigger)
   - `audit.yml` — cargo-deny + cargo-audit (weekly + push)
@@ -131,4 +132,62 @@
 - `.gitignore` covers OS files, Rust `target/`, IDE files, secrets, build artifacts
 - Python v1.x archived at tag `v1.5-M6-python-final`
 - **Every task** must have a GitHub Issue created BEFORE work begins and closed AFTER verification
-- **Commit but do NOT push** — user pushes manually
+- **Commit but do NOT push** — user pushes manually (exception: pushing a *new feature branch* is OK once the user has explicitly asked for a PR)
+
+## Branch protection on `main` — umbrella PR Gate pattern
+
+`main` is protected by the **"Protect main branch"** ruleset (id `14829223`). The required-status-check rule lists exactly one context: the `Gate` job from `pr-gate.yml` (verify the exact recorded name with `gh pr checks <PR#>` on a fresh PR; orphan contexts soft-lock every future PR — see global CLAUDE.md CI/CD lesson #1).
+
+**Why this pattern (do not regress):**
+
+- Per-platform CIs (`ci-rust`, `ci-macos`, `ci-windows`, `ci-linux`) have **path filters** to keep CI cheap. Making them directly required would soft-lock any PR that doesn't touch their paths (the check never reports = never passes = blocked forever).
+- The umbrella `pr-gate.yml` runs on every PR with **no path filter**. It detects which platform code changed (plain `git diff` against the PR base — no third-party action) and conditionally invokes the 4 platform workflows as reusable (`workflow_call:`) jobs. The final `Gate` job uses `if: always()` and treats `success` and `skipped` as OK, only failing if a platform job actually `failure`d/`cancelled`.
+- A docs-only PR → all platforms skip → Gate passes immediately, no CI cost.
+- A `crates/mm-gtk/` PR → only linux runs → Gate passes if linux passed.
+- A `crates/mm-ffi/` PR → rust + macos run → Gate passes if both passed. (Windows is currently de-scoped from the gate — see below.)
+
+**TEMPORARY: Windows is de-scoped from PR Gate** (see [#148](https://github.com/MWBMPartners/MeedyaManager/issues/148)). `pr-gate.yml`'s `changes` job hardcodes `WINDOWS=false` after the path-detection block. `ci-windows.yml` still runs on direct pushes to `main` and via its `paths:` filter, so Windows regressions on `main` are visible — they just don't block PRs. To re-enable Windows in the gate once #148 is resolved, delete the `WINDOWS=false` line in `pr-gate.yml`.
+
+**Safety-net paths** in `pr-gate.yml`'s `changes` job (do not remove):
+
+- Any change under `.github/workflows/` → **forces a full platform sweep** (all 4 platforms run). Workflow changes are meta-changes that can break CI for any platform; without this rule, a workflow-only PR merges green and breaks the next unrelated PR. Cost = at most one full CI run per workflow PR.
+- `rust-toolchain.toml`, `deny.toml`, `clippy.toml`, `.cargo/` → trigger the rust workflow (they change Rust build/lint behaviour for every crate).
+
+**Hard rules — do not violate without explicit user go-ahead:**
+
+1. **Never add another required status check context** without first running it on a real PR and capturing the exact recorded context name. New orphans = soft-lock.
+2. **Never add a `pull_request:` trigger to `ci-rust/macos/windows/linux.yml`.** They MUST be reached only via `workflow_call:` from `pr-gate.yml`, otherwise PR runs duplicate.
+3. **Keep `pr-gate.yml` without path filters.** Adding one would re-introduce the soft-lock problem.
+4. **Keep the path-detection logic in `pr-gate.yml`'s `changes` job in sync with each `ci-*.yml`'s `push:` `paths:`.** Drift means PR Gate triggers a platform whose own `push:` filter would've ignored the change, or vice versa.
+5. **Do not remove the `.github/workflows/` full-sweep rule** without first putting in place an equivalent safety net (e.g. an `actionlint` job). Without it, workflow changes go to main untested.
+6. **If a new platform CI is added** (e.g. `ci-android.yml`), it must follow the same template: `workflow_call:` trigger, no `pull_request:`, then add a corresponding `if`-gated job + a new `needs:` entry in `gate` inside `pr-gate.yml`.
+
+## Post-PR housekeeping — full dev-cache cleanup
+
+After a PR has been **successfully created** (URL returned), run a full dev-cache cleanup covering the workspace plus Rust global caches. Cache is fully regeneratable; the user accepts the cold-build cost (~5–15 min on next build for this 8-crate workspace) in exchange for disk-pressure relief.
+
+**When:** *after* the PR is created — never before or during, because the cleanup invalidates the `cargo check`/`cargo test` caches the PR flow itself relies on.
+
+**Commands (run from repo root, in order):**
+
+```bash
+# 1. Workspace Rust cache (all 8 crates' target/)
+cargo clean
+
+# 2. Swift Package Manager build dirs under macos/
+find macos -type d -name '.build' -prune -exec rm -rf {} +
+
+# 3. C# WinUI 3 build output (scoped to known dirs — do NOT bare-find bin/obj)
+rm -rf windows/MeedyaManager/bin windows/MeedyaManager/obj \
+       windows/MeedyaManager.Tests/bin windows/MeedyaManager.Tests/obj
+
+# 4. Rust global caches (affects ALL Rust projects on this machine — user accepts this)
+rm -rf ~/.cargo/registry/cache ~/.cargo/registry/src \
+       ~/.cargo/git/checkouts ~/.cargo/git/db
+```
+
+**Scope is fixed at "workspace + Rust global".** Do not silently extend to Xcode `DerivedData`, NuGet `~/.nuget/packages`, or other toolchain caches without re-confirming with the user — those were explicitly excluded on 2026-05-24.
+
+**If the C# project layout changes** (a new project added under `windows/`), update the `rm` list in step 3 rather than reaching for `find -name bin -o -name obj` — those names are too common to wildcard safely.
+
+**After cleanup,** briefly mention to the user that the next build will be cold so they're not surprised.

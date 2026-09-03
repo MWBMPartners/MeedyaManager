@@ -29,9 +29,9 @@ jobs:
         run: cargo install cargo-deny --locked
 
       - name: Run cargo-deny checks (licenses, bans, advisories, sources)
+        # cargo-deny is the modern superset of cargo-audit. Its `advisories`
+        # check queries the RustSec database directly; the ignore list in
+        # deny.toml is the canonical place to silence individual advisories.
+        # A separate cargo-audit step was tried (#156) but turned out to be
+        # redundant AND had runner-side DB-fetch issues (#157). Dropped.
         run: cargo deny check
-
-      - name: Run cargo audit (RustSec advisory database)
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}

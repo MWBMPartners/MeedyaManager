@@ -4,21 +4,26 @@
 name: Windows CI
 
 on:
+  # Direct pushes to main still trigger native runs.
   push:
     branches: [main]
     paths:
       - "windows/**"
       - "crates/mm-ffi/**"
-  pull_request:
-    branches: [main]
-    paths:
-      - "windows/**"
-      - "crates/mm-ffi/**"
+  # PRs reach this workflow via pr-gate.yml (the umbrella). Do NOT add a
+  # pull_request: trigger here or runs will duplicate.
+  workflow_call:
 
 jobs:
   windows-ci:
     name: Windows WinUI 3
-    runs-on: windows-latest
+    # Pinned to windows-2022 (default .NET 8 SDK) instead of windows-latest
+    # (which now resolves to windows-2025 with .NET 10 SDK as host). The
+    # project targets net8.0; the .NET 10 host has been silently failing
+    # XamlCompiler.exe with no actionable error in any log. Iteration-7
+    # diagnostics confirmed reference assemblies were correct (.NET 8) but
+    # XamlCompiler still exits code 1. Trying the older runner to isolate.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout repository
@@ -46,7 +51,66 @@ jobs:
 
       - name: Build WinUI 3 application
         working-directory: windows
-        run: dotnet build --no-restore
+        # --verbosity diagnostic (highest) + tee output to file + binary log.
+        # MSB3073 from XamlCompiler is opaque ("command exited with code 1");
+        # diagnostic-level output should surface its actual stderr/stdout.
+        # The .binlog is uploaded as an artifact on failure for offline
+        # inspection with the MSBuild Structured Log Viewer (msbuildlog.com).
+        shell: pwsh
+        run: |
+          dotnet build --no-restore --verbosity diagnostic `
+            -bl:msbuild.binlog `
+            -fl -flp:logfile=msbuild.log`;verbosity=diagnostic 2>&1 |
+            Tee-Object -FilePath build.out
+
+      - name: Dump XamlCompiler I/O + msbuild.log error context on failure
+        if: failure()
+        working-directory: windows
+        shell: pwsh
+        run: |
+          Write-Host "=== Searching for XamlCompiler input/output JSON files ==="
+          $jsonFiles = @()
+          $jsonFiles += Get-ChildItem -Recurse -Path . -Filter input.json -ErrorAction SilentlyContinue
+          $jsonFiles += Get-ChildItem -Recurse -Path . -Filter output.json -ErrorAction SilentlyContinue
+          if ($jsonFiles.Count -eq 0) {
+            Write-Host "(no input.json / output.json files found anywhere under windows/)"
+          } else {
+            foreach ($f in $jsonFiles) {
+              Write-Host "===== $($f.FullName) ====="
+              Get-Content $f.FullName | Out-Host
+            }
+          }
+
+          Write-Host ""
+          Write-Host "=== msbuild.log error context (50 lines around each 'error') ==="
+          if (Test-Path msbuild.log) {
+            $lines = Get-Content msbuild.log
+            for ($i = 0; $i -lt $lines.Length; $i++) {
+              if ($lines[$i] -match 'error\s|: error |XamlCompiler.*exit') {
+                $start = [Math]::Max(0, $i - 5)
+                $end = [Math]::Min($lines.Length - 1, $i + 20)
+                Write-Host "----- match at line $($i+1) -----"
+                Write-Host ($lines[$start..$end] -join "`n")
+                Write-Host ""
+              }
+            }
+          } else {
+            Write-Host "(msbuild.log not produced)"
+          }
+
+      - name: Upload MSBuild logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msbuild-logs-${{ github.run_id }}
+          path: |
+            windows/msbuild.binlog
+            windows/msbuild.log
+            windows/build.out
+            windows/**/obj/**/input.json
+            windows/**/obj/**/output.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Run .NET unit tests
         working-directory: windows
