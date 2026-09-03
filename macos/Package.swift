@@ -40,6 +40,24 @@ let package = Package(
         .executableTarget(
             name: "MeedyaManager",
             path: "MeedyaManager",
+            // The UniFFI-generated bindings live under this target's path but are
+            // NOT compiled into it yet, and excluding them is load-bearing.
+            //
+            // `Bindings/generated/mm_ffi.swift` opens with
+            //   #if canImport(mm_ffiFFI) import mm_ffiFFI #endif
+            // and then uses `RustBuffer` / `RustCallStatus` unconditionally. No
+            // target in this package vends an `mm_ffiFFI` module — that needs a
+            // systemLibrary/binaryTarget wrapping mm_ffiFFI.modulemap plus the
+            // built libmm_ffi dylib — so SwiftPM compiled the file, failed to
+            // resolve those types, and the whole macOS build went from 1 error
+            // to 841. That would have turned the PR Gate's macOS job and
+            // release.yml's macOS artefact red on the first run.
+            //
+            // The files are still committed on purpose: they ARE the typed Swift
+            // API surface, and docs/api/ffi-swift.md documents them. Remove this
+            // exclude only in the same change that adds the mm_ffiFFI target and
+            // defines MM_FFI_AVAILABLE below.
+            exclude: ["Bindings/generated"],
             resources: [
                 .copy("Resources/AppIcon.icns"),
                 .copy("Resources/AppIcon.svg"),
