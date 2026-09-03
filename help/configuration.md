@@ -15,7 +15,8 @@ MeedyaManager is configured through a single **JSON5 settings file** — no comm
 5. [logging — Diagnostics](#logging--diagnostics)
 6. [providers — Metadata Lookup](#providers--metadata-lookup)
 7. [Environment Variable Overrides](#environment-variable-overrides)
-8. [CLI Config Commands](#cli-config-commands)
+8. [Real Provider Credentials](#real-provider-credentials)
+9. [CLI Config Commands](#cli-config-commands)
 
 ---
 
@@ -32,10 +33,23 @@ MeedyaManager automatically creates a default configuration file on first run at
 To view or edit the configuration from the CLI:
 
 ```bash
-meedya config show        # Print current config to terminal
-meedya config validate    # Check config for errors
+meedya config show        # Print current config to terminal (reports load errors, if any)
 meedya config path        # Print the config file path
 ```
+
+> There is no `meedya config validate` subcommand — it does not exist in
+> `crates/mm-cli/src/commands/config_cmd.rs:27-58`. `meedya config show` is the closest
+> equivalent: it loads the config file and will report a parse error if there is one.
+>
+> **The shipped `config/settings.json5` in this repository does not match the schema below.**
+> The file this repo ships as a "default config" example (and its companion
+> `config/schemas/settings.schema.json`) use keys like `watch_paths`, `rename_format`,
+> `cover_art`, and per-provider maps (`providers: { apple_music: {} }`) — none of which exist on
+> the real `AppConfig` struct documented on this page. Because `AppConfig` is
+> `#[serde(default)]` with no `deny_unknown_fields`, loading that shipped file does not error —
+> it silently produces an all-defaults config instead. Do not copy that file as a starting
+> point; use the field reference below, or `meedya config init` to generate a config file that
+> actually matches what the code reads.
 
 To use a custom config file path:
 
@@ -212,6 +226,14 @@ logging: {
 
 Configures which metadata providers are enabled and supplies their credentials. All keys can be stored in the config file or overridden via environment variables (recommended for secrets).
 
+> **`discogs_*` and `acoustid_*` below are dead settings.** These fields exist on the
+> `ProviderConfig` struct (`crates/mm-core/src/config/mod.rs:251-286`) and MeedyaManager will
+> happily parse and store them, but there is no Discogs provider and no AcoustID provider in
+> `mm-providers` — setting them has no effect on any lookup. Of the 19 providers that do exist,
+> 13 need credentials, and they do **not** use this `providers:` block at all; see
+> [Real Provider Credentials](#real-provider-credentials) below for how they actually resolve
+> keys.
+
 ```json5
 providers: {
   // MusicBrainz — free, no credentials required
@@ -248,15 +270,15 @@ providers: {
 | ----- | ---- | ------- | ----------- |
 | `musicbrainz_enabled` | bool | `true` | Enable MusicBrainz lookups (no key needed) |
 | *(env only)* `MUSICBRAINZ_CONTACT_EMAIL` | string | compiled-in default | Overrides the contact details sent in MusicBrainz's required User-Agent header — see [providers/musicbrainz.md](providers/musicbrainz.md#authentication) |
-| `discogs_enabled` | bool | `false` | Enable Discogs lookups |
-| `discogs_token` | string or null | `null` | Discogs personal access token |
+| `discogs_enabled` | bool | `false` | **Dead** — no Discogs provider exists in `mm-providers` |
+| `discogs_token` | string or null | `null` | **Dead** — parsed and stored, never read by any provider |
 | `spotify_enabled` | bool | `false` | Enable Spotify lookups |
 | `spotify_client_id` | string or null | `null` | Spotify client ID |
 | `spotify_client_secret` | string or null | `null` | Spotify client secret |
 | `tmdb_enabled` | bool | `false` | Enable TMDb (movie/TV) lookups |
 | `tmdb_api_key` | string or null | `null` | TMDb API key |
-| `acoustid_enabled` | bool | `false` | Enable AcoustID fingerprint lookups |
-| `acoustid_api_key` | string or null | `null` | AcoustID API key |
+| `acoustid_enabled` | bool | `false` | **Dead** — no AcoustID provider exists in `mm-providers` |
+| `acoustid_api_key` | string or null | `null` | **Dead** — parsed and stored, never read by any provider |
 | `request_timeout_secs` | int | `30` | Per-request timeout in seconds |
 | `max_concurrent_requests` | int | `4` | Maximum concurrent API requests |
 
@@ -270,11 +292,11 @@ API keys can be stored as environment variables instead of in the config file, w
 
 | Environment Variable | Config Field | Provider |
 | -------------------- | ------------ | -------- |
-| `MM_DISCOGS_TOKEN` | `providers.discogs_token` | Discogs |
+| `MM_DISCOGS_TOKEN` | `providers.discogs_token` | Discogs (dead — no provider reads it) |
 | `MM_SPOTIFY_CLIENT_ID` | `providers.spotify_client_id` | Spotify |
 | `MM_SPOTIFY_CLIENT_SECRET` | `providers.spotify_client_secret` | Spotify |
 | `MM_TMDB_API_KEY` | `providers.tmdb_api_key` | TMDb |
-| `MM_ACOUSTID_API_KEY` | `providers.acoustid_api_key` | AcoustID |
+| `MM_ACOUSTID_API_KEY` | `providers.acoustid_api_key` | AcoustID (dead — no provider reads it) |
 | `MUSICBRAINZ_CONTACT_EMAIL` | *(no config field — env only)* | MusicBrainz |
 
 > `MUSICBRAINZ_CONTACT_EMAIL` is not an API key — MusicBrainz has none — it customises the contact details (email/URL) sent in the required User-Agent header for the MusicBrainz, ISRC, and ISWC providers. See [providers/musicbrainz.md](providers/musicbrainz.md#authentication).
@@ -294,30 +316,54 @@ MM_TMDB_API_KEY=your_tmdb_key_here
 
 ---
 
+## Real Provider Credentials
+
+The `providers:` block above only covers the six fields on `ProviderConfig` — MusicBrainz
+(no key), Discogs and AcoustID (dead, see above), Spotify, and TMDb. It does **not** cover the
+other 13 metadata providers that need a key (OMDb, TheTVDB, EIDR, and others in
+[providers/](providers/)). Those resolve credentials through a separate, generic mechanism in
+`crates/mm-providers/src/credentials.rs`, in this priority order:
+
+1. **Environment variable** — `MM_<PROVIDER>_<KEY>`, e.g. `MM_OMDB_API_KEY`,
+   `MM_TVDB_API_KEY`, `MM_EIDR_CLIENT_ID`. The provider and key names are upper-cased with
+   hyphens/dots/spaces turned into underscores.
+2. **Config map** — a `<provider>.<key>` entry, if the calling code supplies one.
+3. **OS keyring** — a per-provider keyring service named `meedyamanager.<provider>` (e.g.
+   `meedyamanager.omdb`), read via the platform keychain/Credential Manager/Secret Service.
+4. **Local encrypted-ish file** — a `credentials.json` file next to the config directory (this
+   is a plain JSON file, not an encrypted bundle, despite what older documentation implied).
+
+For providers that need a key, see that provider's page under [providers/](providers/) for its
+exact environment variable name.
+
+---
+
 ## CLI Config Commands
 
 ```bash
-# Show the current config (pretty-printed)
+# Show the current config (pretty-printed) — also reports config file parse errors
 meedya config show
 
 # Show as JSON (useful for scripting)
-meedya config show --json
-
-# Validate the config file and report any errors
-meedya config validate
+meedya --json config show
 
 # Print the config file path
 meedya config path
 
-# Export current settings to a portable .mmprofile bundle
-meedya config export --out ~/my-settings.mmprofile
+# Create a new default config file
+meedya config init
 
-# Import settings from a .mmprofile bundle
+# Export current settings to a portable .mmprofile bundle (positional path, not --out)
+meedya config export ~/my-settings.mmprofile
+
+# Import settings from a .mmprofile bundle (positional path)
 meedya config import ~/my-settings.mmprofile
-
-# Reset config to defaults (with confirmation prompt)
-meedya config reset
 ```
+
+> There is no `meedya config reset` subcommand — it does not exist in
+> `crates/mm-cli/src/commands/config_cmd.rs:27-58`. To start over, delete the config file (path
+> from `meedya config path`) and run `meedya config init`, or `meedya config show` again, which
+> regenerates defaults for anything missing.
 
 For export/import details, see [settings-export-import.md](settings-export-import.md).
 

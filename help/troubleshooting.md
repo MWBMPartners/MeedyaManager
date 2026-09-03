@@ -22,45 +22,28 @@ This guide covers common issues, error messages, and their solutions.
 
 ## Installation Issues
 
+> **There is no packaged release yet.** The only GitHub release is the pre-rename
+> "MetaMancer v1.0-M1" pre-release from 2025-06-16 — there is no current `.msix`, `.dmg`,
+> `.deb`, `.rpm`, Flatpak, Snap, or AppImage to download or install. Everything in this section
+> assumes you built MeedyaManager from source per [getting-started.md](getting-started.md).
+
 ### "meedya: command not found"
 
 **Cause:** The `meedya` binary is not in your PATH.
 
-**Solutions:**
-
-- **Release package:** Re-run the installer. The installer adds `meedya` to your PATH automatically.
-- **From source:** Run `cargo install --path crates/mm-cli` to install the binary, or add `~/.cargo/bin` to your PATH:
-
-  ```bash
-  echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
-  source ~/.bashrc
-  ```
-
-- **Linux AppImage:** Make the AppImage executable and place it somewhere on your PATH:
-
-  ```bash
-  chmod +x MeedyaManager-*.AppImage
-  mv MeedyaManager-*.AppImage ~/.local/bin/meedya
-  ```
-
-### Checksum verification fails after download
-
-**Cause:** The downloaded file is corrupted or incomplete.
-
-**Solution:** Re-download the release from [GitHub Releases](https://github.com/MWBMPartners/MeedyaManager/releases) and verify the SHA256 checksum published on the release page:
+**Solution:** Run `cargo install --path crates/mm-cli` from the repo root to install the binary,
+or add `~/.cargo/bin` to your PATH:
 
 ```bash
-# Linux / macOS
-sha256sum -c MeedyaManager-linux-x86_64.tar.gz.sha256
-
-# macOS (alternative)
-shasum -a 256 -c MeedyaManager-macos-arm64.tar.gz.sha256
-
-# Windows (PowerShell)
-Get-FileHash MeedyaManager-windows-x64.msix -Algorithm SHA256
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
-If verification still fails, report it as a [security issue](https://github.com/MWBMPartners/MeedyaManager/security).
+Alternatively, run the freshly built binary directly:
+
+```bash
+target/release/meedya --help
+```
 
 ---
 
@@ -77,11 +60,14 @@ If verification still fails, report it as a [security issue](https://github.com/
 - Unescaped backslashes in Windows paths (use `\\` or forward slashes)
 - Smart/curly quotes (`"`) instead of straight quotes (`"`)
 
-Validate your config:
+There is no `meedya config validate` subcommand — it does not exist. Instead, check your config
+by loading it:
 
 ```bash
-meedya config validate
+meedya config show
 ```
+
+This will surface a parse error if the file is invalid.
 
 ### "Failed to initialise: ..."
 
@@ -157,6 +143,16 @@ meedya service start
 
 ## Rename and Move Issues
 
+> ### ⚠️ Before using `meedya scan --execute`
+>
+> `scan --execute` has a known data-loss bug — issue
+> [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201). It only checks whether a
+> destination file already exists on disk; it does **not** check whether two files in the same
+> scan resolve to the same destination path. If your template collapses two different source
+> files onto the same name, the second overwrite silently replaces the first with no prompt and
+> no backup. Always inspect the full preview (no `--execute`, or `--dry-run`) for duplicate
+> destination paths first. See [cli-reference.md](cli-reference.md#meedya-scan).
+
 ### "Simulated rename" — no files actually moved
 
 **Cause:** Dry-run mode is active (the default for safety).
@@ -175,7 +171,7 @@ meedya watch --dry-run  # preview only
 1. Test your template against the file:
 
    ```bash
-   meedya rule test --template "<Artist>/<Album>/<Title>" path/to/file.mp3
+   meedya rule test "<Artist>/<Album>/<Title>" path/to/file.mp3
    ```
 
 2. Inspect the file's actual tag values:
@@ -200,11 +196,12 @@ rename: {
 
 Options: `"skip"` (default), `"overwrite"`, `"rename"`, `"ask"` (GUI only).
 
-### File in use — "queued for retry"
+### File in use by another application
 
-**Cause:** The file is open in another application (e.g. being written by a download client).
-
-**Solution:** This is expected behaviour. MeedyaManager detects the lock, queues the file, and retries automatically. No action required — just wait for the other application to finish.
+**Status: not yet implemented.** There is no file-lock detection or retry-queue in
+`crates/mm-core/src/watcher` — a file being written by another application is not specially
+detected or deferred. If you see corrupted reads on files that are still being downloaded,
+avoid watching directories where writes are actively in progress until this is addressed.
 
 ---
 
@@ -228,36 +225,28 @@ Options: `"skip"` (default), `"overwrite"`, `"rename"`, `"ask"` (GUI only).
 2. Edit tags manually if needed:
 
    ```bash
-   meedya edit path/to/file.mp3 --tag "Artist=My Artist" --tag "Title=My Title"
+   meedya edit path/to/file.mp3 --set "Artist=My Artist" --set "Title=My Title"
    ```
 
 ### Cover art not embedded after lookup
 
-**Cause:** The provider returned a result but cover art download was not enabled, or the image exceeded the configured maximum resolution.
-
-**Solution:** Check your `providers` config and ensure `lookup` output confirms art was downloaded. Re-run with `-v` for detail:
-
-```bash
-meedya -v lookup path/to/file.mp3
-```
+**This is expected right now.** `meedya lookup` is a stub — it does not query any provider or
+write any tag yet (see [cli-reference.md](cli-reference.md#meedya-lookup)). If you need cover
+art embedded today, use `meedya edit --cover <path>` with an image you already have.
 
 ---
 
 ## Provider and Lookup Issues
 
-### "Provider not configured" or no results from a provider
+> **`meedya lookup` is a stub** — it does not query any provider yet, so "no results from a
+> provider" is expected for every query right now, not a misconfiguration. There is also no
+> `--list-providers` flag. See [cli-reference.md](cli-reference.md#meedya-lookup). The notes
+> below describe how provider configuration will matter once lookup is wired up, and are useful
+> if you are working on the `mm-providers` code directly.
 
-**Cause:** The provider is disabled or missing credentials.
+### Enabling / configuring a provider
 
-**Solution:**
-
-1. Check which providers are active:
-
-   ```bash
-   meedya lookup --list-providers
-   ```
-
-2. Enable the provider in `settings.json5`:
+1. Enable the provider in `settings.json5`:
 
    ```json5
    providers: {
@@ -267,12 +256,15 @@ meedya -v lookup path/to/file.mp3
    }
    ```
 
-3. Or set via environment variable:
+2. Or set via environment variable:
 
    ```bash
    export MM_SPOTIFY_CLIENT_ID=your_id
    export MM_SPOTIFY_CLIENT_SECRET=your_secret
    ```
+
+3. For the 13 other providers that need a key (not covered by the `providers:` block above),
+   the pattern is `MM_<PROVIDER>_<KEY>` — see [configuration.md](configuration.md#real-provider-credentials).
 
 ### "Rate limited by provider"
 
@@ -321,7 +313,7 @@ journalctl --user -u meedyamanager -n 50
 
 # macOS (launchd)
 launchctl list | grep meedyamanager
-log show --predicate 'subsystem == "ltd.mwbm.meedyamanager"' --last 1h
+log show --predicate 'subsystem == "com.mwbm.meedyamanager"' --last 1h
 ```
 
 See [background-service.md](background-service.md) for full service setup instructions.

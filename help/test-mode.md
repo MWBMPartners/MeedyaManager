@@ -4,14 +4,23 @@
 
 ## What is Test Mode?
 
-Test Mode is a safety feature that prevents MeedyaManager from modifying
-your original media files. When enabled, all edit and tagging operations
-create a **duplicate** file with a `_MeedyaManager` suffix instead of
-overwriting the original.
+Test Mode is a safety feature *intended* to prevent MeedyaManager from modifying your
+original media files. When enabled, edit and tagging operations are supposed to create a
+**duplicate** file with a `_MeedyaManager` suffix instead of overwriting the original.
 
-For example, editing `track.mp3` in Test Mode creates
-`track_MeedyaManager.mp3` with your changes, while `track.mp3` remains
-untouched.
+For example, editing `track.mp3` in Test Mode is supposed to create
+`track_MeedyaManager.mp3` with your changes, while `track.mp3` remains untouched.
+
+> ⚠️ **Status: enabling/disabling and the manifest work; enforcement does not.** Everything
+> below this notice describes what `meedya config test-mode` and the underlying
+> `mm_core::test_mode` module actually do — that machinery is real. But the Test Mode
+> redirection is only honoured by `integrity::write_tags_safe`, which nothing currently calls:
+> `meedya edit`, the Linux GTK metadata panel, and the FFI layer used by the macOS/Windows
+> apps all call `metadata::write_tags` directly, which always writes to the original file
+> regardless of whether Test Mode is on. In other words, you can turn Test Mode on and it will
+> report itself as "enabled", but a real tag edit today still modifies your original file. See
+> issue [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128) (reopened) and
+> [File Integrity](file-integrity.md) for the full picture.
 
 ---
 
@@ -30,9 +39,12 @@ untouched.
 
 ## Enabling and Disabling
 
-### GUI (macOS / Windows / Linux)
+### GUI (Linux only, today)
 
-Navigate to **Settings** and toggle **Test Mode** on or off.
+Navigate to **Settings** and toggle **Test Mode** on or off. This toggle currently exists only
+in the Linux GTK app (`crates/mm-gtk/src/ui/settings_panel.rs`) — the FFI layer the macOS and
+Windows apps use does not expose a Test Mode function, so there is no equivalent GUI control
+on those platforms yet. Use the CLI below on macOS/Windows.
 
 ### CLI
 

@@ -8,11 +8,21 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v1.3.2] — 2026-09-01 — MusicBrainz API Hardening (Issue #198)
+## [Unreleased]
+
+> Work merged onto the `alpha` branch but not yet cut as a release. `Cargo.toml`'s
+> `[workspace.package].version` is currently **1.3.0** — the last version actually written
+> there (commit `e569224`, 2026-03-06). The first two sub-sections below were previously
+> published under invented version headings **v1.3.2** and **v1.3.1**; neither number was ever
+> set in `Cargo.toml`, tagged, or released, so both are recorded here as Unreleased instead of
+> under a version heading that never existed. A third sub-section records this session's own
+> documentation and issue-reconciliation work.
+
+### MusicBrainz API Hardening (Issue #198)
 
 > **MusicBrainz migration seam** — Centralised every piece of MusicBrainz-specific knowledge (endpoints, query building, Lucene escaping, response parsing) into one module, added a contact-bearing User-Agent, enforced the shared rate limit for real, and hardened the ISRC/ISWC providers with direct lookups and graceful-degradation enrichment — all in preparation for MusicBrainz's announced breaking API changes.
 
-### Added
+#### Added
 
 - `crates/mm-providers/src/musicbrainz.rs` — **New migration seam module.** The single place holding every MusicBrainz endpoint URL, query-string parameter name, Lucene query-building/escaping rule, and tolerant response model (`MbRecordingSearchResponse`, `MbRecording`, `MbIsrcLookupResponse`, `MbWorkSearchResponse`, `MbWork`, etc.). No other module builds a MusicBrainz URL, hand-writes Lucene syntax, or parses a MusicBrainz response directly.
 - `crates/mm-providers/src/musicbrainz.rs` — `mb_get()`, the single request chokepoint all three MusicBrainz-backed providers (search, ISRC, ISWC) now route through. Waits on the shared rate limiter, sends the request, and on a `429`/`503` response performs exactly one retry honouring the server's `Retry-After` header (capped at 10 seconds) before surfacing `ProviderError::RateLimited`.
@@ -24,7 +34,7 @@ Format: `## [Version] — YYYY-MM-DD`
 - `crates/mm-providers/src/musicbrainz.rs` — `recording_query_loose()`, a loosened (escaped-token, not phrase-quoted) counterpart to `recording_query()`, sharing its field-joining logic via a new private `join_recording_fields()` helper. Used by `MusicBrainzProvider::search()`'s zero-result retry (see Fixed, below).
 - `crates/mm-providers/src/identifiers/mod.rs` — `looks_like_mbid()`, a structural (not RFC-4122-strict) MusicBrainz Identifier shape check, gating the ISWC enrichment lookup against wasting a rate-limit token on a guaranteed-4xx request.
 
-### Follow-up Hardening (post-review, same issue #198)
+#### Follow-up Hardening (post-review, same issue #198)
 
 An adversarial review of this branch's diff caught six further defects before merge, all fixed here:
 
@@ -35,14 +45,14 @@ An adversarial review of this branch's diff caught six further defects before me
 - **ISRC direct lookup ignored `max_results`.** The dedicated lookup endpoint takes no `limit` parameter, and the parsed results weren't truncated, so a caller could get more results back than requested. Fixed: `IsrcProvider::search()` now truncates a lookup hit to `query.max_results` (when `> 0`) before returning it, matching how `Registry::search()` treats the same field elsewhere.
 - **`de_score()` let non-finite scores through.** Numeric strings like `"NaN"` / `"inf"` parse successfully via `str::parse::<f64>()`, and `NaN.clamp(0.0, 1.0)` returns `NaN` in Rust rather than clamping it — so a malformed or malicious numeric-string score could reach `ProviderResult.score` as `NaN`. No consumer currently mishandles that (the registry's scorer overwrites `score` before ranking), but fixed for hygiene: `de_score()` now filters out any non-finite parsed value, resolving it to `None` like every other unrecognised shape.
 
-### Changed
+#### Changed
 
 - Lucene query building now **phrase-quotes** title and artist (`recording:"..."`/`artistname:"..."`) instead of merely stripping `"` characters, and character-escapes the full Lucene special-character set (`+ - & | ! ( ) { } [ ] ^ " ~ * ? : \ /`) for free-text fallback queries.
 - The MusicBrainz rate limit is now **actually enforced** end to end (previously best-effort); `429` and `503` responses both map to `ProviderError::RateLimited`.
 - `crates/mm-providers/src/music/mod.rs` — `MusicBrainzProvider` now delegates all endpoint/query/response handling to `crate::musicbrainz`, dropping its own hand-rolled URL and Lucene-escaping logic.
 - `crates/mm-gtk/src/ui/lookup_panel.rs` — the background lookup thread now builds its `MusicBrainzProvider` from `mm_core::useragent::build_user_agent_with_contact()` explicitly, rather than relying on `ensure_contact()`'s implicit fallback, to make the contact-bearing intent obvious at the call site.
 
-### Behavioural Changes
+#### Behavioural Changes
 
 - **Search results may change.** Queries for titles or artist names containing Lucene operator characters (`AND`, `OR`, `NOT`, `&`, `|`, `(`, `)`, `:`, `/`, etc. — think `AC/DC`, `Rock (Live)`, `Wait & See`) are now phrase-quoted and matched as literal text instead of being parsed as query syntax. Results for such titles should improve; a query that previously "worked" by accident because a Lucene operator happened to narrow the search may now return different (more correct) matches.
 - **UI search bursts now serialise to 1 request/second.** Because the rate limit is shared across the MusicBrainz, ISRC, and ISWC providers, several lookups fired in quick succession (e.g. from the lookup panel) queue behind the same token bucket rather than each getting an independent allowance.
@@ -50,11 +60,11 @@ An adversarial review of this branch's diff caught six further defects before me
 - **ISWC lookups may now cost two requests** instead of one: the work search, then the composer-enrichment lookup for the first result (skipped when a composer is already present, or when the first result has no MBID-shaped `id`).
 - **Title/artist searches that find nothing may now cost a second request.** A phrase-quoted `MusicBrainzProvider` search that returns zero results is retried once with a loosened (escaped-token) query built from the same title/artist — a search that finds something on the first try is unaffected.
 
-### Fixed
+#### Fixed
 
 - `crates/mm-providers/src/music/mod.rs` — a wiremock test asserted the User-Agent against a hardcoded contact string; it now derives the expected value from `mm_core::useragent::contact_string()` so the test stays correct whether or not `MUSICBRAINZ_CONTACT_EMAIL` is set in the environment.
 
-### Documentation
+#### Documentation
 
 - `help/providers/musicbrainz.md`, `help/providers/isrc.md`, `help/providers/iswc.md` — corrected the User-Agent format, rate-limit figures, and Lucene-escaping description; documented pagination; added an "Upcoming MusicBrainz API changes" admonition; rewrote ISWC's "How the Lookup Works" to match the actual search-then-enrich implementation.
 - `help/providers/isrc.md` — updated the fallback description to cover all three triggers (request failure, unparseable body, well-formed-but-empty result) and documented the `max_results` truncation now applied to a direct lookup hit.
@@ -63,11 +73,11 @@ An adversarial review of this branch's diff caught six further defects before me
 - `help/configuration.md` — documented the `MUSICBRAINZ_CONTACT_EMAIL` environment variable.
 - `PROJECT_STATUS.md` — updated the M5 provider table with the current MusicBrainz/ISRC/ISWC implementation and test counts.
 
-### Pending
+#### Pending
 
 - ⚠️ MusicBrainz has announced breaking changes to its search API, effective **2026-11-30**. The replacement specification is not yet published. All MusicBrainz-specific endpoint, query, and response-parsing knowledge is now centralised in `crates/mm-providers/src/musicbrainz.rs` so that the eventual migration is a one-file change rather than a codebase-wide hunt.
 
-### Verification
+#### Verification
 
 - `cargo fmt --all` → **clean**
 - `cargo clippy -p mm-core -p mm-providers -p mm-cli --all-targets` → **0 warnings** (pre-existing `mm-cloud` clippy debt from the M7 milestone is tracked separately and out of scope here)
@@ -75,17 +85,17 @@ An adversarial review of this branch's diff caught six further defects before me
 
 ---
 
-## [v1.3.1] — 2026-03-06 — Workspace Lint Configuration & Code Quality
+### Workspace Lint Configuration & Code Quality
 
 > **Code quality hardening** — Added `[workspace.lints]` configuration with pedantic and nursery clippy groups, resolved all warnings across the entire workspace, zero clippy warnings.
 
-### Added
+#### Added
 
 - `Cargo.toml` — `[workspace.lints.clippy]` with `pedantic` and `nursery` groups enabled as warnings; 25+ targeted lint allows with documented rationale
 - `Cargo.toml` — `[workspace.lints.rust]` with `unsafe_code = "warn"` for safety auditing
 - All 8 crate `Cargo.toml` files — `[lints] workspace = true` inheritance
 
-### Changed
+#### Changed
 
 - Applied ~600 `use_self` fixes (Self instead of TypeName in impl blocks)
 - Applied ~240 doc comment formatting fixes
@@ -102,17 +112,95 @@ An adversarial review of this branch's diff caught six further defects before me
 - Added `#![allow(unsafe_code)]` to mm-ffi crate (FFI boundary)
 - Added `#[allow(unsafe_code)]` annotations for platform PID checking and test set_var
 
-### Verification
+#### Verification
 
 - `cargo clippy --workspace --all-targets` → **0 warnings**
 - `cargo fmt --check` → **clean**
 - `cargo test --workspace` → **1,234 tests pass, 0 failures**
+
+### Documentation, Issue & Branch Reconciliation (2026-09-03)
+
+> **Full project-state reconciliation** — `main` and `alpha` had diverged (common ancestor
+> `24325d2`): `main` carried MWBM's MeedyaSuite-core provider migration (issues #132, #133, #135;
+> PRs #159–#163) and CI audit fixes (#153, #155, #157), while this branch carried 14 commits of
+> MusicBrainz hardening for #198. This session merged the two lineages onto one branch, re-audited
+> the whole repository against its actual source (not its documentation or issue titles), and
+> reconciled the GitHub issue tracker to match.
+
+#### Added
+
+- `crates/mm-providers/src/musicbrainz.rs` ported onto upstream MeedyaSuite-core's provider trait
+  system (`ProviderError::Network(..)` → `NetworkError(..)`; `RateLimited { provider }` → a tuple
+  variant; `ProviderResult.provider` → `.provider_name`; `provider_id`/`duration_secs` moved into
+  the generic `metadata` map). `governor` was re-added as a direct `mm-providers` dependency and
+  `rate_limiter::shared_host_limiter()` restored (both had been removed by #135) so MusicBrainz,
+  ISRC, and ISWC still share one rate-limit bucket instead of drawing 3× the documented request
+  budget from musicbrainz.org.
+- 15 new GitHub issues filed (#201–#215) from this session's audit findings, including #201
+  (`meedya scan --execute` can silently overwrite files on an intra-batch destination collision)
+  and #207 (no `LICENSE` file is tracked despite GPL-2.0-or-later being declared everywhere).
+
+#### Fixed
+
+- **`MusicBrainzProvider`, `IsrcProvider` and `IswcProvider` rewired onto `crate::musicbrainz`.**
+  The merge resolved all four conflicted provider files in favour of `main`, which kept the ported
+  `musicbrainz.rs` seam but left the three providers on `main`'s older hand-rolled implementations —
+  so none of #198's hardening was actually in effect. All three now go through the seam for every
+  piece of MusicBrainz-specific behaviour:
+  - Lucene phrase-quoting/escaping (`recording_query()`, `lucene_phrase()`, `lucene_escape()`),
+    replacing the `.replace('"', "")` pseudo-escaping #198 raised as an injection defect.
+  - Endpoint URLs and query strings via `search_url()` / `lookup_url()` / `search_params()` /
+    `lookup_params()` / `MbEntity` — no inline `format!("{base}/ws/2/…")` outside `musicbrainz.rs`.
+  - All HTTP via `mb_get()`, so the three providers share ONE per-host token bucket, send the
+    contact-bearing User-Agent (`ensure_contact()`), and honour 429/503 `Retry-After` with a single
+    bounded retry (429 previously fell through to a generic network error).
+  - Response parsing via `musicbrainz::models::*`, including tolerant `score` handling and a
+    defaulted `recordings` key (a zero-result response that omits the key no longer fails to parse).
+  - Zero-result title/artist searches retry once with `recording_query_loose()`; ISRC lookups try
+    `/ws/2/isrc/<code>` first and fall back to a recording search (never after a rate limit);
+    ISWC searches query both punctuated and bare forms and enrich the first result via
+    `inc=artist-rels`, gated on an MBID-shape check.
+  - 33 provider-level tests added (13 in `music`, 20 in `identifiers`), most of them wiremock
+    integration tests asserting the wire-level behaviour end to end.
+- 95 reconciliation comments posted across the issue tracker; 40 issues incorrectly closed as
+  complete (M7 cloud, M9 export, M10 server, and others) were reopened once source-level auditing
+  showed the underlying feature was scaffolding rather than a working implementation; 4 issues
+  relabelled (#193, #197, #199, #200).
+- `docs/changelog.md`, `docs/roadmap.md`, and the three `docs/wiki/` CI/CD and release pages —
+  corrected to describe the 9 real workflows (`lint.yml` and `pr-gate.yml` had been added since
+  these pages were last touched), the `macos-26` runner, the `windows-2022` pin, the absence of a
+  Flatpak build step and of any GitHub Pages deploy, and the fact that versions 1.3.1/1.3.2 and a
+  v1.0.0 public release were never actually cut.
+
+#### Known gaps
+
+- Upstream MeedyaSuite-core's `SearchQuery` has no `offset` field, so pagination cannot be wired
+  into `musicbrainz::search_params()` from a provider yet; the parameter is retained (and still
+  covered by tests) and every provider passes `0`, pending an upstream change. Tracked on #198.
+- Upstream `SearchQuery` also has no free-text `query` field, so `music::search_term()` derives one
+  from title + artist. In practice that means `recording_query()`'s free-text branch can only ever
+  see an empty term — a genuine free-text MusicBrainz search is unreachable until upstream adds the
+  field. Tracked on #198.
+
+#### Verification
+
+- `cargo fmt --all` → clean; `cargo clippy -p mm-providers -p mm-cli --all-targets -- -D warnings`
+  → **0 warnings**
+- `cargo test --workspace` → **1,240 tests pass, 0 failures** (up from 1,207; `mm-providers` alone
+  went from 256 to 289)
 
 ---
 
 ## [v1.3.0] — 2026-03-06 — Test Mode, Privacy Policy, Pre-release Safety, JSON Schemas
 
 > **User safety and compliance** — Test Mode for non-destructive editing, privacy policy for app store compliance, pre-release version safety, and JSON Schema validation for config files.
+>
+> **Test Mode caveat (issue #128):** a later audit (2026-09-02) found `write_tags_safe()` below
+> is referenced only by its own tests — every real consumer
+> (`crates/mm-cli/src/commands/edit.rs:116`, `crates/mm-gtk/src/ui/metadata_panel.rs:313`,
+> `crates/mm-ffi/src/uniffi_api.rs:233`) calls `metadata::write_tags()` directly instead, which
+> writes to the original file regardless of whether Test Mode is enabled. The module exists and is
+> well-tested in isolation; it just isn't wired into the write path yet.
 
 ### Added
 
@@ -212,13 +300,23 @@ An adversarial review of this branch's diff caught six further defects before me
 
 ---
 
-## [v1.1.0] — 2026-03-06 — Accessibility + i18n + Windows OpenProcess + FiletypeRegistry + CI Fixes (#128, #130, #131, #132, #133)
+## [v1.1.0] — 2026-03-06 — Accessibility, i18n, Windows OpenProcess, FiletypeRegistry & CI Fixes
 
-> **Cross-cutting** — Post-v1.0 hardening: accessibility, i18n, process detection, a centralised file type registry, extended metadata tags, and comprehensive GitHub Actions fixes.
+> **Cross-cutting** — Post-v1.0 hardening, landed as two batches of work on the same day and
+> both originally published as separate "v1.1.0" changelog entries even though the version was
+> only actually bumped once (`Cargo.toml` commit `581ed22`). Merged into a single entry here.
+> **Issue-number caveat:** the `#128`/`#130`/`#131`/`#132`/`#133` references below are as the
+> original entries recorded them; a later audit found the *current* GitHub issues with those
+> numbers describe unrelated subjects (real `#130` is MediaInfo bundling, real `#131` is Spatial
+> Audio detection, real `#132`/`#133` are MeedyaSuite-core migration issues filed months later) —
+> either the work below was filed under different numbers than shown, or the numbers were
+> reused/renumbered since. Treat the numbers as unverified pending a corrected citation.
 
-### Added
+### FiletypeRegistry, Extended Metadata Tags, Apple Wishlist & CI Fixes
 
-**FiletypeRegistry (Issue #132):**
+#### Added
+
+**FiletypeRegistry (cited as Issue #132):**
 
 - `crates/mm-core/src/filetype_registry.rs` — New centralised registry: `AudioFormat` (30+ audio), `VideoFormat` (25+ video), `SubtitleFormat` + `SubtitleKind` enum, `CompanionFormat` + `CompanionScope` enum (Track/Album/Artist). Helper functions `is_audio()`, `is_video()`, `is_media()`, `mime_for_extension()`, `audio_format()`, `video_format()`, `subtitle_format()`, `companion_format()`. 20+ unit tests.
 - `crates/mm-core/src/companion/mod.rs` — Extended `CompanionType` with `Archive` and `ItunesPackage` variants; updated `classify_companion()` for `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.itlp`, `.itmsp`, `.itms`, `.sfv`, `.md5`, `.ttml`, `.dfxp`, `.elrc`. 5 new tests.
@@ -234,7 +332,7 @@ An adversarial review of this branch's diff caught six further defects before me
 - `README.md` — New "Apple Platform Wishlist" section with feature table.
 - `Project_Plan.md` — New "Apple Platform Wishlist (v1.2.0+)" section with effort estimates.
 
-### Fixed
+#### Fixed
 
 **GitHub Actions (CI/CD):**
 
@@ -252,15 +350,16 @@ An adversarial review of this branch's diff caught six further defects before me
 - `README.md` — Milestone roadmap updated from all "Planned" to ✅ Complete with test counts.
 - `Project_Plan.md` — CI matrix updated to show `--exclude mm-gtk` flag; new Apple Wishlist section added; `docs/changelog.md` reference corrected.
 
----
+### Accessibility, i18n & Windows OpenProcess Hardening
 
-## [v1.1.0] — 2026-03-06 — Accessibility + i18n + Windows OpenProcess (#128, #130, #131)
+> **Cross-cutting** — Three further post-v1.0 items resolved the same day: full accessibility
+> labelling across all three platforms (GTK4, macOS SwiftUI, Windows WinUI 3), i18n
+> infrastructure (gettextrs/gettext + .xcstrings + .resw), and Windows single-instance lock
+> hardening via `OpenProcess`. See the issue-number caveat at the top of this `[v1.1.0]` entry.
 
-> **Cross-cutting** — Three post-v1.0 issues fully resolved: full accessibility labelling across all three platforms (GTK4, macOS SwiftUI, Windows WinUI 3), i18n infrastructure (gettextrs/gettext + .xcstrings + .resw), and Windows single-instance lock hardening via `OpenProcess`.
+#### Added
 
-### Added
-
-**Accessibility (Issue #128) — GTK4 panel labels:**
+**Accessibility (cited as Issue #128) — GTK4 panel labels:**
 
 - `crates/mm-gtk/src/ui/accessibility.rs` — New AT-SPI2 helper module: `set_label()`, `set_description()`, `set_busy()`, `set_expanded()`, `tab_label()`, `tab_description()`. 8 unit tests.
 - `scan_panel.rs`, `metadata_panel.rs`, `lookup_panel.rs`, `rules_panel.rs`, `cloud_panel.rs`, `export_panel.rs`, `settings_panel.rs`, `server_panel.rs` — Full AT-SPI2 label + description applied to every interactive widget (entry rows, buttons, spin buttons, drop-downs, status labels). Cloud connect/disconnect button accessible label updated dynamically on toggle. Tag pills in rules panel each receive unique `"Insert <Tag> tag"` label.
@@ -308,12 +407,12 @@ An adversarial review of this branch's diff caught six further defects before me
 
 - `windows/winget/manifests/m/MWBM/MeedyaManager/1.0.0/MWBM.MeedyaManager.yaml` — v1.0.0 WinGet singleton manifest.
 
-### Fixed
+#### Fixed
 
 - `crates/mm-gtk/src/lib.rs` — `APP_ID` corrected from `uk.co.mwbm.MeedyaManager` to `ltd.MWBMpartners.MeedyaManager`.
-- `docs/issues/github_issues.md` — All post-v1.0 issues (#128, #130, #131) closed.
+- `docs/issues/github_issues.md` — All post-v1.0 issues cited above marked closed at the time.
 
-### Changed
+#### Changed
 
 - Version bumped to `v1.1.0`.
 
@@ -321,7 +420,19 @@ An adversarial review of this branch's diff caught six further defects before me
 
 ## [v1.0.0] — 2026-03-05 — Secure Media Server + Public Release (M10)
 
-> **Milestone 10** — Secure Media Server. Implements the `mm-server` crate (axum HTTPS, JWT/HS256 auth, RFC 7233 range streaming, REST API), `meedya serve` CLI command, and Server tab UI on all three platforms. First public release — version `v1.0.0`. ~90 new tests, ~1166 total.
+> **Milestone 10** — Secure Media Server. Implements the `mm-server` crate (JWT/HS256 auth,
+> RFC 7233 range-parsing logic, REST response types), `meedya serve` CLI command, and Server tab
+> UI on all three platforms. ~90 new tests.
+>
+> **Status: not yet implemented, and no release was ever cut.** "First public release —
+> version `v1.0.0`" above never happened: no `v1.0.0` tag or GitHub release exists. Worse, the
+> axum HTTPS server itself was never wired up — a later audit (2026-09-02) found **zero**
+> `.route(` calls anywhere in `mm-server`, and `crates/mm-cli/src/commands/serve.rs:337-342`
+> prints *"Server stub: exiting cleanly"* rather than starting anything. The route handlers listed
+> below under `routes.rs` are labelled "handler stubs" in the original entry — that label was
+> correct then and remains correct now. The repository also has zero `.html` files, so the web
+> frontend this milestone promised has no deliverable. Issues #120–#127 were reopened on
+> 2026-09-03; see `.claude/HANDOFF.md` for the full finding.
 
 ### Added
 
@@ -375,6 +486,11 @@ An adversarial review of this branch's diff caught six further defects before me
 ## [v0.10.0] — 2026-03-05 — Database Export (M9)
 
 > **Milestone 9** — Database Export. Implements the full `mm-export` crate with `DatabaseExporter` trait and five backends (SQLite, MySQL, MariaDB, PostgreSQL, SQL Server), `SchemaBuilder` DDL generation, `meedya export` CLI command, and Export tab UI on all three platforms. ~90 new tests.
+>
+> **Status: not yet implemented.** "Fully implemented" above describes the trait/schema/CLI
+> scaffolding only — a later audit (2026-09-02) found no backend ever creates a real connection
+> pool or executes SQL against a live database (`crates/mm-export/src/sqlite.rs:30` documents this
+> directly). Issues #112–#119 were reopened for this reason on 2026-09-03.
 
 ### Added
 
@@ -463,6 +579,12 @@ An adversarial review of this branch's diff caught six further defects before me
 ## [v0.8.0] — 2026-03-05 — Cloud Storage Monitoring (M7)
 
 > **Milestone 7** — Cloud Storage Monitoring. Adds the `mm-cloud` crate with `CloudProvider` trait, `OneDriveProvider`, `GoogleDriveProvider`, `DropboxProvider`, `SyncManager`, and stubs for MEGA and iCloud. Cloud tab added on all three platforms (GTK4, macOS SwiftUI, WinUI 3). ~90 new tests.
+>
+> **Status: not yet implemented.** A later audit (2026-09-02) found none of the three "real"
+> providers make an actual network call — OAuth flows exist only as comments (e.g.
+> `crates/mm-cloud/src/onedrive.rs:90`). Issues #94–#102 were reopened for this reason on
+> 2026-09-03; see `.claude/HANDOFF.md` for the full finding. Treat this milestone as scaffolding
+> only until that work lands for real.
 
 ### Added
 

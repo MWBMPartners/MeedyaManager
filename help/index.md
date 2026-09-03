@@ -86,11 +86,11 @@ meedya scan ~/Music --dry-run
 # Watch folders live
 meedya watch
 
-# Look up metadata online
-meedya lookup ~/Music/song.mp3
+# Look up metadata online (stub — not yet implemented, see cli-reference.md)
+meedya lookup "Rick Astley - Never Gonna Give You Up"
 
 # Edit tags
-meedya edit ~/Music/song.mp3 --tag "Artist=My Artist"
+meedya edit ~/Music/song.mp3 --set "Artist=My Artist"
 
 # Manage background service
 meedya service install
@@ -103,9 +103,12 @@ meedya config test-mode status
 meedya config test-mode commit
 
 # Export/import configuration
-meedya config export --out ~/my-settings.mmprofile
+meedya config export ~/my-settings.mmprofile
 meedya config import ~/my-settings.mmprofile
 
 # Generate a bug report
 meedya report-bug
 ```
+
+> **Note:** `meedya lookup` is still a stub — it prints a "coming" notice and does not query any
+> provider yet. See [cli-reference.md](cli-reference.md#meedya-lookup) for the current state.

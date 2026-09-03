@@ -21,7 +21,7 @@
 - [Test Mode (Safe Edit Mode)](#test-mode-safe-edit-mode)
 - [Pre-release Version Safety](#pre-release-version-safety)
 - [Privacy Policy](#privacy-policy)
-- [Codec Registry](#codec-registry-configcodecsjson5--planned-for-v130)
+- [Codec Registry](#codec-registry-configcodecsjson5--status-not-yet-implemented)
 - [JSON Schema Validation](#json-schema-validation)
 - [Apple Privacy Manifest](#apple-privacy-manifest-privacyinfoxcprivacy)
 - [App Store / TestFlight Distribution Checklist](#app-store--testflight-distribution-checklist)
@@ -139,22 +139,30 @@ MAJOR.MINOR.PATCH[-PRE_RELEASE]
 
 ### Milestone-to-Version Mapping
 
-| Milestone | Version | Status |
-| ----------- | --------- | -------- |
-| M0 — Repository Setup | `v0.1.0` | ✅ Released |
-| M1 — Core Engine | `v0.2.0` | ✅ Released |
-| M2 — Rule Engine | `v0.3.0` | ✅ Released |
-| M3 — CLI | `v0.4.0` | ✅ Released |
-| M4 — FFI + UI Shells | `v0.5.0` | ✅ Released |
-| M5 — Providers | `v0.6.0` | ✅ Released |
-| M6 — Full Native UI | `v0.7.0` | ✅ Released |
-| M7 — Cloud Storage | `v0.8.0` | ✅ Released |
-| M8 — Packaging | `v0.9.0` | ✅ Released |
-| M9 — Database Export | `v0.10.0` | ✅ Released |
-| M10 — Public Release | `v1.0.0` | ✅ Released |
+> **Nothing has ever been publicly released.** "Released" below means *the corresponding version
+> string was reached in `Cargo.toml` during development* — it does **not** mean a GitHub Release,
+> a store submission, or any other public artifact was published. The only GitHub release that
+> exists is the pre-rename *"MetaMancer v1.0-M1"* (2025-06-16, pre-release); the only git tag is
+> `v1.0-M1`. The current version is `1.3.0`, reached after M10.
 
-> **Note:** The project uses `v0.x.0` pre-release versioning through M9.
-> `v1.0.0` is reserved for the first public release at M10.
+| Milestone | Version reached in `Cargo.toml` | Publicly released? |
+| ----------- | --------- | -------- |
+| M0 — Repository Setup | `v0.1.0` | No |
+| M1 — Core Engine | `v0.2.0` | No |
+| M2 — Rule Engine | `v0.3.0` | No |
+| M3 — CLI | `v0.4.0` | No |
+| M4 — FFI + UI Shells | `v0.5.0` | No |
+| M5 — Providers | `v0.6.0` | No |
+| M6 — Full Native UI | `v0.7.0` | No |
+| M7 — Cloud Storage (scaffold only, see PROJECT_STATUS.md) | `v0.8.0` | No |
+| M8 — Packaging (tooling built, nothing submitted) | `v0.9.0` | No |
+| M9 — Database Export (scaffold only, see PROJECT_STATUS.md) | `v0.10.0` | No |
+| M10 — Secure Media Server (scaffold only, see PROJECT_STATUS.md) | `v1.0.0` | No |
+
+> **Note:** The project used `v0.x.0` pre-release versioning through M9, then `v1.0.0` at M10 —
+> but `v1.0.0` was never treated as a real public release. Since M10 the version has been bumped
+> to `1.3.0` in further development, still without any public release having been cut. Issue #214
+> tracks actually cutting a real pre-release.
 
 ---
 
@@ -184,18 +192,27 @@ Apple requires `CFBundleShortVersionString` to be a valid `X.Y.Z` format for App
 
 ## CI/CD Pipeline Overview
 
-### 8 Workflows
+### 9 Workflows
 
 | Workflow | File | Trigger | Purpose |
 | ---------- | ------ | --------- | --------- |
-| **Rust Core CI** | `ci-rust.yml` | Push/PR to `main` (crates/**) | Format, lint, test, version-sync |
-| **macOS CI** | `ci-macos.yml` | Push/PR to `main` (macos/**) | Build SwiftUI app |
-| **Windows CI** | `ci-windows.yml` | Push/PR to `main` (windows/**) | Build WinUI 3 app |
-| **Linux CI** | `ci-linux.yml` | Push/PR to `main` (crates/mm-gtk/**) | Build GTK4 app under Xvfb |
+| **PR Gate (umbrella)** | `pr-gate.yml` | Every PR, no path filter | Single required status check on `main` — detects changed paths, conditionally invokes the 4 platform CIs below as reusable (`workflow_call`) jobs, aggregates as the `Gate` job. See `.claude/CLAUDE.md` for the full pattern and why it exists |
+| **Rust Core CI** | `ci-rust.yml` | `workflow_call` from `pr-gate.yml` + push to `main` (crates/**) | Format, lint, test, version-sync |
+| **macOS CI** | `ci-macos.yml` | `workflow_call` from `pr-gate.yml` + push to `main` (macos/**) | Build SwiftUI app (`swift build` + `swift test`) |
+| **Windows CI** | `ci-windows.yml` | `workflow_call` from `pr-gate.yml` + push to `main` (windows/**) | Build WinUI 3 app — currently de-scoped from PR Gate pending #148 |
+| **Linux CI** | `ci-linux.yml` | `workflow_call` from `pr-gate.yml` + push to `main` (crates/mm-gtk/**) | Build GTK4 app under Xvfb |
 | **Version Bump** | `version-bump.yml` | Manual (`workflow_dispatch`) | Bump version across all files |
-| **Release Build** | `release.yml` | Tag push (`v*`) | Build all platforms, create release |
-| **Security Audit** | `audit.yml` | Weekly + push to `main` | `cargo deny` + `cargo audit` |
+| **Release Build** | `release.yml` | Tag push (`v*`) | Build all platforms, create release — no tag has ever actually been pushed |
+| **Security Audit** | `audit.yml` | Weekly + push to `main` | `cargo deny` + `cargo audit` — currently failing, see issue #203 |
 | **Documentation** | `docs.yml` | Push to `main` (crates/**) | Generate `cargo doc` |
+
+> `ci-rust.yml`, `ci-macos.yml`, `ci-windows.yml`, and `ci-linux.yml` must never gain a
+> `pull_request:` trigger of their own — they are reached only via `workflow_call:` from
+> `pr-gate.yml`, otherwise PR runs would duplicate. See `.claude/CLAUDE.md` "Branch protection"
+> section before changing any of this.
+>
+> **Cargo is not on the default `PATH` in this development environment.** Run
+> `export PATH="$HOME/.cargo/bin:$PATH"` before any `cargo` command in a fresh shell.
 
 ### Release Workflow Details
 
@@ -669,6 +686,12 @@ If any step fails, the temp file is deleted and the original is **untouched**.
 `~/.config/meedyamanager/corruption.log` with a timestamp, file path, and
 error message.
 
+> **Two config directories in use (issue #212):** the corruption log and the Test Mode manifest
+> live under lowercase `meedyamanager/`, while the main settings directory used by `AppConfig`
+> is capitalised `MeedyaManager/`. macOS and Windows filesystems are case-insensitive so this is
+> invisible there, but on Linux (case-sensitive) these are two separate directories. Consolidate
+> before relying on a single config directory in tooling or documentation.
+
 ---
 
 ## Background Service Mode
@@ -730,9 +753,16 @@ updates.
 
 ## Test Mode (Safe Edit Mode)
 
-Test Mode prevents MeedyaManager from modifying original media files during
-edit/tag operations.  When enabled, all writes create a duplicate with a
-`_MeedyaManager` suffix (e.g. `track.mp3` → `track_MeedyaManager.mp3`).
+Test Mode is *designed* to prevent MeedyaManager from modifying original media files during
+edit/tag operations, creating a duplicate with a `_MeedyaManager` suffix instead
+(e.g. `track.mp3` → `track_MeedyaManager.mp3`) when enabled.
+
+> **Status: not currently enforced (issue #128).** `write_tags_safe()` correctly delegates to
+> `write_tags_test_mode()` when Test Mode is active, but all three real call sites
+> (`mm-cli/src/commands/edit.rs`, `mm-gtk/src/ui/metadata_panel.rs`, `mm-ffi/src/uniffi_api.rs`)
+> call `metadata::write_tags()` directly instead, which always writes to the original file. Until
+> #128 is fixed, enabling Test Mode does **not** protect your files from `meedya edit`, the GTK
+> metadata panel, or the FFI layer.
 
 ### Implementation
 
@@ -783,11 +813,15 @@ All platform UIs include a "Privacy Policy" link in Settings / About.
 
 ---
 
-## Codec Registry (`config/codecs.json5`) — Planned for v1.3.0
+## Codec Registry (`config/codecs.json5`) — Status: not yet implemented
+
+> **The current version is already `1.3.0`, and `config/codecs.json5` still does not exist.**
+> Only its JSON Schema (`config/schemas/codecs.schema.json`) has been written. Do not describe
+> this feature as shipping "in v1.3.0" — that version has already passed without it landing.
 
 The **codec registry** is a separate developer-only reference file that maps
 audio/video *codecs* (the actual encoding algorithms) independently of file
-extensions.  This enables:
+extensions.  Once built, it would enable:
 
 - **Tagging capability detection** at the codec level (e.g. bare `.ac3` streams
   are not taggable, but AAC inside `.m4a` is)
@@ -806,11 +840,12 @@ See `config/schemas/codecs.schema.json` for the full JSON Schema definition.
 | Concern | Filetype Registry | Codec Registry |
 | ------- | ----------------- | -------------- |
 | Scope | File extensions | Encoding algorithms |
-| User override | Via Settings UI (v1.3.0) | **No** — dev-only |
-| Embedded | `include_str!()` | `include_str!()` |
-| Runtime override | `MEEDYA_FILETYPES_OVERRIDE` env var (dev only, v1.3.0) | None |
+| User override | Via a user override file (see "Managing File Type Definitions" above) | **No** — dev-only, once built |
+| Embedded | `include_str!()` | `include_str!()`, once built |
+| Runtime override | User override file at `~/.config/meedyamanager/filetypes.json5` | None |
 
-Tracked by GitHub Issue **#151**.
+> No GitHub issue currently tracks this. An earlier draft cited **#151**, but that issue is
+> actually *"ci(audit): complete deny.toml v2 migration"* and is unrelated to the codec registry.
 
 ---
 
@@ -823,8 +858,8 @@ in `config/schemas/`:
 | ----------- | ----------- | ------- |
 | `config/filetypes.json5` | `config/schemas/filetypes.schema.json` | File type registry validation |
 | `config/tags.json5` | `config/schemas/tags.schema.json` | Metadata tag registry validation |
-| `config/settings.json5` | `config/schemas/settings.schema.json` | User settings validation |
-| `config/codecs.json5` *(v1.3.0)* | `config/schemas/codecs.schema.json` | Codec registry validation |
+| `config/settings.json5` | `config/schemas/settings.schema.json` | User settings validation — **currently mismatched with the real `AppConfig` struct** (issue #211); since `AppConfig` is `#[serde(default)]` with no `deny_unknown_fields`, loading the shipped file silently produces all-default settings rather than an error |
+| `config/codecs.json5` *(not yet implemented — schema only)* | `config/schemas/codecs.schema.json` | Codec registry validation |
 
 ### Schema Version
 
@@ -910,7 +945,9 @@ MeedyaManager collects **no user data** and performs **no tracking**.
 - [x] Hardened Runtime enabled
 - [x] `LSApplicationCategoryType` set (`public.app-category.utilities`)
 - [x] `LSMinimumSystemVersion` set (`15.0`)
-- [x] GPL-2.0 `LICENSE` included in `Contents/Resources/`
+- [ ] GPL-2.0 `LICENSE` included in `Contents/Resources/` — **blocked: no `LICENSE` file is
+      currently tracked in the repository (issue #207)**, so the copy step above has nothing to
+      copy until that is fixed
 - [ ] **Xcode project** (`.xcodeproj`) — required for Mac App Store submission
       alongside the SwiftPM package (direct distribution uses SPM only)
 - [ ] **App Store Connect** — create app record, screenshots, description
@@ -945,8 +982,11 @@ Chrome OS can run Linux apps via Crostini.  Distribution options:
 
 ## Workspace Lint Configuration
 
-As of v1.3.1, the project uses Cargo's `[workspace.lints]` feature to share lint
-configuration across all 8 workspace crates.
+The project uses Cargo's `[workspace.lints]` feature to share lint configuration
+across all 8 workspace-*member* crates (`mm-gtk` is a 9th crate directory but is
+excluded from `[workspace] members`, so it does not inherit these lints automatically).
+This work is sometimes labelled "v1.3.1" in the changelog, but `Cargo.toml` has never
+actually been bumped past `1.3.0` — do not cite a `v1.3.1` release.
 
 ### How It Works
 

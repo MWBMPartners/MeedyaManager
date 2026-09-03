@@ -2,14 +2,20 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-Welcome to MeedyaManager — a cross-platform media file manager and auto-organizer. This guide walks you through installation, first run, and basic configuration.
+Welcome to MeedyaManager — a cross-platform media file manager and auto-organizer. This guide
+walks you through building it, running your first scan, and basic configuration.
+
+> **No installers exist yet.** MeedyaManager has not had a public release — the only GitHub
+> release is the pre-rename "MetaMancer v1.0-M1" pre-release from 2025-06-16, and there is no
+> `.msix`, `.dmg`, `.deb`, `.rpm`, Flatpak, Snap, or AppImage artefact you can download today.
+> Everything below is build-from-source instructions.
 
 ---
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Installation](#installation)
+2. [Building From Source](#building-from-source)
 3. [First Run](#first-run)
 4. [Basic Configuration](#basic-configuration)
 5. [Metadata Lookup](#metadata-lookup)
@@ -19,57 +25,58 @@ Welcome to MeedyaManager — a cross-platform media file manager and auto-organi
 
 ## Prerequisites
 
-**No prerequisites required for end users.** MeedyaManager is a self-contained native binary — no runtime, no interpreter, no external libraries to install.
-
-| Component | Requirement |
-| --------- | ----------- |
-| **OS** | Windows 10/11 (x64 or ARM64), macOS 13+ (Apple Silicon), or Linux (x64 or ARM64) |
-| **Disk Space** | ~20 MB |
-| **RAM** | ~30 MB at idle; lightweight background watcher |
-
-### For Developers (Building from Source)
-
 | Component | Requirement |
 | --------- | ----------- |
 | **Rust** | 1.85+ — [rustup.rs](https://rustup.rs) |
-| **Platform tools** | Linux: `libgtk-4-dev`, `libadwaita-1-dev`; macOS/Windows: none |
-| **OS** | Windows (x64/ARM64), macOS (Apple Silicon), or Linux (x64/ARM64) |
+| **Platform tools** | Linux: `libgtk-4-dev`, `libadwaita-1-dev` (only needed for the `mm-gtk` UI, which is not a workspace member by default — see below); macOS/Windows: none extra for the CLI |
+| **OS** | Windows (x64/ARM64), macOS (Apple Silicon only), or Linux (x64/ARM64) |
 
 ---
 
-## Installation
-
-### From a Release Package (Recommended)
-
-1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MeedyaManager/releases)
-2. Install:
-   - **Windows:** Run the `.msix` installer (or double-click from File Explorer)
-   - **macOS:** Open the `.dmg` and drag MeedyaManager to Applications
-   - **Linux:** Install via `.deb`, `.rpm`, Flatpak, Snap, or run the `.AppImage` directly
-3. Launch MeedyaManager. No additional setup required.
-
-> The `meedya` CLI binary is added to your PATH by the installer on all platforms.
-
-### From Source (Development)
+## Building From Source
 
 ```bash
 # Clone the repository
 git clone https://github.com/MWBMPartners/MeedyaManager.git
 cd MeedyaManager
 
-# Build all crates
+# Build the 8-crate Rust workspace (mm-core, mm-cli, mm-providers, mm-cloud,
+# mm-export, mm-server, mm-ffi, mm-update)
 cargo build --release
-
-# The CLI binary is at:
-#   target/release/meedya           (macOS / Linux)
-#   target\release\meedya.exe       (Windows)
 ```
 
-To install the CLI binary system-wide:
+> **`cargo build --workspace` does NOT build the Linux GTK4 UI.** `mm-gtk` is deliberately
+> excluded from the workspace `members` list (it needs the Linux-only `gettextrs` crate), so a
+> plain workspace build produces the CLI and libraries only. To build the GTK4 UI on Linux:
+>
+> ```bash
+> cargo build --release -p mm-gtk
+> ```
+>
+> Standalone building of `mm-gtk` outside a full workspace checkout is currently broken — see
+> issue [#199](https://github.com/MWBMPartners/MeedyaManager/issues/199).
+
+The CLI binary is produced at:
+
+```text
+target/release/meedya           (macOS / Linux)
+target\release\meedya.exe       (Windows)
+```
+
+To install the CLI binary on your `PATH`:
 
 ```bash
 cargo install --path crates/mm-cli
 ```
+
+### Building the platform GUIs
+
+- **macOS:** `macos/Package.swift` is a Swift Package (there is no `.xcodeproj`). It targets
+  macOS 15 and needs Xcode 26.3+ / Swift 6.3 to build. Open the folder in Xcode, or run
+  `swift build -c release` from `macos/`.
+- **Windows:** `windows/MeedyaManager` is a WinUI 3 / .NET project — open the solution in Visual
+  Studio 2022+ with the Windows App SDK workload, or build with `dotnet build`.
+- **Linux:** see the `mm-gtk` note above.
 
 ---
 
@@ -94,42 +101,54 @@ This displays all detected metadata, including:
 For JSON output (useful for scripting):
 
 ```bash
-meedya debug path/to/song.mp3 --json
+meedya --json debug path/to/song.mp3
 ```
 
 ### Preview Renames for a Directory
 
-Scan a directory and preview what MeedyaManager would rename each file to, without touching anything:
+Scan a directory and preview what MeedyaManager would rename each file to, without touching
+anything:
 
 ```bash
 meedya scan ~/Music --dry-run
 ```
 
+> ### ⚠️ Before you ever pass `--execute`
+>
+> `meedya scan --execute` performs the renames for real, and it has a known data-loss bug
+> (issue [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201)): if your rename
+> template causes two different source files to resolve to the same destination path, the
+> second rename silently overwrites the first — there is no prompt and no backup. This can also
+> happen when a folder-shaped template gets flattened. **Always run `meedya scan` in preview
+> mode first (the default — no `--execute`, or explicit `--dry-run`) and check the whole preview
+> list for duplicate destination paths before you add `--execute` on anything you cannot afford
+> to lose.** See [cli-reference.md](cli-reference.md#meedya-scan) for the full warning.
+
 ### Start the Folder Watcher
 
-Watch directories for new media files and process them automatically:
+Watch directories for new media files and log what happens. `watch` on its own only **logs**
+file-system events — it does not rename or move anything unless you add `--organize`:
 
 ```bash
-# Preview mode — logs what would happen, no files moved
-meedya watch --dry-run
-
-# Live mode — renames/moves files according to your rules
+# Log-only — nothing is moved, regardless of --dry-run
 meedya watch
+
+# Actually organise files as they arrive (this is the one that renames/moves)
+meedya watch --organize
+
+# Preview what --organize would do, without moving files
+meedya watch --organize --dry-run
 ```
 
-> **Tip:** Always run with `--dry-run` first to verify your rules produce the expected results before enabling live file operations.
+> **Tip:** Always run with `--organize --dry-run` first to verify your rules produce the
+> expected results before enabling live file operations.
 
 ### Launch the GUI
 
-**Linux (GTK4):**
+**Linux (GTK4):** build and run `mm-gtk` as shown above (`cargo run --release -p mm-gtk`).
 
-```bash
-meedya-gtk
-```
-
-**macOS:** Open MeedyaManager from Launchpad or Spotlight.
-
-**Windows:** Open MeedyaManager from the Start menu.
+**macOS / Windows:** build the platform app as shown above and launch it from Xcode / Visual
+Studio, or the built app bundle, until a packaged release exists.
 
 ---
 
@@ -143,7 +162,8 @@ MeedyaManager stores its configuration in a JSON5 file. The location is:
 | **Linux** | `~/.config/MeedyaManager/settings.json5` |
 | **Windows** | `%APPDATA%\MeedyaManager\settings.json5` |
 
-A default configuration is created automatically on first run. To open it:
+A default configuration is created automatically on first run (or via `meedya config init`). To
+view it:
 
 ```bash
 meedya config show
@@ -175,38 +195,30 @@ meedya config show
 }
 ```
 
-See [configuration.md](configuration.md) for the full settings reference.
+See [configuration.md](configuration.md) for the full settings reference — and note that the
+example config file shipped in this repo's `config/settings.json5` uses a **different, stale
+schema** and does not match this reference; do not copy it.
 
 ---
 
 ## Metadata Lookup
 
-MeedyaManager can look up and enrich your media files with metadata from 19+ online providers including Spotify, Apple Music, MusicBrainz, TMDB, TVDB, and more.
-
-### Quick Examples
+> **⚠️ Status: not yet implemented.** `meedya lookup` is still a stub (see
+> [cli-reference.md](cli-reference.md#meedya-lookup)). It parses its arguments and prints a
+> "coming in M5" message; it does not query any provider or write any tag yet, even though the
+> M5 milestone issues are closed on GitHub. The examples below show the intended future syntax,
+> not working commands.
 
 ```bash
-# Look up metadata for a single file
-meedya lookup path/to/song.mp3
-
-# Restrict to specific providers
-meedya lookup song.mp3 --providers spotify,musicbrainz
-
-# Auto-apply the best match (confidence >= 80%)
-meedya lookup song.mp3 --auto
-
-# Preview changes without writing tags
-meedya lookup song.mp3 --dry-run
-
-# List all configured providers and their status
-meedya lookup --list-providers
+# Not yet functional — prints a stub message today
+meedya lookup "Never Gonna Give You Up"
+meedya lookup "Never Gonna Give You Up" --provider musicbrainz
+meedya lookup "Never Gonna Give You Up" --auto
 ```
 
-### GUI Lookup
-
-In the native GUI, the **Lookup** panel provides the same functionality with a visual match-comparison view, side-by-side tag diffs, and one-click apply. Files can be dragged and dropped directly onto the panel.
-
-See the [providers/](providers/) directory for setup guides for each provider.
+The `mm-providers` library underneath already implements 13 working metadata providers (plus 6
+disabled stub providers) across music, video, and podcasts — see [providers/](providers/) for
+what each one actually does — but nothing in the CLI or GUI wires them up yet.
 
 ---
 
@@ -217,6 +229,6 @@ See the [providers/](providers/) directory for setup guides for each provider.
 - **Configuration reference:** [configuration.md](configuration.md) — all settings explained
 - **Supported formats:** [supported-formats.md](supported-formats.md)
 - **Background service:** [background-service.md](background-service.md) — run MeedyaManager at startup
-- **Metadata providers:** [providers/](providers/) — setup guides for all 19+ providers
+- **Metadata providers:** [providers/](providers/) — what's real and what's a stub, provider by provider
 - **Troubleshooting:** [troubleshooting.md](troubleshooting.md)
 - **FAQ:** [faq.md](faq.md)

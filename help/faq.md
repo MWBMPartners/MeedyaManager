@@ -17,8 +17,10 @@ Yes. MeedyaManager is open-source software licensed under GPL-2.0-or-later.
 ### What platforms are supported?
 
 - **Windows** — x64 and ARM64 (Windows 10/11)
-- **macOS** — Apple Silicon (M-series) only, macOS 13+
+- **macOS** — Apple Silicon (M-series) only, macOS 15+ (`macos/Package.swift` requires it)
 - **Linux** — x86_64 and ARM64
+
+There is no public release yet — see [getting-started.md](getting-started.md) for build-from-source instructions.
 
 ### Does it run in the background?
 
@@ -34,7 +36,7 @@ See [background-service.md](background-service.md) for full details.
 
 ### Will it mess up my files?
 
-By default, `meedya watch` runs in **preview mode** — it logs what it *would* do without moving or renaming anything. Pass `--dry-run` explicitly to any command to always preview first. MeedyaManager also detects file locks and never touches files that are open in another application.
+By default, `meedya watch` only **logs** file-system events — it does not rename or move anything at all unless you pass `--organize`, and `--dry-run` previews what `--organize` would do. There is currently no file-lock detection: the file watcher (`crates/mm-core/src/watcher`) has no lock/retry/queue logic, so a file that's still being written by another application could in principle be picked up mid-write. In practice this mostly matters for `--organize`/the background service; plain `meedya watch` without `--organize` never touches files regardless.
 
 ---
 
@@ -50,7 +52,11 @@ MP4, M4V, MKV, AVI, DivX, MPG/MPEG, HEVC, MOV, WMV, WebM, TS. See [supported-for
 
 ### Can it detect Dolby Atmos / Spatial Audio?
 
-Yes. MeedyaManager detects spatial audio formats including Dolby Atmos, Sony 360 Reality Audio, and Apple Spatial Audio. These properties are available as tags in your rename templates.
+> **Status: not yet implemented.** There is currently no spatial-audio or HDR/Dolby Vision
+> detection code anywhere in `mm-core` — no Dolby Atmos, Sony 360 Reality Audio, or Apple
+> Spatial Audio detection exists yet. This is tracked by open issues
+> [#131](https://github.com/MWBMPartners/MeedyaManager/issues/131) (spatial audio) and
+> [#164](https://github.com/MWBMPartners/MeedyaManager/issues/164) (HDR).
 
 ### Can it tell the difference between lossy and lossless?
 
@@ -80,16 +86,16 @@ These can be nested to any depth.
 
 ### Is there a limit on custom tags?
 
-No. MeedyaManager supports unlimited custom tags via the `<Custom:Name>` syntax.
+Yes — up to 16. MeedyaManager supports `Custom1` through `Custom16` (`crates/mm-core/src/rule_engine/tag_registry.rs:241-256`); there is no arbitrary-name `<Custom:Name>` syntax. See [custom-tags.md](custom-tags.md).
 
 ### Can I preview rules before applying them?
 
 Yes — use `--dry-run` on any command:
 
 ```bash
-meedya watch --dry-run
+meedya watch --organize --dry-run
 meedya scan ~/Music --dry-run
-meedya rule test --template "<Artist>/<Album>/<Title>" ~/Music/song.mp3
+meedya rule test "<Artist>/<Album>/<Title>" ~/Music/song.mp3
 ```
 
 ---
@@ -126,7 +132,11 @@ Or in a `.env` file next to `settings.json5`. See [configuration.md](configurati
 
 ### Can it run as a Windows Service?
 
-Yes. MeedyaManager registers as a native Windows Service via `meedya service install`. It starts automatically at boot, no login required.
+Yes. MeedyaManager registers as a native Windows Service via `meedya service install`
+(`crates/mm-core/src/service.rs` shells out to `sc` on Windows, `launchctl` on macOS, and
+`systemctl` on Linux — this is real, working code, unlike some of the other subsystems on this
+page). See [background-service.md](background-service.md) for exactly which account/login
+context each platform's service runs under.
 
 ### Can it run as a macOS LaunchAgent?
 
@@ -138,7 +148,10 @@ Yes. `meedya service install` creates a systemd user unit that starts at login. 
 
 ### What happens if a file is in use?
 
-MeedyaManager detects file locks and queues the file for automatic retry. Once the lock is released, the file is processed. This prevents corruption from partial reads.
+> **Status: not yet implemented.** There is no file-lock detection or retry-queue code in
+> `crates/mm-core/src/watcher` today — a file open in another application is not specially
+> detected or deferred. Avoid pointing watch folders at directories where files are actively
+> being downloaded or written until this is addressed.
 
 ---
 
@@ -153,25 +166,32 @@ MeedyaManager uses [lofty](https://crates.io/crates/lofty) — a pure-Rust audio
 Yes. Use `meedya edit`:
 
 ```bash
-meedya edit song.mp3 --tag "Artist=My Artist" --tag "Title=My Title"
+meedya edit song.mp3 --set "Artist=My Artist" --set "Title=My Title"
 meedya edit song.mp3 --cover /path/to/cover.jpg
-meedya edit song.mp3 --remove-tag Comment
+meedya edit song.mp3 --remove Comment
 ```
+
+Note that this writes directly to the original file even when Test Mode is on — `meedya edit`
+does not route through the Test Mode safety path yet
+(issue [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128)).
 
 ### Can it look up metadata online?
 
-Yes. MeedyaManager supports 19+ metadata providers across music, video, and podcast categories:
+The `mm-providers` library implements 19 providers across music, video, and podcasts, of which
+13 are real (working, tested integrations) and 6 are disabled stub providers (Tidal, Shazam,
+YouTube Music, iHeart, and two others — see [providers/](providers/) for which is which). There
+is **no AcoustID provider** despite older documentation mentioning one, and the video provider
+sometimes called "IMDb" is actually an OMDb-backed provider (id `omdb`) that requires an API
+key.
 
-**Music:** MusicBrainz, Spotify, Apple Music, Tidal, Deezer, Amazon Music, YouTube Music, iHeart, Pandora, Shazam, ISRC, ISWC, AcoustID
-
-**Video:** TMDb, TVDB, IMDb, Apple TV, iTunes Store, EIDR
-
-**Podcasts:** Apple Podcasts
+**However, `meedya lookup` itself is a stub** — it does not query any of these providers yet
+(issue tracked as part of the still-open work following the closed M5 milestone). See
+[cli-reference.md](cli-reference.md#meedya-lookup).
 
 ```bash
-meedya lookup song.mp3               # search all enabled providers
-meedya lookup song.mp3 -p musicbrainz  # search specific provider
-meedya lookup --list-providers       # see all providers and their status
+# These parse but currently just print a "coming" message — no provider is queried
+meedya lookup "song title"
+meedya lookup "song title" --provider musicbrainz
 ```
 
 ---
@@ -180,26 +200,36 @@ meedya lookup --list-providers       # see all providers and their status
 
 ### Can it organise files on cloud storage?
 
-Yes. MeedyaManager supports monitoring OneDrive, Google Drive, Dropbox, MEGA, and iCloud — including detecting new files added via sync clients. See [providers/](providers/) for cloud setup.
+> **Status: architectural scaffolding, not working yet.** `mm-cloud` has typed structures for
+> OneDrive, Google Drive, Dropbox, MEGA, and iCloud, but there are no real network calls — OAuth
+> flows exist only as comments, and provider response parsing is stubbed (e.g.
+> `crates/mm-cloud/src/onedrive.rs:90` explicitly says "in production this parses `reqwest::
+> Response` JSON; here it is a stub"). Do not point this at a real cloud account expecting it to
+> do anything yet.
 
 ### Can it export my library to a database?
 
-Yes. Use `meedya export`:
+> **Status: architectural scaffolding, not working yet.** `meedya export` accepts a full set of
+> flags and can print the schema it would create (`--show-schema`), but it never opens a
+> database connection or writes a row — `crates/mm-export/src/sqlite.rs:30` says plainly "in
+> production this holds a `sqlx::SqlitePool`", meaning it currently does not.
 
 ```bash
-meedya export --format sqlite --out ~/library.db
-meedya export --format postgres --url postgresql://user:pass@host/db
+# Prints a summary but writes nothing to disk or to any database
+meedya export --db sqlite:///home/user/library.db
 ```
 
-Supported databases: SQLite, MySQL, MariaDB, PostgreSQL, SQL Server.
+Planned backends: SQLite, MySQL, MariaDB, PostgreSQL, SQL Server (`mssql`). See
+[cli-reference.md](cli-reference.md#meedya-export) for the real flag names.
 
 ### Does it have a media server?
 
-Yes. `meedya serve` starts an HTTPS media server with JWT authentication:
-
-```bash
-meedya serve --port 8443 --cert /path/to/cert.pem --key /path/to/key.pem
-```
+> **Status: architectural scaffolding, not working yet.** `meedya serve` parses server config
+> and can print the intended route table, but it never starts a server —
+> `crates/mm-cli/src/commands/serve.rs:337-342` prints "Server stub: exiting cleanly" and exits.
+> There is no `.route(` call anywhere in `mm-server`, and the repository has zero `.html` files,
+> so there is also no bundled web frontend to serve. See
+> [cli-reference.md](cli-reference.md#meedya-serve).
 
 ---
 

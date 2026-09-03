@@ -2,139 +2,183 @@
 
 > **(C) 2025–2026 MWBM Partners Ltd**
 
-MeedyaManager supports a wide range of audio, video, and companion file formats.
+MeedyaManager recognises the audio, video, subtitle, and companion file formats listed below.
+This page reflects the actual registry in `config/filetypes.json5`
+(`crates/mm-core/src/filetype_registry.rs`) — see [Custom File Types](custom-filetypes.md) if
+you want to add a format that isn't here.
 
 ---
 
 ## 🎵 Audio Formats
 
-| Extension | Format Name | Lossy/Lossless | Notes |
-| --------- | ----------- | -------------- | ----- |
-| `.mp3` | MPEG Audio Layer 3 | Lossy | Most common audio format |
-| `.flac` | Free Lossless Audio Codec | Lossless | Open-source lossless |
-| `.alac` | Apple Lossless Audio Codec | Lossless | Typically in `.m4a` container |
-| `.m4a` | MPEG-4 Audio | Both | AAC (lossy) or ALAC (lossless) |
-| `.ogg` | Ogg Vorbis | Lossy | Open-source alternative to MP3 |
-| `.opus` | Opus Audio | Lossy | Modern, efficient codec |
-| `.wav` | Waveform Audio | Lossless (PCM) | Uncompressed audio |
-| `.aiff` | Audio Interchange File Format | Lossless (PCM) | Apple's uncompressed format |
-| `.aac` | Advanced Audio Coding | Lossy | Common in streaming |
-| `.wma` | Windows Media Audio | Both | Microsoft format |
-| `.ac3` | Dolby Digital (AC-3) | Lossy | 5.1 surround sound |
-| `.eac3` | Dolby Digital Plus (E-AC-3) | Lossy | Enhanced Dolby Digital |
-| `.ac4` | Dolby AC-4 | Lossy | Next-gen Dolby codec |
-| `.mka` | Matroska Audio | Both | Audio-only Matroska container |
-| `.dts` | DTS Digital Surround | Lossy | Surround sound codec |
+### Lossy compressed
+
+| Extension | Format Name |
+| --------- | ----------- |
+| `.mp3` | MP3 |
+| `.aac` | AAC |
+| `.m4a` | M4A (AAC or ALAC container) |
+| `.m4b` | M4B (Audiobook) |
+| `.m4r` | M4R (iPhone Ringtone) |
+| `.ogg`, `.oga` | Ogg Vorbis / Ogg Audio |
+| `.opus` | Opus |
+| `.wma` | WMA |
+| `.amr` | AMR |
+| `.3gp` | 3GPP Audio |
+| `.mp2` | MP2 |
+| `.ra` | RealAudio |
+| `.mpc` | Musepack |
+| `.spx` | Speex |
+| `.snd` | NeXT/Sun Audio |
+
+### Lossless compressed
+
+| Extension | Format Name |
+| --------- | ----------- |
+| `.flac` | FLAC |
+| `.alac` | ALAC |
+| `.ape` | Monkey's Audio (APE) |
+| `.wv` | WavPack |
+| `.tta` | True Audio (TTA) |
+
+### Uncompressed / PCM
+
+| Extension | Format Name |
+| --------- | ----------- |
+| `.wav` | WAV (PCM) |
+| `.aiff`, `.aif` | AIFF |
+| `.aifc` | AIFF-C |
+| `.au` | Sun AU |
+| `.caf` | Core Audio Format |
+
+### Tracker / chiptune / MIDI
+
+| Extension | Format Name |
+| --------- | ----------- |
+| `.mod` | MOD Tracker |
+| `.xm` | XM Tracker |
+| `.it` | Impulse Tracker |
+| `.s3m` | ScreamTracker 3 |
+| `.mid`, `.midi` | MIDI |
+
+There is **no** support for Dolby Digital (`.ac3`), Dolby Digital Plus (`.eac3`), Dolby AC-4
+(`.ac4`), DTS (`.dts`), or Matroska Audio (`.mka`) — none of these extensions appear in the
+registry.
 
 ---
 
 ## 🎬 Video Formats
 
-| Extension | Format Name | Container | Notes |
-| --------- | ----------- | --------- | ----- |
-| `.mp4` | MPEG-4 Part 14 | MP4 | Most common video container |
-| `.m4v` | MPEG-4 Video | MP4 | Apple's MP4 variant |
-| `.mkv` | Matroska Video | Matroska | Flexible open container |
-| `.avi` | Audio Video Interleave | AVI | Legacy Microsoft format |
-| `.divx` | DivX Video | AVI/MKV | DivX-encoded video |
-| `.mpg` / `.mpeg` | MPEG Video | MPEG | Legacy MPEG-1/2 |
-| `.hevc` | High Efficiency Video Coding | Various | H.265 video codec |
-| `.mov` | QuickTime Movie | QuickTime | Apple's native video format |
-| `.wmv` | Windows Media Video | ASF | Microsoft video format |
-| `.webm` | WebM Video | WebM | Google's open web format |
-| `.ts` | MPEG Transport Stream | MPEG-TS | Broadcast/streaming format |
+| Extension | Format Name |
+| --------- | ----------- |
+| `.mp4` | MPEG-4 Video |
+| `.m4v` | M4V (iTunes Video) |
+| `.mkv` | Matroska |
+| `.webm` | WebM |
+| `.avi` | AVI |
+| `.mov` | QuickTime MOV |
+| `.wmv` | Windows Media Video |
+| `.flv` | Flash Video |
+| `.f4v` | Flash MP4 Video |
+| `.mpg`, `.mpeg` | MPEG Video |
+| `.ts` | MPEG Transport Stream |
+| `.m2ts`, `.mts` | AVCHD / MPEG-2 Transport Stream |
+| `.vob` | DVD Video Object |
+| `.rmvb`, `.rm` | RealMedia |
+| `.3gp` | 3GPP Video |
+| `.ogv` | Ogg Video |
+| `.divx`, `.xvid` | DivX / Xvid Video |
+| `.dv` | Digital Video (DV) |
+| `.hevc` | HEVC / H.265 |
+| `.heic` | HEIC (Apple video still) |
+| `.avif` | AVIF |
 
 ---
 
-## 🔊 Audio Characteristics Detection
+## 🔊 Audio Quality Classification
 
-MeedyaManager can detect and classify these audio properties:
+MeedyaManager classifies quality using the `lossless` flag recorded per audio format in the
+registry, combined with the file's decoded bitrate (`crates/mm-core/src/classify/mod.rs`):
+`Lossless`, `HiRes` (24-bit/88.2kHz+ or DSD), and lossy tiers `Lossy320`/`Lossy256`/`Lossy192`/
+`Lossy128`/`LossyLow`. This is a straightforward registry lookup plus a bitrate comparison —
+there is **no MediaInfo integration** (issue
+[#130](https://github.com/MWBMPartners/MeedyaManager/issues/130), open) and no codec-name
+detection beyond the file extension.
 
-### Lossy vs Lossless
+**Not implemented** (all open issues — do not expect these today):
 
-| Quality Type | Codecs | Detection Method |
-| ------------ | ------ | ---------------- |
-| **Lossless** | FLAC, ALAC, WAV, AIFF, WMA Lossless | Codec identification via MediaInfo |
-| **Lossy** | MP3, AAC, OGG Vorbis, Opus, WMA, AC3, EAC3 | Codec identification via MediaInfo |
-
-### Multichannel Formats
-
-| Format | Codec | Typical Channels |
-| ------ | ----- | ---------------- |
-| **Dolby Digital** | AC-3 | 5.1 |
-| **Dolby Digital Plus** | E-AC-3 | 5.1, 7.1 |
-| **Dolby AC-4** | AC-4 | 5.1, 7.1, Atmos |
-| **DTS** | DTS | 5.1 |
-| **DTS-HD** | DTS-HD MA | 5.1, 7.1 |
-
-### Spatial Audio
-
-| Format | Detection | Notes |
-| ------ | --------- | ----- |
-| **Dolby Atmos** | Extended codec metadata in E-AC-3/AC-4 | Object-based spatial |
-| **Sony 360 Reality Audio** | MPEG-H 3D Audio markers | Sony's spatial format |
-| **Apple Spatial Audio** | Dolby Atmos in MP4/M4A container | Apple's implementation |
-
-### Dolby Vision (Video)
-
-| Profile | Description | Detection |
-| ------- | ----------- | --------- |
-| Profile 5 | Single-layer HDR | HDR metadata flags |
-| Profile 7 | Dual-layer (with HDR10 base) | HDR metadata flags |
-| Profile 8 | Single-layer (with HDR10/SDR base) | HDR metadata flags |
+- **Multichannel format detection** (Dolby Digital, Dolby Digital Plus, DTS, DTS-HD) — there
+  is no channel-layout naming anywhere in the codebase.
+- **Spatial audio detection** (Dolby Atmos, Sony 360 Reality Audio, Apple Spatial Audio) — see
+  issue [#131](https://github.com/MWBMPartners/MeedyaManager/issues/131), open.
+- **Dolby Vision profile detection** (Profile 5/7/8) for video — see issue
+  [#164](https://github.com/MWBMPartners/MeedyaManager/issues/164), open.
 
 ---
 
 ## 📝 Companion File Formats
 
-These files are tracked alongside media files and moved together:
+These files travel alongside a media file when it's renamed or moved. Full details on scope
+(`track`/`album`/`artist`) are in [Custom File Types](custom-filetypes.md#the-real-schema).
 
-### Subtitles
+### Subtitles, Captions, Lyrics, Transcripts
 
-| Extension | Format | Notes |
-| --------- | ------ | ----- |
-| `.srt` | SubRip | Most common subtitle format |
-| `.lrc` | LRC Lyrics | Timed lyrics for music |
-| `.sub` | MicroDVD / SubViewer | Legacy subtitle format |
-| `.ass` / `.ssa` | Advanced SubStation Alpha | Styled subtitles |
-| `.vtt` | WebVTT | Web-standard subtitles |
+| Extension | Format | Kind |
+| --------- | ------ | ---- |
+| `.srt` | SubRip | subtitle |
+| `.sub` | MicroDVD / SubViewer | subtitle |
+| `.ass` / `.ssa` | (Advanced) SubStation Alpha | subtitle |
+| `.vtt` | WebVTT | subtitle |
+| `.idx` | VobSub Index | subtitle |
+| `.smi` | SAMI | subtitle |
+| `.ttml` / `.dfxp` | Timed Text / DFXP | subtitle |
+| `.sbv`, `.srv1`, `.srv2`, `.srv3` | YouTube caption formats | caption |
+| `.cap` | Caption | caption |
+| `.lrc` | Timed Lyrics | lyrics |
+| `.elrc` | Enhanced LRC | lyrics |
+| `.txt` | Plain Text Transcript | transcript |
 
-### Cover Art & Images
+### Disc Images & Archives
 
-| Extension | Format | Notes |
-| --------- | ------ | ----- |
-| `.jpg` / `.jpeg` | JPEG | Most common cover art |
-| `.png` | PNG | Higher quality, transparency |
-| `.bmp` | Bitmap | Legacy format |
-| `cover.mp4` | Animated Cover Art | Animated album art (square/portrait) |
+| Extension | Format |
+| --------- | ------ |
+| `.iso`, `.bin`, `.img`, `.nrg`, `.mdf`, `.mds`, `.daa`, `.udf` | Disc/optical images |
+| `.zip`, `.rar`, `.7z`, `.tar`, `.gz` | Archives (often full album release packages) |
+| `.itlp`, `.itmsp`, `.itms` | Apple iTunes LP / Music Store packages |
 
-### Disc Images
+### Info, Logs, and Playlists
 
-| Extension | Format | Notes |
-| --------- | ------ | ----- |
-| `.iso` | ISO 9660 | Standard disc image |
-| `.nrg` | Nero Image | Nero burning format |
+| Extension | Format |
+| --------- | ------ |
+| `.cue` | Cue Sheet |
+| `.nfo` | Release Info |
+| `.sfv`, `.md5` | Checksum files |
+| `.log` | Rip log (EAC/XLD/dBpoweramp) |
+| `.accurip`, `.crc` | Accuracy-check files |
+| `.m3u`, `.m3u8`, `.pls`, `.xspf`, `.wpl`, `.asx` | Playlists |
 
-### Other
+There is **no** `.pdf` (booklet) or `.nrg`-only-style entry beyond what's listed above.
 
-| Extension | Format | Notes |
-| --------- | ------ | ----- |
-| `.cue` | Cue Sheet | Track listing for disc images |
-| `.nfo` | Info File | Release information |
-| `.pdf` | PDF Booklet | Album booklets, liner notes |
-| `.log` | EAC/XLD Log | Ripping verification log |
+### Cover Art (Detected Separately)
+
+Cover art is **not** part of the extension registry above — it's detected by filename pattern
+in `crates/mm-core/src/companion/mod.rs`. A file qualifies if its extension is one of `.jpg`,
+`.jpeg`, `.png`, `.gif`, `.bmp`, `.webp`, `.tiff`/`.tif` **and** its filename stem
+(case-insensitive) is one of: `cover`, `folder`, `album`, `front`, `back`, `inlay`, `booklet`,
+`artwork`, `thumb`, `thumbnail`, or `poster` — e.g. `cover.jpg`, `Folder.PNG`, `front.webp`. A
+file like `vacation.jpg` or `photo.png` is **not** treated as cover art. There is no animated
+cover art (`.mp4`) support of any kind.
 
 ---
 
 ## 🔧 Companion File Behaviour
 
-When MeedyaManager moves media files, companion files in the same directory are handled as follows:
-
-1. **All media files moved** — All companion files are also moved to the destination
-2. **Some media files moved** — Companion files stay with the remaining media
-3. **Companion file types** are configured in `settings.json5` and can be customised
-
-This ensures subtitles, cover art, and other associated files always stay with their media.
+When MeedyaManager moves a media file, companion files found alongside it in the same
+directory are classified and moved based on the `scope` described above — a `track`-scoped
+file follows a single renamed file, while `album`/`artist`-scoped files apply more broadly.
+There is no `settings.json5` key for customising this behaviour directly — to change which
+extensions are recognised as companions, edit your `filetypes.json5` override (see
+[Custom File Types](custom-filetypes.md)).
 
 ---
 

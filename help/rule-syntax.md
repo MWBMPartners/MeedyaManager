@@ -2,9 +2,9 @@
 
 > **(C) 2025–2026 MWBM Partners Ltd**
 
-MeedyaManager's rule engine uses a template syntax inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates), extended with unlimited custom tags, video support, and audio characteristic detection.
+MeedyaManager's rule engine uses a template syntax inspired by [MusicBee's template system](https://musicbee.fandom.com/wiki/Templates), extended with 16 numbered custom tags, video support, and audio characteristic detection.
 
-> **Implemented in Milestone 3 (v1.2-M3).** The full template syntax described below is fully functional. Legacy `{placeholder}` syntax from M1/M2 is still supported but deprecated — templates are auto-detected.
+> **Implemented in Milestone 3 (v1.2-M3).** The template syntax described below — tag references and the 24 functions listed here — is fully functional and matches `crates/mm-core/src/rule_engine/functions.rs`. Legacy `{placeholder}` syntax from M1/M2 is still supported but deprecated — templates are auto-detected.
 
 ---
 
@@ -13,12 +13,13 @@ MeedyaManager's rule engine uses a template syntax inspired by [MusicBee's templ
 1. [Basic Syntax](#basic-syntax)
 2. [Tag References](#tag-references)
 3. [Functions](#functions)
-4. [Conditional Logic](#conditional-logic)
-5. [String Functions](#string-functions)
-6. [Splitting Functions](#splitting-functions)
-7. [Formatting Functions](#formatting-functions)
-8. [Path Construction](#path-construction)
-9. [Examples](#examples)
+4. [Logical Functions](#logical-functions-6)
+5. [String Functions](#string-functions-8)
+6. [Numeric / Formatting Functions](#numeric--formatting-functions-4)
+7. [Lookup Functions](#lookup-functions-3)
+8. [MeedyaManager Extension Functions](#meedyamanager-extension-functions-3)
+9. [Path Construction](#path-construction)
+10. [Examples](#examples)
 
 ---
 
@@ -33,7 +34,7 @@ A template combines three elements:
 ### Simple Example
 
 ```text
-<Album Artist>/<Album>/<Track #> - <Title>.<Ext>
+<Album Artist>/<Album>/<Track #> - <Title>.<Extension>
 ```
 
 Produces: `Pink Floyd/The Wall/01 - In The Flesh.mp3`
@@ -44,172 +45,225 @@ Produces: `Pink Floyd/The Wall/01 - In The Flesh.mp3`
 
 Tags are enclosed in angle brackets and replaced with the corresponding metadata value.
 
-### Standard Audio Tags
+> The tables below are the **exact** tag set registered in
+> `crates/mm-core/src/rule_engine/tag_registry.rs`. There is no separate set of
+> video-specific tags (`<Show>`, `<Season>`, `<Episode>`, `<Director>`, `<Resolution>`,
+> etc. do not exist) — video files are described using the same standard tags where the
+> underlying container has them, plus the classification tags below.
+
+### Standard Metadata Tags
 
 | Tag | Description | Example |
 | --- | ----------- | ------- |
 | `<Title>` | Track title | "Bohemian Rhapsody" |
 | `<Artist>` | Track artist(s) | "Queen" |
 | `<Album>` | Album name | "A Night at the Opera" |
-| `<Album Artist>` | Album-level artist | "Queen" |
-| `<Year>` | Release year | "1975" |
+| `<Album Artist>` (or `<AlbumArtist>`) | Album-level artist | "Queen" |
+| `<Year>` (or `<Date>`) | Release year | "1975" |
 | `<Genre>` | Genre(s) | "Rock" |
-| `<Track #>` | Track number | "11" |
-| `<Disc #>` | Disc number | "1" |
-| `<Total Tracks>` | Total tracks on disc | "12" |
-| `<Total Discs>` | Total discs in set | "1" |
+| `<Track #>` (or `<Track Number>`, `<TrackNumber>`) | Track number | "11" |
+| `<Disc #>` (or `<Disc Number>`, `<DiscNumber>`) | Disc number | "1" |
+| `<Track Count>` (or `<TrackTotal>`) | Total tracks on disc | "12" |
+| `<Disc Count>` (or `<DiscTotal>`) | Total discs in set | "1" |
 | `<Composer>` | Composer | "Freddie Mercury" |
-| `<Publisher>` | Record label | "EMI" |
+| `<Label>` | Record label | "EMI" |
 | `<Comment>` | Comment field | "Remastered 2011" |
+| `<Lyrics>` | Lyrics | — |
+| `<ISRC>` | International Standard Recording Code | "GBUM71029601" |
+| `<Barcode>` | Release barcode | "5099902987524" |
+| `<Catalog#>` (or `<Catalog Number>`) | Catalogue number | "CDP 7 46001 2" |
+| `<Compilation>` | Compilation flag | "1" |
 | `<BPM>` | Beats per minute | "72" |
 
-### Standard Video Tags
+There is no `<Publisher>` alias for the record label — use `<Label>` (the extended
+`<Publisher>` tag below is a separate, independent metadata field).
 
-| Tag | Description | Example |
-| --- | ----------- | ------- |
-| `<Show>` | TV show name | "Breaking Bad" |
-| `<Season>` | Season number | "5" |
-| `<Episode>` | Episode number | "16" |
-| `<Episode Title>` | Episode title | "Felina" |
-| `<Director>` | Director name | "Vince Gilligan" |
-| `<Resolution>` | Video resolution | "1080p" |
+### Extended Metadata Tags
+
+| Tag | Description |
+| --- | ----------- |
+| `<Sort Title>`, `<Sort Artist>`, `<Sort Album>`, `<Sort Album Artist>`, `<Sort Composer>` | Sort-order variants of the corresponding tag |
+| `<Grouping>` | Grouping field |
+| `<Conductor>` | Conductor |
+| `<Remixer>` | Remixer |
+| `<Producer>` | Producer |
+| `<Lyricist>` | Lyricist |
+| `<Mood>` | Mood |
+| `<Initial Key>` (or `<Key>`) | Musical key |
+| `<Encoder>` | Encoder tool |
+| `<Copyright>` | Copyright string |
+| `<Publisher>` | Publisher (distinct from `<Label>`) |
+| `<Language>` | Language |
+| `<Rating>` | Rating |
+| `<Subtitle>` | Subtitle |
 
 ### Classification Tags
 
+Computed at evaluation time from the media classifier (`crates/mm-core/src/classify`), not
+read from file metadata:
+
 | Tag | Description | Example Values |
 | --- | ----------- | -------------- |
-| `<Media Group>` | Level 1 classification | Audio, Video, Image, Book |
-| `<Format Class>` | Level 2 classification | MP3, FLAC, MP4, MKV |
-| `<Media Class>` | Level 3 classification | Music, Movie, TV Show, Podcast |
-| `<Quality Type>` | Level 4 classification | Lossy, Lossless |
+| `<Media Group>` | Top-level classification | Audio, Video, Image, Document, Archive |
+| `<Media Class>` | What the file actually is | Music, Podcast, Audiobook, Movie, TVShow, MusicVideo, Concert |
+| `<Media Format>` | Container/codec classification | MP3, FLAC, AAC, WAV, AIFF, ALAC, OGG |
+| `<Media Quality>` | Quality tier | Lossless, HiRes, Lossy320, Lossy256, Lossy192, Lossy128, LossyLow |
 
 ### Audio Property Tags
 
+Read from the decoded audio stream, not from tags — `""` if the property is unavailable:
+
 | Tag | Description | Example Values |
 | --- | ----------- | -------------- |
-| `<Codec>` | Audio codec | AAC, FLAC, ALAC, Vorbis, Opus |
-| `<Bitrate>` | Bitrate | "320", "1411" |
-| `<Sample Rate>` | Sample rate | "44100", "96000" |
+| `<Bitrate>` | Bitrate in kbps | "320", "1411" |
+| `<Sample Rate>` | Sample rate in Hz | "44100", "96000" |
 | `<Channels>` | Channel count | "2", "6", "8" |
-| `<Channel Layout>` | Channel layout | "Stereo", "5.1", "7.1" |
-| `<Spatial Format>` | Spatial audio type | "Dolby Atmos", "360 Reality Audio" |
-| `<Multichannel>` | Multichannel format | "Dolby Digital", "Dolby Digital Plus", "DTS" |
 | `<Bit Depth>` | Bit depth | "16", "24", "32" |
+| `<Duration>` | Human-readable duration | "3:42" |
+| `<Duration Secs>` (or `<DurationSecs>`) | Duration in whole seconds | "222" |
+
+There are no `<Codec>`, `<Channel Layout>`, `<Spatial Format>` or `<Multichannel>` tags —
+codec/channel-layout naming and spatial-audio detection (Dolby Atmos, Sony 360 Reality
+Audio, Apple Spatial Audio) are not implemented (see [Supported Formats](supported-formats.md)
+and issue [#131](https://github.com/MWBMPartners/MeedyaManager/issues/131)).
 
 ### File Tags
 
 | Tag | Description | Example |
 | --- | ----------- | ------- |
 | `<Filename>` | Original filename (no extension) | "01 - Song" |
-| `<Ext>` | File extension (no dot) | "mp3" |
-| `<Path>` | Original file path | "/Downloads/song.mp3" |
-| `<File Size>` | File size in bytes | "8234567" |
-| `<Date Added>` | Date file was detected | "2025-06-15" |
+| `<Extension>` | File extension (no dot) | "mp3" |
+| `<Folder>` | Immediate parent directory name | "A Night at the Opera" |
+| `<Full Path>` (or `<Fullpath>`, `<File Path>`, `<Filepath>`) | Full absolute file path | "/Downloads/song.mp3" |
+
+There are no `<File Size>` or `<Date Added>` tags.
 
 ### Custom Tags
 
-Custom tags use the `Custom:` prefix and support unlimited user-defined names:
+MeedyaManager provides exactly **16 numbered custom tag slots** — `<Custom1>` through
+`<Custom16>` — for your own values (SpotifyURL, MusicBrainzID, a personal rating, etc.):
 
 ```text
-<Custom:SpotifyURL>
-<Custom:MusicBrainzID>
-<Custom:MyRating>
+<Custom1>
+<Custom7>
+<Custom16>
 ```
 
-No limit on the number of custom tags (unlike MusicBee's 16-20 limit).
+There is no free-form `<Custom:Name>` syntax and no way to add a 17th slot — see
+[Custom Tags](custom-tags.md) for the full picture.
 
 ---
 
 ## Functions
 
-All functions are prefixed with `$` and use parentheses for arguments.
+All functions are prefixed with `$` and use parentheses for arguments; function names are
+case-insensitive (`$If`, `$if` and `$IF` are equivalent). This is the **complete, exhaustive
+set of 24 functions** implemented in `crates/mm-core/src/rule_engine/functions.rs:120-153` —
+calling anything else fails with `unknown template function`.
 
-### Conditional Logic
+A value is **truthy** for the logical functions below unless it is empty, `"0"`, or `"false"`
+(case-insensitive); everything else, including a tag that resolved to a non-empty string, is
+truthy. There is no built-in `=`/`>`/`<` comparison operator inside `$If` — build the
+condition first with `$Contains`, `$IsMatch` or `$IsNull`, as shown in the examples below.
+
+### Logical Functions (6)
 
 #### `$If` — Conditional Evaluation
 
 ```text
-$If(criteria, trueResult, falseResult)
+$If(condition, trueResult, falseResult?)
 ```
 
-**Criteria operators:** `=`, `>`, `<`
+Returns `trueResult` if `condition` is truthy, otherwise `falseResult` (defaults to `""` if
+omitted).
 
 ```text
-$If(<Genre>=Rock, Rock/<Artist>, Other/<Artist>)
-$If(<Year>>2000, Modern/<Album>, Classic/<Album>)
+$If($Contains(<Genre>, Rock), Rock/<Artist>, Other/<Artist>)
 ```
 
-#### `$And` — Both Conditions True
+#### `$And` — All Values Truthy
 
 ```text
-$If($And(<Genre>=Rock, <Year>>2000), Modern Rock, Other)
+$And(value1, value2, ...)
 ```
 
-#### `$Or` — Either Condition True
+Returns the **last** value if every argument is truthy; otherwise returns `""`.
 
 ```text
-$If($Or(<Genre>=Rock, <Genre>=Metal), Rock & Metal/<Artist>, Other/<Artist>)
+$If($And($Contains(<Genre>, Rock), <Year>), Modern Rock, Other)
 ```
 
-#### `$IsNull` — Handle Missing Tags
+#### `$Or` — First Truthy Value
 
 ```text
-$IsNull(<Album Artist>, <Artist>, <Album Artist>)
+$Or(value1, value2, ...)
 ```
 
-Returns `<Artist>` if `<Album Artist>` is empty; otherwise returns `<Album Artist>`.
+Returns the first truthy argument; otherwise returns `""`.
+
+```text
+$If($Or($Contains(<Genre>, Rock), $Contains(<Genre>, Metal)), Rock & Metal/<Artist>, Other/<Artist>)
+```
+
+#### `$Not` — Negate
+
+```text
+$Not(value)
+```
+
+Returns `"1"` if `value` is falsy; `""` if it is truthy.
+
+```text
+$If($Not($IsNull(<Comment>)), Has Comment, No Comment)
+```
+
+#### `$IsNull` — Test for Empty Tag
+
+```text
+$IsNull(value)
+```
+
+Returns `"1"` if `value` is an empty string; `""` otherwise.
+
+```text
+$If($IsNull(<Album Artist>), <Artist>, <Album Artist>)
+```
+
+Falls back to `<Artist>` when `<Album Artist>` is empty.
 
 #### `$Contains` — Substring Check
 
 ```text
-$If($Contains(<Genre>, Rock)=T, It's Rock, Not Rock)
+$Contains(haystack, needle)
 ```
 
-Returns `"T"` if the tag contains the search text, `"F"` otherwise.
-
-#### `$IsMatch` — Regex Pattern Check
+Case-insensitive. Returns `"1"` if `haystack` contains `needle`; `""` otherwise.
 
 ```text
-$If($IsMatch(<Title>, "^[A-Z]")=T, Starts with letter, Other)
+$If($Contains(<Genre>, Rock), It's Rock, Not Rock)
 ```
-
-Returns `"T"` if the tag matches the regex pattern, `"F"` otherwise.
 
 ---
 
-## String Functions
+### String Functions (8)
 
 #### `$Replace` — Find and Replace
+
+```text
+$Replace(string, search, replacement)
+```
+
+Replaces every occurrence of `search` in `string` with `replacement`.
 
 ```text
 $Replace(<Artist>, &, and)
 ```
 
-#### `$RxReplace` — Regex Replace
-
-```text
-$RxReplace(<Title>, "\s*\(feat\..*?\)", "")
-```
-
-Removes "(feat. ...)" from titles.
-
-#### `$Left` — First N Characters
-
-```text
-$Left(<Artist>, 1)
-```
-
-Returns `"Q"` for "Queen".
-
-#### `$Right` — Last N Characters
-
-```text
-$Right(<Year>, 2)
-```
-
-Returns `"75"` for "1975".
-
 #### `$Upper` — Uppercase
+
+```text
+$Upper(string)
+```
 
 ```text
 $Upper(<Genre>)
@@ -220,52 +274,96 @@ Returns `"ROCK"` for "Rock".
 #### `$Lower` — Lowercase
 
 ```text
-$Lower(<Ext>)
+$Lower(string)
+```
+
+```text
+$Lower(<Extension>)
 ```
 
 Returns `"mp3"` for "MP3".
 
+#### `$Left` — First N Characters
+
+```text
+$Left(string, n)
+```
+
+Clamps to the string's length.
+
+```text
+$Left(<Artist>, 1)
+```
+
+Returns `"Q"` for "Queen".
+
+#### `$Right` — Last N Characters
+
+```text
+$Right(string, n)
+```
+
+Clamps to the string's length.
+
+```text
+$Right(<Year>, 2)
+```
+
+Returns `"75"` for "1975".
+
+#### `$Mid` — Substring
+
+```text
+$Mid(string, start, length?)
+```
+
+Returns the substring starting at the 0-indexed `start` position, for `length` characters
+(or to the end of the string if `length` is omitted).
+
+```text
+$Mid(<Title>, 6, 5)
+```
+
+Returns `"World"` for "Hello World".
+
 #### `$Trim` — Remove Whitespace
+
+```text
+$Trim(string)
+```
+
+Strips leading and trailing whitespace.
 
 ```text
 $Trim(<Title>)
 ```
 
-Removes leading and trailing spaces.
+#### `$Split` — Split and Pick
+
+```text
+$Split(string, separator, index)
+```
+
+Splits `string` on `separator` and returns the 0-indexed element at `index`; returns `""` if
+`index` is out of range.
+
+```text
+$Split(<Artist>, "; ", 0)
+```
+
+For "Artist A; Artist B" returns "Artist A".
 
 ---
 
-## Splitting Functions
+### Numeric / Formatting Functions (4)
 
-#### `$Split` — Split Left-to-Right
-
-```text
-$Split(<Artist>, ;, 1)
-```
-
-For "Artist A; Artist B", returns "Artist A".
-
-#### `$RSplit` — Split Right-to-Left
+#### `$Pad` — Pad to a Minimum Width
 
 ```text
-$RSplit(<Artist>, " ", 1)
+$Pad(string, width, fill_char?)
 ```
 
-For "John Smith", returns "Smith".
-
-#### `$First` — First Multi-Value
-
-```text
-$First(<Genre>)
-```
-
-For "Rock; Progressive Rock", returns "Rock".
-
----
-
-## Formatting Functions
-
-#### `$Pad` — Zero-Pad Numbers
+Left-pads `string` to at least `width` characters using `fill_char` (default `"0"`).
 
 ```text
 $Pad(<Track #>, 2)
@@ -273,29 +371,141 @@ $Pad(<Track #>, 2)
 
 Returns `"01"` for track 1, `"12"` for track 12.
 
-#### `$Date` — Format Dates
+#### `$Date` — Current Date/Time
 
 ```text
-$Date(<Date Added>, yyyy-MM-dd)
+$Date(format?)
 ```
 
-Format tokens: `yyyy` (year), `MM` (month), `dd` (day), `hh` (hours), `mm` (minutes), `ss` (seconds).
-
-#### `$Sort` — Strip Sort Words
+Returns the **current local date/time** (not a tag value) formatted with a
+[chrono strftime pattern](https://docs.rs/chrono/latest/chrono/format/strftime/index.html);
+default format is `%Y-%m-%d`.
 
 ```text
-$Sort(<Artist>)
+$Date(%Y)
 ```
 
-Returns `"Beatles"` for "The Beatles" (strips "The", "A", "An").
+Returns the current 4-digit year, e.g. `"2026"`.
 
-#### `$Group` — Group by Characters
+#### `$Format` — Format a Number
 
 ```text
-$Group(<Artist>, 1)
+$Format(number, decimals?)
 ```
 
-Returns `"Q"` for "Queen" — useful for A-Z folder grouping.
+Parses `number` as a floating-point value and formats it to `decimals` places (default `0`).
+Fails if the input is not numeric.
+
+```text
+$Format(<BPM>, 1)
+```
+
+#### `$Count` — Count Multi-Value Items
+
+```text
+$Count(string, separator?)
+```
+
+Counts the items when `string` is split on `separator` (default `"; "`); returns `"0"` for an
+empty string.
+
+```text
+$Count(<Genre>)
+```
+
+For "Rock; Progressive Rock" returns `"2"`.
+
+---
+
+### Lookup Functions (3)
+
+#### `$Sort` — Sort Multi-Value Items
+
+```text
+$Sort(string, separator?)
+```
+
+Alphabetically sorts the items in a `separator`-delimited string (default `"; "`). This does
+**not** strip leading articles ("The", "A", "An") from artist names — it is a plain
+alphabetical sort of the delimited items.
+
+```text
+$Sort(<Genre>)
+```
+
+For "Rock; Blues" returns "Blues; Rock".
+
+#### `$IsMatch` — Regex Pattern Check
+
+```text
+$IsMatch(string, regex_pattern)
+```
+
+Returns `"1"` if `string` matches `regex_pattern` (compiled patterns are cached); `""`
+otherwise.
+
+```text
+$If($IsMatch(<Title>, "^[A-Z]"), Starts with letter, Other)
+```
+
+#### `$Lookup` — Built-In Table Lookup
+
+```text
+$Lookup(key, table_name)
+```
+
+Looks `key` up in one of two built-in tables and returns "" on a miss — there is no way to
+add custom tables. `table_name` must be one of:
+
+- `genre_folder` — maps genre names (e.g. `rock`, `hip hop`, `jazz`) to a folder label
+  (`Rock`, `Hip-Hop`, `Jazz`, …)
+- `quality_folder` — maps quality labels (e.g. `lossless`, `320 kbps`) to a folder label
+  (`Lossless`, `High Quality`, …)
+
+```text
+$Lookup(<Genre>, genre_folder)
+```
+
+For "Rock" returns "Rock"; for an unmapped genre like "Polka" returns `""`.
+
+---
+
+### MeedyaManager Extension Functions (3)
+
+These three take their value from the rule engine's evaluation context rather than tag
+arguments.
+
+#### `$MediaClass` — Classification Class
+
+```text
+$MediaClass()
+```
+
+Returns the current file's `MediaClass` (e.g. "Music", "Movie", "TV Show") from the
+evaluation context; returns `""` if no classification is available.
+
+#### `$MediaGroup` — Classification Group
+
+```text
+$MediaGroup()
+```
+
+Returns the current file's `MediaGroup` (e.g. "Audio", "Video") from the evaluation context;
+returns `""` if no classification is available.
+
+#### `$FirstValue` — First Multi-Value Item
+
+```text
+$FirstValue(string, separator?)
+```
+
+Returns the first item when `string` is split on `separator` (default `"; "`).
+
+```text
+$FirstValue(<Genre>)
+```
+
+For "Rock; Progressive Rock" returns "Rock".
 
 ---
 
@@ -304,7 +514,7 @@ Returns `"Q"` for "Queen" — useful for A-Z folder grouping.
 Folder separators in templates create directory structure:
 
 ```text
-<Media Class>/<Album Artist>/<Album>/<Title>.<Ext>
+<Media Class>/<Album Artist>/<Album>/<Title>.<Extension>
 ```
 
 Use `/` as the separator — MeedyaManager automatically converts to the correct OS path separator.
@@ -314,10 +524,10 @@ Use `/` as the separator — MeedyaManager automatically converts to the correct
 You can nest as deeply as needed:
 
 ```text
-Library/<Media Group>/<Quality Type>/<Genre>/<Album Artist>/<Album> (<Year>)/<$Pad(<Track #>,2)> - <Title>.<Ext>
+Library/<Media Group>/<Media Quality>/<Genre>/<Album Artist>/<Album> (<Year>)/<$Pad(<Track #>,2)> - <Title>.<Extension>
 ```
 
-Produces: `Library/Audio/Lossless/Rock/Queen/A Night at the Opera (1975)/11 - Bohemian Rhapsody.flac`
+Produces something like: `Library/Audio/Lossless/Rock/Queen/A Night at the Opera (1975)/11 - Bohemian Rhapsody.flac`
 
 ---
 
@@ -326,76 +536,69 @@ Produces: `Library/Audio/Lossless/Rock/Queen/A Night at the Opera (1975)/11 - Bo
 ### Basic Music Organisation
 
 ```text
-Music/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>
+Music/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Extension>
 ```
 
 ### Lossless vs Lossy Separation
 
+`$If` has no built-in `=` comparison — build the condition with `$Contains` first:
+
 ```text
-$If(<Quality Type>=Lossless,
-    Music/Lossless/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>,
-    Music/Lossy/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>
+$If($Contains(<Media Quality>, Lossless),
+    Music/Lossless/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Extension>,
+    Music/Lossy/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Extension>
 )
 ```
 
-### TV Shows
-
-```text
-TV Shows/<Show>/Season <$Pad(<Season>,2)>/<Show> - S<$Pad(<Season>,2)>E<$Pad(<Episode>,2)> - <Episode Title>.<Ext>
-```
-
-Produces: `TV Shows/Breaking Bad/Season 05/Breaking Bad - S05E16 - Felina.mkv`
+`<Media Quality>` is `Lossless` or `HiRes` for lossless files, so this also matches
+high-resolution audio into the "Lossless" branch — use `$Or` to add more matches if needed.
 
 ### Movies
 
 ```text
-Movies/<Title> (<Year>)/<Title>.<Ext>
-```
-
-### Spatial Audio Detection
-
-```text
-$If($Or($Contains(<Spatial Format>, Atmos), $Contains(<Spatial Format>, 360 Reality)),
-    Music/Spatial/<Album Artist>/<Album>/<Title>.<Ext>,
-    Music/Standard/<Album Artist>/<Album>/<Title>.<Ext>
-)
+Movies/<Title> (<Year>)/<Title>.<Extension>
 ```
 
 ### A-Z Folder Grouping
 
 ```text
-Music/$Group($Sort(<Album Artist>),1)/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>
+Music/$Upper($Left(<Album Artist>, 1))/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Extension>
 ```
 
 Produces: `Music/Q/Queen/A Night at the Opera/11 - Bohemian Rhapsody.flac`
 
+This groups strictly by the first character of `<Album Artist>` as stored in the tag — there
+is no built-in stripping of leading articles ("The", "A", "An"), so "The Beatles" would file
+under `T`, not `B`.
+
 ### Handle Missing Album Artist
 
 ```text
-$IsNull(<Album Artist>,
-    Music/Unknown Artist/<Album>/<Title>.<Ext>,
-    Music/<Album Artist>/<Album>/<Title>.<Ext>
+$If($IsNull(<Album Artist>),
+    Music/Unknown Artist/<Album>/<Title>.<Extension>,
+    Music/<Album Artist>/<Album>/<Title>.<Extension>
 )
 ```
 
-### Multi-Type Router
+### Media-Type Router
+
+Only `<Media Group>` and `<Media Class>` are available to route on — there are no
+show/season/episode tags, so a video branch can only use the tags that exist for it (Title,
+Year, and the classification tags):
 
 ```text
-$If(<Media Class>=Music,
-    Music/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>,
-    $If(<Media Class>=TV Show,
-        TV/<Show>/Season <$Pad(<Season>,2)>/<Show> S<$Pad(<Season>,2)>E<$Pad(<Episode>,2)>.<Ext>,
-        $If(<Media Class>=Movie,
-            Movies/<Title> (<Year>)/<Title>.<Ext>,
-            $If(<Media Class>=Podcast,
-                Podcasts/<Show>/<Date Added> - <Title>.<Ext>,
-                Unsorted/<Filename>.<Ext>
-            )
-        )
+$If($Contains(<Media Group>, Audio),
+    Music/<Album Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Extension>,
+    $If($Contains(<Media Class>, Movie),
+        Movies/<Title> (<Year>)/<Title>.<Extension>,
+        Video/<Media Class>/<Title>.<Extension>
     )
 )
 ```
 
 ---
 
-> 📝 *This syntax is fully implemented as of M3 (v1.2-M3). Use `meedyamanager rule --validate --template "..."` to check template syntax from the command line.*
+> 📝 *This syntax is fully implemented as of M3 (v1.2-M3). Use
+> `meedya rule validate "<template>"` to check a template's syntax without evaluating it,
+> `meedya rule test "<template>" <file>` to evaluate it against a real file, and
+> `meedya rule tags` to list every known tag name and its type.*

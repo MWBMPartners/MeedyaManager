@@ -11,6 +11,17 @@
 - **Copyright:** MWBM Partners Ltd
 - **Platforms:** Windows (x64/ARM), macOS (Apple Silicon only), Linux (x64/ARM)
 
+## Session continuity
+
+- **`.claude/HANDOFF.md` is the session-resume document.** It records *verified* state only
+  (never aspirational state) — branch position, what's actually implemented vs. scaffolded,
+  owner decisions, and where to pick up. Read it first when resuming cold. **Keep it current**
+  — update it after every task, the same way this file's own rules require `.md` files to be
+  updated after every code change. The orchestrator/session owner maintains it; do not let it
+  go stale.
+- **Cargo is not on the default `PATH`** in this environment. Run
+  `export PATH="$HOME/.cargo/bin:$PATH"` before any `cargo` command.
+
 ## Key Architecture Decisions
 
 - **Rust core:** Shared library (`mm-core`) consumed by all platform UIs via FFI
@@ -18,7 +29,7 @@
 - **macOS GUI:** SwiftUI with Liquid Glass on macOS 26+ (falls back to standard vibrancy on older versions)
 - **Windows GUI:** WinUI 3 (C# / WinAppSDK 1.6) with Mica backdrop
 - **Linux GUI:** GTK4 via `gtk4-rs` + `libadwaita` (direct Rust, no FFI needed)
-- **Cargo workspace:** 8 crates — `mm-core`, `mm-providers`, `mm-cloud`, `mm-export`, `mm-server`, `mm-cli`, `mm-ffi`, `mm-gtk`
+- **Cargo workspace:** 9 crate directories, 8 workspace members — `mm-core`, `mm-providers`, `mm-cloud`, `mm-export`, `mm-server`, `mm-cli`, `mm-ffi`, `mm-update` (workspace members) plus `mm-gtk` (9th crate directory, excluded from `members`/`default-members` — needs Linux-only `gettextrs`, tracked by issue #199)
 - **Key Rust crates:**
   - `lofty` — Audio/video metadata read/write
   - `notify` — Cross-platform file system watcher
@@ -71,17 +82,32 @@
 
 ## Milestone Order
 
+Workspace-wide: **44,183 Rust LOC, 1,392 `#[test]`/`#[tokio::test]` functions**;
+`cargo test --workspace` currently reports **1,207 passing, 0 failed**. Docs that still say
+"217/399/444 tests" are stale — do not repeat those numbers.
+
 1. M0 — Repository Setup & Scaffolding (Complete)
-2. M1 — Core Engine (Complete — 217 tests)
-3. M2 — Rule Engine (Complete — 182 tests, 399 total)
-4. M3 — CLI (Complete — 45 tests, 444 total)
+2. M1 — Core Engine (Complete)
+3. M2 — Rule Engine (Complete)
+4. M3 — CLI (Complete)
 5. M4 — FFI Layer & Native UI Shells (Issues #63-72)
-6. M5 — Metadata Lookup Providers (Issues #73-84)
+6. M5 — Metadata Lookup Providers (Issues #73-84) — **`meedya lookup` is still a stub**
+   (prints "coming in M5"); no CLI/GUI command constructs a metadata provider yet
 7. M6 — Full Native UI (Issues #85-93)
-8. M7 — Cloud Storage Monitoring (Issues #94-102)
+8. M7 — Cloud Storage Monitoring (Issues #94-102) — **Status: architectural scaffolding
+   only.** No real network calls; OAuth flows exist only as comments. Do not describe cloud
+   monitoring as working.
 9. M8 — Packaging & Public Release (Issues #103-111)
-10. M9 — Database Export (Issues #112-119)
-11. M10 — Secure Media Server (Issues #120-127)
+10. M9 — Database Export (Issues #112-119) — **Status: architectural scaffolding only.**
+    `sqlx`/`tiberius` are declared dependencies but no connection pool is ever created and no
+    SQL is ever executed against a real database.
+11. M10 — Secure Media Server (Issues #120-127) — **Status: architectural scaffolding
+    only.** `mm-server` never builds an axum router (no `.route(` call exists anywhere);
+    `crates/mm-cli/src/commands/serve.rs` prints "Server stub: exiting cleanly" and returns.
+    There are zero `.html` files in the repo — the web frontend has no deliverable.
+
+M7/M9/M10 issues were previously closed as completed; they have been reopened to reflect
+this reality — see `.claude/HANDOFF.md` for the full reconciliation.
 
 ## Version Management
 
@@ -126,11 +152,20 @@
   - `ci-linux.yml` — Build mm-gtk with GTK4/Libadwaita (ubuntu-latest). **Reusable.**
   - `version-bump.yml` — Automated version bumping across all files (manual trigger)
   - `release.yml` — 5-platform release builds + checksums + GitHub Release (tag trigger)
-  - `audit.yml` — cargo-deny + cargo-audit (weekly + push)
+  - `audit.yml` — cargo-deny only (weekly + push to `main`); a separate cargo-audit step was
+    tried and removed (#156/#157) since cargo-deny's `advisories` check is a superset. This
+    workflow has been **failing** on every weekly run since 2026-07-06 against real RUSTSEC
+    advisories — see issue #203, do not assume it is green
   - `docs.yml` — cargo doc generation
 - Platform packages: Windows (MSIX), macOS (.dmg/.tar.gz), Linux (Flatpak/Snap/AppImage/.deb)
 - `.gitignore` covers OS files, Rust `target/`, IDE files, secrets, build artifacts
-- Python v1.x archived at tag `v1.5-M6-python-final`
+- **No Python archive tag exists.** `v1.5-M6-python-final` is NOT a real tag — the only tag
+  in the repo is `v1.0-M1`, and the only GitHub Release is *"MetaMancer v1.0-M1"* (2025-06-16,
+  the pre-rename project name). Issue #19 was reopened because of this false claim; do not
+  reintroduce it.
+- **Current version is `1.3.0`** (`[workspace.package].version`). Versions 1.3.1 and 1.3.2
+  were never cut despite changelog entries claiming otherwise — treat any reference to them
+  as a documentation bug, not a release.
 - **Every task** must have a GitHub Issue created BEFORE work begins and closed AFTER verification
 - **Commit but do NOT push** — user pushes manually (exception: pushing a *new feature branch* is OK once the user has explicitly asked for a PR)
 
@@ -164,14 +199,14 @@
 
 ## Post-PR housekeeping — full dev-cache cleanup
 
-After a PR has been **successfully created** (URL returned), run a full dev-cache cleanup covering the workspace plus Rust global caches. Cache is fully regeneratable; the user accepts the cold-build cost (~5–15 min on next build for this 8-crate workspace) in exchange for disk-pressure relief.
+After a PR has been **successfully created** (URL returned), run a full dev-cache cleanup covering the workspace plus Rust global caches. Cache is fully regeneratable; the user accepts the cold-build cost (~5–15 min on next build for this 9-crate workspace) in exchange for disk-pressure relief.
 
 **When:** *after* the PR is created — never before or during, because the cleanup invalidates the `cargo check`/`cargo test` caches the PR flow itself relies on.
 
 **Commands (run from repo root, in order):**
 
 ```bash
-# 1. Workspace Rust cache (all 8 crates' target/)
+# 1. Workspace Rust cache (all 9 crates' target/)
 cargo clean
 
 # 2. Swift Package Manager build dirs under macos/

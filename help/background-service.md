@@ -23,12 +23,16 @@ MeedyaManager can run as a persistent background service that starts automatical
 
 ## Overview
 
-The background service runs `meedya watch` continuously. Once installed, it:
+The background service runs `meedya watch --organize` continuously
+(`crates/mm-core/src/service.rs`). Once installed, it:
 
-- Starts automatically when you log in (user service) or at boot (system service)
+- Starts automatically when you log in (Linux/macOS user service) or at boot (Windows system
+  service — see the [Windows](#windows-windows-service) section below)
 - Monitors all folders configured in `settings.json5`
 - Renames and organises new media files as they arrive
-- Retries files that are locked or in use
+
+There is no file-lock detection or retry queue for files that are open in another
+application — that is not implemented anywhere in the watcher.
 
 The service is managed via the `meedya service` subcommand — no manual editing of systemd unit files, plist files, or Windows registry entries is required.
 
@@ -40,7 +44,7 @@ The service is managed via the `meedya service` subcommand — no manual editing
 meedya service install
 ```
 
-This registers MeedyaManager with your operating system's service manager using the currently installed `meedya` binary. The service is set to start automatically on login.
+This registers MeedyaManager with your operating system's service manager using the currently installed `meedya` binary. On Linux/macOS the service is set to start automatically on login; on Windows it starts automatically at system boot (see [Windows](#windows-windows-service) below).
 
 To use a specific binary path (e.g. if you have multiple installations):
 
@@ -61,7 +65,9 @@ meedya service start    # start the service immediately
 meedya service stop     # stop the running service
 ```
 
-After installing, the service will start automatically at your next login. Use `start` to begin immediately without waiting.
+After installing, the service will start automatically the next time it's triggered — at your
+next login on Linux/macOS, or at the next system boot on Windows (see
+[Windows](#windows-windows-service) below). Use `start` to begin immediately without waiting.
 
 ---
 
@@ -149,7 +155,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/you/.cargo/bin/meedya watch
+ExecStart=/home/you/.cargo/bin/meedya watch --organize
 Restart=on-failure
 RestartSec=5
 
@@ -199,6 +205,7 @@ log show --predicate 'subsystem == "com.mwbm.meedyamanager"' --last 1h
   <array>
     <string>/usr/local/bin/meedya</string>
     <string>watch</string>
+    <string>--organize</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -220,7 +227,10 @@ If the service monitors folders in protected locations (Desktop, Downloads, Docu
 
 ### Windows (Windows Service)
 
-The service is registered as a **Windows Service** using `sc.exe`. It runs under your user account and starts at login.
+The service is registered as a **Windows Service** using `sc.exe create ... start= auto`
+(`crates/mm-core/src/service.rs`). Unlike the Linux/macOS user services above, this runs under
+the **LocalSystem** account and **starts at boot**, before any user logs in — not tied to a
+login session.
 
 **Direct sc.exe commands (if needed):**
 
@@ -255,10 +265,11 @@ If Windows Defender flags the service on first run, add an exclusion for the Mee
    meedya -vv watch --dry-run   # run interactively to see startup errors
    ```
 
-2. Verify your config is valid:
+2. Inspect the config MeedyaManager will actually load — there is no `meedya config validate`
+   command; use `show` instead:
 
    ```bash
-   meedya config validate
+   meedya config show
    ```
 
 3. Ensure the `meedya` binary path hasn't changed since installation. If you've reinstalled or updated MeedyaManager, reinstall the service:

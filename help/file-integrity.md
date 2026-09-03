@@ -2,116 +2,109 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-MeedyaManager uses several mechanisms to protect your media files from corruption during rename and move operations.
+MeedyaManager includes a SHA256-verified, atomic-write mechanism for **metadata tag writes**,
+implemented in `crates/mm-core/src/integrity.rs`. This page describes exactly what it does —
+and, importantly, that it is currently **not wired into any of MeedyaManager's tag-writing
+code paths**, so the protection it provides is not yet active in practice.
+
+> ⚠️ **`write_tags_safe` is never called.** The integrity module's guarded write function,
+> `integrity::write_tags_safe`, is exercised only by its own unit tests. All three real
+> consumers — `meedya edit` (`crates/mm-cli/src/commands/edit.rs:116`), the Linux GTK metadata
+> panel (`crates/mm-gtk/src/ui/metadata_panel.rs:313`), and the FFI layer used by the macOS/
+> Windows UIs (`crates/mm-ffi/src/uniffi_api.rs:233`) — call `metadata::write_tags` directly,
+> which writes straight to the original file with no pre-write hash, no temp-file staging, and
+> no post-write verification. See issue
+> [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128) (reopened).
+>
+> This page also does **not** cover file *moves/renames* — those go through a separate module
+> (`crates/mm-core/src/renamer`) with its own conflict-detection logic, which has its own known
+> issue (`meedya scan --execute` can silently overwrite a file — see
+> [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201)). This page is about
+> **tag writes** only.
 
 ---
 
 ## Table of Contents
 
-1. [Atomic Renames](#atomic-renames)
-2. [SHA256 Integrity Checking](#sha256-integrity-checking)
-3. [File Lock Detection](#file-lock-detection)
-4. [Corruption Recovery](#corruption-recovery)
-5. [Integrity CLI Commands](#integrity-cli-commands)
+1. [What `write_tags_safe` Does](#what-write_tags_safe-does)
+2. [Test Mode Interaction](#test-mode-interaction)
+3. [The Corruption Log](#the-corruption-log)
+4. [What Actually Runs Today](#what-actually-runs-today)
+5. [Checking a File's Hash](#checking-a-files-hash)
 
 ---
 
-## Atomic Renames
+## What `write_tags_safe` Does
 
-When MeedyaManager moves or renames a file, it uses an **atomic rename strategy** to ensure the operation either completes fully or not at all — a partial write can never leave you with a corrupted or truncated file.
+When it *is* called (currently: only from its own tests), `write_tags_safe` guards a metadata
+write with the following steps:
 
-### How It Works
+1. Compute the SHA256 hash of the original file.
+2. Copy the original to `<path>.meedya_tmp` (same directory, so the later rename stays on one
+   filesystem).
+3. Write the new tags into the temp file via `metadata::write_tags`.
+4. Compute the SHA256 hash of the written temp file.
+5. Atomically `rename(2)` the temp file over the original.
+6. Log the result — success with both hashes, or failure with an error message appended to
+   the corruption log.
 
-1. The file is written to a temporary path alongside the destination: `<destination>.meedya_tmp`
-2. On success, the temporary file is atomically renamed to the final destination using the operating system's `rename(2)` syscall (or equivalent on Windows)
-3. Because `rename` on the same filesystem is atomic, the destination file is either the old version or the new version — never a mix of both
-4. If anything fails mid-write, the `.meedya_tmp` file is discarded and the source file is left untouched
+If any step fails, the temp file is deleted and the original is left completely untouched —
+there is no partial-write state a user can end up in *if this path is used*. The atomic-rename
+step means the destination is always either the fully-old or fully-new file, never a mix.
 
-### Cross-Filesystem Moves
-
-When the source and destination are on different filesystems (e.g. moving from an external drive to your main drive), a true atomic `rename` is not possible. In this case, MeedyaManager:
-
-1. Copies the source file to `<destination>.meedya_tmp`
-2. Verifies the copy's SHA256 hash matches the source
-3. Only then removes the source file and renames the temp file to the final destination
-
-This ensures the source file is never deleted unless the copy is confirmed intact.
+There is no cross-filesystem copy-and-verify variant, no file-lock detection, and no retry
+queue anywhere in this module or elsewhere in the codebase — those are not implemented.
 
 ---
 
-## SHA256 Integrity Checking
+## Test Mode Interaction
 
-MeedyaManager can compute and verify SHA256 checksums for your media files.
+`write_tags_safe` checks `test_mode::is_enabled()` before doing anything else. If Test Mode is
+on, it writes the new tags into a `<stem>_MeedyaManager.<ext>` copy instead of the original,
+and records the pair in the Test Mode manifest — see [Test Mode](test-mode.md) for the full
+picture, including the same enforcement gap (Test Mode is only honoured by this unused
+function, so it is not actually enforced by any real edit path either).
 
-### Automatic Verification (Cross-Filesystem Moves)
+---
 
-During cross-filesystem move operations, checksums are computed automatically — no configuration required. If the checksum does not match after copying, the copy is discarded and an error is logged.
+## The Corruption Log
 
-### Manual Integrity Check
+When `write_tags_safe` fails a step, it appends a line to:
 
-```bash
-# Compute the checksum of a file
-meedya debug path/to/file.mp3 --json | jq .sha256
-
-# Verify a file against a known checksum
-meedya debug path/to/file.mp3 --verify-checksum <expected_sha256>
+```text
+<OS config directory>/meedyamanager/corruption.log
 ```
 
-### Integrity Log
-
-When a checksum mismatch is detected, the event is written to the integrity log:
-
-| Platform | Log Path |
-| -------- | -------- |
-| **macOS** | `~/Library/Logs/MeedyaManager/integrity.log` |
-| **Linux** | `~/.local/state/MeedyaManager/logs/integrity.log` |
-| **Windows** | `%LOCALAPPDATA%\MeedyaManager\logs\integrity.log` |
+For example `~/.config/meedyamanager/corruption.log` on Linux/macOS or
+`%APPDATA%\meedyamanager\corruption.log` on Windows (`dirs::config_dir()` joined with
+`meedyamanager`). Each line is an ISO 8601 timestamp, the file path, and the failure message.
+Because the function that writes this log is not called from any real edit path today, the
+log will not accumulate entries from normal use of MeedyaManager — only from the module's own
+tests, or from any future code that starts calling `write_tags_safe`.
 
 ---
 
-## File Lock Detection
+## What Actually Runs Today
 
-MeedyaManager checks whether a file is open in another application before attempting to rename or move it. This prevents:
+Every real caller — `meedya edit`, the GTK metadata panel, and the FFI layer used by the
+macOS and Windows apps — calls `metadata::write_tags` directly:
 
-- Corrupting a file that is currently being downloaded or written
-- Interfering with a file that is open in a media player
+- No pre-write or post-write hash.
+- No temp-file staging or atomic rename — the tag write happens in place, using the
+  underlying `lofty` crate's own save routine.
+- No corruption log entry on failure — errors surface as a normal CLI/UI error message.
+- No Test Mode redirection — see [Test Mode](test-mode.md).
 
-### Retry Queue
-
-When a file is locked, MeedyaManager:
-
-1. Logs a warning: `File in use — queued for retry`
-2. Adds the file to an in-memory retry queue
-3. Retries the operation at the next watcher cycle (configurable via `watch.debounce_ms`)
-
-No user action is required. Once the other application releases the file, MeedyaManager processes it automatically.
+This is functionally similar to what most tag editors do, and `lofty`'s own writer has its own
+internal safeguards, but MeedyaManager's specific SHA256/atomic-rename guarantees described
+above do not apply until #128 is resolved.
 
 ---
 
-## Corruption Recovery
+## Checking a File's Hash
 
-If MeedyaManager is interrupted (e.g. power failure, crash) during a file operation, recovery depends on what stage the operation was at:
-
-| Stage | Recovery |
-| ----- | -------- |
-| Before write started | Source file untouched — no recovery needed |
-| During temp file write | `.meedya_tmp` file exists — safely deleted on next startup |
-| After temp file complete, before rename | Same as above |
-| After atomic rename | Operation completed successfully |
-
-On startup, MeedyaManager scans for and removes any orphaned `.meedya_tmp` files from previous interrupted operations.
-
----
-
-## Integrity CLI Commands
-
-```bash
-# Inspect a file including its classification, tags, and file hash
-meedya debug path/to/file.mp3
-
-# Use --json for machine-readable output
-meedya debug path/to/file.mp3 --json
-
-# Generate a bug report that includes integrity log summary
-meedya report-bug
-```
+There is no dedicated CLI flag for this. `meedya debug` does not expose a `--verify-checksum`
+option or print a SHA256 hash — it reports classification, tags, audio properties, cover art,
+and companion files only (`crates/mm-cli/src/commands/debug.rs`). To compute a file's SHA256
+yourself, use your platform's standard tool, e.g. `shasum -a 256 song.mp3` (macOS/Linux) or
+`Get-FileHash song.mp3 -Algorithm SHA256` (Windows PowerShell).

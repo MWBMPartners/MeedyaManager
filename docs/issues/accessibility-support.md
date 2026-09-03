@@ -1,19 +1,37 @@
-# Issue #128 — Accessibility Support
+# Accessibility Support
 
-**Title:** Implement accessibility support across all three platforms
+> **Design spec / reference document — not a live GitHub issue.**
+>
+> This file used to be misnamed `issue_128_accessibility.md` and claimed to be "Issue #128".
+> That was wrong on both counts: the real accessibility work was tracked as **#90 — "M6:
+> Accessibility compliance (VoiceOver, Narrator, Orca)"**, which is **closed**. The real
+> **#128** is a different, still-open issue — *"feat: Test Mode, Privacy Policy, and
+> Pre-release Safety"* (reopened; Test Mode is not currently enforced on any write path — see
+> `docs/issues/github_issues.md` and `help/test-mode.md`). This document is kept as a design
+> reference for accessibility work, not as a tracker mirror.
 
-**Labels:** `type:feature`, `platform:all`, `priority:P1`, `milestone:M10`
+**Status: partially implemented.** Accessibility modifiers/attributes exist across all three
+native UIs, but coverage is uneven and the acceptance criteria below (VoiceOver/Narrator/Orca
+audits, CI smoke test) have not all been verified end-to-end:
 
-**Milestone:** M10 — Secure Media Server + Public Release
+- **macOS** — 120+ `.accessibility*` SwiftUI modifiers across views (8–26 per file). Caveat: five
+  `.accessibilityLiveRegion(.polite)` calls were added on this branch's history but were removed
+  again on `main` with a comment that it "is not a SwiftUI View modifier" — treat that API as
+  unresolved rather than shipped.
+- **Windows** — ~97 `AutomationProperties` usages across XAML (3–24 per file).
+- **Linux** — a dedicated `crates/mm-gtk/src/ui/accessibility.rs` helper used across panels, with
+  8 tests covering label tables (the tests check label-table data, not live widget behaviour).
 
-**Assignee:** TBD
+None of the three platforms has a confirmed VoiceOver/Narrator/Orca *audit* on record, and there
+is no CI accessibility smoke test yet. Treat the requirements below as the target, not as a
+completed checklist.
 
 ---
 
 ## Summary
 
 MeedyaManager must be accessible to users who rely on assistive technologies.
-This issue tracks the full accessibility implementation across the three native
+This document specifies the full accessibility implementation across the three native
 UI platforms: macOS (SwiftUI), Windows (WinUI 3 / C#), and Linux (GTK4).
 
 ---
@@ -116,7 +134,7 @@ role, name, and state via AT-SPI2 to assistive tools (Orca screen reader).
 | -------- | --------- | ----------- |
 | macOS | `macos/MeedyaManagerTests/AccessibilityTests.swift` | XCUITest: verify accessibility labels, VoiceOver traversal |
 | Windows | `windows/MeedyaManager.Tests/AccessibilityTests.cs` | xUnit + Accessibility Insights API: UIA tree, label coverage |
-| Linux (Rust) | `crates/mm-gtk/src/ui/accessibility_tests.rs` | Widget label presence, tooltip coverage |
+| Linux (Rust) | `crates/mm-gtk/src/ui/accessibility.rs` (inline `#[cfg(test)]` module) | Widget label presence, tooltip coverage |
 
 ---
 
@@ -130,4 +148,5 @@ role, name, and state via AT-SPI2 to assistive tools (Orca screen reader).
 
 ---
 
-> *Created: 2026-03-05 | Planned for M10 alongside v1.0.0 public release*
+> *Created: 2026-03-05 | Tracked as GitHub issue #90 (M6 — Full Native UI), closed. Renamed from*
+> *`issue_128_accessibility.md` on 2026-09-03 during the documentation reconciliation pass.*

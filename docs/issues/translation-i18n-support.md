@@ -1,9 +1,29 @@
-# Issue #130 — Translation / Internationalisation (i18n) Support
+# Translation / Internationalisation (i18n) Support
 
-**Milestone:** Post-Release (v1.1.0)
-**Labels:** `enhancement`, `i18n`, `accessibility`, `ux`
-**Priority:** Medium
-**Status:** Open
+> **Design spec / reference document — not a live GitHub issue.**
+>
+> This file used to be misnamed `issue_130_translation_support.md` and claimed to be "Issue
+> #130". That was wrong: the real **#130** is a different, still-open issue — *"feat: bundle
+> MediaInfo CLI as managed dependency with update checking"*. There is currently **no dedicated
+> GitHub issue** for i18n/translation work; file one before starting on the scope below. The
+> related issue **#129** is *"chore: Add workspace lint configuration and resolve all clippy
+> warnings"* (closed) — not a "Release Hardening" issue as an earlier draft of this file claimed.
+
+**Status: not yet implemented.** Scaffolding exists but nothing is wired up:
+
+- `crates/mm-core/src/i18n.rs` sets up the gettext domain/locale plumbing, but **zero**
+  `gettext()` call sites exist anywhere in the Rust codebase — every user-facing string is still
+  a hard-coded English literal, and no `.mo` file is ever compiled from the `.po` sources under
+  `locales/`.
+- The macOS `Localizable.xcstrings` catalogue (32 keys) is referenced by **0** Swift files.
+- The Windows `Resources.resw` catalogue (55 entries) is referenced at exactly **1** call site
+  (`windows/MeedyaManager/Helpers/ResourceHelper.cs`), not wired through the UI generally.
+- Real translator-facing file locations (see `locales/TRANSLATORS.md`) are `locales/<lang>/LC_MESSAGES/meedyamanager.po`,
+  `macos/MeedyaManager/Localizable.xcstrings`, and `windows/MeedyaManager/Strings/<lang>/Resources.resw`
+  — not the `crates/mm-cli/i18n/` or `linux/po/<locale>/` paths an earlier draft of this document
+  proposed.
+
+Treat everything below as a design proposal to scope future work against, not as a status report.
 
 ---
 
@@ -30,8 +50,9 @@ accessibility work (#128) in making the application inclusive.
 
 - Introduce a localisation crate (e.g. `fluent` or `gettext-rs`) to externalise
   all user-facing strings in the CLI output.
-- Store translation files in `crates/mm-cli/i18n/` (`.ftl` for Fluent,
-  or `.po`/`.pot` for gettext).
+- Store translation files in `locales/<lang>/LC_MESSAGES/` (`.po`/`.pot` for gettext — this is
+  the layout already scaffolded in the repo; a Fluent-based `.ftl` layout would replace it, not
+  add to it).
 - Detect the locale from `LANG`/`LC_ALL` environment variables at runtime.
 - Provide a `--lang <LOCALE>` global flag to override the detected locale.
 - Fall back to English (`en-US`) when the requested locale is unavailable.
@@ -55,7 +76,8 @@ accessibility work (#128) in making the application inclusive.
 ### Linux GTK4
 
 - Use `gettextrs` crate for string externalisation.
-- Store `.po`/`.mo` files in `linux/po/<locale>/`.
+- Store `.po`/`.mo` files in `locales/<locale>/LC_MESSAGES/` (already scaffolded; see
+  `locales/TRANSLATORS.md`), not a separate `linux/po/<locale>/` tree.
 - Initialise `textdomain` in `mm-gtk/src/main.rs`.
 - Follow GNOME internationalisation guidelines.
 
@@ -103,5 +125,8 @@ accessibility work (#128) in making the application inclusive.
 
 ## Related Issues
 
-- #128 — Accessibility Support (VoiceOver, Narrator, AT-SPI2)
-- #129 — Release Hardening (binary optimisation profiles)
+- `docs/issues/accessibility-support.md` — Accessibility Support (VoiceOver, Narrator, AT-SPI2).
+  Tracked on GitHub as **#90** (closed), not #128.
+- #129 — "chore: Add workspace lint configuration and resolve all clippy warnings" (closed) — not
+  a "Release Hardening" issue.
+- No GitHub issue currently tracks i18n/translation work — file one before starting.

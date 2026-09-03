@@ -89,7 +89,7 @@ The project has been fully rewritten from the original Python/PySide6 implementa
 
 1. **🦀 Single Source of Truth** — All business logic lives in `mm-core` (Rust). UI layers are thin wrappers.
 2. **🧩 Modular Crates** — Each major feature area is its own Rust crate with clear interfaces.
-3. **🔌 Plugin-Style Providers** — Metadata lookup providers follow a common trait and register via `inventory`.
+3. **🔌 Plugin-Style Providers** — Metadata lookup providers follow a common trait; registration is **manual** (each provider is explicitly listed in `registry.rs`) — automatic discovery via the `inventory` crate was proposed (issue #74) but never adopted.
 4. **⚙️ Config-Driven** — All behaviour is configurable via JSON5 + environment overrides.
 5. **🛡️ Safety First** — File-lock detection prevents corruption; dry-run mode by default.
 6. **📊 Observable** — Structured logging via `tracing` with PII redaction for safe troubleshooting.
@@ -126,7 +126,7 @@ The project has been fully rewritten from the original Python/PySide6 implementa
 | TLS (M10) | `rustls` | N/A |
 | Property testing | `proptest` | N/A |
 | Mock HTTP | `wiremock` | N/A |
-| Provider registry | `inventory` | custom decorator |
+| Provider registration | Manual (`registry.rs`) | custom decorator |
 
 ### Native UI Frameworks
 
@@ -175,12 +175,12 @@ MeedyaManager/
 ├── branding/                     # Logos
 ├── docs/                         # Developer docs (CHANGELOG, ROADMAP)
 ├── help/                         # User documentation
-├── .github/workflows/            # CI/CD (7 workflows)
+├── .github/workflows/            # CI/CD (9 workflows)
 ├── .claude/                      # Project context
 ├── Project_Plan.md               # This file
 ├── PROJECT_STATUS.md             # Current progress
 ├── README.md                     # Project overview
-├── LICENSE                       # GPL-2.0-or-later
+├── LICENSE                       # GPL-2.0-or-later — NOT YET TRACKED, see issue #207
 └── justfile                      # Task runner
 ```
 
@@ -209,21 +209,22 @@ MeedyaManager/
 
 ## 🗺️ Milestone Roadmap (M0–M10)
 
-### 🔧 M0 — Repository Setup & Scaffolding (In Progress)
+### 🔧 M0 — Repository Setup & Scaffolding (Complete)
 
 > Archive the Python codebase, initialize the Rust workspace, scaffold native app projects, set up CI.
+> Issues #19-#31 are all closed; this milestone is done, not in progress.
 
 | Deliverable | Description |
 |-------------|-------------|
-| Archive Python code | Tag `v1.5-M6-python-final`, create `archive/python-v1.5` branch |
+| Archive Python code | Python source removed from the tree. **Note:** the `v1.5-M6-python-final` tag this row originally referenced does not exist in the repository — treat any reference to it as stale. |
 | Clean main branch | Delete all Python files, retain docs/assets/config/branding |
-| Cargo workspace | Initialize with stub crates: mm-core, mm-providers, mm-cloud, mm-export, mm-server, mm-cli, mm-ffi, mm-gtk |
-| macOS project | Scaffold Xcode project with empty SwiftUI app |
+| Cargo workspace | 9 crate directories: mm-core, mm-providers, mm-cloud, mm-export, mm-server, mm-cli, mm-ffi, mm-update, mm-gtk — 8 are workspace members (`mm-gtk` is excluded; it needs Linux-only `gettextrs`) |
+| macOS project | Scaffold Swift Package Manager app (there is no Xcode project) |
 | Windows project | Scaffold Visual Studio solution with empty WinUI 3 app |
 | Rust toolchain config | `.rustfmt.toml`, `clippy.toml`, `deny.toml`, `rust-toolchain.toml` |
-| CI workflows | Create 7 GitHub Actions workflow stubs |
-| GitHub Projects v2 | Board with custom fields, views, labels; close 18 stale issues + 9 old milestones |
-| Documentation | Update README.md, Project_Plan.md, PROJECT_STATUS.md, CLAUDE.md, ROADMAP.md |
+| CI workflows | 9 GitHub Actions workflows: `pr-gate`, `ci-rust`, `ci-macos`, `ci-windows`, `ci-linux`, `version-bump`, `release`, `audit`, `docs` |
+| GitHub Projects v2 | Board with custom fields, views, labels |
+| Documentation | Update README.md, Project_Plan.md, PROJECT_STATUS.md, CLAUDE.md, roadmap.md |
 
 ---
 
@@ -310,17 +311,17 @@ MeedyaManager/
 
 | Deliverable | Description |
 |-------------|-------------|
-| Provider trait | `BaseProvider` trait + `ProviderResult` / `Capabilities` types |
-| Auto-registration | Provider discovery via `inventory` crate |
-| Credentials | 4-tier resolution: env → config → keyring → encrypted |
+| Provider trait | `MetadataProvider` trait + `ProviderResult` / `Capabilities` types |
+| Registration | **Manual** — each provider is explicitly listed in `registry.rs`. Automatic discovery via the `inventory` crate was proposed (issue #74) but was never adopted |
+| Credentials | 4-tier resolution: env → config → keyring → plain JSON file on disk (see "API Key Management" below — tier 4 is **not** encrypted) |
 | Rate limiting | Token bucket per provider via `governor` crate |
 | Fuzzy matching | Weighted scoring: title (35%), artist (30%), album (20%), ISRC bonus |
 | Cover art | Static (JPEG/PNG) + animated (MP4 square, portrait, artist spotlight) |
-| 🎵 Music (10) | Apple Music (JWT), Spotify (OAuth2), MusicBrainz, Deezer, YouTube Music, Amazon Music, Pandora, Tidal (OAuth2.1), Shazam (fingerprinting), iHeart |
-| 🎬 Video (5) | TMDB, TheTVDB, IMDb, Apple TV, iTunes Store |
-| 🎙️ Podcasts (1) | Apple Podcasts |
-| 🆔 Identifiers (3) | ISRC (federated), EIDR (paid), ISWC (MusicBrainz) |
-| **Test target** | 300+ tests (mock HTTP via `wiremock`) |
+| 🎵 Music (10 registered, 4 real + 6 disabled stubs) | Real: Apple Music (unauthenticated iTunes Search API, not JWT/MusicKit), Spotify (OAuth2), MusicBrainz, Deezer. Disabled stubs (`stub_provider!`, return `NotSupported`): YouTube Music, Amazon Music, Pandora, Tidal, Shazam, iHeart |
+| 🎬 Video (5, all real) | TMDb, TheTVDB (bearer auth uses the raw API key, not the documented `/login` exchange), OMDb (the provider people call "IMDb" — id `omdb`, requires an API key), Apple TV, iTunes Store |
+| 🎙️ Podcasts (1, real) | Apple Podcasts |
+| 🆔 Identifiers (3, all real) | ISRC (via MusicBrainz only, not a federated multi-registry lookup), EIDR (response shape unverified against a real reply), ISWC (via MusicBrainz works) |
+| **Test target** | 300+ tests (mock HTTP via `wiremock`) — `mm-providers` currently has 386 |
 
 ---
 
@@ -441,17 +442,22 @@ MeedyaManager/
 
 ## 🔄 CI/CD Pipelines
 
-### 7 GitHub Actions Workflows
+### 9 GitHub Actions Workflows
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `ci-rust.yml` | Push/PR to main | Rust core: `fmt` + `clippy` + `test` + coverage (3 OS matrix) |
-| `ci-macos.yml` | Push/PR to main | Build Rust FFI → UniFFI bindings → `xcodebuild` + test |
-| `ci-windows.yml` | Push/PR to main | Build Rust FFI → cbindgen → `dotnet build` + test |
-| `ci-linux.yml` | Push/PR to main | `cargo build` mm-gtk + test (`xvfb-run`) |
-| `release.yml` | Git tag (`v*`) | Build all platforms, code-sign, notarize, create GitHub Release |
-| `audit.yml` | Weekly (cron) | `cargo-deny` (licenses, advisories) + `cargo-audit` |
-| `docs.yml` | Push to main | Build `cargo doc`, optionally publish to GitHub Pages |
+| `pr-gate.yml` | Every PR (no path filter) | Umbrella branch-protection check — detects changed paths and conditionally invokes the 4 platform CIs as reusable workflows, aggregates the result as the single required `Gate` check on `main` |
+| `ci-rust.yml` | `workflow_call` from `pr-gate.yml` (+ direct push to `main`) | Rust core: `fmt` + `clippy` + `test` + version-sync (3 OS matrix) |
+| `ci-macos.yml` | `workflow_call` from `pr-gate.yml` (+ direct push to `main`) | Build Rust FFI → `swift build` + `swift test` |
+| `ci-windows.yml` | `workflow_call` from `pr-gate.yml` (+ direct push to `main`) | Build Rust FFI → cbindgen → `dotnet build` + test — currently **de-scoped from PR Gate** pending issue #148 |
+| `ci-linux.yml` | `workflow_call` from `pr-gate.yml` (+ direct push to `main`) | `cargo build` mm-gtk + test (`xvfb-run`) |
+| `version-bump.yml` | Manual (`workflow_dispatch`) | Bump version across all platform version files |
+| `release.yml` | Git tag (`v*`) | Build all platforms, code-sign, notarize, create GitHub Release — no tag has ever actually been pushed against this workflow |
+| `audit.yml` | Weekly (cron) + push to `main` | `cargo-deny` (licenses, advisories) + `cargo-audit` — **currently failing**, see issue #203 |
+| `docs.yml` | Push to `main` | Build `cargo doc --no-deps --workspace` |
+
+> See `.claude/CLAUDE.md` for the full rationale behind the umbrella PR Gate pattern (per-platform
+> CIs are path-filtered and cannot be required checks directly, or an unrelated PR would soft-lock).
 
 ### CI Matrix (ci-rust.yml)
 
@@ -461,9 +467,12 @@ MeedyaManager/
 | macos-latest (ARM) | stable | Same as above (mm-gtk excluded — GTK4 not available on macOS runners) |
 | windows-latest | stable | Same as above (mm-gtk excluded — GTK4 not available on Windows runners) |
 
-### Workspace Lint Configuration (v1.3.1)
+### Workspace Lint Configuration
 
-All 8 workspace crates share a unified lint configuration via `[workspace.lints]` in the root `Cargo.toml`:
+> Introduced in the work originally labelled "v1.3.1" in the changelog — but `Cargo.toml` was
+> never actually bumped past `1.3.0`, so do not cite a `v1.3.1` release as having shipped this.
+
+All 8 workspace-member crates share a unified lint configuration via `[workspace.lints]` in the root `Cargo.toml` (a 9th crate directory, `mm-gtk`, exists but is not a workspace member):
 
 - **`clippy::pedantic`** and **`clippy::nursery`** enabled as warnings
 - **`unsafe_code`** warned (mm-ffi explicitly allows it for FFI boundary)
@@ -476,9 +485,9 @@ All 8 workspace crates share a unified lint configuration via `[workspace.lints]
 - `cargo build --workspace` succeeds
 - `cargo test --workspace` passes (stub tests)
 - `cargo clippy --workspace --all-targets` is clean (0 warnings with pedantic+nursery)
-- macOS: `xcodebuild build` succeeds
+- macOS: `swift build` succeeds
 - Windows: `dotnet build` succeeds
-- All 8 CI workflows pass (green baseline)
+- The `Gate` job in `pr-gate.yml` — the single required check on `main` — passes (green baseline)
 
 ---
 
@@ -499,11 +508,13 @@ All 8 workspace crates share a unified lint configuration via `[workspace.lints]
 | 1 (highest) | Environment variables | `.env` file via `dotenvy` |
 | 2 | Config file | `settings.json5` `api_keys` section |
 | 3 | OS keyring | Native credential storage via `keyring` crate |
-| 4 | Encrypted bundle | AES-256-GCM encrypted credential file |
+| 4 | Plain JSON file | `credentials.rs:10` — a plain, **unencrypted** `credentials.json` on disk. AES-256-GCM encryption for this tier was proposed but never implemented (issue #209) — do not describe tier 4 as encrypted in user-facing docs |
 
 ### Per-Service Configuration
 
-Each API provider has a toggle in the build configuration:
+**Status: not yet implemented.** Each API provider is *intended* to have a toggle in the build
+configuration, sketched below — but no `include_in_build` field exists anywhere in the codebase
+today (grep returns 0 hits). This is a design target, not current behaviour:
 
 ```json5
 {
@@ -552,22 +563,26 @@ Each release includes:
 
 ---
 
-## 🍎 Apple Platform Wishlist (v1.2.0+)
+## 🍎 Apple Platform Wishlist
 
 > The following Apple-specific features extend MeedyaManager beyond cross-platform parity.
-> Each is tracked as an open GitHub issue. They will be scheduled into future milestones once
-> cross-platform core quality is established. All require macOS-only Swift code in `macos/`.
+> **No GitHub issues exist for these yet** — an earlier draft of this table cited #134-#141, but
+> those numbers belong to unrelated, already-filed issues (mm-core metadata migration, the
+> meedya-core dependency, upstream provider contribution, a `deny.toml` fix, FFmpeg packaging, a
+> lyrics-file feature, `update.mwbm.io`, and a post-PR cleanup task). File real issues before
+> re-adding numbers here. They will be scheduled into future milestones once cross-platform core
+> quality is established. All require macOS-only Swift code in `macos/`.
 
-| # | Feature | Description | Effort |
-| - | ------- | ----------- | ------ |
-| #134 | **Music.app Library Import** | Parse `~/Music/Music/` (SQLite + XML) to bulk-import metadata, ratings, play counts, and playlists into MeedyaManager without re-tagging | Medium |
-| #135 | **MusicKit Framework** | Replace the REST-based Apple Music provider with the native `MusicKit` framework for richer catalog access, authenticated user-library sync, and on-device catalog search | Medium |
-| #136 | **Quick Look Extension** | Register a `QLPreviewExtension` target so Finder shows rich previews (album art, tags, waveform) for media files managed by MeedyaManager | Small |
-| #137 | **Siri Shortcuts / App Intents** | Implement `AppIntent` conformances for key operations (scan folder, rename preview, tag lookup) so users can automate MeedyaManager from the Shortcuts app or Siri | Small |
-| #138 | **Core ML Audio Fingerprinting** | Use Apple's Sound Analysis framework and Neural Engine to identify tracks on-device without any external API — works fully offline on Apple Silicon | Large |
-| #139 | **Spotlight Importer** | Publish the MeedyaManager library to macOS Spotlight via `CoreSpotlight` so every track is instantly findable system-wide, including from Alfred and Raycast | Small |
-| #140 | **AirPlay 2 Streaming** | Extend `mm-server` to advertise itself as an AirPlay 2 source, enabling playback on HomePod, Apple TV, and any AirPlay-enabled speaker | Medium |
-| #141 | **CloudKit Settings Sync** | Synchronise rename rules, provider credentials, and app preferences across all Apple devices via iCloud / CloudKit — configuration set on Mac appears on iPhone/iPad automatically | Medium |
+| Feature | Description | Effort |
+| ------- | ----------- | ------ |
+| **Music.app Library Import** | Parse `~/Music/Music/` (SQLite + XML) to bulk-import metadata, ratings, play counts, and playlists into MeedyaManager without re-tagging | Medium |
+| **MusicKit Framework** | Replace the current unauthenticated iTunes-Search-API-based Apple Music provider with the native `MusicKit` framework for richer catalog access, authenticated user-library sync, and on-device catalog search | Medium |
+| **Quick Look Extension** | Register a `QLPreviewExtension` target so Finder shows rich previews (album art, tags, waveform) for media files managed by MeedyaManager | Small |
+| **Siri Shortcuts / App Intents** | Implement `AppIntent` conformances for key operations (scan folder, rename preview, tag lookup) so users can automate MeedyaManager from the Shortcuts app or Siri | Small |
+| **Core ML Audio Fingerprinting** | Use Apple's Sound Analysis framework and Neural Engine to identify tracks on-device without any external API — works fully offline on Apple Silicon | Large |
+| **Spotlight Importer** | Publish the MeedyaManager library to macOS Spotlight via `CoreSpotlight` so every track is instantly findable system-wide, including from Alfred and Raycast | Small |
+| **AirPlay 2 Streaming** | Extend `mm-server` (currently not-yet-implemented, see M10) to advertise itself as an AirPlay 2 source once that server exists, enabling playback on HomePod, Apple TV, and any AirPlay-enabled speaker | Medium |
+| **CloudKit Settings Sync** | Synchronise rename rules, provider credentials, and app preferences across all Apple devices via iCloud / CloudKit — configuration set on Mac appears on iPhone/iPad automatically | Medium |
 
 ---
 
@@ -615,7 +630,7 @@ All source files include a copyright header:
 | `Project_Plan.md` | Developers | This file — full project plan |
 | `PROJECT_STATUS.md` | Everyone | Current status & progress |
 | `docs/changelog.md` | Everyone | Detailed change log with dates |
-| `docs/ROADMAP.md` | Everyone | Milestone timeline |
+| `docs/roadmap.md` | Everyone | Milestone timeline |
 | `help/` | End users | Usage docs, troubleshooting, FAQs |
 | `.claude/` | AI/Developers | Project brief, Claude context |
 
