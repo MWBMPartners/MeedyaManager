@@ -8,6 +8,7 @@
 //
 // API reference: https://www.dropbox.com/developers/documentation/http/documentation
 
+use std::future::Future;
 use std::path::Path;
 
 use crate::traits::{ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider};
@@ -98,76 +99,92 @@ impl CloudProvider for DropboxProvider {
         CloudCapabilities::delta_only()
     }
 
-    async fn authenticate(&mut self) -> Result<(), CloudError> {
+    // Every method below is a no-op stub — no live HTTP client is wired up yet,
+    // so no `.await` point exists anywhere in this file. Clippy's
+    // `unused_async_trait_impl` therefore requires we drop `async fn` in
+    // favour of returning an already-resolved `Future` via
+    // `std::future::ready()`; this keeps the trait's `impl Future<...> + Send`
+    // contract satisfied without the (needless, for a stub) machinery of an
+    // async fn body. See `mm-export::sqlite::SqliteExporter` for the same
+    // pattern applied first.
+    fn authenticate(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         // Production implementation would use the PKCE flow:
         // 1. Build https://www.dropbox.com/oauth2/authorize?client_id=...&code_challenge=...
         // 2. Open in browser and capture the redirect.
         // 3. POST to https://api.dropboxapi.com/oauth2/token to exchange the code.
-        Err(CloudError::Unsupported(
+        std::future::ready(Err(CloudError::Unsupported(
             "OAuth PKCE flow requires user interaction — use the Cloud tab Connect button".into(),
-        ))
+        )))
     }
 
-    async fn refresh_token(&mut self) -> Result<(), CloudError> {
+    fn refresh_token(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         let Some(_rt) = &self.refresh_token else {
-            return Err(CloudError::Auth("no refresh token stored".into()));
+            return std::future::ready(Err(CloudError::Auth("no refresh token stored".into())));
         };
         // Production: POST https://api.dropboxapi.com/oauth2/token
         // with grant_type=refresh_token.
-        Err(CloudError::Unsupported(
+        std::future::ready(Err(CloudError::Unsupported(
             "token refresh requires live HTTP client".into(),
-        ))
+        )))
     }
 
-    async fn list_files(&self, path: &str) -> Result<Vec<CloudFile>, CloudError> {
+    fn list_files(&self, path: &str) -> impl Future<Output = Result<Vec<CloudFile>, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: POST {api_base}/files/list_folder with JSON body.
         // Parse the `entries` array; follow `has_more` + cursor pages.
         let _body = Self::list_folder_body(path);
-        Ok(Vec::new())
+        std::future::ready(Ok(Vec::new()))
     }
 
-    async fn get_file(&self, id: &str) -> Result<CloudFile, CloudError> {
+    fn get_file(&self, id: &str) -> impl Future<Output = Result<CloudFile, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: POST /files/get_metadata with {"path": id}
-        Err(CloudError::NotFound(id.to_string()))
+        std::future::ready(Err(CloudError::NotFound(id.to_string())))
     }
 
-    async fn download_file(&self, file: &CloudFile, _dest: &Path) -> Result<(), CloudError> {
+    fn download_file(
+        &self,
+        file: &CloudFile,
+        _dest: &Path,
+    ) -> impl Future<Output = Result<(), CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: POST {content_api_base}/files/download with
         // Dropbox-API-Arg header containing {"path": file.id}
-        Err(CloudError::Unsupported(format!(
+        std::future::ready(Err(CloudError::Unsupported(format!(
             "download not yet wired up for {}",
             file.name
-        )))
+        ))))
     }
 
-    async fn upload_file(&self, src: &Path, _dest_path: &str) -> Result<CloudFile, CloudError> {
+    fn upload_file(
+        &self,
+        src: &Path,
+        _dest_path: &str,
+    ) -> impl Future<Output = Result<CloudFile, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: POST {content_api_base}/files/upload with
         // Dropbox-API-Arg: {"path": dest_path, "mode": "overwrite"}
-        Err(CloudError::Unsupported(format!(
+        std::future::ready(Err(CloudError::Unsupported(format!(
             "upload not yet wired up for {}",
             src.display()
-        )))
+        ))))
     }
 
-    async fn watch_changes(
+    fn watch_changes(
         &self,
         path: &str,
         cursor: Option<&str>,
-    ) -> Result<ChangeSet, CloudError> {
+    ) -> impl Future<Output = Result<ChangeSet, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         if let Some(c) = cursor {
             // Production: POST /files/list_folder/continue {continue_body(c)}.
@@ -176,15 +193,15 @@ impl CloudProvider for DropboxProvider {
             // First call: get an initial cursor via /files/list_folder with limit=1.
             let _body = Self::list_folder_body(path);
         }
-        Ok(ChangeSet::default())
+        std::future::ready(Ok(ChangeSet::default()))
     }
 
-    async fn disconnect(&mut self) -> Result<(), CloudError> {
+    fn disconnect(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         // Production: POST /auth/token/revoke to invalidate the token server-side.
         self.access_token = None;
         self.refresh_token = None;
         self.authenticated = false;
-        Ok(())
+        std::future::ready(Ok(()))
     }
 }
 

@@ -12,6 +12,7 @@
 //
 // Issue: https://github.com/MWBM-Partners-Ltd/MeedyaManager/issues/TBD
 
+use std::future::Future;
 use std::path::Path;
 
 use crate::traits::{ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider};
@@ -66,67 +67,83 @@ impl CloudProvider for ICloudProvider {
         CloudCapabilities::polling_only()
     }
 
-    async fn authenticate(&mut self) -> Result<(), CloudError> {
+    // Every method below is a no-op stub (no `.await` point exists anywhere in
+    // this file — iCloud integration lives entirely in the macOS SwiftUI
+    // layer). Clippy's `unused_async_trait_impl` therefore requires we drop
+    // `async fn` in favour of returning an already-resolved `Future` via
+    // `std::future::ready()`; this keeps the trait's `impl Future<...> + Send`
+    // contract satisfied without the (needless, for a stub) machinery of an
+    // async fn body. See `mm-export::sqlite::SqliteExporter` for the same
+    // pattern applied first.
+    fn authenticate(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         if !Self::is_macos() {
-            return Err(CloudError::Unsupported(
+            return std::future::ready(Err(CloudError::Unsupported(
                 "iCloud Drive is only available on macOS — use the macOS app".into(),
-            ));
+            )));
         }
         // On macOS the SwiftUI layer calls NSFileProviderManager; we just mark as
         // authenticated here when the callback confirms access was granted.
-        Err(CloudError::Unsupported(
+        std::future::ready(Err(CloudError::Unsupported(
             "iCloud authentication is handled by the macOS native layer".into(),
-        ))
+        )))
     }
 
-    async fn refresh_token(&mut self) -> Result<(), CloudError> {
-        Err(CloudError::Unsupported(
+    fn refresh_token(&mut self) -> impl Future<Output = Result<(), CloudError>> {
+        std::future::ready(Err(CloudError::Unsupported(
             "iCloud token refresh is managed by macOS automatically".into(),
-        ))
+        )))
     }
 
-    async fn list_files(&self, _path: &str) -> Result<Vec<CloudFile>, CloudError> {
+    fn list_files(&self, _path: &str) -> impl Future<Output = Result<Vec<CloudFile>, CloudError>> {
         if !Self::is_macos() {
-            return Err(CloudError::Unsupported(
+            return std::future::ready(Err(CloudError::Unsupported(
                 "iCloud Drive is only available on macOS".into(),
-            ));
+            )));
         }
-        Err(CloudError::Unsupported(
+        std::future::ready(Err(CloudError::Unsupported(
             "iCloud file listing is handled by the macOS native layer".into(),
-        ))
+        )))
     }
 
-    async fn get_file(&self, _id: &str) -> Result<CloudFile, CloudError> {
-        Err(CloudError::Unsupported(
+    fn get_file(&self, _id: &str) -> impl Future<Output = Result<CloudFile, CloudError>> {
+        std::future::ready(Err(CloudError::Unsupported(
             "iCloud not implemented in Rust layer".into(),
-        ))
+        )))
     }
 
-    async fn download_file(&self, _file: &CloudFile, _dest: &Path) -> Result<(), CloudError> {
-        Err(CloudError::Unsupported(
+    fn download_file(
+        &self,
+        _file: &CloudFile,
+        _dest: &Path,
+    ) -> impl Future<Output = Result<(), CloudError>> {
+        std::future::ready(Err(CloudError::Unsupported(
             "iCloud not implemented in Rust layer".into(),
-        ))
+        )))
     }
 
-    async fn upload_file(&self, _src: &Path, _dest_path: &str) -> Result<CloudFile, CloudError> {
-        Err(CloudError::Unsupported(
+    fn upload_file(
+        &self,
+        _src: &Path,
+        _dest_path: &str,
+    ) -> impl Future<Output = Result<CloudFile, CloudError>> {
+        std::future::ready(Err(CloudError::Unsupported(
             "iCloud not implemented in Rust layer".into(),
-        ))
+        )))
     }
 
-    async fn watch_changes(
+    fn watch_changes(
         &self,
         _path: &str,
         _cursor: Option<&str>,
-    ) -> Result<ChangeSet, CloudError> {
-        Err(CloudError::Unsupported(
+    ) -> impl Future<Output = Result<ChangeSet, CloudError>> {
+        std::future::ready(Err(CloudError::Unsupported(
             "iCloud not implemented in Rust layer".into(),
-        ))
+        )))
     }
 
-    async fn disconnect(&mut self) -> Result<(), CloudError> {
+    fn disconnect(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         self.authenticated = false;
-        Ok(())
+        std::future::ready(Ok(()))
     }
 }
 

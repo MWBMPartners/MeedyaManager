@@ -8,6 +8,7 @@
 //
 // API reference: https://learn.microsoft.com/graph/api/overview
 
+use std::future::Future;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -119,94 +120,110 @@ impl CloudProvider for OneDriveProvider {
         CloudCapabilities::full()
     }
 
-    async fn authenticate(&mut self) -> Result<(), CloudError> {
+    // Every method below is a no-op stub — no live HTTP client is wired up yet,
+    // so no `.await` point exists anywhere in this file. Clippy's
+    // `unused_async_trait_impl` therefore requires we drop `async fn` in
+    // favour of returning an already-resolved `Future` via
+    // `std::future::ready()`; this keeps the trait's `impl Future<...> + Send`
+    // contract satisfied without the (needless, for a stub) machinery of an
+    // async fn body. See `mm-export::sqlite::SqliteExporter` for the same
+    // pattern applied first.
+    fn authenticate(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         // Production implementation would initiate the OAuth device-code flow:
         // 1. POST to https://login.microsoftonline.com/common/oauth2/v2.0/devicecode
         // 2. Display the user code and verification URL.
         // 3. Poll https://login.microsoftonline.com/common/oauth2/v2.0/token
         //    until the user completes the flow.
         // For now, return Unsupported so the UI can show "Connect" state.
-        Err(CloudError::Unsupported(
+        std::future::ready(Err(CloudError::Unsupported(
             "OAuth device-code flow requires user interaction — use the Cloud tab Connect button"
                 .into(),
-        ))
+        )))
     }
 
-    async fn refresh_token(&mut self) -> Result<(), CloudError> {
+    fn refresh_token(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         // Production implementation would POST to:
         // https://login.microsoftonline.com/common/oauth2/v2.0/token
         // with grant_type=refresh_token and the stored refresh_token.
         let Some(_rt) = &self.refresh_token else {
-            return Err(CloudError::Auth("no refresh token stored".into()));
+            return std::future::ready(Err(CloudError::Auth("no refresh token stored".into())));
         };
         // Stub: in production this would update self.access_token with the new token.
-        Err(CloudError::Unsupported(
+        std::future::ready(Err(CloudError::Unsupported(
             "token refresh requires live HTTP client".into(),
-        ))
+        )))
     }
 
-    async fn list_files(&self, path: &str) -> Result<Vec<CloudFile>, CloudError> {
+    fn list_files(&self, path: &str) -> impl Future<Output = Result<Vec<CloudFile>, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: GET {items_url(path)} with Authorization: Bearer {token}
         // Parse the `value` array of driveItem objects from the JSON response.
         let _url = self.items_url(path);
         // Stub: return an empty list until live HTTP is wired up.
-        Ok(Vec::new())
+        std::future::ready(Ok(Vec::new()))
     }
 
-    async fn get_file(&self, id: &str) -> Result<CloudFile, CloudError> {
+    fn get_file(&self, id: &str) -> impl Future<Output = Result<CloudFile, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: GET /me/drive/items/{id}
-        Err(CloudError::NotFound(id.to_string()))
+        std::future::ready(Err(CloudError::NotFound(id.to_string())))
     }
 
-    async fn download_file(&self, file: &CloudFile, _dest: &Path) -> Result<(), CloudError> {
+    fn download_file(
+        &self,
+        file: &CloudFile,
+        _dest: &Path,
+    ) -> impl Future<Output = Result<(), CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: GET /me/drive/items/{id}/content — redirect to CDN URL.
-        Err(CloudError::Unsupported(format!(
+        std::future::ready(Err(CloudError::Unsupported(format!(
             "download not yet wired up for {}",
             file.name
-        )))
+        ))))
     }
 
-    async fn upload_file(&self, src: &Path, _dest_path: &str) -> Result<CloudFile, CloudError> {
+    fn upload_file(
+        &self,
+        src: &Path,
+        _dest_path: &str,
+    ) -> impl Future<Output = Result<CloudFile, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: PUT /me/drive/root:/{dest_path}:/content for small files,
         // or multi-session upload for >4 MiB files.
-        Err(CloudError::Unsupported(format!(
+        std::future::ready(Err(CloudError::Unsupported(format!(
             "upload not yet wired up for {}",
             src.display()
-        )))
+        ))))
     }
 
-    async fn watch_changes(
+    fn watch_changes(
         &self,
         path: &str,
         cursor: Option<&str>,
-    ) -> Result<ChangeSet, CloudError> {
+    ) -> impl Future<Output = Result<ChangeSet, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: GET {delta_url(path, cursor)} — follows @odata.nextLink until
         // @odata.deltaLink is returned (which becomes the next cursor).
         let _url = self.delta_url(path, cursor);
-        Ok(ChangeSet::default())
+        std::future::ready(Ok(ChangeSet::default()))
     }
 
-    async fn disconnect(&mut self) -> Result<(), CloudError> {
+    fn disconnect(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         // Revoke stored tokens and reset state.
         self.access_token = None;
         self.refresh_token = None;
         self.authenticated = false;
-        Ok(())
+        std::future::ready(Ok(()))
     }
 }
 
