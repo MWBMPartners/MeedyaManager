@@ -62,6 +62,9 @@ install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-256.png \
 install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-256.png \
     "${APPDIR}/${APP_ID}.png"
 
+# License
+install -Dm644 LICENSE "${APPDIR}/usr/share/licenses/${APP_ID}/LICENSE"
+
 # Symlink for appimagetool (requires AppRun or a symlink to the binary)
 cat > "${APPDIR}/AppRun" <<'APPRUN'
 #!/bin/sh

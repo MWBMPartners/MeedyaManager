@@ -58,6 +58,9 @@ install -Dm644 linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-256.png \
 # Man page placeholder
 install -Dm644 /dev/null "${PKGDIR}/usr/share/man/man1/meedyamanager.1"
 
+# License
+install -Dm644 LICENSE "${PKGDIR}/usr/share/doc/meedyamanager/copyright"
+
 # ---------------------------------------------------------------------------
 # 3. Build the .deb
 # ---------------------------------------------------------------------------

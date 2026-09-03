@@ -135,14 +135,20 @@ jobs:
           # Copy DMG if produced by the packaging script
           cp "${PREFIX}-macos-arm64.dmg" staging/ 2>/dev/null || true
 
+          # Copy LICENSE file
+          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
+          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
+          # licence text is a compliance failure, so the release should stop instead (#207).
+          cp LICENSE staging/
+
           # Generate SHA256 checksums
           cd staging
           for f in *; do
             [ -f "$f" ] && shasum -a 256 "$f" >> "${PREFIX}-macos-arm64.sha256"
           done
 
-          # Create tarball (binaries + dylib)
-          tar -czf "../${PREFIX}-macos-arm64.tar.gz" MeedyaManager mm-cli libmm_ffi.dylib 2>/dev/null || true
+          # Create tarball (binaries + dylib + LICENSE)
+          tar -czf "../${PREFIX}-macos-arm64.tar.gz" MeedyaManager mm-cli libmm_ffi.dylib LICENSE 2>/dev/null || true
           cd ..
           shasum -a 256 "${PREFIX}-macos-arm64.tar.gz" >> "staging/${PREFIX}-macos-arm64.sha256" 2>/dev/null || true
 
@@ -245,6 +251,12 @@ jobs:
           # Copy .NET publish output
           cp -r windows/MeedyaManager/bin/Release/net8.0-windows*/win-x64/publish/* staging/ 2>/dev/null || true
 
+          # Copy LICENSE file
+          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
+          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
+          # licence text is a compliance failure, so the release should stop instead (#207).
+          cp LICENSE staging/
+
           # Generate SHA256 checksums
           cd staging
           sha256sum * > "${PREFIX}-windows-x64.sha256" 2>/dev/null || true
@@ -330,6 +342,12 @@ jobs:
           # Copy .NET publish output
           cp -r windows/MeedyaManager/bin/Release/net8.0-windows*/win-arm64/publish/* staging/ 2>/dev/null || true
 
+          # Copy LICENSE file
+          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
+          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
+          # licence text is a compliance failure, so the release should stop instead (#207).
+          cp LICENSE staging/
+
           # Generate SHA256 checksums
           cd staging
           sha256sum * > "${PREFIX}-windows-arm64.sha256" 2>/dev/null || true
@@ -395,12 +413,18 @@ jobs:
           # Copy AppImage if built
           cp "MeedyaManager-${{ needs.prepare.outputs.version }}-x86_64.AppImage" staging/ 2>/dev/null || true
 
+          # Copy LICENSE file
+          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
+          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
+          # licence text is a compliance failure, so the release should stop instead (#207).
+          cp LICENSE staging/
+
           # Generate SHA256 checksums
           cd staging
           sha256sum * > "${PREFIX}-linux-x64.sha256" 2>/dev/null || true
 
-          # Create tarball of all binaries
-          tar -czf "../${PREFIX}-linux-x64.tar.gz" mm-gtk mm-cli libmm_ffi.so 2>/dev/null || true
+          # Create tarball of all binaries and LICENSE
+          tar -czf "../${PREFIX}-linux-x64.tar.gz" mm-gtk mm-cli libmm_ffi.so LICENSE 2>/dev/null || true
           cd ..
           sha256sum "${PREFIX}-linux-x64.tar.gz" >> "staging/${PREFIX}-linux-x64.sha256" 2>/dev/null || true
 
@@ -457,6 +481,12 @@ jobs:
 
           cp ${TARGET}/mm-cli staging/ 2>/dev/null || true
           cp ${TARGET}/libmm_ffi.so staging/ 2>/dev/null || true
+
+          # Copy LICENSE file
+          # LICENSE is tracked in the repo, so this cannot legitimately fail. Unlike the
+          # other copies in this file it is NOT suppressed: shipping a GPL binary with no
+          # licence text is a compliance failure, so the release should stop instead (#207).
+          cp LICENSE staging/
 
           cd staging
           sha256sum * > "${PREFIX}-linux-arm64.sha256" 2>/dev/null || true

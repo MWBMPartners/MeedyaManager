@@ -84,6 +84,8 @@ parts:
       install -Dm755 target/release/mm-gtk ${CRAFT_PART_INSTALL}/bin/mm-gtk
       cargo build --release -p mm-cli
       install -Dm755 target/release/mm-cli ${CRAFT_PART_INSTALL}/bin/mm-cli
+      # Install LICENSE file
+      install -Dm644 LICENSE ${CRAFT_PART_INSTALL}/share/doc/meedyamanager/LICENSE
 
   desktop-files:
     plugin: dump
