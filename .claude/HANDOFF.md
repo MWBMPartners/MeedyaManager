@@ -26,11 +26,32 @@ propose ranked next work for the alpha releases.
 | 4 | GitHub issue sweep — 95 comments, 40 reopens, 4 relabels | ✅ done |
 | 5 | File follow-up issues from the audit (#201–#215) | ✅ done |
 | 6 | Merge `main` into the working branch + port `musicbrainz.rs` | ✅ done (`58ea003`) |
-| 7 | Rewire MB/ISRC/ISWC providers through the hardened module | 🔄 in flight |
-| 8 | Documentation rewrite (55 `.md` files + `help/`) | 🔄 in flight |
-| 9 | Refresh `.claude/CLAUDE.md` + Claude memory | ⏳ pending |
-| 10 | Present ranked new-work proposals to owner | ⏳ pending |
-| 11 | Post-PR dev-cache cleanup (per `.claude/CLAUDE.md`) | ⏳ after PR |
+| 7 | Rewire MB/ISRC/ISWC providers through the hardened module | ✅ done (`2b08392`) |
+| 8 | Documentation rewrite (51 `.md` files incl. all 19 provider pages) | ✅ done (`a4d45dc`, `b0bb469`, `6f69478`) |
+| 9 | Refresh `.claude/CLAUDE.md` + Claude memory | ✅ done |
+| 10 | Present ranked new-work proposals to owner | ✅ done (28 proposals, delivered in chat) |
+| 11 | **Open the PR to `alpha`** | ⏳ owner's call — not created, per the no-PR-stacking rule |
+| 12 | Post-PR dev-cache cleanup (per `.claude/CLAUDE.md`) | ⏳ after the PR exists |
+
+### Commits on this branch (all pushed)
+
+| Commit | Summary |
+| --- | --- |
+| `939c6af` | `.claude/HANDOFF.md` created |
+| `58ea003` | Merge `main`; port `musicbrainz.rs` onto the upstream provider API |
+| `2b08392` | Rewire MusicBrainz/ISRC/ISWC through the hardened seam (#198) |
+| `a4d45dc` | Documentation rewrite — 32 files, 121 audited inaccuracies |
+| `b0bb469` | Test-count corrections + changelog historical caveat |
+| `6f69478` | All 19 `help/providers/` pages rewritten |
+
+**Final verification:** `cargo test --workspace` = **1,240 passed, 0 failed**;
+`cargo clippy -p mm-core -p mm-providers -p mm-cli --all-targets -- -D warnings` clean;
+working tree clean.
+
+> ⚠️ **CI has never run on this branch.** Every workflow triggers on `main` only, so nothing here
+> has been through CI — that is issue #204. Expect the first PR to `alpha` to surface failures,
+> particularly the Security Audit (#203, red every week since 2026-07-06) and the `mm-cloud`
+> clippy debt (#200, exactly 40 errors).
 
 **Not doing (owner decision):** OpenAPI / Swagger UI — deferred until the axum router actually
 exists. Do not write a spec for a server that cannot run. See §3.
@@ -50,7 +71,8 @@ exists. Do not write a spec for a server that cannot run. See §3.
   issue #199 (fixed on `main` by `1d2576d`, and that fix is now merged in here).
 - **44,183 Rust LOC; 1,392 `#[test]`/`#[tokio::test]` functions.** Docs claiming "8 crates" and
   217/399/444 tests are stale.
-- `cargo test --workspace` after the merge: **1,207 passed, 0 failed.**
+- `cargo test --workspace`: **1,240 passed, 0 failed** (1,207 immediately after the merge; the
+  provider rewiring in `2b08392` added 33 tests).
 - Version is **1.3.0** in `Cargo.toml`, `Info.plist` and `Package.appxmanifest`. Versions 1.3.1
   and 1.3.2 were **never cut** despite changelog entries for them. Linux/WinGet manifests are
   unsynced (snap/deb say `0.9.0`, WinGet `1.0.0`, flatpak has a placeholder commit pin).
@@ -208,8 +230,25 @@ The docs audit found **121 specific inaccuracies** across **55 `.md` files**. Hi
 
 ---
 
-## 8. Change log for this handoff file
+## 8. Next actions
 
+1. **Open the PR** from `claude/musicbrainz-api-migration-7jxszn` → `alpha`. Deliberately not
+   created this session (no-PR-stacking rule) — it is the owner's call.
+2. Expect CI to run for the first time on that PR. See the warning in §1.
+3. Run the post-PR dev-cache cleanup from `.claude/CLAUDE.md` once the PR exists.
+4. Start on the ranked proposals. The top five, in order: #201 (`scan --execute` data loss),
+   #128 (Test Mode not enforced), #214 (cut a real pre-release), #204 (CI for `alpha`/`beta`),
+   #205 (stubs must not report success).
+5. Four reopened issues may be better recorded as *not planned* than as open work — the owner
+   should decide: **#74** (provider auto-registration via `inventory`, never adopted),
+   **#80** (the five stub music providers), **#104** and **#106** (App Store / Microsoft Store
+   submissions).
+
+## 9. Change log for this handoff file
+
+- **2026-09-03 (later)** — provider rewiring and the full documentation rewrite landed; commit
+  table, final verification numbers and next actions recorded. Added the warning that no CI has
+  ever run on this branch.
 - **2026-09-03** — merge + MusicBrainz port landed (`58ea003`); issue sweep complete (95 comments,
   40 reopens, #201–#215 filed); documentation scope recorded; pagination gap documented.
 - **2026-09-02** — created. Recorded branch divergence, the 9-crate/1,392-test inventory, the
