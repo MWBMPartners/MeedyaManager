@@ -12,7 +12,7 @@
 //   meedya edit <file>        — Edit metadata tags and cover art
 //   meedya rule <action>      — Validate templates and list tags
 //   meedya watch [paths]      — Watch directories for changes
-//   meedya lookup <query>     — Search metadata providers (stub — M5)
+//   meedya lookup <query>     — Search metadata providers
 //   meedya config <action>    — Manage configuration
 //   meedya report-bug         — Generate a bug report
 //   meedya export             — Export library to database (M9)
@@ -32,8 +32,7 @@ use output::ExitCode;
 
 /// MeedyaManager — Cross-platform media file manager and auto-organizer.
 ///
-/// A powerful CLI for scanning, organising, and enriching your media library
-/// with metadata from 19+ providers.
+/// A powerful CLI for scanning, organising, and enriching your media library.
 #[derive(Parser, Debug)]
 #[command(
     name = "meedya",
@@ -81,7 +80,7 @@ enum Commands {
     /// Watch directories for media file changes
     Watch(commands::watch::WatchArgs),
 
-    /// Search metadata providers for a query (coming in M5)
+    /// Search metadata providers for a query (not available in this alpha)
     Lookup(commands::lookup::LookupArgs),
 
     /// Manage MeedyaManager configuration
@@ -91,10 +90,10 @@ enum Commands {
     #[command(name = "report-bug")]
     ReportBug(commands::report_bug::ReportBugArgs),
 
-    /// Export media library metadata to a database (M9)
+    /// Export media library metadata to a database (preview — not functional in this alpha)
     Export(commands::export::ExportArgs),
 
-    /// Start the HTTPS media server with JWT authentication (M10)
+    /// Start the HTTPS media server with JWT authentication (preview — not functional in this alpha)
     Serve(commands::serve::ServeArgs),
 
     /// Manage the MeedyaManager background service (install/start/stop/status)
@@ -168,5 +167,24 @@ async fn main() {
             output::print_error(&format!("{e}"));
             std::process::exit(ExitCode::ERROR);
         }
+    }
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// `clap`'s own structural sanity check for the derived `Cli` definition
+    /// — catches duplicate/conflicting short or long flags, malformed
+    /// argument groups, and similar mistakes across every subcommand. These
+    /// bugs would otherwise only surface at runtime (and only for whichever
+    /// subcommand happens to get exercised), so this test panics loudly at
+    /// `cargo test` time instead of waiting for a user to trip over it.
+    #[test]
+    fn cli_definition_is_valid() {
+        Cli::command().debug_assert();
     }
 }

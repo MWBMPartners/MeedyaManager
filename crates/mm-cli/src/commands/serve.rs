@@ -178,6 +178,11 @@ pub fn validate_config(cfg: &ServerConfig, no_tls: bool) -> Vec<String> {
 // ─── Command execution ────────────────────────────────────────────────────
 
 /// Execute the `meedya serve` command.
+///
+/// `--show-routes` and `--check-config` are fully functional. Actually
+/// starting the HTTPS media server is not implemented yet: this reports
+/// `NOT_IMPLEMENTED` rather than pretending a server is listening. See
+/// issues #120–#126.
 pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
     // --show-routes: print route table and exit
     if args.show_routes {
@@ -268,20 +273,23 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
         return Ok(ExitCode::ERROR);
     }
 
-    // Print start summary
+    // The server is not wired up in this release: `mm-server` builds no axum
+    // router here and nothing binds a socket, so — unlike the summary this
+    // used to print — no server is actually reachable at `address` once this
+    // function returns. Report the settings that *would* be used, then say
+    // plainly that nothing started, rather than telling the user to `curl` an
+    // endpoint that does not exist. Tracked by issues #120–#126.
+    const NOT_IMPLEMENTED_MESSAGE: &str = "`meedya serve` is not implemented in this release — no server was started (see issues #120–#126).";
+
     match ctx.output {
         OutputFormat::Json => {
             output::print_json(&ServeOutput {
-                started: true,
-                address: address.clone(),
+                started: false,
+                address,
                 tls_enabled,
                 cors_origins: cfg.cors_origins,
                 media_root,
-                message: format!(
-                    "MeedyaManager media server starting on {}://{}",
-                    if tls_enabled { "https" } else { "http" },
-                    address
-                ),
+                message: NOT_IMPLEMENTED_MESSAGE.into(),
             });
         }
         OutputFormat::Human => {
@@ -324,24 +332,11 @@ pub fn run(ctx: &CliContext, args: &ServeArgs) -> anyhow::Result<i32> {
             ];
             output::print_table(&["Setting", "Value"], &rows);
 
-            println!();
-            println!("Server ready. Press Ctrl+C to stop.");
-            println!();
-            println!("Quick start:");
-            println!("  curl -k -X POST https://{address}/auth/login \\");
-            println!("    -H 'Content-Type: application/json' \\");
-            println!("    -d '{{\"username\":\"admin\",\"password\":\"yourpassword\"}}'");
+            output::print_error(NOT_IMPLEMENTED_MESSAGE);
         }
     }
 
-    // M10 stub: the actual axum server start is wired when mm-server is linked
-    // into the CLI. For now, simulate a running server.
-    // Production code: axum::Server::bind(...).serve(router.into_make_service()).await
-
-    output::print_success(
-        "Server stub: exiting cleanly (full axum server wired in release build).",
-    );
-    Ok(ExitCode::SUCCESS)
+    Ok(ExitCode::NOT_IMPLEMENTED)
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────
@@ -481,15 +476,21 @@ mod tests {
     }
 
     #[test]
-    fn run_valid_config_succeeds() {
+    fn run_valid_config_reports_not_implemented() {
         let ctx = test_ctx(false);
-        assert_eq!(run(&ctx, &default_args()).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(
+            run(&ctx, &default_args()).unwrap(),
+            ExitCode::NOT_IMPLEMENTED
+        );
     }
 
     #[test]
-    fn run_valid_config_json_succeeds() {
+    fn run_valid_config_json_reports_not_implemented() {
         let ctx = test_ctx(true);
-        assert_eq!(run(&ctx, &default_args()).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(
+            run(&ctx, &default_args()).unwrap(),
+            ExitCode::NOT_IMPLEMENTED
+        );
     }
 
     #[test]
@@ -503,7 +504,7 @@ mod tests {
     }
 
     #[test]
-    fn run_no_tls_mode_succeeds() {
+    fn run_no_tls_mode_reports_not_implemented() {
         let ctx = test_ctx(false);
         let args = ServeArgs {
             no_tls: true,
@@ -511,7 +512,7 @@ mod tests {
             tls_key: None,
             ..default_args()
         };
-        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::NOT_IMPLEMENTED);
     }
 
     // --- route table ---
