@@ -464,6 +464,67 @@ suffix included — it cannot inherit, being outside the workspace), `Info.plist
 2. **Windows CI has never been green** (#148). The release workflow's Windows jobs are
    `continue-on-error` and excluded from the release gate so they cannot block a macOS/Linux alpha.
 
+## 10d. Branch alignment — analysis and plan (2026-09-03)
+
+GitHub showed `alpha` as **57 behind / 2 ahead** of `main`, which looks like it needs reconciling.
+It does not: **the working branch is already a strict superset of `main`, `alpha` and `beta`.**
+
+| Branch | vs `main` | Contained in the working branch? |
+| --- | --- | --- |
+| `claude/musicbrainz-api-migration-7jxszn` | 48 ahead / 0 behind | — |
+| `alpha` | 2 ahead / 57 behind | **yes**, entirely |
+| `beta` | 0 ahead / 57 behind | **yes** — a strict ancestor of `main` |
+| `main` | — | **yes**, entirely |
+
+`alpha`'s two "ahead" commits are `afb0525` + its merge `b50aa90` (the actionlint work, PR #192).
+Both are already in the working branch, and `.github/workflows/lint.yml` is byte-identical to
+`alpha`'s copy. **So no cherry-pick is needed** — and doing one would create duplicate commits that
+conflict when the working branch merges.
+
+Merge characteristics, verified:
+
+- working branch → `main` is a **fast-forward**. `main` is a direct ancestor, so no merge commit
+  and no possible conflict.
+- working branch → `alpha` is also a fast-forward.
+- `main` → `alpha` is **not** — hence the 2-ahead. That resolves itself once the working branch
+  lands, because the working branch contains both.
+
+### Branch protection (from the rulesets, not assumed)
+
+- `Keep core branches` (14829073): deletion protection only, on `main`, `alpha`, `beta`.
+- `Protect main branch` (14829223): `main` only — deletion, non-fast-forward, **pull_request** and
+  **required_status_checks**.
+
+So `main` is the only branch that actually enforces a gate. `alpha` and `beta` can be moved
+directly. There is no documented branching model anywhere in the repo (grep found none), and `main`
+has not moved in three months while all real work happened elsewhere — so `main` is the de-facto
+trunk, and `alpha`/`beta` are best treated as release channels cut *from* it rather than long-lived
+divergent branches.
+
+### Recommended sequence
+
+1. **One PR: working branch → `main`.** It is a fast-forward, and `main` is the only branch with
+   required checks — the strongest available gate for 48 commits of change.
+2. **After it merges, fast-forward `alpha` and `beta` from `main`** (`git push origin main:alpha`
+   and `main:beta`). Both then sit at exactly zero divergence.
+3. **Do not align `alpha`/`beta` before that** — they would go 48 behind again the moment the PR
+   lands, so it is wasted work.
+
+### The one real content difference
+
+`macos/MeedyaManagerTests/AccessibilityTests.swift` (201 lines, 10 `@Test` cases) exists on `alpha`
+and `beta` but not on `main`. Deleted deliberately by `d68f36b` during the #148 CI firefighting.
+
+It has not compiled since `cd7944d` regardless: it uses `@testable import MeedyaManager`, and
+SwiftPM cannot `@testable import` an **executable** target. That is structural, not a runner
+problem — restoring it as-is would fail on `macos-26` exactly as it did on `macos-15`.
+`CloudModelTests.swift` already works around the same limitation by declaring a standalone copy of
+the model under test; the same pattern would restore all ten tests. Recorded on #146.
+
+Consequence: fast-forwarding `alpha` to `main` drops this file from `alpha` too. Nothing working is
+lost, but the accessibility coverage it represented is genuinely gone and no issue tracks restoring
+it.
+
 ## 11. Change log for this handoff file
 
 - **2026-09-03 (Round 2)** — release-readiness round complete: security advisories, CI on
