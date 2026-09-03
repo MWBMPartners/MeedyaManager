@@ -171,9 +171,9 @@ meedya edit song.mp3 --cover /path/to/cover.jpg
 meedya edit song.mp3 --remove Comment
 ```
 
-Note that this writes directly to the original file even when Test Mode is on — `meedya edit`
-does not route through the Test Mode safety path yet
-(issue [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128)).
+When Test Mode is on, this now genuinely writes to a `_MeedyaManager` copy instead of the
+original file — `meedya edit` routes through the Test Mode safety path via
+`mm_core::integrity::write_tags_safe` (issue [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128), fixed).
 
 ### Can it look up metadata online?
 
@@ -185,11 +185,11 @@ sometimes called "IMDb" is actually an OMDb-backed provider (id `omdb`) that req
 key.
 
 **However, `meedya lookup` itself is a stub** — it does not query any of these providers yet
-(issue tracked as part of the still-open work following the closed M5 milestone). See
+(issue #83). It exits `3` (`NOT_IMPLEMENTED`), distinct from a real failure. See
 [cli-reference.md](cli-reference.md#meedya-lookup).
 
 ```bash
-# These parse but currently just print a "coming" message — no provider is queried
+# These parse but currently just print a not-implemented notice and exit 3 — no provider is queried
 meedya lookup "song title"
 meedya lookup "song title" --provider musicbrainz
 ```
@@ -210,12 +210,14 @@ meedya lookup "song title" --provider musicbrainz
 ### Can it export my library to a database?
 
 > **Status: architectural scaffolding, not working yet.** `meedya export` accepts a full set of
-> flags and can print the schema it would create (`--show-schema`), but it never opens a
-> database connection or writes a row — `crates/mm-export/src/sqlite.rs:30` says plainly "in
-> production this holds a `sqlx::SqlitePool`", meaning it currently does not.
+> flags and can print the schema it would create (`--show-schema`, which genuinely works and
+> exits `0`), but it never opens a database connection or writes a row —
+> `crates/mm-export/src/sqlite.rs:30` says plainly "in production this holds a
+> `sqlx::SqlitePool`", meaning it currently does not. It exits `3` (`NOT_IMPLEMENTED`) rather
+> than pretending to succeed.
 
 ```bash
-# Prints a summary but writes nothing to disk or to any database
+# Prints a not-implemented notice and exits 3 — writes nothing to disk or to any database
 meedya export --db sqlite:///home/user/library.db
 ```
 
@@ -225,11 +227,11 @@ Planned backends: SQLite, MySQL, MariaDB, PostgreSQL, SQL Server (`mssql`). See
 ### Does it have a media server?
 
 > **Status: architectural scaffolding, not working yet.** `meedya serve` parses server config
-> and can print the intended route table, but it never starts a server —
-> `crates/mm-cli/src/commands/serve.rs:337-342` prints "Server stub: exiting cleanly" and exits.
-> There is no `.route(` call anywhere in `mm-server`, and the repository has zero `.html` files,
-> so there is also no bundled web frontend to serve. See
-> [cli-reference.md](cli-reference.md#meedya-serve).
+> and can print the intended route table (`--show-routes`) or validate config
+> (`--check-config`) — both genuinely work and exit `0` — but it never starts a server: it
+> prints a not-implemented notice and exits `3` (`NOT_IMPLEMENTED`). There is no `.route(` call
+> anywhere in `mm-server`, and the repository has zero `.html` files, so there is also no
+> bundled web frontend to serve. See [cli-reference.md](cli-reference.md#meedya-serve).
 
 ---
 

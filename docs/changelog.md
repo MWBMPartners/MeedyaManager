@@ -19,13 +19,23 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
-> Work merged onto the `alpha` branch but not yet cut as a release. `Cargo.toml`'s
-> `[workspace.package].version` is currently **1.3.0** — the last version actually written
-> there (commit `e569224`, 2026-03-06). The first two sub-sections below were previously
-> published under invented version headings **v1.3.2** and **v1.3.1**; neither number was ever
-> set in `Cargo.toml`, tagged, or released, so both are recorded here as Unreleased instead of
-> under a version heading that never existed. A third sub-section records this session's own
-> documentation and issue-reconciliation work.
+> Nothing has landed on top of `v1.4.0-alpha.1` yet.
+
+---
+
+## [v1.4.0-alpha.1] — 2026-09-03 — First alpha pre-release
+
+> **First versioned pre-release.** `Cargo.toml`'s `[workspace.package].version` reaches
+> **1.4.0-alpha.1** here — the first pre-release label the project has ever carried, and the
+> first time `is_current_prerelease()` can actually fire. The first two sub-sections below were
+> previously published under invented version headings **v1.3.2** and **v1.3.1**; neither number
+> was ever set in `Cargo.toml`, tagged, or released, so both are folded into this section rather
+> than under a version heading that never existed. The remaining sub-sections record, in order:
+> this session's own documentation/issue-reconciliation work, **Round 1** (alpha-readiness fixes
+> — issues #207, #212, #205, #211, #128, #201, #206), and **Round 2** (release-readiness fixes —
+> issues #203, #204, #197, #200, #202, #214). No tag has been pushed and no GitHub Release
+> created yet — that follows a green `release.yml` `workflow_dispatch` dry run and the merge to
+> `alpha`.
 
 ### MusicBrainz API Hardening (Issue #198)
 
@@ -230,6 +240,263 @@ An adversarial review of this branch's diff caught six further defects before me
   → **0 warnings**
 - `cargo test --workspace` → **1,240 tests pass, 0 failures** (up from 1,207; `mm-providers` alone
   went from 256 to 289)
+
+---
+
+### Round 1 — Alpha Readiness (Issues #207, #212, #205, #211, #128, #201, #206)
+
+> A source-level audit of the whole repository (recorded in `.claude/HANDOFF.md`) found seven
+> defects serious enough to block calling this an alpha: no tracked licence file, two config
+> directories in use on one platform, three CLI commands reporting success while doing nothing,
+> a shipped settings file the app couldn't actually read back, Test Mode advertised but enforced
+> nowhere, `scan --execute` capable of silently destroying files, and a handful of smaller CLI
+> correctness bugs. All seven are fixed here.
+
+#### Added
+
+- `LICENSE` — the canonical GNU GPL v2 text (338 lines, 17,984 bytes, verified byte-identical to
+  the FSF's published copy), preceded by a two-line SPDX / GPL-2.0-or-later note. Staged into all
+  five release platforms (`release.yml`), Debian's `usr/share/doc/meedyamanager/copyright`, the
+  AppImage's `usr/share/licenses/<APP_ID>/LICENSE`, Snap's `share/doc/meedyamanager/LICENSE`, and
+  the macOS app bundle's `Contents/Resources/LICENSE` (`macos/packaging/create-dmg.sh`). The
+  Flatpak manifest already installed it correctly. (#207)
+- `mm_core::config::app_config_dir()` — the single resolver for MeedyaManager's config
+  directory: a non-empty `MM_CONFIG_DIR` environment variable verbatim, else
+  `dirs::config_dir()/MeedyaManager`. Fourteen call sites across `mm-core`, `mm-gtk` and `mm-ffi`
+  previously split 8/6 between the uppercase and lowercase spelling of the directory name —
+  invisible on macOS/Windows (case-insensitive filesystems), but two different directories on
+  Linux. All fourteen now delegate to it, and the codebase standardises on uppercase
+  `MeedyaManager`. `MM_CONFIG_DIR` doubles as the test-isolation primitive the test suite lacked
+  (`dirs` 6.0 ignores `XDG_CONFIG_HOME` on macOS). No migration code was needed or written — the
+  product has never been released. (#212)
+- `ExitCode::NOT_IMPLEMENTED = 3` — a fourth CLI exit code, distinct from `ERROR` (1) and
+  `PARTIAL` (2), so a script can tell "not built yet" from "tried and failed". (#205, #206)
+- `crates/mm-core/src/integrity.rs` — `mutate_file_safe(path, op)`, the single Test Mode
+  enforcement point, with `write_tags_safe`, `remove_tag_safe`, `embed_cover_art_safe` and
+  `remove_cover_art_safe` built on top; a `MutationTarget` records whether a given call created
+  its target. `crates/mm-core/src/test_mode.rs` gains `tracked_copy_for()` and
+  `manifest_status()`. (#128)
+- `crates/mm-core/src/renamer/mod.rs` — `build_destination_dir()` (sanitises every path component
+  individually, dropping `RootDir`/`Prefix`/`ParentDir`/`CurDir`), `ExecuteOptions` +
+  `execute_rename_with()` (re-checks `destination.exists()` immediately before the move), and
+  `resolve_conflict_by_counter()` (the `conflict_strategy = "rename"` policy, bounded at 9,999).
+  (#201)
+- Three tests in `crates/mm-core/src/config/mod.rs` (`shipped_settings_json5_has_only_known_keys`,
+  `shipped_settings_json5_deserialises_to_non_default`, `settings_schema_properties_match_appconfig`)
+  that `include_str!` the real shipped `config/settings.json5` and
+  `config/schemas/settings.schema.json`, so CI now fails if the example, the schema and the
+  `AppConfig` struct ever drift apart again. (#211)
+
+#### Fixed
+
+- **`scan --execute` could silently destroy a file.** The conflict check ran at preview time only
+  and never tracked destinations already claimed within the same batch, so two files whose
+  templates resolved to the same name meant the second `std::fs::rename` silently overwrote the
+  first — with `Conflicts: 0` and exit code `SUCCESS`. `meedya scan` now delegates to
+  `mm_core::renamer::simulate_rename_with_rules`, which tracks intra-batch destinations
+  correctly. (#201)
+- **Path traversal from tag data.** `simulate_rename` joined unsanitised template directory
+  components, so a tag value could escape the configured output directory entirely; the
+  regression test wrote to `/etc` before the fix. Each path component is now sanitised
+  individually. (#201)
+- **Folder-shaped templates were flattened.** The default template `<Artist>/<Album>/<Title>`
+  had its whole evaluated form passed through `sanitize_filename`, whose Windows-invalid
+  character set includes `/` — so every default-template run lost its folder structure. A tag
+  value that itself contains `/` (e.g. an artist name like `AC/DC`) now produces **nested
+  directories**, not an underscore, because by the time the renamer sees the evaluated template
+  the two kinds of separator are indistinguishable; per-component sanitising still fires for
+  every other illegal character. (#201)
+- **`-r`/`--recursive` could never be turned off.** It was a bare bool defaulting to `true`,
+  which `clap` has no mechanism to override from the command line. Replaced with
+  `--no-recursive` (recursion stays the default). (#201, #206)
+- **`meedya export`, `meedya serve` and `meedya lookup` fabricated success.** All three printed a
+  plausible-looking summary and exited `0` though none of them does any real work yet
+  (`mm-export` never opens a database connection, `mm-server` never builds an HTTP router, and
+  `mm-providers` is not wired into `lookup`). All three now print a factual message naming the
+  tracking issue and exit `3` (`NOT_IMPLEMENTED`); JSON output carries
+  `status: "not_implemented"`. Everything that genuinely works keeps exiting `0`:
+  `export --show-schema`, `serve --show-routes`, `serve --check-config`, and the existing
+  DSN/argument validation. `serve`'s help text no longer prints a `curl` quick-start for an
+  endpoint that doesn't exist. (#205, #206)
+- **`detect_backend` misidentified a SQLite DSN as SQL Server** whenever the path happened to
+  contain the substring `1433` (e.g. `sqlite:///data/1433.db`). It now matches on the DSN scheme
+  or a `server=` prefix instead. (#206)
+- **The Server, Export and Cloud UI tabs simulated success on all three platforms** — artificial
+  delays followed by fabricated status text ("Server running at …", "Export finished: …",
+  "Synced"). All nine views (GTK4, SwiftUI, WinUI 3) now show a persistent "Preview — not
+  functional in this alpha" banner, have their pretend-to-work controls genuinely disabled (not
+  just relabelled), and have the simulated bodies deleted outright rather than replaced with a
+  softer fiction. Left working: the GTK Export tab's real "Show Schema DDL" button, "Show
+  Routes" on all three platforms, the Clear-log buttons, and macOS's inline server-config
+  validation. (#205)
+- **The shipped `config/settings.json5` described a format the code doesn't implement**
+  (`watch_paths`, `valid_extensions`, `rename_format`, per-provider maps, `cover_art`, and more) —
+  since `AppConfig` is `#[serde(default)]` with no `deny_unknown_fields`, a user who edited the
+  shipped example silently got all defaults back. Both `config/settings.json5` and
+  `config/schemas/settings.schema.json` are regenerated field-for-field from
+  `AppConfig::default()`, with `additionalProperties: false` at every schema level.
+  `AppConfig::load_from` now emits `unknown config key '<path>' — ignored` (with a suggested
+  replacement where known) for every key it can't place, and `load_from_with_report` returns the
+  same information programmatically. (#211)
+- **Test Mode was advertised but enforced nowhere.** `integrity::write_tags_safe` was the only
+  function that consulted `test_mode::is_enabled()`, and nothing outside its own tests called it
+  — `meedya edit`, the GTK metadata panel, and the FFI layer used by macOS/Windows all wrote
+  straight to the original file regardless of the Test Mode setting. All three now route through
+  `mutate_file_safe`. Two further bugs surfaced and were fixed alongside: a second Test Mode edit
+  to the same file previously discarded the first (a fresh copy of the pristine original replaced
+  the tracked copy instead of editing it in place), and a failed edit could delete a tracked copy
+  holding earlier *successful* edits (cleanup on failure now only removes a file the failing call
+  itself created). (#128)
+- **`write_tags_safe`'s standard (non-Test-Mode) path had never actually worked on a real file.**
+  Its temp file was named `track.mp3.meedya_tmp` — an extension of `meedya_tmp` — and `lofty`
+  resolves the container format from the path extension alone with no content-sniffing fallback,
+  so every real write failed with `UnknownFormat`. This went unnoticed because nothing called the
+  function outside its own (failure-path-only) tests. The temp marker now goes before the
+  extension (`track.meedya_tmp.mp3`). (#128)
+- **Editing an unmapped tag key silently returned success.** `metadata::write_tags` and
+  `remove_tag` now reject any key with no `lofty::ItemKey` mapping *before* opening the file,
+  reporting every offending key. `meedya edit` validates the whole `--set`/`--remove` batch up
+  front so a mixed batch containing one bad key writes nothing at all, rather than applying the
+  good half and reporting a confusing partial failure. `podcast_title`, `podcast_id` and
+  `podcast_category` have `TAG_*` constants but no `lofty::ItemKey`, so they are not, and have
+  never been, valid write keys. (#128, #206)
+
+#### Behavioural Changes
+
+- `scan --execute` no longer overwrites a file on a duplicate destination — conflicts are skipped
+  (or renamed with a counter, under `conflict_strategy = "rename"`) and the command exits `2`
+  (`PARTIAL`) if any conflict is left unresolved or any file errors. `conflict_strategy =
+  "overwrite"` and `"ask"` are accepted but currently warn once and skip, rather than performing
+  either action — `"overwrite"` would re-enable the data-loss path this round closed, and `"ask"`
+  needs an interactive prompt that does not exist yet.
+- A tag value containing `/` now produces nested directories in a rename destination, not an
+  underscore.
+- `-r`/`--recursive` no longer exists on `meedya scan`; use `--no-recursive` (recursive is still
+  the default).
+- `meedya export`, `meedya serve` and `meedya lookup` exit `3` instead of `0`. A script checking
+  for exit code `0` on these three commands will now see a failure-shaped result — by design.
+- Writing or removing a tag key with no file-format mapping (e.g. `podcast_title`) is now an
+  error instead of a silent no-op.
+- Test Mode, once enabled, genuinely redirects `meedya edit`, the GTK metadata panel, and the
+  FFI-backed macOS/Windows editors to a `_MeedyaManager` copy; it previously had no effect on any
+  of them.
+
+#### Documentation
+
+- `help/cli-reference.md`, `help/configuration.md`, `help/test-mode.md`,
+  `help/file-integrity.md`, `help/troubleshooting.md`, `help/faq.md`, `help/custom-filetypes.md`
+  — updated throughout for the behaviour above; `MM_CONFIG_DIR` documented as both a
+  developer/test hook and a way to sandbox the alpha.
+- `help/providers/musicbrainz.md` — corrected the last of the 19 provider pages still
+  documenting the old per-provider config map form.
+
+#### Verification
+
+- `cargo test --workspace` → **1,303 passed / 0 failed** at the end of Round 1 (from a
+  pre-Round-1 baseline of 1,240; individual commits verified `cargo test -p mm-cli` = 88/0 and
+  `cargo test --workspace` = 1,254/0 at intermediate points).
+- `cargo clippy` clean (`-D warnings`) on every crate touched, verified per-commit; the full
+  workspace gate (`mm-gtk` excluded) was not yet green until Round 2's #200 fix.
+- `cargo fmt --all --check` clean throughout.
+- End-to-end with the real binary: two successive Test Mode edits leave the original file's
+  SHA-256 unchanged and produce one copy carrying both edits.
+
+---
+
+### Round 2 — Release Readiness (Issues #203, #204, #197, #200, #202, #214)
+
+> With Round 1's correctness fixes in place, this round made the project's CI and release
+> machinery actually work, then cut the first version number the project has ever carried
+> outside `Cargo.toml`'s development history.
+
+#### Fixed
+
+- **The weekly Security Audit had failed on every run since 2026-07-06.** Three RUSTSEC
+  advisories fixed: `anyhow` 1.0.102 → 1.0.104 (RUSTSEC-2026-0190, lock-only), `h2` 0.4.13 →
+  0.4.19 (RUSTSEC-2026-0258, lock-only, reached via both `hyper`←`axum` and `reqwest`), and
+  `gettext-rs` 0.7.7 → 0.8.0 (RUSTSEC-2026-0244; `setlocale` became `unsafe fn`, so the single
+  call site in `i18n.rs` gained a `SAFETY` comment). Two further advisories (RUSTSEC-2026-0194/
+  0195, both in `quick-xml` via the `meedya-core` git dependency) are not fixable from this
+  repository and were given dated, justified ignores instead of a blanket suppression, each
+  recording the dependency path and a revisit trigger. Two stale ignores for advisories
+  `cargo-deny` no longer detects were removed, and the yanked `spin` 0.9.8 was bumped to 0.9.9.
+  `Cargo.lock`'s delta is exactly four packages, version and checksum only. (#203)
+- **`alpha` and `beta` had no CI coverage at all** — every workflow triggered on `main` only.
+  `pr-gate.yml`'s `pull_request` trigger and the four platform CIs' `push` triggers now cover
+  `[main, alpha, beta]`; `audit.yml` gains a path-filtered `pull_request` trigger on
+  `Cargo.lock`/`Cargo.toml`/`deny.toml` (never a required check). A genuine "paths in sync"
+  violation was found and fixed alongside: `ci-rust.yml`'s own `push` paths were missing
+  `rust-toolchain.toml`, `deny.toml`, `clippy.toml` and `.cargo/**`, even though `pr-gate.yml`'s
+  detection logic already covered them. (#204)
+- **The clippy gate broke twice with no code change of ours**, misdiagnosed as a `nursery`-lint
+  problem. Both offending lints (`manual_assert_eq`, `unused_async_trait_impl`) are actually in
+  the *pedantic* group, verified against the real toolchain with `clippy-driver -Whelp` rather
+  than assumed. The actual cause was the floating `channel = "stable"` toolchain;
+  `rust-toolchain.toml` now pins `channel = "1.98.0"`, which every `cargo`/`rustc` invocation in
+  the repo honours regardless of the ~11 `dtolnay/rust-toolchain@stable` steps in CI (rustup's
+  directory-walk override outranks `rustup default`). The `ci-rust.yml` matrix label is renamed
+  `stable` → `pinned` so it no longer implies a floating toolchain is under test. (#197)
+- **`mm-cloud` carried 40 `clippy::unused_async_trait_impl` errors**, 8 in each of its five
+  provider files — the only thing standing between this branch and a green
+  `cargo clippy --workspace --all-targets -- -D warnings`. Each `async fn` trait implementation
+  (M7 scaffolding whose body never actually awaits) was rewritten to
+  `fn … -> impl Future<Output = …>` returning `std::future::ready(...)`, matching the precedent
+  `mm-export` already used for the same lint. No `#[allow]` was added and no behaviour changed —
+  every returned `Ok`/`Err` value is identical; `mm-cloud`'s test count is unchanged at 117.
+  (#200)
+- **`release.yml` had never actually run, and would have failed if it had.** It copied a binary
+  named `mm-cli` (the real binary is `meedya`) at all seven copy sites, and built `meedya-gtk`
+  via `cargo build --release --workspace` — which never builds it, because `mm-gtk` is excluded
+  from the workspace. All 25 `2>/dev/null || true` failure suppressions wrapping these copies are
+  removed, and every packaging block now runs under `set -euo pipefail`, so a real failure stops
+  the build instead of shipping an empty tarball. Also fixed: `macos-15` → `macos-26` (Swift 6.3
+  toolchain requirement), Windows staged into a real `.zip` instead of a bare directory, the
+  `files:` upload filter extended to actually pick up `.dmg`/`.deb`/`.zip` artifacts, three stale
+  `docs/Dev_Notes.md` path references corrected to the root-level file, and the Flatpak
+  `.desktop`'s `Exec=mm-gtk` corrected to `Exec=meedya-gtk` (removing two compatibility symlinks
+  that had been added to paper over it). Windows release jobs are `continue-on-error` and
+  excluded from the release gate — Windows CI has never been green (#148) and must not block a
+  macOS/Linux alpha; `create-release` now checks for the actual presence of the Windows archives
+  rather than trusting `needs.*.result`, which a `continue-on-error` job always reports as
+  success. A `workflow_dispatch` trigger (`version` + `publish` inputs) was added so the pipeline
+  can be dry-run without pushing a tag. AppImage is deliberately still not built — the build
+  script itself documents that its output isn't self-contained, and a broken AppImage costs more
+  tester goodwill than an honest omission. (#202)
+- **`ci-rust.yml` printed a spurious warning on every run** — `--exclude mm-gtk` on
+  `clippy`/`test` became a no-op once `Cargo.toml` gained `exclude = ["crates/mm-gtk"]`
+  (issue #199), since `--workspace` never selected it in the first place. Removed from both
+  steps.
+
+#### Changed
+
+- The version cut to **`1.4.0-alpha.1`** — the first pre-release label the project has ever
+  carried in `Cargo.toml`, which is what allows `is_current_prerelease()` to fire at all. Because
+  a semver pre-release suffix isn't expressible identically on every platform, the bump touched
+  seven files rather than being a find-and-replace: `Cargo.toml` and `crates/mm-gtk/Cargo.toml`
+  both carry `1.4.0-alpha.1` verbatim (CI now compares them for exact equality); `Info.plist`
+  carries `1.4.0` (Apple requires three integers); `Package.appxmanifest` carries `1.4.0.0` (MSIX
+  requires four numeric parts); `snapcraft.yaml` carries `1.4.0-alpha.1` (was drifted at
+  `0.9.0`); `linux/deb/control` carries `1.4.0~alpha.1` — Debian's `~` sorts *before* the bare
+  version under Debian's ordering rules, which is what a pre-release must do (a literal hyphen
+  would sort *after* it and make the alpha look newer than the eventual final release); the
+  Flatpak AppStream `<releases>` block now carries `1.4.0-alpha.1`, replacing two fabricated
+  `0.9.0`/`0.8.0` entries dated 2026-03-05 for releases that never happened. `version-bump.yml`'s
+  sed steps and its verification step now cover `crates/mm-gtk/Cargo.toml` and
+  `linux/snap/snapcraft.yaml` too, so a future automated bump can't reintroduce version drift on
+  either file. Because MSIX and CFBundle both strip the pre-release suffix, this alpha and the
+  eventual final `1.4.0` will carry identical platform version numbers on Windows and macOS —
+  worth resolving before the first MSIX package exists. (#214)
+
+#### Verification
+
+- `cargo test --workspace` → **1,304 passed / 0 failed** (the final, authoritative count for
+  this branch at `9f3719b`).
+- `cargo clippy --workspace --all-targets -- -D warnings` → **zero warnings** — the first time
+  the full workspace gate, run exactly as CI runs it, has been green.
+- `actionlint` clean across all ten workflow files.
+- `meedya --version` reports `1.4.0-alpha.1`.
+- No tag has been pushed and no GitHub Release created — that follows a green `release.yml`
+  `workflow_dispatch` dry run (`publish: false`) and the merge to `alpha`.
 
 ---
 
@@ -1432,7 +1699,7 @@ An adversarial review of this branch's diff caught six further defects before me
 ## 📋 Milestone Reference
 
 | Version | Milestone | Description |
-|---------|-----------|-------------|
+| ------- | --------- | ----------- |
 | `v0.5.0` | ✅ M4: FFI & Native UI Shells | UniFFI Swift bridge, cbindgen C API, GTK4/Adwaita, SwiftUI, WinUI 3 shells, 20 tests |
 | `v0.4.0` | ✅ M3: CLI | 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), 45 tests |
 | `v0.3.0` | ✅ M2: Rule Engine | Lexer, parser, evaluator, 24 template functions, 182 tests |

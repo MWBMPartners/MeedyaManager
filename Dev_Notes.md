@@ -37,10 +37,42 @@ The **canonical version** lives in the root `Cargo.toml` under `[workspace.packa
 
 | File | Format | Example |
 | ------ | -------- | --------- |
-| `Cargo.toml` `[workspace.package]` | Full semver | `2.0.0-alpha.2` |
-| `windows/.../Package.appxmanifest` `Identity.Version` | 4-part (no pre-release) | `2.0.0.0` |
-| `macos/.../Info.plist` `CFBundleShortVersionString` | 3-part (no pre-release) | `2.0.0` |
+| `Cargo.toml` `[workspace.package]` | Full semver | `1.4.0-alpha.1` |
+| `crates/mm-gtk/Cargo.toml` | Full semver — **exact match required** | `1.4.0-alpha.1` |
+| `linux/snap/snapcraft.yaml` | Full semver — **exact match required** | `1.4.0-alpha.1` |
+| `linux/deb/control` | Debian-mapped (`-` → `~`) | `1.4.0~alpha.1` |
+| `windows/.../Package.appxmanifest` `Identity.Version` | 4-part (pre-release stripped) | `1.4.0.0` |
+| `macos/.../Info.plist` `CFBundleShortVersionString` | 3-part (pre-release stripped) | `1.4.0` |
 | `macos/.../Info.plist` `CFBundleVersion` | Build number | `1` (incremented per build) |
+| Flatpak AppStream `…metainfo.xml` `<releases>` | Full semver | `1.4.0-alpha.1` |
+
+`crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` cannot inherit the workspace version —
+`mm-gtk` is `exclude`d from `[workspace] members` (issue #199) — so they carry a literal copy.
+`ci-rust.yml`'s `version-check` job compares both against `Cargo.toml` for **exact string
+equality, including any pre-release suffix** (unlike the Windows/macOS rows, which correctly
+strip it), so drift on either file fails CI. This is new as of issues #197/#204/#214: before
+then, neither file was checked, and `snapcraft.yaml` had silently drifted to `0.9.0`.
+
+**Debian uses `~`, not `-`, for a pre-release suffix.** Under Debian's version-ordering rules,
+`1.4.0~alpha.1` sorts *before* `1.4.0` — which is what a pre-release must do. A literal hyphen
+(`1.4.0-alpha.1`) would sort *after* the bare version and make the alpha look newer than the
+eventual final release. `version-bump.yml` and `release.yml` both perform this substitution when
+touching `linux/deb/control` or building the `.deb` package filename.
+
+**MSIX and CFBundle both strip the pre-release suffix**, so an alpha and the eventual final
+release with the same `MAJOR.MINOR.PATCH` carry *identical* platform version numbers on Windows
+and macOS. MSIX in particular will refuse to install the final release over the alpha once both
+exist — worth resolving before the first MSIX package is actually produced (no MSIX package
+exists yet, tracked alongside #148/#202).
+
+**Bump procedure:** run `gh workflow run version-bump.yml -f version=<new-version>` (see below),
+verify the resulting diff touches every row in the table above — including the two exact-match
+Linux files — then run the full local gate (`cargo fmt --all --check && cargo clippy --workspace
+--all-targets -- -D warnings && cargo test --workspace`) before merging. The Rust toolchain
+itself is pinned separately in `rust-toolchain.toml` (`channel = "1.98.0"` as of issue #197) and
+is **not** part of this version-bump flow — bump it only as its own deliberate change, verifying
+the full gate locally first (see `rust-toolchain.toml`'s own header comment for the exact
+procedure and the reasoning for pinning rather than floating on `stable`).
 
 ### Automated Version Bumping
 
@@ -143,7 +175,10 @@ MAJOR.MINOR.PATCH[-PRE_RELEASE]
 > string was reached in `Cargo.toml` during development* — it does **not** mean a GitHub Release,
 > a store submission, or any other public artifact was published. The only GitHub release that
 > exists is the pre-rename *"MetaMancer v1.0-M1"* (2025-06-16, pre-release); the only git tag is
-> `v1.0-M1`. The current version is `1.3.0`, reached after M10.
+> `v1.0-M1`. The current version is **`1.4.0-alpha.1`**, reached after M10 — previously `1.3.0` —
+> via a Round 1/Round 2 alpha-readiness pass (issue #214) — the first pre-release label the
+> project has ever carried in `Cargo.toml`. No tag has been pushed for it yet; that follows a
+> green `release.yml` `workflow_dispatch` dry run and the merge to `alpha`.
 
 | Milestone | Version reached in `Cargo.toml` | Publicly released? |
 | ----------- | --------- | -------- |
@@ -160,9 +195,10 @@ MAJOR.MINOR.PATCH[-PRE_RELEASE]
 | M10 — Secure Media Server (scaffold only, see PROJECT_STATUS.md) | `v1.0.0` | No |
 
 > **Note:** The project used `v0.x.0` pre-release versioning through M9, then `v1.0.0` at M10 —
-> but `v1.0.0` was never treated as a real public release. Since M10 the version has been bumped
-> to `1.3.0` in further development, still without any public release having been cut. Issue #214
-> tracks actually cutting a real pre-release.
+> but `v1.0.0` was never treated as a real public release. Since M10 the version was bumped to
+> the previously-current `1.3.0`, then to **`1.4.0-alpha.1`** (issue #214, fixed) — still without
+> any public release having been cut, but for the first time carrying an actual semver
+> pre-release label rather than a bare `X.Y.0`.
 
 ---
 
@@ -188,28 +224,56 @@ The 4th component (`.0`) is reserved for future use (e.g., build numbers).
 
 Apple requires `CFBundleShortVersionString` to be a valid `X.Y.Z` format for App Store submission.
 
+### Cargo.toml → Linux packaging
+
+Unlike Windows/macOS, the Linux carriers do **not** strip the pre-release suffix — two of them
+must match `Cargo.toml` exactly, and one remaps the separator:
+
+| Carrier | Format | Example | CI-checked? |
+| ------- | ------ | ------- | ----------- |
+| `crates/mm-gtk/Cargo.toml` | Full semver, verbatim | `1.4.0-alpha.1` | Yes — exact match (`ci-rust.yml`'s `version-check`) |
+| `linux/snap/snapcraft.yaml` | Full semver, verbatim | `1.4.0-alpha.1` | Yes — exact match |
+| `linux/deb/control` | Debian-mapped: `-` → `~` | `1.4.0~alpha.1` | No |
+| Flatpak `…metainfo.xml` `<releases>` | Full semver, verbatim | `1.4.0-alpha.1` | No |
+| `linux/flatpak/…yaml` (`tag:`/`commit:`) | N/A — still a placeholder | `v1.0.0` / `placeholder-pin-to-actual-commit-sha` | No — pre-existing gap, not touched by #214 |
+
+Debian's `~` sorts *before* the bare version, which is what a pre-release must do; a literal `-`
+would sort after it. `version-bump.yml`'s sed steps and its verification step cover the two
+CI-checked rows so an automated bump can't reintroduce drift on either. The WinGet manifest
+(`windows/winget/manifests/…`) is a separate carrier again, still stuck at `1.0.0`/`0.9.0` and
+not covered by any automated check — see `PROJECT_STATUS.md`'s M8 section.
+
 ---
 
 ## CI/CD Pipeline Overview
 
-### 9 Workflows
+### 10 Workflows
 
 | Workflow | File | Trigger | Purpose |
 | ---------- | ------ | --------- | --------- |
-| **PR Gate (umbrella)** | `pr-gate.yml` | Every PR, no path filter | Single required status check on `main` — detects changed paths, conditionally invokes the 4 platform CIs below as reusable (`workflow_call`) jobs, aggregates as the `Gate` job. See `.claude/CLAUDE.md` for the full pattern and why it exists |
-| **Rust Core CI** | `ci-rust.yml` | `workflow_call` from `pr-gate.yml` + push to `main` (crates/**) | Format, lint, test, version-sync |
-| **macOS CI** | `ci-macos.yml` | `workflow_call` from `pr-gate.yml` + push to `main` (macos/**) | Build SwiftUI app (`swift build` + `swift test`) |
-| **Windows CI** | `ci-windows.yml` | `workflow_call` from `pr-gate.yml` + push to `main` (windows/**) | Build WinUI 3 app — currently de-scoped from PR Gate pending #148 |
-| **Linux CI** | `ci-linux.yml` | `workflow_call` from `pr-gate.yml` + push to `main` (crates/mm-gtk/**) | Build GTK4 app under Xvfb |
-| **Version Bump** | `version-bump.yml` | Manual (`workflow_dispatch`) | Bump version across all files |
-| **Release Build** | `release.yml` | Tag push (`v*`) | Build all platforms, create release — no tag has ever actually been pushed |
-| **Security Audit** | `audit.yml` | Weekly + push to `main` | `cargo deny` + `cargo audit` — currently failing, see issue #203 |
+| **PR Gate (umbrella)** | `pr-gate.yml` | Every PR to `main`, `alpha` or `beta`, no path filter | Single required status check on `main` — detects changed paths, conditionally invokes the 4 platform CIs below as reusable (`workflow_call`) jobs, aggregates as the `Gate` job. See `.claude/CLAUDE.md` for the full pattern and why it exists |
+| **Rust Core CI** | `ci-rust.yml` | `workflow_call` from `pr-gate.yml` + push to `main`/`alpha`/`beta` (`crates/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`, `clippy.toml`, `.cargo/**`) | Format, lint, test, version-sync (now also checks `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` for exact match) |
+| **macOS CI** | `ci-macos.yml` | `workflow_call` from `pr-gate.yml` + push to `main`/`alpha`/`beta` (macos/**) | Build SwiftUI app (`swift build` + `swift test`) |
+| **Windows CI** | `ci-windows.yml` | `workflow_call` from `pr-gate.yml` + push to `main`/`alpha`/`beta` (windows/**) | Build WinUI 3 app — currently de-scoped from PR Gate pending #148 |
+| **Linux CI** | `ci-linux.yml` | `workflow_call` from `pr-gate.yml` + push to `main`/`alpha`/`beta` (crates/mm-gtk/**) | Build GTK4 app under Xvfb |
+| **Lint Workflows** | `lint.yml` | Push/PR touching `.github/workflows/**`, manual dispatch | `actionlint` against every workflow file |
+| **Version Bump** | `version-bump.yml` | Manual (`workflow_dispatch`) | Bump version across all files, including `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` (as of #197/#204) |
+| **Release Build** | `release.yml` | Tag push (`v*`) + manual `workflow_dispatch` dry run (`version`/`publish` inputs, added by #202) | Build all platforms, create release — no tag has ever actually been pushed |
+| **Security Audit** | `audit.yml` | Weekly + push to `main`/`alpha`/`beta` + path-filtered PR on `Cargo.lock`/`Cargo.toml`/`deny.toml` | `cargo deny check` (licences, bans, advisories, sources) — **fixed** as of issue #203; a separate `cargo audit` step was removed as redundant with `cargo-deny`'s own advisories check |
 | **Documentation** | `docs.yml` | Push to `main` (crates/**) | Generate `cargo doc` |
 
 > `ci-rust.yml`, `ci-macos.yml`, `ci-windows.yml`, and `ci-linux.yml` must never gain a
 > `pull_request:` trigger of their own — they are reached only via `workflow_call:` from
 > `pr-gate.yml`, otherwise PR runs would duplicate. See `.claude/CLAUDE.md` "Branch protection"
 > section before changing any of this.
+>
+> **The Rust toolchain is pinned, not floating.** `rust-toolchain.toml` sets
+> `channel = "1.98.0"` (issue #197) rather than `"stable"`. This is what every `cargo`/`rustc`
+> invocation in the repo actually uses, regardless of the ~11 `dtolnay/rust-toolchain@stable`
+> steps across the workflow files above — rustup's directory-walk toolchain-file override
+> outranks whatever `rustup default` sets, so those steps' installed "stable" is never what
+> actually builds this repo. See `rust-toolchain.toml`'s own header comment for the full
+> reasoning and the bump procedure.
 >
 > **Cargo is not on the default `PATH` in this development environment.** Run
 > `export PATH="$HOME/.cargo/bin:$PATH"` before any `cargo` command in a fresh shell.
@@ -227,6 +291,21 @@ prepare ──┬── release-macos (arm64)
                       │
               create-release (draft GitHub Release)
 ```
+
+As of issue #202, the pipeline is capable of actually producing a usable alpha, which it was not
+before: the CLI binary is `meedya`, not `mm-cli` (all seven copy sites were wrong); the GTK
+binary `meedya-gtk` is built explicitly via `--manifest-path crates/mm-gtk/Cargo.toml` (`mm-gtk`
+is excluded from the workspace, so `cargo build --release --workspace` never produced it); all 25
+`2>/dev/null || true` failure suppressions wrapping these copies are removed, with every
+packaging block now running under `set -euo pipefail`; the macOS runner moved from `macos-15` to
+`macos-26` (Swift 6.3 toolchain requirement); Windows staging is archived into a real `.zip`
+rather than uploaded as a bare directory; and `LICENSE` is staged into every platform's package
+(issue #207). **Windows release jobs are `continue-on-error` and excluded from the release
+gate** — Windows CI has never been green (#148) and must not block a macOS/Linux alpha;
+`create-release` checks for the actual presence of the Windows archives rather than trusting
+`needs.*.result`, which a `continue-on-error` job always reports as success regardless of the
+underlying build outcome. AppImage is deliberately still not built — `build-appimage.sh` itself
+documents that its output isn't self-contained.
 
 **Artifact naming convention:**
 
@@ -576,8 +655,10 @@ All file-type classifications (audio, video, subtitle, companion) are stored in
 
 - **Embedded** into every binary at compile time via `include_str!()`.
 - **Overridable** at runtime: place a modified copy at
-  `~/.config/meedyamanager/filetypes.json5` (Linux/macOS) or
-  `%APPDATA%\MeedyaManager\filetypes.json5` (Windows).
+  `~/.config/MeedyaManager/filetypes.json5` (Linux), `~/Library/Application
+  Support/MeedyaManager/filetypes.json5` (macOS), or
+  `%APPDATA%\MeedyaManager\filetypes.json5` (Windows) — the single config directory resolved by
+  `mm_core::config::app_config_dir()` (issue #212), overridable with `MM_CONFIG_DIR`.
 
 ### Adding a New Format
 
@@ -639,7 +720,8 @@ Add an entry to the `tags` array with the required fields:
 ### Adding a User-Defined Custom Tag (MeedyaMeta Namespace)
 
 Custom tags are added to the `custom` array in **your user override file**
-(`~/.config/meedyamanager/tags.json5`), not to the codebase file:
+(`~/.config/MeedyaManager/tags.json5` on Linux, the platform-equivalent config directory
+elsewhere — see `mm_core::config::app_config_dir()`, issue #212), not to the codebase file:
 
 ```json5
 {
@@ -668,29 +750,34 @@ Custom tags are also available in rename templates as `<Rating>` once defined.
 ## File Integrity Checking
 
 MeedyaManager uses **atomic, integrity-checked writes** for all metadata
-operations.  This prevents file corruption from power failures or mid-write
-crashes.
+operations, and — as of issue #128 — this is genuinely enforced on every real write path
+(`meedya edit`, the GTK metadata panel, the FFI layer used by macOS/Windows), not just exercised
+by the integrity module's own tests. This prevents file corruption from power failures or
+mid-write crashes.
 
-**Flow** (`mm_core::integrity::write_tags_safe`):
+**Flow** (`mm_core::integrity::write_tags_safe`, and its siblings `remove_tag_safe` /
+`embed_cover_art_safe` / `remove_cover_art_safe`, all built on the shared `mutate_file_safe`):
 
 1. Compute **SHA256** of the original file.
-2. Copy original → `<filename>.meedya_tmp` (same directory for atomic rename).
+2. Copy original → a temp file in the same directory, with the scratch marker placed *before*
+   the real extension (`track.meedya_tmp.mp3`, not `track.mp3.meedya_tmp`) — `lofty` resolves the
+   container format from the path extension alone, so the old ordering meant the standard
+   (non-Test-Mode) path had never actually worked on a real file until this was fixed.
 3. Write updated tags into the temp file via `lofty`.
 4. Compute SHA256 of the temp file.
-5. `rename(2)` temp file over original (atomic on same filesystem).
+5. `rename(2)` temp file over the original — or, in Test Mode, over the tracked
+   `_MeedyaManager` copy, editing it **in place** rather than starting over from a fresh copy of
+   the pristine original.
 6. Log before/after hashes to `tracing`.
 
-If any step fails, the temp file is deleted and the original is **untouched**.
+If any step fails, the temp file is deleted **only if this call created it** (a failed edit no
+longer risks deleting a tracked copy holding an earlier successful edit), and the original is
+**untouched**.
 
 **Corruption log**: persistent failures are appended to
-`~/.config/meedyamanager/corruption.log` with a timestamp, file path, and
-error message.
-
-> **Two config directories in use (issue #212):** the corruption log and the Test Mode manifest
-> live under lowercase `meedyamanager/`, while the main settings directory used by `AppConfig`
-> is capitalised `MeedyaManager/`. macOS and Windows filesystems are case-insensitive so this is
-> invisible there, but on Linux (case-sensitive) these are two separate directories. Consolidate
-> before relying on a single config directory in tooling or documentation.
+`<config_dir>/corruption.log`, e.g. `~/.config/MeedyaManager/corruption.log` on Linux — the same
+single config directory resolved by `mm_core::config::app_config_dir()` (issue #212, fixed) that
+`settings.json5` and the Test Mode manifest live in, overridable with `MM_CONFIG_DIR`.
 
 ---
 
@@ -753,26 +840,28 @@ updates.
 
 ## Test Mode (Safe Edit Mode)
 
-Test Mode is *designed* to prevent MeedyaManager from modifying original media files during
-edit/tag operations, creating a duplicate with a `_MeedyaManager` suffix instead
+Test Mode prevents MeedyaManager from modifying original media files during edit/tag
+operations, creating a duplicate with a `_MeedyaManager` suffix instead
 (e.g. `track.mp3` → `track_MeedyaManager.mp3`) when enabled.
 
-> **Status: not currently enforced (issue #128).** `write_tags_safe()` correctly delegates to
-> `write_tags_test_mode()` when Test Mode is active, but all three real call sites
-> (`mm-cli/src/commands/edit.rs`, `mm-gtk/src/ui/metadata_panel.rs`, `mm-ffi/src/uniffi_api.rs`)
-> call `metadata::write_tags()` directly instead, which always writes to the original file. Until
-> #128 is fixed, enabling Test Mode does **not** protect your files from `meedya edit`, the GTK
-> metadata panel, or the FFI layer.
+> **Status: enforced on every real write path (issue #128, fixed).** `mutate_file_safe()` (the
+> function `write_tags_safe()` and its siblings are built on) checks Test Mode and redirects
+> accordingly, and all three real call sites (`mm-cli/src/commands/edit.rs`,
+> `mm-gtk/src/ui/metadata_panel.rs`, `mm-ffi/src/uniffi_api.rs`) now route through it instead of
+> calling `metadata::write_tags()` directly. Enabling Test Mode genuinely protects your files from
+> `meedya edit`, the GTK metadata panel, and the FFI layer. A second edit to an already-tracked
+> file edits the existing copy in place, so successive edits in one Test Mode session accumulate
+> on the same `_MeedyaManager` copy rather than the second edit discarding the first.
 
 ### Implementation
 
 | Component | File | Notes |
 | --------- | ---- | ----- |
-| Core module | `crates/mm-core/src/test_mode.rs` | Manifest, path helpers, enable/disable, commit/revert |
-| Integrity integration | `crates/mm-core/src/integrity.rs` | `write_tags_safe()` delegates to `write_tags_test_mode()` when active |
+| Core module | `crates/mm-core/src/test_mode.rs` | Manifest, path helpers, enable/disable, commit/revert, `tracked_copy_for()`, `manifest_status()` |
+| Integrity integration | `crates/mm-core/src/integrity.rs` | `mutate_file_safe()` is the single enforcement point; `write_tags_safe`/`remove_tag_safe`/`embed_cover_art_safe`/`remove_cover_art_safe` all delegate to it |
 | Config field | `crates/mm-core/src/config/mod.rs` | `test_mode: bool` + `MM_TEST_MODE` env override |
 | CLI command | `crates/mm-cli/src/commands/config_cmd.rs` | `meedya config test-mode on/off/status/commit/revert` |
-| Manifest file | `<config_dir>/meedyamanager/testmode_manifest.json` | Persists across sessions |
+| Manifest file | `<config_dir>/testmode_manifest.json` | Persists across sessions; `<config_dir>` is the single directory from `mm_core::config::app_config_dir()` (issue #212) — e.g. `~/.config/MeedyaManager/testmode_manifest.json` on Linux |
 
 ### Disable Prompt
 
@@ -787,11 +876,18 @@ The prompt applies to **all** tracked files, not just those from the current ses
 
 ## Pre-release Version Safety
 
-Pre-release builds (semver pre-release label present, e.g. `1.3.0-beta.1`)
-auto-enable Test Mode on first launch.
+Pre-release builds (semver pre-release label present, e.g. `1.4.0-alpha.1`)
+auto-enable Test Mode on first launch. `1.4.0-alpha.1` (issue #214) is the first version the
+project has ever actually shipped with a pre-release label in `Cargo.toml`, so this is the first
+build on which `is_current_prerelease()` genuinely fires rather than being exercised only by
+unit tests.
 
 Detection uses `semver::Version::pre.is_empty()` in
-`crates/mm-core/src/test_mode.rs::is_prerelease_version()`.
+`crates/mm-core/src/test_mode.rs::is_prerelease_version()`. The stable-only assertion in the same
+test module derives its expectation from `env!("CARGO_PKG_VERSION").contains('-')`, so it never
+needs hand-editing on a future version bump; a separate literal
+`is_prerelease_version("1.4.0-alpha.1")` assertion keeps the detection logic itself directly
+covered.
 
 On upgrade to a stable release, if Test Mode is still enabled, the user is
 prompted to disable it (with the usual commit/revert choice).
@@ -815,9 +911,10 @@ All platform UIs include a "Privacy Policy" link in Settings / About.
 
 ## Codec Registry (`config/codecs.json5`) — Status: not yet implemented
 
-> **The current version is already `1.3.0`, and `config/codecs.json5` still does not exist.**
-> Only its JSON Schema (`config/schemas/codecs.schema.json`) has been written. Do not describe
-> this feature as shipping "in v1.3.0" — that version has already passed without it landing.
+> **The current version is already `1.4.0-alpha.1`, and `config/codecs.json5` still does not
+> exist.** Only its JSON Schema (`config/schemas/codecs.schema.json`) has been written. Do not
+> describe this feature as shipping "in v1.3.0" (previously current) or any other past version —
+> those have already passed without it landing.
 
 The **codec registry** is a separate developer-only reference file that maps
 audio/video *codecs* (the actual encoding algorithms) independently of file
@@ -842,7 +939,7 @@ See `config/schemas/codecs.schema.json` for the full JSON Schema definition.
 | Scope | File extensions | Encoding algorithms |
 | User override | Via a user override file (see "Managing File Type Definitions" above) | **No** — dev-only, once built |
 | Embedded | `include_str!()` | `include_str!()`, once built |
-| Runtime override | User override file at `~/.config/meedyamanager/filetypes.json5` | None |
+| Runtime override | User override file at `~/.config/MeedyaManager/filetypes.json5` | None |
 
 > No GitHub issue currently tracks this. An earlier draft cited **#151**, but that issue is
 > actually *"ci(audit): complete deny.toml v2 migration"* and is unrelated to the codec registry.
@@ -858,7 +955,7 @@ in `config/schemas/`:
 | ----------- | ----------- | ------- |
 | `config/filetypes.json5` | `config/schemas/filetypes.schema.json` | File type registry validation |
 | `config/tags.json5` | `config/schemas/tags.schema.json` | Metadata tag registry validation |
-| `config/settings.json5` | `config/schemas/settings.schema.json` | User settings validation — **currently mismatched with the real `AppConfig` struct** (issue #211); since `AppConfig` is `#[serde(default)]` with no `deny_unknown_fields`, loading the shipped file silently produces all-default settings rather than an error |
+| `config/settings.json5` | `config/schemas/settings.schema.json` | User settings validation — **matches the real `AppConfig` struct field-for-field** (issue #211, fixed), regenerated from `AppConfig::default()` with `additionalProperties: false` at every level and three tests that `include_str!` both files so they can't drift apart again. `AppConfig` is still `#[serde(default)]` with no `deny_unknown_fields`, so an unrecognised key still doesn't fail loading — but `AppConfig::load_from` now warns on every one it finds, with a suggested replacement where known |
 | `config/codecs.json5` *(not yet implemented — schema only)* | `config/schemas/codecs.schema.json` | Codec registry validation |
 
 ### Schema Version
@@ -945,9 +1042,8 @@ MeedyaManager collects **no user data** and performs **no tracking**.
 - [x] Hardened Runtime enabled
 - [x] `LSApplicationCategoryType` set (`public.app-category.utilities`)
 - [x] `LSMinimumSystemVersion` set (`15.0`)
-- [ ] GPL-2.0 `LICENSE` included in `Contents/Resources/` — **blocked: no `LICENSE` file is
-      currently tracked in the repository (issue #207)**, so the copy step above has nothing to
-      copy until that is fixed
+- [x] GPL-2.0 `LICENSE` included in `Contents/Resources/` (issue #207, fixed — the file is
+      tracked at the repository root and `create-dmg.sh` copies it in)
 - [ ] **Xcode project** (`.xcodeproj`) — required for Mac App Store submission
       alongside the SwiftPM package (direct distribution uses SPM only)
 - [ ] **App Store Connect** — create app record, screenshots, description
@@ -985,8 +1081,9 @@ Chrome OS can run Linux apps via Crostini.  Distribution options:
 The project uses Cargo's `[workspace.lints]` feature to share lint configuration
 across all 8 workspace-*member* crates (`mm-gtk` is a 9th crate directory but is
 excluded from `[workspace] members`, so it does not inherit these lints automatically).
-This work is sometimes labelled "v1.3.1" in the changelog, but `Cargo.toml` has never
-actually been bumped past `1.3.0` — do not cite a `v1.3.1` release.
+This work is sometimes labelled "v1.3.1" in the changelog, but no such version was ever set in
+`Cargo.toml` — it is folded into the `[v1.4.0-alpha.1]` changelog entry, the version the project
+actually reached. Do not cite a `v1.3.1` release.
 
 ### How It Works
 

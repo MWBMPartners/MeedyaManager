@@ -82,39 +82,59 @@
 
 ## Milestone Order
 
-Workspace-wide: **44,183 Rust LOC, 1,392 `#[test]`/`#[tokio::test]` functions**;
-`cargo test --workspace` currently reports **1,240 passing, 0 failed**. Docs that still say
+Workspace-wide: **44,183 Rust LOC, 1,392 `#[test]`/`#[tokio::test]` functions** (baseline);
+`cargo test --workspace` reports **1,304 passing, 0 failed** at `9f3719b` (up from the 1,240
+baseline, after the Round 1/Round 2 alpha-readiness fixes below). Docs that still say
 "217/399/444 tests" are stale — do not repeat those numbers.
 
 1. M0 — Repository Setup & Scaffolding (Complete)
 2. M1 — Core Engine (Complete)
-3. M2 — Rule Engine (Complete)
-4. M3 — CLI (Complete)
+3. M2 — Rule Engine (Complete) — `scan --execute`'s data-loss bug and Test Mode's enforcement
+   gap (issues #201, #128) are fixed; see "Round 1/Round 2" below
+4. M3 — CLI (Complete) — `export`/`serve`/`lookup` now exit `3` (`NOT_IMPLEMENTED`) instead of
+   fabricating success (issue #205)
 5. M4 — FFI Layer & Native UI Shells (Issues #63-72)
 6. M5 — Metadata Lookup Providers (Issues #73-84) — **`meedya lookup` is still a stub**
-   (prints "coming in M5"); no CLI/GUI command constructs a metadata provider yet
+   (prints a not-implemented notice and exits `3`); no CLI/GUI command constructs a metadata
+   provider yet
 7. M6 — Full Native UI (Issues #85-93)
 8. M7 — Cloud Storage Monitoring (Issues #94-102) — **Status: architectural scaffolding
-   only.** No real network calls; OAuth flows exist only as comments. Do not describe cloud
+   only.** No real network calls; OAuth flows exist only as comments. The Cloud UI tab now
+   shows a preview-only banner with its controls disabled (issue #205). Do not describe cloud
    monitoring as working.
-9. M8 — Packaging & Public Release (Issues #103-111)
+9. M8 — Packaging & Public Release (Issues #103-111) — `release.yml` is now capable of
+   actually producing a usable alpha build (issue #202)
 10. M9 — Database Export (Issues #112-119) — **Status: architectural scaffolding only.**
     `sqlx`/`tiberius` are declared dependencies but no connection pool is ever created and no
-    SQL is ever executed against a real database.
+    SQL is ever executed against a real database. The Export UI tab now shows a preview-only
+    banner with its controls disabled (issue #205).
 11. M10 — Secure Media Server (Issues #120-127) — **Status: architectural scaffolding
     only.** `mm-server` never builds an axum router (no `.route(` call exists anywhere);
-    `crates/mm-cli/src/commands/serve.rs` prints "Server stub: exiting cleanly" and returns.
-    There are zero `.html` files in the repo — the web frontend has no deliverable.
+    `meedya serve` now exits `3` (`NOT_IMPLEMENTED`) instead of printing a fabricated "stub
+    exiting cleanly" success message. There are zero `.html` files in the repo — the web
+    frontend has no deliverable. The Server UI tab now shows a preview-only banner with its
+    controls disabled (issue #205).
 
 M7/M9/M10 issues were previously closed as completed; they have been reopened to reflect
-this reality — see `.claude/HANDOFF.md` for the full reconciliation.
+this reality — see `.claude/HANDOFF.md` for the full reconciliation. A subsequent Round 1
+(alpha readiness: issues #207, #212, #205, #211, #128, #201, #206) and Round 2 (release
+readiness: issues #203, #204, #197, #200, #202, #214) fixed the correctness/CI/release-pipeline
+defects referenced above and cut the version to `1.4.0-alpha.1` — see `docs/changelog.md`.
 
 ## Version Management
 
 - **Single source of truth:** `Cargo.toml` `[workspace.package].version`
-- **Automated bumping:** `version-bump.yml` GitHub Actions workflow
-- **CI sync check:** `ci-rust.yml` verifies all platform files match
-- **Platform mapping:** semver → MSIX 4-part (2.0.0.0), CFBundle 3-part (2.0.0)
+- **Automated bumping:** `version-bump.yml` GitHub Actions workflow — also updates
+  `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` (exact match, pre-release suffix
+  included; issues #197/#204/#214)
+- **CI sync check:** `ci-rust.yml`'s `version-check` job verifies `Package.appxmanifest`,
+  `Info.plist`, `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` all match
+  `Cargo.toml`. Still does **not** cover `linux/deb/control`, the Flatpak metainfo/manifest, or
+  the WinGet manifest — those are manual.
+- **Platform mapping:** semver → MSIX 4-part (2.0.0.0, suffix stripped), CFBundle 3-part (2.0.0,
+  suffix stripped), Debian (`-` → `~`, e.g. `1.4.0~alpha.1`), `mm-gtk`/Snapcraft (exact match,
+  suffix included)
+- **Current version:** `1.4.0-alpha.1` — the project's first semver pre-release (issue #214)
 - See `Dev_Notes.md` for full details
 
 ## API Key Policy
@@ -144,28 +164,51 @@ this reality — see `.claude/HANDOFF.md` for the full reconciliation.
 
 ## Git & CI/CD
 
-- **9 GitHub Actions workflows:**
-  - `pr-gate.yml` — **Umbrella for PR branch protection.** No path filter; runs on every PR, detects changed paths, conditionally invokes the 4 platform CIs as reusable workflows, aggregates results in a `Gate` job. The `Gate` context is the single required check on `main`. See "Branch protection" section below.
-  - `ci-rust.yml` — Cargo fmt + clippy + test + version-sync (3-OS matrix). **Reusable** (`workflow_call:`) — invoked by `pr-gate.yml` for PRs; native `push:` trigger still fires on direct main pushes.
-  - `ci-macos.yml` — Build mm-ffi + SwiftUI app (macos-26, Xcode 26.4.1, Swift 6.3). **Reusable.** Runner is macos-26 (not macos-latest) because `Package.swift` requires `swift-tools-version: 6.3` which needs Xcode 26.3+.
-  - `ci-windows.yml` — Build mm-ffi + WinUI 3 app (windows-latest). **Reusable.**
-  - `ci-linux.yml` — Build mm-gtk with GTK4/Libadwaita (ubuntu-latest). **Reusable.**
-  - `version-bump.yml` — Automated version bumping across all files (manual trigger)
-  - `release.yml` — 5-platform release builds + checksums + GitHub Release (tag trigger)
-  - `audit.yml` — cargo-deny only (weekly + push to `main`); a separate cargo-audit step was
-    tried and removed (#156/#157) since cargo-deny's `advisories` check is a superset. This
-    workflow has been **failing** on every weekly run since 2026-07-06 against real RUSTSEC
-    advisories — see issue #203, do not assume it is green
+- **10 GitHub Actions workflows:**
+  - `pr-gate.yml` — **Umbrella for PR branch protection.** No path filter; runs on every PR to
+    `main`, `alpha` or `beta` (issue #204 — previously `main` only), detects changed paths,
+    conditionally invokes the 4 platform CIs as reusable workflows, aggregates results in a
+    `Gate` job. The `Gate` context is the single required check on `main` (branch protection
+    itself is still `main`-only). See "Branch protection" section below.
+  - `ci-rust.yml` — Cargo fmt + clippy + test + version-sync (3-OS matrix, Rust pinned to
+    `1.98.0` via `rust-toolchain.toml`, issue #197 — not a floating `stable` channel). **Reusable**
+    (`workflow_call:`) — invoked by `pr-gate.yml` for PRs; native `push:` trigger fires on direct
+    pushes to `main`, `alpha` or `beta`. `version-check` now also verifies `crates/mm-gtk/Cargo.toml`
+    and `linux/snap/snapcraft.yaml` match `Cargo.toml` **exactly**, including any pre-release
+    suffix (issues #197/#204/#214).
+  - `ci-macos.yml` — Build mm-ffi + SwiftUI app (macos-26, Xcode 26.4.1, Swift 6.3). **Reusable.** Runner is macos-26 (not macos-latest) because `Package.swift` requires `swift-tools-version: 6.3` which needs Xcode 26.3+. Push trigger covers `main`/`alpha`/`beta`.
+  - `ci-windows.yml` — Build mm-ffi + WinUI 3 app. **Reusable.** Runner is pinned `windows-2022`
+    (not `windows-latest`/`windows-2025`, whose .NET 10 SDK host breaks `XamlCompiler.exe` — see
+    issue #148). Push trigger covers `main`/`alpha`/`beta`.
+  - `ci-linux.yml` — Build mm-gtk with GTK4/Libadwaita (ubuntu-latest). **Reusable.** Push trigger covers `main`/`alpha`/`beta`.
+  - `lint.yml` — `actionlint` against every workflow file (push/PR touching `.github/workflows/**`, plus manual dispatch). Costs nothing on ordinary code pushes.
+  - `version-bump.yml` — Automated version bumping across all files (manual trigger); now also
+    updates `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` (issues #197/#204/#214) so
+    an automated bump can't reintroduce the version drift those two files previously had.
+  - `release.yml` — 5-platform release builds + checksums + GitHub Release (tag trigger, plus a
+    manual `workflow_dispatch` dry-run mode added by issue #202, which also fixed the pipeline
+    copying a nonexistent `mm-cli` binary instead of the real `meedya`/`meedya-gtk` binaries and
+    staged `LICENSE` into every package). Windows jobs are `continue-on-error` and excluded from
+    the release gate pending #148.
+  - `audit.yml` — cargo-deny only (weekly + push to `main`/`alpha`/`beta`, plus a path-filtered
+    PR trigger on `Cargo.lock`/`Cargo.toml`/`deny.toml`, issue #204 — must never become a
+    required check); a separate cargo-audit step was tried and removed (#156/#157) since
+    cargo-deny's `advisories` check is a superset. **Fixed** as of issue #203 — three RUSTSEC
+    advisories resolved, two more given dated justified ignores; do not assume it is still red.
   - `docs.yml` — cargo doc generation
-- Platform packages: Windows (MSIX), macOS (.dmg/.tar.gz), Linux (Flatpak/Snap/AppImage/.deb)
+- Platform packages: Windows (`.zip` staging today — `release.yml` has no MSIX packaging step
+  despite `Package.appxmanifest` existing), macOS (.dmg/.tar.gz), Linux (Flatpak/Snap/AppImage*/.deb
+  — *AppImage is deliberately not built by `release.yml`, see issue #202)
 - `.gitignore` covers OS files, Rust `target/`, IDE files, secrets, build artifacts
 - **No Python archive tag exists.** `v1.5-M6-python-final` is NOT a real tag — the only tag
   in the repo is `v1.0-M1`, and the only GitHub Release is *"MetaMancer v1.0-M1"* (2025-06-16,
   the pre-rename project name). Issue #19 was reopened because of this false claim; do not
   reintroduce it.
-- **Current version is `1.3.0`** (`[workspace.package].version`). Versions 1.3.1 and 1.3.2
-  were never cut despite changelog entries claiming otherwise — treat any reference to them
-  as a documentation bug, not a release.
+- **Current version is `1.4.0-alpha.1`** (`[workspace.package].version`) — the project's first
+  semver pre-release, previously `1.3.0` (issue #214, fixed). Versions 1.3.1 and 1.3.2 were
+  never cut despite changelog entries claiming otherwise — both are folded into the
+  `[v1.4.0-alpha.1]` changelog entry, not treated as a release. No tag has been pushed for
+  `1.4.0-alpha.1` yet.
 - **Every task** must have a GitHub Issue created BEFORE work begins and closed AFTER verification
 - **Commit but do NOT push** — user pushes manually (exception: pushing a *new feature branch* is OK once the user has explicitly asked for a PR)
 

@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 >
-> Overview of all 9 GitHub Actions workflows in MeedyaManager.
+> Overview of all 10 GitHub Actions workflows in MeedyaManager.
 
 ---
 
@@ -10,15 +10,15 @@
 
 | Workflow | File | Trigger | Description |
 | -------- | ---- | ------- | ------------ |
-| PR Gate | `pr-gate.yml` | `pull_request` on `main`, no path filter | Umbrella branch-protection check; detects changed paths and conditionally invokes the 4 platform CIs |
-| Rust Core CI | `ci-rust.yml` | Push to `main` (`crates/**`) + `workflow_call` from PR Gate | Format, clippy, test, version-sync (3-OS matrix) |
-| macOS CI | `ci-macos.yml` | Push to `main` (`macos/**`, `crates/mm-ffi/**`) + `workflow_call` | Build SwiftUI app on `macos-26` |
-| Windows CI | `ci-windows.yml` | Push to `main` (`windows/**`, `crates/mm-ffi/**`) + `workflow_call` | Build WinUI 3 app on `windows-2022` |
-| Linux CI | `ci-linux.yml` | Push to `main` (`crates/mm-gtk/**`) + `workflow_call` | Build GTK4 app under Xvfb |
+| PR Gate | `pr-gate.yml` | `pull_request` on `main`, `alpha` or `beta`, no path filter | Umbrella branch-protection check; detects changed paths and conditionally invokes the 4 platform CIs |
+| Rust Core CI | `ci-rust.yml` | Push to `main`/`alpha`/`beta` (`crates/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`, `clippy.toml`, `.cargo/**`) + `workflow_call` from PR Gate | Format, clippy, test, version-sync (3-OS matrix, pinned toolchain) |
+| macOS CI | `ci-macos.yml` | Push to `main`/`alpha`/`beta` (`macos/**`, `crates/mm-ffi/**`) + `workflow_call` | Build SwiftUI app on `macos-26` |
+| Windows CI | `ci-windows.yml` | Push to `main`/`alpha`/`beta` (`windows/**`, `crates/mm-ffi/**`) + `workflow_call` | Build WinUI 3 app on `windows-2022` |
+| Linux CI | `ci-linux.yml` | Push to `main`/`alpha`/`beta` (`crates/mm-gtk/**`) + `workflow_call` | Build GTK4 app under Xvfb |
 | Lint Workflows | `lint.yml` | Push/PR touching `.github/workflows/**`, manual | `actionlint` against every workflow file |
-| Version Bump | `version-bump.yml` | Manual (`workflow_dispatch`) | Bump version across all platform files |
-| Release Build | `release.yml` | Tag push (`v*`) | Build 5 platform targets, SHA256 checksums, draft release |
-| Security Audit | `audit.yml` | Weekly schedule + push to `main` | `cargo deny check` |
+| Version Bump | `version-bump.yml` | Manual (`workflow_dispatch`) | Bump version across all platform files, including `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` |
+| Release Build | `release.yml` | Tag push (`v*`) + manual `workflow_dispatch` dry run | Build 5 platform targets, SHA256 checksums, draft release |
+| Security Audit | `audit.yml` | Weekly schedule + push to `main`/`alpha`/`beta` + path-filtered PR on `Cargo.lock`/`Cargo.toml`/`deny.toml` | `cargo deny check` |
 | Documentation | `docs.yml` | Push to `main` (`docs/**`, `help/**`, `crates/*/src/**`) | `cargo doc --no-deps --workspace` |
 
 ---
@@ -26,8 +26,10 @@
 ## PR Gate (`pr-gate.yml`)
 
 The **single required status check on `main`** (see `.claude/CLAUDE.md` for the full rationale —
-do not regress this pattern). Runs on every pull request to `main` with **no path filter**, so it
-always reports.
+do not regress this pattern). Runs on every pull request to `main`, `alpha` or `beta` (issue
+#204 — previously `main` only) with **no path filter**, so it always reports. Branch protection
+itself remains `main`-only; `alpha`/`beta` PRs get real CI coverage from this workflow without
+being gated by it.
 
 **Steps:**
 
@@ -49,20 +51,33 @@ filter, so Windows regressions on `main` remain visible — they just don't bloc
 ## Rust Core CI (`ci-rust.yml`)
 
 Reached two ways: `workflow_call:` from PR Gate on PRs, and a native `push:` trigger on direct
-pushes to `main` (paths `crates/**`, `Cargo.toml`, `Cargo.lock`). It carries **no**
-`pull_request:` trigger of its own — adding one would duplicate PR runs.
+pushes to `main`, `alpha` or `beta` (paths `crates/**`, `Cargo.toml`, `Cargo.lock`,
+`rust-toolchain.toml`, `deny.toml`, `clippy.toml`, `.cargo/**` — the last four added by
+issues #204/#197 to keep this workflow's `push:` paths in sync with `pr-gate.yml`'s own
+detection, which already covered them). It carries **no** `pull_request:` trigger of its own —
+adding one would duplicate PR runs.
 
-Runs on: Ubuntu, macOS, Windows (3-OS matrix, `rust: [stable]`)
+Runs on: Ubuntu, macOS, Windows (3-OS matrix, matrix label `rust: [pinned]` — renamed from
+`stable` by issue #197 so it no longer implies a floating toolchain is under test). The actual
+compiler version is pinned by `rust-toolchain.toml` (`channel = "1.98.0"`), which every
+`cargo`/`rustc` invocation in the repo honours regardless of what the `dtolnay/rust-toolchain@stable`
+step below installs as the rustup default — rustup's directory-walk toolchain-file override
+outranks it.
 
 **Steps:**
 
 1. `cargo fmt --all --check` — verify formatting
-2. `cargo clippy --workspace --all-targets --exclude mm-gtk -- -D warnings` — lint (`mm-gtk` needs
-   GTK4 system libraries, only installed in `ci-linux.yml`)
-3. `cargo test --workspace --exclude mm-gtk` — run workspace tests
+2. `cargo clippy --workspace --all-targets -- -D warnings` — lint. `mm-gtk` is excluded from the
+   workspace (`Cargo.toml`'s `exclude = ["crates/mm-gtk"]`, issue #199), so `--workspace` never
+   selects it — the previous `--exclude mm-gtk` flag was dropped as a redundant no-op
+3. `cargo test --workspace` — run workspace tests (same reasoning — `mm-gtk` is already excluded)
 4. `version-check` (separate job) — verifies `Cargo.toml` version matches
-   `Package.appxmanifest` (MSIX, `X.Y.Z.0`) and `Info.plist` (`CFBundleShortVersionString`,
-   `X.Y.Z`); does **not** check `CFBundleVersion`, or the Linux/WinGet package manifests
+   `Package.appxmanifest` (MSIX, `X.Y.Z.0`), `Info.plist` (`CFBundleShortVersionString`,
+   `X.Y.Z`), and, as of issues #197/#204/#214, `crates/mm-gtk/Cargo.toml` and
+   `linux/snap/snapcraft.yaml` — the last two checked for **exact string equality** with
+   `Cargo.toml`, including any pre-release suffix. Still does **not** check `CFBundleVersion`,
+   `linux/deb/control`, the Flatpak AppStream `<releases>` entry, the Flatpak manifest's pinned
+   `tag:`/`commit:`, or the WinGet manifest
 
 **Status badge:**
 
@@ -74,8 +89,8 @@ Runs on: Ubuntu, macOS, Windows (3-OS matrix, `rust: [stable]`)
 
 ## macOS CI (`ci-macos.yml`)
 
-Reached via `workflow_call:` from PR Gate, and `push:` to `main` (paths `macos/**`,
-`crates/mm-ffi/**`).
+Reached via `workflow_call:` from PR Gate, and `push:` to `main`/`alpha`/`beta` (paths
+`macos/**`, `crates/mm-ffi/**`).
 
 Runs on: `macos-26` — required because `macos/Package.swift` declares
 `swift-tools-version: 6.3`, which needs Xcode 26.3+ (Swift 6.3); `macos-26`'s default toolchain is
@@ -95,7 +110,7 @@ Xcode 26.4.1 / Swift 6.3, so no `xcode-select` step is needed.
 ## Windows CI (`ci-windows.yml`)
 
 Reached via `workflow_call:` from PR Gate (currently skipped there — see PR Gate above), and
-`push:` to `main` (paths `windows/**`, `crates/mm-ffi/**`).
+`push:` to `main`/`alpha`/`beta` (paths `windows/**`, `crates/mm-ffi/**`).
 
 Runs on: **`windows-2022`** — deliberately pinned, *not* `windows-latest`. `windows-latest` now
 resolves to `windows-2025` with a .NET 10 SDK host, under which `XamlCompiler.exe` fails silently
@@ -118,7 +133,8 @@ regression (see issue #148).
 
 ## Linux CI (`ci-linux.yml`)
 
-Reached via `workflow_call:` from PR Gate, and `push:` to `main` (path `crates/mm-gtk/**`).
+Reached via `workflow_call:` from PR Gate, and `push:` to `main`/`alpha`/`beta` (path
+`crates/mm-gtk/**`).
 
 Runs on: `ubuntu-latest`
 
@@ -166,17 +182,28 @@ Manual trigger via `workflow_dispatch`.
 - `windows/MeedyaManager/Package.appxmanifest` `Identity.Version` (MSIX 4-part, pre-release
   stripped, `.0` appended)
 - `macos/MeedyaManager/Info.plist` `CFBundleShortVersionString` (pre-release stripped)
+- `crates/mm-gtk/Cargo.toml` — exact match, pre-release suffix included (added by issues
+  #197/#204, since `mm-gtk` is excluded from the root `[workspace]` and cannot inherit the
+  version)
+- `linux/snap/snapcraft.yaml` — exact match, pre-release suffix included (same rationale, added
+  by the same issues)
 - `docs/changelog.md` — inserts a new `## [vX.Y.Z] — <date>` section (after `## [Unreleased]` if
   present, otherwise before the first existing version section)
+- A `version-check` step re-verifies both new exact-match files after writing them
 
-It does **not** touch the Linux package manifests (`snapcraft.yaml`, `linux/deb/control`,
-`*.metainfo.xml`) or the WinGet manifest — those must be kept in sync by hand.
+It does **not** touch `linux/deb/control` (needs the `-` → `~` Debian remap), the Flatpak
+AppStream `*.metainfo.xml` `<releases>` block, the Flatpak manifest's pinned `tag:`/`commit:`,
+or the WinGet manifest — all four were edited by hand for the `1.4.0-alpha.1` cut (issue #214)
+and must still be kept in sync manually on future bumps.
 
 ---
 
 ## Release Build (`release.yml`)
 
-Triggered by pushing a `v*` tag (e.g. `v1.0.0`).
+Triggered by pushing a `v*` tag (e.g. `v1.4.0-alpha.1`), or manually via `workflow_dispatch`
+(`version` and `publish` inputs, added by issue #202) so the pipeline can be exercised as a dry
+run without pushing a tag — no tag has ever actually been pushed, so this is currently the only
+way to run it at all.
 
 **Architecture:**
 
@@ -193,26 +220,59 @@ prepare ──┬── release-macos-arm64
 **Each build job:**
 
 1. Runs `cargo build --profile dist` (full hardening — see the Release Process wiki)
-2. Packages the binary for its platform
-3. Generates a SHA256 checksum
-4. Uploads the artifact to the workflow run
+2. Packages the binary for its platform, using the correct binary names — `meedya` (CLI) and
+   `meedya-gtk` (Linux GTK4 app, built explicitly via `--manifest-path crates/mm-gtk/Cargo.toml`
+   since `mm-gtk` is excluded from the workspace). Issue #202 fixed seven sites that previously
+   copied a nonexistent `mm-cli` binary and never actually built `meedya-gtk`.
+3. Stages `LICENSE` alongside the binaries (issue #207)
+4. Generates a SHA256 checksum
+5. Uploads the artifact to the workflow run — `if-no-files-found: error` on the macOS and Linux
+   uploads, so a missing artifact now fails the job instead of silently uploading nothing
+
+Every packaging block runs under `set -euo pipefail`, and the 25 `2>/dev/null || true` failure
+suppressions that previously hid a broken pipeline (it copied binaries that don't exist) are
+removed. The macOS job runs on `macos-26` (was `macos-15`, too old for the Swift 6.3 toolchain
+`Package.swift` requires). Windows staging is archived into a real `.zip` rather than uploaded
+as a bare directory.
 
 The Linux jobs attempt a `.deb` (`linux/deb/build-deb.sh`) and an AppImage
 (`linux/appimage/build-appimage.sh`), each falling back to a `::warning::` and continuing if the
 packaging tool (`dpkg-deb`/`appimagetool`) is unavailable, plus a plain `.tar.gz` of the raw
-binaries. **There is no Flatpak build step anywhere in `release.yml`.**
+binaries. **There is no Flatpak build step anywhere in `release.yml`.** AppImage is deliberately
+still not built even where the tool is available — `build-appimage.sh` itself documents that its
+output isn't self-contained, and a broken AppImage costs more tester goodwill than an honest
+omission.
+
+**Windows release jobs are `continue-on-error` and excluded from the release gate** — Windows CI
+has never been green (issue #148) and must not block a macOS/Linux alpha. `create-release`
+checks for the actual presence of the Windows `.zip` archives rather than trusting
+`needs.*.result`, since a `continue-on-error` job always reports success regardless of whether
+the underlying build actually worked.
 
 **create-github-release job:**
 
 1. Collects all artifacts
 2. Concatenates checksums into `SHA256SUMS.txt`
-3. Creates a **draft** GitHub Release with all artifacts and auto-generated notes
+3. Creates a **draft** GitHub Release with all artifacts and auto-generated notes; release notes
+   are extracted from `docs/changelog.md` by matching the literal `## [v<version>]` heading
+   prefix
 
 ---
 
 ## Security Audit (`audit.yml`)
 
-Runs weekly (Monday 09:00 UTC) and on every push to `main`. It has **no `pull_request:` trigger**.
+Runs weekly (Monday 09:00 UTC) and on every push to `main`/`alpha`/`beta`. As of issue #204 it
+also has a **path-filtered `pull_request:` trigger** on `Cargo.lock`, `Cargo.toml`, `deny.toml`
+and its own file — so a security-advisory fix landing in a sibling package gets CI evidence
+before promotion to `main`, without costing anything on PRs that don't touch dependency
+config. This must never become a required status check; `pr-gate.yml`'s `Gate` job is the only
+one on `main`.
+
+**Status: fixed (issue #203).** `cargo deny check` had failed on every weekly run since
+2026-07-06 on three RUSTSEC advisories (`anyhow`, `h2`, `gettext-rs`), all now resolved by
+dependency bumps; two further advisories in `quick-xml` (reached via the `meedya-core` git
+dependency) are not fixable from this repository and carry dated, justified `deny.toml` ignores
+instead. See `docs/changelog.md`'s Round 2 section for the full detail.
 
 **Tool:** `cargo deny check` only — licence, security-advisory, and duplicate-crate checks driven
 by `deny.toml`. A separate `cargo audit` step existed previously but was removed: it was

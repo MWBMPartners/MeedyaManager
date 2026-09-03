@@ -50,8 +50,13 @@ Place a file at:
 
 | Platform | Path |
 | -------- | ---- |
-| Linux / macOS | `~/.config/meedyamanager/filetypes.json5` |
+| Linux | `~/.config/MeedyaManager/filetypes.json5` |
+| macOS | `~/Library/Application Support/MeedyaManager/filetypes.json5` |
 | Windows | `%APPDATA%\MeedyaManager\filetypes.json5` |
+
+This is the same single config directory documented in
+[configuration.md](configuration.md#configuration-file-location), resolved by
+`mm_core::config::app_config_dir()` and overridable with `MM_CONFIG_DIR` (issue #212).
 
 **This file replaces the built-in registry entirely — it does not extend it.** If the file
 exists and parses successfully, MeedyaManager uses *only* what's in it; the compiled-in

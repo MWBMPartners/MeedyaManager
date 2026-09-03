@@ -9,9 +9,12 @@
 ## Status: no release has ever been cut under this process
 
 The only GitHub release that exists is *"MetaMancer v1.0-M1"* (2025-06-16, the pre-rename
-project name), tagged `v1.0-M1`. The current workspace version is **1.3.0**
-(`Cargo.toml` `[workspace.package].version`) and has **not** been tagged or released. Everything
-below describes the process as the tooling supports it today, not a history of past releases.
+project name), tagged `v1.0-M1`. The current workspace version is **`1.4.0-alpha.1`**
+(`Cargo.toml` `[workspace.package].version` — previously `1.3.0`, bumped by issue #214) and has
+**not** been tagged or released. `release.yml` is, as of issue #202, capable of actually
+producing a usable build — the next step is a `workflow_dispatch` dry run (`publish: false`)
+rather than a real tag push. Everything below describes the process as the tooling supports it
+today, not a history of past releases.
 
 ---
 
@@ -21,14 +24,15 @@ Before starting the release process:
 
 - [ ] All milestone issues are closed
 - [ ] PR Gate (`Gate` check) is green on `main`
-- [ ] `cargo deny check` reports no issues (`audit.yml` is green)
+- [x] `cargo deny check` reports no issues (`audit.yml` is green) — fixed by issue #203
 - [ ] `docs/changelog.md` is up to date
 - [ ] `PROJECT_STATUS.md` reflects the completed milestone
-- [ ] `Cargo.toml`, `Package.appxmanifest`, and `Info.plist` all match (`version-check` job in
-      `ci-rust.yml`) — note this check does **not** cover the Linux package manifests
-      (`snapcraft.yaml`, `linux/deb/control`, `*.metainfo.xml`) or the WinGet manifest, which must
-      be synced by hand
-- [ ] A `LICENSE` file exists — as of this writing it does not (issue #207)
+- [x] `Cargo.toml`, `Package.appxmanifest`, `Info.plist`, `crates/mm-gtk/Cargo.toml` and
+      `linux/snap/snapcraft.yaml` all match (`version-check` job in `ci-rust.yml` — the last two
+      exact-match, added by issues #197/#204/#214) — note this check still does **not** cover
+      `linux/deb/control`, the Flatpak AppStream `*.metainfo.xml`, the Flatpak manifest's pinned
+      `tag:`/`commit:`, or the WinGet manifest, which must be synced by hand
+- [x] A `LICENSE` file exists at the repository root (issue #207, fixed)
 
 ---
 
@@ -57,16 +61,22 @@ git push origin main v1.4.0
 
 ### 2. Tag triggers release workflow
 
-Pushing a `v*` tag automatically triggers `release.yml`, which:
+Pushing a `v*` tag automatically triggers `release.yml` (a manual `workflow_dispatch` dry run
+works the same way without a tag — see issue #202), which:
 
 1. Builds 5 platform targets in parallel (macOS arm64, Windows x64, Windows arm64, Linux x64,
-   Linux arm64)
-2. Packages each target — macOS: `.dmg`; Windows: MSIX; Linux: `.tar.gz` plus a best-effort
-   `.deb` and AppImage (each step falls back to a warning and continues if its packaging tool is
-   unavailable on the runner). **There is no Flatpak build step** — `release.yml` contains no
-   Flatpak job or action.
+   Linux arm64), packaging the correctly-named `meedya` and (Linux only) `meedya-gtk` binaries
+   alongside `LICENSE`
+2. Packages each target — macOS: `.dmg`; Windows: `.zip` staging (no MSIX package exists yet);
+   Linux: `.tar.gz` plus a best-effort `.deb` and AppImage (each step falls back to a warning and
+   continues if its packaging tool is unavailable on the runner — AppImage is deliberately never
+   attempted regardless, since `build-appimage.sh` documents its own output as not
+   self-contained). **There is no Flatpak build step** — `release.yml` contains no Flatpak job or
+   action. Windows jobs are `continue-on-error` and excluded from the release gate (issue #148) —
+   they must not block a macOS/Linux release
 3. Generates SHA256 checksums
-4. Creates a **draft** GitHub Release with all artifacts attached
+4. Creates a **draft** GitHub Release with all artifacts attached, with release notes extracted
+   from `docs/changelog.md`'s matching `## [v<version>]` heading
 
 ### 3. Review the draft release
 
@@ -87,12 +97,12 @@ repository today — those would need to be filed and submitted manually if desi
 
 | Platform | Artifact | Notes |
 | -------- | -------- | ------ |
-| macOS (Apple Silicon) | `MeedyaManager-{v}-macos-arm64.dmg` | Signed + notarised (when Apple secrets are configured) |
-| Windows x64 | `MeedyaManager-{v}-windows-x64.msix` | Authenticode signed (when Windows secrets are configured) |
-| Windows ARM64 | `MeedyaManager-{v}-windows-arm64.msix` | Authenticode signed (when Windows secrets are configured) |
-| Linux x64 | `MeedyaManager-{v}-linux-x64.tar.gz` | Raw `mm-gtk`/`mm-cli`/`libmm_ffi.so` binaries |
+| macOS (Apple Silicon) | `MeedyaManager-{v}-macos-arm64.dmg` | Signed + notarised (when Apple secrets are configured); `LICENSE` staged into `Contents/Resources/` |
+| Windows x64 | `MeedyaManager-{v}-windows-x64.zip` | A plain `.zip` of the Authenticode-signed (when configured) binaries and `LICENSE` — **not** an MSIX package; `release.yml` has no `makeappx`/MSIX packaging step at all, despite `Package.appxmanifest` existing under `windows/` |
+| Windows ARM64 | `MeedyaManager-{v}-windows-arm64.zip` | Same as x64 |
+| Linux x64 | `MeedyaManager-{v}-linux-x64.tar.gz` | Raw `meedya-gtk`/`meedya`/`libmm_ffi.so` binaries plus `LICENSE` (issue #202 fixed the binary names — the tarball previously named a nonexistent `mm-cli`) |
 | Linux x64 | `meedyamanager_{v}_amd64.deb` | Debian/Ubuntu package, best-effort (skipped if `dpkg-deb` unavailable) |
-| Linux x64 | `MeedyaManager-{v}-x86_64.AppImage` | Portable AppImage, best-effort (skipped if `appimagetool` unavailable) |
+| Linux x64 | `MeedyaManager-{v}-x86_64.AppImage` | **Not built.** `build-appimage.sh` itself documents its output as not self-contained; a broken AppImage costs more tester goodwill than an honest omission, so this step is deliberately skipped even when `appimagetool` is available |
 | Linux ARM64 | `MeedyaManager-{v}-linux-arm64.tar.gz` | Raw binaries, same caveats as Linux x64 |
 | Checksums | `SHA256SUMS.txt` | Concatenation of every artifact's individual `.sha256` file |
 

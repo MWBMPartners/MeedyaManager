@@ -27,7 +27,7 @@ walks you through building it, running your first scan, and basic configuration.
 
 | Component | Requirement |
 | --------- | ----------- |
-| **Rust** | 1.85+ — [rustup.rs](https://rustup.rs) |
+| **Rust** | 1.85+ (declared `rust-version` / MSRV in `Cargo.toml`) — [rustup.rs](https://rustup.rs). CI and this repo's own `rust-toolchain.toml` pin exactly **1.98.0** (issue #197); `rustup` auto-installs it on first build inside the checkout, so building from source picks it up automatically |
 | **Platform tools** | Linux: `libgtk-4-dev`, `libadwaita-1-dev` (only needed for the `mm-gtk` UI, which is not a workspace member by default — see below); macOS/Windows: none extra for the CLI |
 | **OS** | Windows (x64/ARM64), macOS (Apple Silicon only), or Linux (x64/ARM64) |
 
@@ -113,16 +113,17 @@ anything:
 meedya scan ~/Music --dry-run
 ```
 
-> ### ⚠️ Before you ever pass `--execute`
+> ### Before you pass `--execute`
 >
-> `meedya scan --execute` performs the renames for real, and it has a known data-loss bug
-> (issue [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201)): if your rename
-> template causes two different source files to resolve to the same destination path, the
-> second rename silently overwrites the first — there is no prompt and no backup. This can also
-> happen when a folder-shaped template gets flattened. **Always run `meedya scan` in preview
-> mode first (the default — no `--execute`, or explicit `--dry-run`) and check the whole preview
-> list for duplicate destination paths before you add `--execute` on anything you cannot afford
-> to lose.** See [cli-reference.md](cli-reference.md#meedya-scan) for the full warning.
+> `meedya scan --execute` performs the renames for real. The data-loss bug tracked as issue
+> [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201) — where two different source
+> files resolving to the same destination path caused a silent overwrite — is fixed: destinations
+> claimed within the same batch are now tracked, and a collision is handled per
+> `conflict_strategy` (skipped by default, or renamed with a counter under
+> `conflict_strategy = "rename"`), with the command exiting `2` (`PARTIAL`) if anything is left
+> unresolved. It's still good practice to run `meedya scan` in preview mode first (the default —
+> no `--execute`, or explicit `--dry-run`) before running for real. See
+> [cli-reference.md](cli-reference.md#meedya-scan) for the full detail.
 
 ### Start the Folder Watcher
 
@@ -189,28 +190,30 @@ meedya config show
     // Rename template using MusicBee-style <Tag> syntax
     template: "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
 
-    // What to do when a destination file already exists
-    conflict_strategy: "rename"   // "rename", "skip", or "overwrite"
+    // What to do when a destination file already exists.
+    // "skip" and "rename" are implemented; "overwrite" and "ask" currently
+    // warn once and fall back to "skip" (see help/configuration.md).
+    conflict_strategy: "rename"
   }
 }
 ```
 
-See [configuration.md](configuration.md) for the full settings reference — and note that the
-example config file shipped in this repo's `config/settings.json5` uses a **different, stale
-schema** and does not match this reference; do not copy it.
+See [configuration.md](configuration.md) for the full settings reference. The example config
+file shipped in this repo's `config/settings.json5` now matches `AppConfig` field-for-field
+(issue #211, fixed) and is a reasonable starting point to copy from.
 
 ---
 
 ## Metadata Lookup
 
 > **⚠️ Status: not yet implemented.** `meedya lookup` is still a stub (see
-> [cli-reference.md](cli-reference.md#meedya-lookup)). It parses its arguments and prints a
-> "coming in M5" message; it does not query any provider or write any tag yet, even though the
-> M5 milestone issues are closed on GitHub. The examples below show the intended future syntax,
-> not working commands.
+> [cli-reference.md](cli-reference.md#meedya-lookup)). It parses its arguments, prints "Metadata
+> lookup is not available in this alpha (see issue #83)." and exits `3` (`NOT_IMPLEMENTED`); it
+> does not query any provider or write any tag yet, even though the M5 milestone issues are
+> closed on GitHub. The examples below show the intended future syntax, not working commands.
 
 ```bash
-# Not yet functional — prints a stub message today
+# Not yet functional — prints a not-implemented notice and exits 3 today
 meedya lookup "Never Gonna Give You Up"
 meedya lookup "Never Gonna Give You Up" --provider musicbrainz
 meedya lookup "Never Gonna Give You Up" --auto

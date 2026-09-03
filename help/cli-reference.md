@@ -11,17 +11,18 @@ if a flag is not listed here, it does not exist.
 ## Table of Contents
 
 1. [Global Flags](#global-flags)
-2. [meedya debug](#meedya-debug)
-3. [meedya scan](#meedya-scan)
-4. [meedya watch](#meedya-watch)
-5. [meedya edit](#meedya-edit)
-6. [meedya lookup](#meedya-lookup)
-7. [meedya rule](#meedya-rule)
-8. [meedya config](#meedya-config)
-9. [meedya service](#meedya-service)
-10. [meedya export](#meedya-export)
-11. [meedya serve](#meedya-serve)
-12. [meedya report-bug](#meedya-report-bug)
+2. [Exit Codes](#exit-codes)
+3. [meedya debug](#meedya-debug)
+4. [meedya scan](#meedya-scan)
+5. [meedya watch](#meedya-watch)
+6. [meedya edit](#meedya-edit)
+7. [meedya lookup](#meedya-lookup)
+8. [meedya rule](#meedya-rule)
+9. [meedya config](#meedya-config)
+10. [meedya service](#meedya-service)
+11. [meedya export](#meedya-export)
+12. [meedya serve](#meedya-serve)
+13. [meedya report-bug](#meedya-report-bug)
 
 ---
 
@@ -44,6 +45,25 @@ meedya --json debug song.mp3
 meedya --dry-run watch
 meedya --config /etc/meedya/settings.json5 service status
 ```
+
+---
+
+## Exit Codes
+
+Every `meedya` subcommand returns one of four process exit codes (`crates/mm-cli/src/output.rs`),
+so a script can distinguish "nothing was attempted" from "something failed":
+
+| Code | Name | Meaning |
+| ---- | ---- | ------- |
+| `0` | `SUCCESS` | Command completed successfully |
+| `1` | `ERROR` | Command failed with an error |
+| `2` | `PARTIAL` | Some items succeeded and some failed (e.g. `scan --execute` left an unresolved conflict, or `edit` wrote some but not all requested tags) |
+| `3` | `NOT_IMPLEMENTED` | Arguments parsed and validated successfully, but the underlying feature is not built yet in this release — `export`, `serve` and `lookup` (see below) |
+
+`NOT_IMPLEMENTED` is deliberately distinct from both `ERROR` and `PARTIAL` — it means no work was
+attempted at all, not that work was attempted and failed. A sub-flag that genuinely does
+something today (`export --show-schema`, `serve --show-routes`, `serve --check-config`) still
+returns `0`, even though the parent command as a whole is not implemented.
 
 ---
 
@@ -115,30 +135,47 @@ meedya scan <PATH> [OPTIONS]
 | Argument / Flag | Description |
 | --------------- | ----------- |
 | `<PATH>` | Directory to scan — **required**, there is no default (`scan.rs:20`) |
-| `--recursive` / `-r` | Scan subdirectories (default: `true` — see the note below) |
+| `--no-recursive` | Disable recursive scanning into subdirectories (recursive is the default) |
 | `--template <TEMPLATE>` | Override the rename template from config for this run |
 | `--output-dir <PATH>` | Override the output directory for renamed files |
 | `--execute` | Actually perform the renames (default: preview only) |
 | `--dry-run` | Force preview mode even if `--execute` is also passed |
 
-> **`--recursive` cannot currently be turned off.** It is declared `default_value_t = true` with
-> no matching `--no-recursive`, so `clap` gives you no way to pass `false` on the command line —
-> `--recursive=false` is silently ignored. This is tracked as issue
+> **`-r`/`--recursive` no longer exists.** It used to be declared `default_value_t = true` with
+> no matching `--no-recursive`, so `clap` gave you no way to pass `false` on the command line.
+> It has been replaced with `--no-recursive` (mirroring `meedya watch`): recursion stays the
+> default, and this flag turns it off. Fixed as part of issue
 > [#206](https://github.com/MWBMPartners/MeedyaManager/issues/206).
 >
-> ### ⚠️ Data-loss warning — `meedya scan --execute` (issue [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201))
+> ### `meedya scan --execute` and destination conflicts (issue [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201))
 >
-> `scan --execute` can **silently overwrite a file**. The conflict check
-> (`crates/mm-cli/src/commands/scan.rs:173`) only asks "does the destination already exist on
-> disk right now?" — it never checks whether **two source files in the same scan** resolve to the
-> same destination path. If your template collapses two different files onto one name (for
-> example, a folder-shaped template applied to files that used to live in separate
-> subdirectories, or two differently-tagged files that share `<Artist>/<Title>`), the second one
-> silently replaces the first with `std::fs::rename`, and the original is gone — no prompt, no
-> backup. `mm-core`'s own `simulate_rename` function gets this right; the CLI's `scan` command
-> just does not use it. **Until this is fixed, always run `meedya scan --dry-run` (or without
-> `--execute`) first and read the whole preview list for duplicate destination paths before
-> passing `--execute` on data you care about.**
+> `scan --execute` used to be able to **silently overwrite a file**: the conflict check only
+> asked "does the destination already exist on disk right now?", never checking whether **two
+> source files in the same scan** resolved to the same destination path. This is fixed — `scan`
+> now delegates to `mm_core::renamer::simulate_rename_with_rules`, which tracks every destination
+> claimed within the batch, and `execute_rename_with()` re-checks the destination immediately
+> before the move as defence in depth.
+>
+> Conflict handling is driven by `rename.conflict_strategy` (or `--template`/`--output-dir` for
+> this run):
+>
+> | `conflict_strategy` | Behaviour |
+> | -------------------- | --------- |
+> | `"skip"` (default) | Leave the source file untouched; the conflict is reported and counted |
+> | `"rename"` | Append a counter to the destination name (`Song (1).mp3`, bounded at 9,999) so both files land |
+> | `"overwrite"` | **Not implemented yet** — warns once and falls back to `"skip"` rather than re-enabling the data-loss path this issue closed |
+> | `"ask"` | **Not implemented yet** — warns once and falls back to `"skip"`; there is no interactive prompt |
+>
+> `meedya scan --execute` exits `2` (`PARTIAL`) if any conflict is left unresolved or any file
+> errors during the run; a run where `conflict_strategy = "rename"` resolves every clash exits
+> `0` (`SUCCESS`). It is still good practice to run `meedya scan --dry-run` (or without
+> `--execute`) first and read the preview for anything unexpected before passing `--execute` on
+> data you care about — but the silent-overwrite failure mode itself is fixed.
+>
+> A tag value containing `/` (e.g. an artist named `AC/DC`) now produces **nested directories**
+> in the destination path, not an underscore — by the time the renamer sees the evaluated
+> template, a separator coming from tag data is indistinguishable from one in the template
+> itself.
 
 ### Examples
 
@@ -149,8 +186,11 @@ meedya scan ~/Downloads/Media
 # Preview explicitly
 meedya scan ~/Music --dry-run
 
-# Actually perform the renames — read the warning above first
+# Actually perform the renames
 meedya scan ~/Music --execute
+
+# Scan only the top-level directory, not subdirectories
+meedya scan ~/Music --no-recursive
 
 # Override the template and output directory for one run
 meedya scan ~/Music --template "<Artist>/<Album>/<Title>.<Ext>" --output-dir ~/Organised
@@ -224,10 +264,15 @@ meedya edit <PATH> [OPTIONS]
 > There is no `--tag` / `--remove-tag` flag — the real names are `--set` and `--remove`
 > (`crates/mm-cli/src/commands/edit.rs:24,28`).
 >
-> **Test Mode is not enforced here.** `meedya edit` calls `metadata::write_tags` directly and
-> writes to the original file even when Test Mode is on — see
-> [test-mode.md](test-mode.md) and issue
-> [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128).
+> **Test Mode is enforced here.** `meedya edit` routes every write through
+> `mm_core::integrity::write_tags_safe`/`remove_tag_safe`/`embed_cover_art_safe` (issue
+> [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128), fixed) — when Test Mode is
+> on, the write lands on a `_MeedyaManager` copy instead of the original. The whole `--set`/
+> `--remove` batch is validated *before* any file is touched, so a batch containing one unknown
+> key writes nothing at all (exit `2`, `PARTIAL`) rather than applying the good half. A key with
+> no file-format mapping (e.g. `podcast_title`, `podcast_id`, `podcast_category`) is always
+> rejected, Test Mode or not. When Test Mode redirects a write, JSON output (`--json`) carries a
+> `written_to` field naming the copy path. See [test-mode.md](test-mode.md) for the full picture.
 
 ### Examples
 
@@ -243,18 +288,23 @@ meedya edit song.mp3 --remove Comment
 
 # Preview changes without writing
 meedya edit song.mp3 --set "Year=1987" --dry-run
+
+# JSON output shows `written_to` when Test Mode redirected the write to a copy
+meedya --json edit song.mp3 --set "Year=1987"
 ```
 
 ---
 
 ## meedya lookup
 
-> **⚠️ Status: not yet implemented.** `meedya lookup` is a stub carried over from M3. It parses
-> its arguments and prints "not yet available … coming in M5" (`crates/mm-cli/src/commands/
-> lookup.rs:5,79-85`); it never queries a provider, never writes a tag, and `--apply` has no
-> effect. This is true even though the M5 milestone (issues #73–#84) is closed on GitHub — the
-> library that will eventually back this command (`mm-providers`) is built and tested, but
-> nothing wires it into this CLI command yet.
+> **⚠️ Status: not yet implemented — exits `3` (`NOT_IMPLEMENTED`).** `meedya lookup` is a stub
+> carried over from M3. It parses its arguments, prints "Metadata lookup is not available in
+> this alpha (see issue #83)." and a table of planned providers, then exits `3`
+> (`crates/mm-cli/src/commands/lookup.rs`); it never queries a provider, never writes a tag, and
+> `--apply` has no effect. This is true even though the M5 milestone (issues #73–#84) is closed
+> on GitHub — the library that will eventually back this command (`mm-providers`) is built and
+> tested, but nothing wires it into this CLI command yet. JSON output (`--json`) carries
+> `status: "not_implemented"`.
 
 ```text
 meedya lookup <QUERY> [OPTIONS]
@@ -274,7 +324,7 @@ existed in this command.
 ### Examples
 
 ```bash
-# All of these currently just print the "coming in M5" message
+# All of these currently just print the not-implemented notice and exit 3
 meedya lookup "Never Gonna Give You Up"
 meedya lookup "Never Gonna Give You Up" --provider musicbrainz
 meedya lookup "Never Gonna Give You Up" --auto
@@ -428,11 +478,13 @@ For full service setup instructions, see [background-service.md](background-serv
 
 ## meedya export
 
-> **⚠️ Preview / scaffold only.** `meedya export` parses a full set of arguments, prints a
-> summary of what it would do, and can print the DDL it would run (`--show-schema`) — but it
-> never opens a database connection or writes a row. `crates/mm-export/src/sqlite.rs:30` states
-> plainly that "in production this holds a `sqlx::SqlitePool`" — for now it does not. Treat this
-> as a scaffold for the M9 milestone, not a working export path.
+> **⚠️ Preview / scaffold only — exits `3` (`NOT_IMPLEMENTED`).** `meedya export` parses a full
+> set of arguments and prints a factual "not implemented in this release" message naming the
+> tracking issues, then exits `3` — it never opens a database connection or writes a row.
+> `crates/mm-export/src/sqlite.rs:30` states plainly that "in production this holds a
+> `sqlx::SqlitePool`" — for now it does not. Treat this as a scaffold for the M9 milestone, not a
+> working export path. `--show-schema` is the one sub-flag that genuinely works — it prints the
+> real DDL and exits `0` without attempting a connection.
 
 ```text
 meedya export --db <DSN> [OPTIONS]
@@ -454,13 +506,13 @@ There is no `--format`, `--out`, or `--url` flag, and the backend name is `mssql
 ### Examples
 
 ```bash
-# "Export" to a SQLite file (writes nothing today — see the warning above)
+# "Export" to a SQLite file — prints a not-implemented notice and exits 3
 meedya export --db sqlite:///home/user/library.db
 
-# Show the DDL without running anything
+# Show the DDL without running anything — this exits 0
 meedya export --db sqlite:///home/user/library.db --show-schema
 
-# PostgreSQL DSN, custom scan path
+# PostgreSQL DSN, custom scan path — also exits 3
 meedya export --db postgres://user:pass@localhost/meedya --path ~/Music --backend postgres
 ```
 
@@ -468,12 +520,14 @@ meedya export --db postgres://user:pass@localhost/meedya --path ~/Music --backen
 
 ## meedya serve
 
-> **⚠️ Status: not yet implemented — does not start a server.** `meedya serve` parses its
+> **⚠️ Status: not yet implemented — exits `3` (`NOT_IMPLEMENTED`).** `meedya serve` parses its
 > arguments, can print the planned route table (`--show-routes`) and validate config
-> (`--check-config`), then prints "Server stub: exiting cleanly (full axum server wired in
-> release build)." and exits (`crates/mm-cli/src/commands/serve.rs:337-342`). There is no
-> `.route(` call anywhere in `mm-server`, and the repository contains zero `.html` files, so
-> there is also no web frontend to serve. Do not point this at production media yet.
+> (`--check-config`), then prints a factual "not implemented in this release" message naming the
+> tracking issues (`crates/mm-cli/src/commands/serve.rs`) and exits `3`. There is no `.route(`
+> call anywhere in `mm-server`, and the repository contains zero `.html` files, so there is also
+> no web frontend to serve. Do not point this at production media yet. `--show-routes` and
+> `--check-config` are the two sub-flags that genuinely work — both exit `0` without starting
+> anything.
 
 ```text
 meedya serve [OPTIONS]
@@ -501,10 +555,10 @@ to validate without starting.
 # Print the config it would use, without starting anything
 meedya serve --check-config
 
-# Print the (currently unused) route table
+# Print the (currently unused) route table — this exits 0
 meedya serve --show-routes
 
-# The rest currently exit with "Server stub: exiting cleanly" after printing this
+# The rest print a not-implemented notice and exit 3
 meedya serve --port 8443 --tls-cert /etc/meedya/cert.pem --tls-key /etc/meedya/key.pem
 ```
 

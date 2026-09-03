@@ -4,23 +4,25 @@
 
 ## What is Test Mode?
 
-Test Mode is a safety feature *intended* to prevent MeedyaManager from modifying your
-original media files. When enabled, edit and tagging operations are supposed to create a
-**duplicate** file with a `_MeedyaManager` suffix instead of overwriting the original.
+Test Mode is a safety feature that prevents MeedyaManager from modifying your original media
+files. When enabled, edit and tagging operations create a **duplicate** file with a
+`_MeedyaManager` suffix instead of overwriting the original.
 
-For example, editing `track.mp3` in Test Mode is supposed to create
-`track_MeedyaManager.mp3` with your changes, while `track.mp3` remains untouched.
+For example, editing `track.mp3` in Test Mode creates `track_MeedyaManager.mp3` with your
+changes, while `track.mp3` remains untouched.
 
-> ⚠️ **Status: enabling/disabling and the manifest work; enforcement does not.** Everything
-> below this notice describes what `meedya config test-mode` and the underlying
-> `mm_core::test_mode` module actually do — that machinery is real. But the Test Mode
-> redirection is only honoured by `integrity::write_tags_safe`, which nothing currently calls:
-> `meedya edit`, the Linux GTK metadata panel, and the FFI layer used by the macOS/Windows
-> apps all call `metadata::write_tags` directly, which always writes to the original file
-> regardless of whether Test Mode is on. In other words, you can turn Test Mode on and it will
-> report itself as "enabled", but a real tag edit today still modifies your original file. See
-> issue [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128) (reopened) and
-> [File Integrity](file-integrity.md) for the full picture.
+> ✅ **Status: enforced on every real write path (issue [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128), fixed).**
+> `meedya edit`, the Linux GTK metadata panel, and the FFI layer used by the macOS/Windows apps
+> all route their writes through `mm_core::integrity`'s guarded functions
+> (`write_tags_safe`, `remove_tag_safe`, `embed_cover_art_safe`, `remove_cover_art_safe`), which
+> are the single place Test Mode redirection happens. Turning Test Mode on now genuinely protects
+> your original files from every one of those call sites — this was not true before this fix,
+> when only the integrity module's own unit tests ever exercised the redirection.
+>
+> **Successive edits accumulate on the same copy.** Editing an already-tracked file a second time
+> (in the same Test Mode session) edits the existing `_MeedyaManager` copy in place rather than
+> replacing it with a fresh copy of the pristine original — so two separate edits to the same
+> file both end up in the one copy, instead of the second edit silently discarding the first.
 
 ---
 
@@ -111,20 +113,23 @@ meedya config test-mode revert
 
 ### Manifest Location
 
-The test-mode manifest is stored at:
+The test-mode manifest is stored at `<config_dir>/testmode_manifest.json`, where `<config_dir>`
+is the single directory resolved by `mm_core::config::app_config_dir()` (issue #212) — the same
+directory `settings.json5` lives in, and the same one `MM_CONFIG_DIR` overrides (see
+[configuration.md](configuration.md#configuration-file-location)):
 
 | Platform | Path |
 | -------- | ---- |
-| Linux | `~/.config/meedyamanager/testmode_manifest.json` |
-| macOS | `~/Library/Application Support/meedyamanager/testmode_manifest.json` |
-| Windows | `%APPDATA%\meedyamanager\testmode_manifest.json` |
+| Linux | `~/.config/MeedyaManager/testmode_manifest.json` |
+| macOS | `~/Library/Application Support/MeedyaManager/testmode_manifest.json` |
+| Windows | `%APPDATA%\MeedyaManager\testmode_manifest.json` |
 
 ---
 
 ## Pre-release Version Behaviour
 
-When you launch a **pre-release** version of MeedyaManager (e.g.
-`1.3.0-beta.1`, `2.0.0-alpha`):
+When you launch a **pre-release** version of MeedyaManager (e.g. the current
+`1.4.0-alpha.1`, or `2.0.0-beta.1`):
 
 1. A notice appears: *"You are using a pre-release version of MeedyaManager"*
 2. If a stable version is available, you are offered the option to update

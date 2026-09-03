@@ -143,15 +143,16 @@ meedya service start
 
 ## Rename and Move Issues
 
-> ### ⚠️ Before using `meedya scan --execute`
+> ### Before using `meedya scan --execute`
 >
-> `scan --execute` has a known data-loss bug — issue
-> [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201). It only checks whether a
-> destination file already exists on disk; it does **not** check whether two files in the same
-> scan resolve to the same destination path. If your template collapses two different source
-> files onto the same name, the second overwrite silently replaces the first with no prompt and
-> no backup. Always inspect the full preview (no `--execute`, or `--dry-run`) for duplicate
-> destination paths first. See [cli-reference.md](cli-reference.md#meedya-scan).
+> The data-loss bug tracked as issue [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201)
+> is fixed: `scan --execute` now tracks every destination claimed within the same batch, so two
+> source files whose templates resolve to the same name no longer silently overwrite one another
+> — the second one is treated as a conflict and handled per `conflict_strategy` (skipped by
+> default, or renamed with a counter under `conflict_strategy = "rename"`). The command exits `2`
+> (`PARTIAL`) if any conflict is left unresolved. It's still good practice to inspect the full
+> preview (no `--execute`, or `--dry-run`) before running for real. See
+> [cli-reference.md](cli-reference.md#meedya-scan).
 
 ### "Simulated rename" — no files actually moved
 
@@ -194,7 +195,9 @@ rename: {
 }
 ```
 
-Options: `"skip"` (default), `"overwrite"`, `"rename"`, `"ask"` (GUI only).
+Options: `"skip"` (default) and `"rename"` are implemented today. `"overwrite"` and `"ask"` are
+accepted but currently just warn once and fall back to `"skip"` — there is no interactive prompt
+yet, and `"overwrite"` deliberately doesn't re-enable the data-loss path closed by issue #201.
 
 ### File in use by another application
 

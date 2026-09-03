@@ -30,6 +30,25 @@ MeedyaManager automatically creates a default configuration file on first run at
 | **Linux** | `~/.config/MeedyaManager/settings.json5` |
 | **Windows** | `%APPDATA%\MeedyaManager\settings.json5` |
 
+> **`MM_CONFIG_DIR` overrides the whole config directory, not just `settings.json5`.** Set this
+> environment variable to a non-empty path and MeedyaManager uses it verbatim in place of the
+> platform default above — for *every* piece of state that lives under the config directory, not
+> only the settings file: the Test Mode manifest, the corruption log, the filetype/tag registry
+> override files, and the settings bundle export/import defaults all resolve through the same
+> `mm_core::config::app_config_dir()` function (issue #212). Two uses:
+>
+> - **Sandboxing the alpha.** Point it at a scratch directory (e.g.
+>   `MM_CONFIG_DIR=/tmp/meedya-test meedya scan ~/Music`) to try MeedyaManager without touching
+>   your real settings, Test Mode manifest, or corruption log — useful while this is still a
+>   pre-release.
+> - **Test isolation.** It is how the test suite gets a config directory it fully controls; `dirs`
+>   6.0 deliberately ignores `XDG_CONFIG_HOME` on macOS, so `MM_CONFIG_DIR` is the only reliable
+>   way to redirect the config directory there.
+>
+> An empty value (`MM_CONFIG_DIR=` with nothing after the `=`) is treated as *not set*, so an
+> inherited-but-blank environment variable can't silently redirect state into the current working
+> directory.
+
 To view or edit the configuration from the CLI:
 
 ```bash
@@ -150,11 +169,13 @@ rename: {
   // Relative paths are resolved from the user's home directory.
   output_dir: "~/Media/Organised",
 
-  // What to do when a destination file already exists:
-  //   "skip"       — leave the source file untouched (safest)
-  //   "overwrite"  — replace the destination
-  //   "rename"     — append a counter to make the name unique
-  //   "ask"        — prompt interactively (GUI only)
+  // What to do when a destination file already exists (including two source
+  // files in the same scan that resolve to the same destination):
+  //   "skip"       — leave the source file untouched (safest, default)
+  //   "rename"     — append a counter to make the name unique, e.g. "Song (1).mp3"
+  //   "overwrite"  — NOT YET IMPLEMENTED: warns once and falls back to "skip"
+  //   "ask"        — NOT YET IMPLEMENTED: warns once and falls back to "skip"
+  //                  (no interactive prompt exists yet)
   conflict_strategy: "skip",
 
   // Create missing directories in the output path automatically
@@ -179,7 +200,7 @@ rename: {
 | ----- | ---- | ------- | ----------- |
 | `template` | string | `"<Artist>/<Album>/<Title>"` | Default rename template |
 | `output_dir` | string or null | `null` | Output root (null = same dir as source) |
-| `conflict_strategy` | string | `"skip"` | Conflict resolution: `"skip"`, `"overwrite"`, `"rename"`, `"ask"` |
+| `conflict_strategy` | string | `"skip"` | Conflict resolution: `"skip"` and `"rename"` are implemented; `"overwrite"` and `"ask"` currently warn once and fall back to `"skip"` (see [cli-reference.md](cli-reference.md#meedya-scan)) |
 | `create_dirs` | bool | `true` | Create missing output directories |
 | `copy_mode` | bool | `false` | Copy files instead of moving |
 | `missing_tag_mode` | string | `"empty"` | Missing tag behaviour: `"empty"`, `"literal"`, `"error"` |
