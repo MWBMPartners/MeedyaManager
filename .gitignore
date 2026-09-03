@@ -156,6 +156,12 @@ assets/*.iconset/
 # ============================================================
 .claude/*.jsonl
 .claude/plans/
+# Per-developer Claude Code permissions. Machine-local and personal — the
+# shared, reviewed configuration belongs in .claude/settings.json instead.
+# (The copy on the old chore/claude-config-recovery-2026-07-20 branch had
+# accumulated permissions for an unrelated Python-era project, which is
+# exactly why this must not be tracked.)
+.claude/settings.local.json
 
 # ============================================================
 # Node (if web frontend added later for mm-server)
