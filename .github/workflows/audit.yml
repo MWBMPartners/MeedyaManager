@@ -7,8 +7,21 @@ on:
   schedule:
     # Weekly on Monday at 09:00 UTC
     - cron: "0 9 * * 1"
+  # Direct pushes to main, alpha or beta (#204).
   push:
-    branches: [main]
+    branches: [main, alpha, beta]
+  # Path-filtered PR trigger (#197) — precedent: lint.yml. Gives a security-
+  # advisory fix landing in a sibling package (deny.toml ignore-list entry,
+  # or a Cargo.lock bump) CI evidence before it's promoted to main, without
+  # costing anything on PRs that don't touch dependency/advisory config.
+  # This must NEVER become a required status check — pr-gate.yml's `Gate`
+  # job is the only required check on main (see .claude/CLAUDE.md).
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "deny.toml"
+      - ".github/workflows/audit.yml"
 
 jobs:
   audit:

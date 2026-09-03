@@ -170,6 +170,26 @@ jobs:
             macos/MeedyaManager/Info.plist
           echo "Updated Info.plist → ${{ steps.new.outputs.macos_version }}"
 
+      - name: Update mm-gtk Cargo.toml
+        run: |
+          # mm-gtk is `exclude`d from the root [workspace] (gettextrs needs
+          # Linux system libs), so it cannot use `version.workspace = true`
+          # and carries its own hand-maintained version literal. Keep it in
+          # EXACT sync with Cargo.toml, pre-release suffix included — it had
+          # silently drifted to 1.3.0 before this was wired up (#197).
+          sed -i 's/^version = ".*"/version = "${{ steps.new.outputs.version }}"/' \
+            crates/mm-gtk/Cargo.toml
+          echo "Updated crates/mm-gtk/Cargo.toml → ${{ steps.new.outputs.version }}"
+
+      - name: Update Linux Snapcraft manifest
+        run: |
+          # Same rationale as mm-gtk above: exact match, pre-release suffix
+          # included. Had silently drifted to 0.9.0 before this was wired up
+          # (#197).
+          sed -i 's/^version: ".*"/version: "${{ steps.new.outputs.version }}"/' \
+            linux/snap/snapcraft.yaml
+          echo "Updated linux/snap/snapcraft.yaml → ${{ steps.new.outputs.version }}"
+
       - name: Insert CHANGELOG.md entry
         run: |
           DATE=$(date +%Y-%m-%d)
@@ -206,6 +226,16 @@ jobs:
           PLIST_VER=$(grep -A1 'CFBundleShortVersionString' macos/MeedyaManager/Info.plist | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>/\1/')
           [ "$PLIST_VER" = "$MACOS_EXPECTED" ] || { echo "::error::Info.plist version mismatch: $PLIST_VER != $MACOS_EXPECTED"; exit 1; }
 
+          # Check mm-gtk Cargo.toml (exact match, pre-release suffix included —
+          # unlike the MSIX/plist checks above, mm-gtk has no separate
+          # platform-numbering scheme to strip down to)
+          GTK_VER=$(grep '^version' crates/mm-gtk/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          [ "$GTK_VER" = "$EXPECTED" ] || { echo "::error::mm-gtk Cargo.toml version mismatch: $GTK_VER != $EXPECTED"; exit 1; }
+
+          # Check Linux Snapcraft manifest (exact match, pre-release suffix included)
+          SNAP_VER=$(grep '^version:' linux/snap/snapcraft.yaml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          [ "$SNAP_VER" = "$EXPECTED" ] || { echo "::error::snapcraft.yaml version mismatch: $SNAP_VER != $EXPECTED"; exit 1; }
+
           echo "All version files in sync: $EXPECTED"
 
       # -----------------------------------------------------------------------
@@ -217,7 +247,7 @@ jobs:
           VERSION="${{ steps.new.outputs.version }}"
           BRANCH="version/v${VERSION}"
           git checkout -b "$BRANCH"
-          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/changelog.md
+          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/changelog.md crates/mm-gtk/Cargo.toml linux/snap/snapcraft.yaml
           git commit -m "chore: bump version to v${VERSION}"
           git push origin "$BRANCH"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
@@ -236,6 +266,8 @@ jobs:
           - \`Cargo.toml\` — workspace version
           - \`windows/MeedyaManager/Package.appxmanifest\` — MSIX identity version
           - \`macos/MeedyaManager/Info.plist\` — CFBundleShortVersionString
+          - \`crates/mm-gtk/Cargo.toml\` — excluded-crate version literal (exact match)
+          - \`linux/snap/snapcraft.yaml\` — Snapcraft manifest version (exact match)
           - \`docs/changelog.md\` — new version section
 
           ### How to verify
@@ -256,7 +288,7 @@ jobs:
         if: ${{ !inputs.create_pr }}
         run: |
           VERSION="${{ steps.new.outputs.version }}"
-          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/changelog.md
+          git add Cargo.toml windows/MeedyaManager/Package.appxmanifest macos/MeedyaManager/Info.plist docs/changelog.md crates/mm-gtk/Cargo.toml linux/snap/snapcraft.yaml
           git commit -m "chore: bump version to v${VERSION}"
           git push origin HEAD
 
@@ -279,5 +311,7 @@ jobs:
           echo "| Cargo.toml | \`${{ steps.new.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Package.appxmanifest | \`${{ steps.new.outputs.msix_version }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Info.plist | \`${{ steps.new.outputs.macos_version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| mm-gtk/Cargo.toml | \`${{ steps.new.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| snapcraft.yaml | \`${{ steps.new.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Previous version: \`${{ steps.current.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"

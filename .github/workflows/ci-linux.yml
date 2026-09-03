@@ -4,9 +4,9 @@
 name: Linux GTK4 CI
 
 on:
-  # Direct pushes to main still trigger native runs.
+  # Direct pushes to main, alpha or beta still trigger native runs.
   push:
-    branches: [main]
+    branches: [main, alpha, beta]
     paths:
       - "crates/mm-gtk/**"
   # PRs reach this workflow via pr-gate.yml (the umbrella). Do NOT add a

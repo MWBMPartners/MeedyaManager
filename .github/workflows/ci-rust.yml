@@ -4,13 +4,24 @@
 name: Rust Core CI
 
 on:
-  # Direct pushes to main still trigger native runs.
+  # Direct pushes to main, alpha or beta still trigger native runs.
   push:
-    branches: [main]
+    branches: [main, alpha, beta]
+    # Keep in sync with the `rust` detection regex in pr-gate.yml's `changes`
+    # job (hard rule — see .claude/CLAUDE.md branch-protection section).
+    # rust-toolchain.toml, deny.toml, clippy.toml and .cargo/ were previously
+    # missing here even though pr-gate.yml's regex already covered them —
+    # fixed as part of #204/#197 so a direct push touching only, say, the
+    # toolchain pin actually triggers this workflow instead of silently
+    # skipping it.
     paths:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "deny.toml"
+      - "clippy.toml"
+      - ".cargo/**"
   # PRs reach this workflow via pr-gate.yml (the umbrella). pr-gate decides
   # whether to call it based on changed paths; do NOT add a pull_request:
   # trigger here or runs will duplicate.
@@ -21,18 +32,33 @@ env:
 
 jobs:
   rust-ci:
-    name: Rust ${{ matrix.rust }} on ${{ matrix.os }}
+    name: Rust (${{ matrix.rust }}) on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable]
+        # This label is cosmetic, not a second toolchain under test (#197).
+        # The actual compiler version is pinned by rust-toolchain.toml
+        # (channel = "1.98.0") at the repo root: rustup's toolchain-file
+        # override takes precedence over whatever `dtolnay/rust-toolchain@stable`
+        # sets as the rustup default below, so every job here really builds
+        # with 1.98.0 regardless of this label. Renamed from "stable" so the
+        # matrix doesn't imply a floating/second toolchain is being exercised.
+        rust: [pinned]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # NOTE (#197): this installs and `rustup default`s the *actual* latest
+      # "stable" release, but that default is overridden the moment cargo/
+      # rustc runs inside this checkout, because rustup's directory-walk
+      # toolchain-file override (rust-toolchain.toml) outranks `rustup
+      # default` (verified against rustup's own src/config.rs
+      # find_override_config resolution order). So leaving this action as
+      # `@stable` — across all ~11 workflow usages — is correct and does NOT
+      # defeat the pin; do not "fix" this by pinning the action itself.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -89,6 +115,31 @@ jobs:
           echo "Info.plist version: $PLIST_VER (expected: $BASE_VER)"
           if [ "$PLIST_VER" != "$BASE_VER" ]; then
             echo "::error file=macos/MeedyaManager/Info.plist::Info.plist version ($PLIST_VER) does not match Cargo.toml ($BASE_VER)"
+            FAILED=1
+          fi
+
+          # Check crates/mm-gtk/Cargo.toml. mm-gtk is `exclude`d from the
+          # workspace (gettextrs needs Linux system libs), so it CANNOT use
+          # `version.workspace = true` — its version is a hand-maintained
+          # literal and had silently drifted to 1.3.0 (#197). Unlike the
+          # plist/MSIX checks above, this compares the FULL version string
+          # including any pre-release suffix (e.g. "1.4.0-alpha.1") — mm-gtk
+          # is a dev/CI-only crate, not a versioned platform bundle with its
+          # own numbering scheme, so there is no reason to strip it here.
+          GTK_VER=$(grep '^version' crates/mm-gtk/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "mm-gtk Cargo.toml version: $GTK_VER (expected: $CARGO_VER)"
+          if [ "$GTK_VER" != "$CARGO_VER" ]; then
+            echo "::error file=crates/mm-gtk/Cargo.toml::mm-gtk version ($GTK_VER) does not match Cargo.toml ($CARGO_VER)"
+            FAILED=1
+          fi
+
+          # Check linux/snap/snapcraft.yaml. Same rationale as mm-gtk above:
+          # exact match against the full Cargo.toml semver, pre-release
+          # suffix included — it had silently drifted to 0.9.0 (#197).
+          SNAP_VER=$(grep '^version:' linux/snap/snapcraft.yaml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "snapcraft.yaml version: $SNAP_VER (expected: $CARGO_VER)"
+          if [ "$SNAP_VER" != "$CARGO_VER" ]; then
+            echo "::error file=linux/snap/snapcraft.yaml::snapcraft.yaml version ($SNAP_VER) does not match Cargo.toml ($CARGO_VER)"
             FAILED=1
           fi
 

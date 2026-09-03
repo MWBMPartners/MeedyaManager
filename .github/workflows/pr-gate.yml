@@ -1,10 +1,12 @@
 # (C) 2025-2026 MWBM Partners Ltd
 # MeedyaManager — PR Gate (umbrella workflow for branch protection)
 #
-# Runs on every PR to main with NO path filter. Detects which platform code
-# changed, conditionally invokes the per-platform CI workflows (which are
-# now reusable via workflow_call:), and aggregates results in a final `gate`
-# job whose context is the single required check on `main`.
+# Runs on every PR to main, alpha or beta with NO path filter. Detects which
+# platform code changed, conditionally invokes the per-platform CI workflows
+# (which are now reusable via workflow_call:), and aggregates results in a
+# final `gate` job whose context is the single required check on `main`.
+# (alpha/beta get real CI coverage from this — #204 — but branch protection
+# itself is still main-only; see .claude/CLAUDE.md.)
 #
 # Why an umbrella: the per-platform CIs have tight path filters to keep CI
 # cheap. If those were directly required, any PR not touching that platform
@@ -16,7 +18,7 @@ name: PR Gate
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, alpha, beta]
 
 permissions:
   contents: read

@@ -4,9 +4,9 @@
 name: macOS CI
 
 on:
-  # Direct pushes to main still trigger native runs.
+  # Direct pushes to main, alpha or beta still trigger native runs.
   push:
-    branches: [main]
+    branches: [main, alpha, beta]
     paths:
       - "macos/**"
       - "crates/mm-ffi/**"
