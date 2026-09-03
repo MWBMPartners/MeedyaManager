@@ -75,46 +75,12 @@ final class CloudModel {
     var eventLog: [String] = []
 
     // MARK: Actions
-
-    /// Simulates connecting a provider (production wires into mm-cloud FFI).
-    func connect(id: String) {
-        guard let idx = providers.firstIndex(where: { $0.id == id }) else { return }
-        guard !providers[idx].isStub else { return }
-        providers[idx].isConnected = true
-        providers[idx].syncStatus  = "Syncing…"
-        appendEvent("[\(providers[idx].label)] Connecting…")
-        // Simulate a successful sync after a brief delay. Use Task + sleep
-        // (the Swift 6 idiom) instead of DispatchQueue.main.asyncAfter — the
-        // latter's closure isn't isolated, so passing `self` is flagged as a
-        // sending-self data-race risk under strict concurrency.
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard let self else { return }
-            if let i = self.providers.firstIndex(where: { $0.id == id }) {
-                self.providers[i].syncStatus = "Synced"
-                self.appendEvent("[\(self.providers[i].label)] Connected — folder: \(self.providers[i].rootFolder)")
-            }
-        }
-    }
-
-    /// Simulates disconnecting a provider.
-    func disconnect(id: String) {
-        guard let idx = providers.firstIndex(where: { $0.id == id }) else { return }
-        providers[idx].isConnected = false
-        providers[idx].syncStatus  = "Not Connected"
-        appendEvent("[\(providers[idx].label)] Disconnected")
-    }
-
-    /// Appends a timestamped entry to the event log (capped at 50 entries).
-    func appendEvent(_ message: String) {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        let ts = formatter.string(from: Date())
-        eventLog.insert("[\(ts)] \(message)", at: 0)
-        if eventLog.count > 50 {
-            eventLog = Array(eventLog.prefix(50))
-        }
-    }
+    //
+    // Connecting and disconnecting a provider are disabled in this alpha —
+    // mm-cloud does not yet make a real network call for any provider, so
+    // there is nothing genuine for Connect/Disconnect to do. The button in
+    // the row view below is permanently disabled and no longer calls into
+    // this model; see issue #205.
 }
 
 // MARK: – CloudView
@@ -136,17 +102,19 @@ struct CloudView: View {
             .padding([.horizontal, .top])
             .padding(.bottom, 8)
 
+            // Persistent notice — mm-cloud does not yet make a real network
+            // call for any provider. See issue #205.
+            AlphaPreviewBanner()
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
             Divider()
 
             // ── Provider rows ─────────────────────────────────────────────────
+            // Connect/Disconnect is disabled in this alpha (see CloudProviderRow),
+            // so the toggle action below is never invoked.
             List(model.providers) { entry in
-                CloudProviderRow(entry: entry) {
-                    if entry.isConnected {
-                        model.disconnect(id: entry.id)
-                    } else {
-                        model.connect(id: entry.id)
-                    }
-                }
+                CloudProviderRow(entry: entry) {}
             }
             .listStyle(.inset)
             .frame(minHeight: 220, maxHeight: 280)
@@ -186,6 +154,28 @@ struct CloudView: View {
     }
 }
 
+// MARK: – AlphaPreviewBanner (persistent "not functional" notice for this tab)
+
+/// A persistent, prominent notice that this tab does not perform any real
+/// action in this alpha build. mm-cloud does not yet make a real network
+/// call for any provider, so nothing behind this tab can actually sync.
+/// See issue #205.
+private struct AlphaPreviewBanner: View {
+    var body: some View {
+        Label(
+            "Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)",
+            systemImage: "exclamationmark.triangle.fill"
+        )
+        .font(.callout)
+        .foregroundStyle(.orange)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: – CloudProviderRow
 
 /// A single row in the provider list.
@@ -219,16 +209,17 @@ private struct CloudProviderRow: View {
 
             Spacer()
 
-            // Connect / Disconnect button (hidden for stubs)
+            // Connect / Disconnect button (hidden for stubs) — disabled in this
+            // alpha, since mm-cloud does not yet make a real network call for
+            // any provider. See the banner above and issue #205.
             if !entry.isStub {
                 Button(entry.isConnected ? "Disconnect" : "Connect", action: toggleAction)
                     .buttonStyle(.borderless)
                     .controlSize(.small)
+                    .disabled(true)
                     .foregroundStyle(entry.isConnected ? .red : .accentColor)
-                    .accessibilityLabel(entry.isConnected ? "Disconnect \(entry.label)" : "Connect \(entry.label)")
-                    .accessibilityHint(entry.isConnected
-                        ? "Disconnects your \(entry.label) account from MeedyaManager"
-                        : "Connects your \(entry.label) account and starts monitoring the configured folder")
+                    .accessibilityLabel("\(entry.isConnected ? "Disconnect" : "Connect") \(entry.label) (disabled — not functional in this alpha)")
+                    .accessibilityHint("Connecting \(entry.label) is disabled in this alpha; mm-cloud does not yet make a real network call. See issue #205.")
             } else {
                 Text("—")
                     .foregroundStyle(.tertiary)

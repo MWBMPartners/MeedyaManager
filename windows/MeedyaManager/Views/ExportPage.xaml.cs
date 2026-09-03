@@ -2,12 +2,12 @@
 //
 // MeedyaManager — Database Export Page code-behind (WinUI 3, M9)
 //
-// Implements the Export page: backend picker, DSN entry, schema preview,
-// and simulated export (real DB writes wired via mm-export P/Invoke in M9+).
+// Implements the Export page: backend picker, DSN entry, and schema preview.
+// Running an export is disabled in this alpha — mm-export does not yet open
+// a real database connection. See issue #205.
 
 using System;
 using System.Text;
-using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -41,7 +41,7 @@ public sealed partial class ExportPage : Page
     public ExportPage()
     {
         this.InitializeComponent();
-        AppendLog("Export page ready. Configure a connection string and click Export Library.");
+        AppendLog("Export page ready. This is a preview only — Export Library is disabled in this alpha (issue #205).");
     }
 
     // ── Event handlers ───────────────────────────────────────────────────────
@@ -83,44 +83,10 @@ public sealed partial class ExportPage : Page
         StatusText.Text = "Schema DDL appended to log.";
     }
 
-    /// <summary>
-    /// Initiates the export operation.  For M9 the database write is simulated.
-    /// </summary>
-    private async void ExportBtn_Click(object sender, RoutedEventArgs e)
-    {
-        var dsn = DsnBox.Text.Trim();
-        if (string.IsNullOrEmpty(dsn))
-        {
-            StatusText.Text = "⚠ Please enter a connection string before exporting.";
-            return;
-        }
-
-        ExportBtn.IsEnabled = false;
-        SchemaBtn.IsEnabled = false;
-
-        var backend = GetSelectedBackend();
-        var prefix  = PrefixBox.Text.Trim();
-        if (string.IsNullOrEmpty(prefix)) prefix = "mm_";
-        var dryRun  = DryRunToggle.IsOn;
-
-        AppendLog($"Starting export to {backend}…");
-        AppendLog($"DSN length: {dsn.Length} chars");
-        AppendLog($"Table prefix: {prefix}");
-        AppendLog($"Dry run: {dryRun}");
-
-        StatusText.Text = "Exporting…";
-
-        // Simulate async export latency (real export wired via P/Invoke in M9+)
-        await Task.Delay(millisecondsDelay: 1200).ConfigureAwait(true);
-
-        AppendLog("Export complete (stub — no DB writes in M9).");
-        StatusText.Text = dryRun
-            ? "Dry-run complete. No rows written."
-            : "Export finished: 0 inserted, 0 updated, 0 skipped.";
-
-        ExportBtn.IsEnabled = true;
-        SchemaBtn.IsEnabled = true;
-    }
+    // Running an export is disabled in this alpha — mm-export does not yet
+    // open a real database connection, so ExportBtn has no Click handler
+    // wired up (see ExportPage.xaml). There is nothing genuine for it to do.
+    // See the InfoBar above and issue #205.
 
     /// <summary>Clears the export log.</summary>
     private void ClearLogBtn_Click(object sender, RoutedEventArgs e)

@@ -67,7 +67,6 @@ final class ServerModel {
     // ── State ─────────────────────────────────────────────────────────────
     var status:   ServerStatus = .stopped
     var logLines: [String]     = []
-    var isLoading: Bool        = false
 
     /// Effective bind address string (`host:port`)
     var bindAddr: String {
@@ -92,46 +91,11 @@ final class ServerModel {
     }
 
     // ── Actions ──────────────────────────────────────────────────────────
-
-    /// Start the media server.
-    func startServer() {
-        guard validationError == nil else {
-            appendLog("ERROR: \(validationError!)")
-            status = .error(message: validationError!)
-            return
-        }
-
-        status = .starting
-        isLoading = true
-        appendLog("Starting MeedyaManager media server…")
-        appendLog("Binding to \(noTls ? "http" : "https")://\(bindAddr)")
-        appendLog("JWT expiry: \(jwtExpirySecs) seconds")
-
-        // M10 stub: simulate server startup latency. Swift 6 idiom (Task + sleep)
-        // replaces nested DispatchQueue patterns that trigger sending-self errors.
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard let self else { return }
-            self.isLoading = false
-            self.status    = .running(address: "\(self.noTls ? "http" : "https")://\(self.bindAddr)")
-            self.appendLog("Server ready. Listening on \(self.noTls ? "http" : "https")://\(self.bindAddr)")
-            self.appendLog("Routes: GET /health, POST /auth/login, GET /api/library, GET /stream/:id")
-        }
-    }
-
-    /// Stop the media server.
-    func stopServer() {
-        appendLog("Stopping server…")
-        isLoading = true
-
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(0.5))
-            guard let self else { return }
-            self.isLoading = false
-            self.status    = .stopped
-            self.appendLog("Server stopped.")
-        }
-    }
+    //
+    // Starting and stopping the server are disabled in this alpha — mm-server
+    // does not yet build a real HTTP router, so there is nothing genuine for
+    // Start/Stop to do. The buttons in the view below are permanently
+    // disabled and no longer call into this model; see issue #205.
 
     /// Show the route table in the log.
     func showRoutes() {
@@ -178,7 +142,14 @@ struct ServerView: View {
     @State private var model = ServerModel()
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
+            // Persistent notice — stays pinned above the scrollable form so it
+            // is never scrolled out of view.
+            AlphaPreviewBanner()
+                .padding(.horizontal)
+                .padding(.top, 12)
+
+            ScrollView {
             VStack(alignment: .leading, spacing: 20) {
 
                 // ── Network ────────────────────────────────────────────────
@@ -285,22 +256,24 @@ struct ServerView: View {
 
                     // Buttons
                     HStack(spacing: 12) {
-                        Button(action: { model.startServer() }) {
+                        // Disabled in this alpha — mm-server does not yet build a
+                        // real HTTP router. See the banner above and issue #205.
+                        Button(action: {}) {
                             Label("Start Server", systemImage: "play.fill")
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(model.status.isRunning || model.isLoading)
-                        .accessibilityLabel("Start server")
-                        .accessibilityHint("Starts the HTTPS media server with the current configuration")
+                        .disabled(true)
+                        .accessibilityLabel("Start server (disabled — not functional in this alpha)")
+                        .accessibilityHint("Starting the media server is disabled in this alpha; mm-server does not yet build a real HTTP router. See issue #205.")
 
-                        Button(action: { model.stopServer() }) {
+                        Button(action: {}) {
                             Label("Stop Server", systemImage: "stop.fill")
                         }
                         .buttonStyle(.bordered)
                         .tint(.red)
-                        .disabled(!model.status.isRunning || model.isLoading)
-                        .accessibilityLabel("Stop server")
-                        .accessibilityHint("Stops the running media server")
+                        .disabled(true)
+                        .accessibilityLabel("Stop server (disabled — not functional in this alpha)")
+                        .accessibilityHint("Stopping the media server is disabled in this alpha; there is nothing running to stop. See issue #205.")
 
                         Button(action: { model.showRoutes() }) {
                             Label("Show Routes", systemImage: "list.bullet")
@@ -343,6 +316,7 @@ struct ServerView: View {
                 }
             }
             .padding()
+            }
         }
         .navigationTitle("Server")
     }
@@ -355,6 +329,29 @@ struct ServerView: View {
         case .running:  return .green
         case .error:    return .red
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AlphaPreviewBanner — persistent "not functional" notice for this tab
+// ---------------------------------------------------------------------------
+
+/// A persistent, prominent notice that this tab does not perform any real
+/// action in this alpha build. mm-server does not yet build an HTTP router,
+/// so nothing behind this tab can actually start, stop, or serve. See #205.
+private struct AlphaPreviewBanner: View {
+    var body: some View {
+        Label(
+            "Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)",
+            systemImage: "exclamationmark.triangle.fill"
+        )
+        .font(.callout)
+        .foregroundStyle(.orange)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
     }
 }
 

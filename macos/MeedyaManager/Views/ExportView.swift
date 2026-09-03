@@ -66,38 +66,11 @@ final class ExportModel {
     var isExporting: Bool { exportStatus == "exporting" }
 
     // ── Actions ──────────────────────────────────────────────────────────────
-
-    /// Simulate running an export against the configured backend.
-    ///
-    /// In production this calls `mm_ffi_export()` via the FFI bridge.
-    func runExport() {
-        guard !connectionString.trimmingCharacters(in: .whitespaces).isEmpty else {
-            exportStatus  = "error"
-            resultMessage = "Please enter a connection string before exporting."
-            return
-        }
-
-        exportStatus = "exporting"
-        appendLog("Starting export to \(backend.rawValue)…")
-        appendLog("DSN length: \(connectionString.count) chars")
-        appendLog("Table prefix: \(tablePrefix)")
-        appendLog("Dry run: \(dryRun)")
-
-        // Simulate async export with a short delay. Swift 6 idiom: Task + sleep
-        // instead of nested DispatchQueue.global → DispatchQueue.main, which
-        // triggers "task or actor-isolated value cannot be sent" under strict
-        // concurrency (both closures capture @MainActor-isolated self).
-        let isDryRun = dryRun
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard let self else { return }
-            self.appendLog("Export complete (stub — no DB writes in M9).")
-            self.exportStatus  = "done"
-            self.resultMessage = isDryRun
-                ? "Dry-run complete. No rows written."
-                : "Export finished: 0 inserted, 0 updated, 0 skipped."
-        }
-    }
+    //
+    // Running an export is disabled in this alpha — mm-export does not yet
+    // open a real database connection, so there is nothing genuine for
+    // "Export Library" to do. The button in the view below is permanently
+    // disabled and no longer calls into this model; see issue #205.
 
     /// Append a schema preview (DDL stubs) to the log.
     func showSchema() {
@@ -133,7 +106,14 @@ struct ExportView: View {
     @State private var model = ExportModel()
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
+            // Persistent notice — stays pinned above the scrollable form so it
+            // is never scrolled out of view.
+            AlphaPreviewBanner()
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            ScrollView {
             VStack(alignment: .leading, spacing: 0) {
 
                 // ── Backend ────────────────────────────────────────────────
@@ -245,11 +225,14 @@ struct ExportView: View {
 
                     if model.isExporting { ProgressView().controlSize(.small) }
 
-                    Button("Export Library") { model.runExport() }
+                    // Disabled in this alpha — mm-export does not yet open a
+                    // real database connection. See the banner above and
+                    // issue #205.
+                    Button("Export Library") {}
                         .buttonStyle(.borderedProminent)
-                        .disabled(model.isExporting)
-                        .accessibilityLabel("Export library")
-                        .accessibilityHint("Exports your media library to the configured database backend")
+                        .disabled(true)
+                        .accessibilityLabel("Export library (disabled — not functional in this alpha)")
+                        .accessibilityHint("Exporting is disabled in this alpha; mm-export does not yet open a real database connection. See issue #205.")
                 }
                 .padding(.bottom, 8)
 
@@ -300,8 +283,30 @@ struct ExportView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
+            }
         }
         .navigationTitle("Export")
+    }
+}
+
+// MARK: – AlphaPreviewBanner (persistent "not functional" notice for this tab)
+
+/// A persistent, prominent notice that this tab does not perform any real
+/// action in this alpha build. mm-export does not yet open a real database
+/// connection, so nothing behind this tab can actually export. See #205.
+private struct AlphaPreviewBanner: View {
+    var body: some View {
+        Label(
+            "Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)",
+            systemImage: "exclamationmark.triangle.fill"
+        )
+        .font(.callout)
+        .foregroundStyle(.orange)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
     }
 }
 
