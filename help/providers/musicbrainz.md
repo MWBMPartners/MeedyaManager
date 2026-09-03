@@ -87,21 +87,28 @@ No environment variables are required for MusicBrainz.
 
 ### Settings (`settings.json5`)
 
+`mm_core::config::ProviderConfig` does have a real `musicbrainz_enabled` field
+(`crates/mm-core/src/config/mod.rs:309`, defaulting to `true`) — unlike most of the other 18
+provider pages, this one is not a complete config no-op. But nothing currently *reads* it to gate
+provider construction: the GTK lookup panel (`crates/mm-gtk/src/ui/lookup_panel.rs:566`)
+registers `MusicBrainzProvider` unconditionally regardless of this flag, and the CLI's
+`meedya lookup` command is still the permanent stub described above, which never constructs any
+provider at all. So setting `musicbrainz_enabled: false` today has no observable effect — the
+flat field name matches the real code shape (`providers.musicbrainz_enabled`, not the old
+`providers: { musicbrainz: { enabled: ... } }` map this page used to document), it is simply not
+wired to anything yet.
+
 ```json5
-{
-  providers: {
-    musicbrainz: {
-      enabled: true,                    // Enable or disable this provider
-      priority: 3,                      // Provider priority (lower = higher priority)
-    }
-  }
+providers: {
+  // Present on AppConfig (defaults to true) — not yet read by any
+  // provider-construction code path (see note above)
+  musicbrainz_enabled: true,
 }
 ```
 
 | Setting | Default | Description |
 | ------- | ------- | ----------- |
-| `enabled` | `true` | Whether this provider is active |
-| `priority` | `3` | Search priority relative to other providers |
+| `musicbrainz_enabled` | `true` | Exists on `ProviderConfig`; not yet wired to gate MusicBrainz lookups |
 
 ---
 

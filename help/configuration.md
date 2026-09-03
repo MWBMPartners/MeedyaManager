@@ -41,15 +41,20 @@ meedya config path        # Print the config file path
 > `crates/mm-cli/src/commands/config_cmd.rs:27-58`. `meedya config show` is the closest
 > equivalent: it loads the config file and will report a parse error if there is one.
 >
-> **The shipped `config/settings.json5` in this repository does not match the schema below.**
-> The file this repo ships as a "default config" example (and its companion
-> `config/schemas/settings.schema.json`) use keys like `watch_paths`, `rename_format`,
-> `cover_art`, and per-provider maps (`providers: { apple_music: {} }`) — none of which exist on
-> the real `AppConfig` struct documented on this page. Because `AppConfig` is
-> `#[serde(default)]` with no `deny_unknown_fields`, loading that shipped file does not error —
-> it silently produces an all-defaults config instead. Do not copy that file as a starting
-> point; use the field reference below, or `meedya config init` to generate a config file that
-> actually matches what the code reads.
+> **The shipped `config/settings.json5` now mirrors `AppConfig` field-for-field** (issue #211).
+> Every key in that file, and every property in its companion
+> `config/schemas/settings.schema.json`, corresponds to a real field on the `AppConfig` struct
+> documented on this page — both are checked against `AppConfig::default()`'s own
+> serialised shape by tests in `crates/mm-core/src/config/mod.rs` (`shipped_settings_json5_has_only_known_keys`,
+> `shipped_settings_json5_deserialises_to_non_default`, `settings_schema_properties_match_appconfig`),
+> so the shipped example cannot silently drift out of sync with the code again. `AppConfig` is
+> still `#[serde(default)]` with no `deny_unknown_fields` — a genuinely unrecognised key does not
+> fail loading — but it is no longer *silent*: `AppConfig::load_from` now reports every unknown
+> key it encounters via `tracing::warn!` as `unknown config key '<path>' — ignored`, with a
+> suggested replacement where one is known (e.g. the old `watch_paths` → `watch.folders`). Run
+> with `-v` (or check `meedya config show`'s stderr output) to see these warnings. Programmatic
+> callers can get the same information without parsing logs via
+> `AppConfig::load_from_with_report`, which returns `(AppConfig, Vec<String>)`.
 
 To use a custom config file path:
 

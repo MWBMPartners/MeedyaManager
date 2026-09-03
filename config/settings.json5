@@ -3,176 +3,201 @@
 // (C) 2025-2026 MWBM Partners Ltd
 //
 // Description:
-// This file defines the user-editable configuration settings for MeedyaManager.
-// It includes folder paths to monitor, allowed extensions, filename rules,
-// fallback metadata classification defaults, provider configuration, and
-// cover art preferences.
+// Example / template configuration for MeedyaManager. Every key below
+// corresponds 1:1 to a field on the real `AppConfig` struct and its nested
+// section structs (`crates/mm-core/src/config/mod.rs`) — this file is
+// checked against that struct's own default-serialised shape by
+// `shipped_settings_json5_has_only_known_keys` in that module's test suite,
+// so it cannot silently drift back out of sync with the code again (issue
+// #211). The companion `config/schemas/settings.schema.json` is checked the
+// same way by `settings_schema_properties_match_appconfig`.
+//
+// Loading a settings.json5 with keys this struct does NOT recognise no
+// longer fails silently either: `AppConfig::load_from` (and the underlying
+// `load_from_with_report`) walks the parsed file against `AppConfig`'s own
+// shape and logs `unknown config key '<path>' — ignored`, with a suggested
+// replacement where one is known, for every key it does not recognise.
+//
+// NOTE — filename_replacements: earlier drafts of this file documented a
+// `filename_replacements` character-substitution map (e.g. mapping `:` to
+// `-`). There is no configuration equivalent for that yet — filename
+// sanitisation is controlled entirely by `SanitizeConfig`
+// (`crates/mm-core/src/renamer/mod.rs:62-71`), which is currently
+// code-only and not exposed through `AppConfig` / settings.json5. The
+// built-in defaults there are sensible (Windows-compatible sanitisation of
+// invalid characters, reserved names, and length, cross-platform) — there
+// is simply no way to override them from this file today.
 // ============================================================================
 
 {
-  // Directories to watch
-  watch_paths: [
-    "~/Downloads/Media",
-    "~/Desktop/NewMedia"
-  ],
+  // Human-readable application name (informational only)
+  app_name: "MeedyaManager",
 
-  // Supported extensions for processing (auto-lowercased)
-  valid_extensions: ["mp3", "flac", "m4a", "mp4", "mkv", "avi", "wav", "pdf", "jpg", "jpeg", "png", "ogg", "ac3", "alac"],
+  // Global dry-run — when true, no files are moved, renamed, or tagged
+  // anywhere in the application. Equivalent to passing --dry-run on every
+  // CLI command.
+  dry_run: false,
 
-  // Rename template using MusicBee-style syntax (see help/rule-syntax.md)
-  // Tags: <Tag Name>, Functions: $FuncName(), e.g. $Pad(<Track #>,2)
-  rename_format: "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
+  // Test Mode — when enabled, edit/tag operations create "_MeedyaManager"
+  // suffixed copies instead of modifying the originals. This is normally
+  // toggled at runtime via `meedya test-mode enable`/`disable` rather than
+  // hand-edited here; it is included for completeness since it is a real
+  // persisted field on AppConfig.
+  test_mode: false,
 
-  // Default fallback values for metadata classification if unavailable
-  fallback_metadata: {
-    media_group: "Audio",
-    format_class: "unknown",
-    media_class: "Music",
-    quality_type: "Lossy"
+  // ==========================================================================
+  // watch — File-system watcher settings
+  // ==========================================================================
+  watch: {
+    // Directories to watch for new/changed media files. There is no
+    // built-in default here — the watcher has nothing to monitor until you
+    // configure at least one folder. The two example paths below are a
+    // starting point; replace them with your own.
+    folders: [
+      "~/Downloads/Media",
+      "~/Desktop/NewMedia"
+    ],
+
+    // Whether to watch subdirectories recursively
+    recursive: true,
+
+    // Polling interval in seconds — used as a fallback when native
+    // filesystem events are unavailable (e.g. some network mounts, Docker
+    // volumes)
+    poll_interval_secs: 5,
+
+    // Debounce window in milliseconds — events within this window are
+    // merged into a single notification, avoiding duplicate processing of
+    // the same file
+    debounce_ms: 200,
+
+    // File extensions to include (empty = all supported media types)
+    include_extensions: ["mp3", "flac", "m4a", "mp4", "mkv", "wav"],
+
+    // File extensions to explicitly exclude
+    exclude_extensions: ["tmp", "part", "crdownload"]
   },
 
-  // Rename settings
-  filename_replacements: {
-    "/": "-",
-    "\\\\": "-",
-    ":": "-",
-    "*": "",
-    "?": "",
-    "\"": "'",
-    "<": "",
-    ">": "",
-    "|": ""
+  // ==========================================================================
+  // rename — File renaming / organisation settings
+  // ==========================================================================
+  rename: {
+    // MusicBee-style template for building the destination file path. Uses
+    // <Tag> placeholders and $If()/$And()/$Or()/... functions — see
+    // help/rule-syntax.md for the full syntax reference.
+    template: "<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
+
+    // Root output directory where organised files are placed. Set to null
+    // (the AppConfig default) to place organised files alongside the
+    // source; the example below shows a typical dedicated output root.
+    output_dir: "~/Media/Organised",
+
+    // Strategy when a destination file already exists:
+    //   "skip"      — leave the source file untouched (safest, and the
+    //                  AppConfig default)
+    //   "overwrite" — replace the destination
+    //   "rename"    — append a counter to make the name unique
+    //   "ask"       — prompt interactively (GUI only)
+    conflict_strategy: "skip",
+
+    // Whether to create missing directories in the output path
+    create_dirs: true,
+
+    // Whether to copy the source file instead of moving it
+    copy_mode: false,
+
+    // Named rules for conditional template selection, evaluated in
+    // priority order — the first match wins. If no rule matches, the
+    // `template` above is used as the fallback. See help/rule-syntax.md
+    // for the rule syntax; empty by default (no conditional rules).
+    rules: [],
+
+    // Behaviour when a tag is missing during template evaluation:
+    //   "empty"   — insert an empty string (the AppConfig default)
+    //   "literal" — insert the tag name verbatim, e.g. <Artist>
+    //   "error"   — abort the rename for this file
+    missing_tag_mode: "empty"
   },
 
-  // =========================================================================
-  // Logging Configuration
+  // ==========================================================================
+  // logging — Logging and diagnostics settings
   //
-  // Controls how MeedyaManager writes and manages log files.
-  // Log files are stored in the platform-appropriate directory:
+  // Log files, when enabled via `file` below, are conventionally stored in
+  // the platform-appropriate directory:
   //   macOS:   ~/Library/Logs/MeedyaManager/
   //   Windows: %LOCALAPPDATA%/MeedyaManager/logs/
   //   Linux:   ~/.local/state/MeedyaManager/logs/
-  // =========================================================================
+  // ==========================================================================
   logging: {
-    level: "INFO",                   // Minimum log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-    max_log_days: 30,                // Days to keep rotated log files before cleanup
-    max_log_size_mb: 10,             // Maximum size per log file before size-based rotation
-    console_level: "WARNING",        // Minimum level for console/terminal output
-    redact_pii: true,                // Redact user paths (/Users/name) in log output
+    // Minimum log level: "trace", "debug", "info", "warn", "error"
+    level: "info",
+
+    // Whether to emit logs to the console (stdout/stderr)
+    console: true,
+
+    // Optional path to a log file (null = no file logging, the AppConfig
+    // default)
+    file: null,
+
+    // Maximum log file size in bytes before rotation (default 10 MB)
+    max_file_size_bytes: 10485760,
+
+    // Number of rotated log files to keep
+    max_rotated_files: 3,
+
+    // Whether to redact personally-identifiable information (e.g. user
+    // paths such as /Users/name) in log output
+    redact_pii: true
   },
 
-  // =========================================================================
-  // Metadata Lookup Providers (M5)
+  // ==========================================================================
+  // providers — Metadata lookup provider settings
   //
-  // Each provider can be enabled/disabled and configured individually.
-  // API keys stored here are priority 2 (after .env, before OS keyring).
-  // =========================================================================
+  // Controls which providers are enabled and stores their API keys/tokens.
+  // Secrets are best supplied via environment variables (MM_DISCOGS_TOKEN,
+  // MM_SPOTIFY_CLIENT_ID, MM_SPOTIFY_CLIENT_SECRET, MM_TMDB_API_KEY,
+  // MM_ACOUSTID_API_KEY — see help/configuration.md) rather than committed
+  // to this file. NOTE: of the fields below, only `musicbrainz_enabled`
+  // corresponds to a provider MeedyaManager can actually reach today (via
+  // the GTK lookup panel); see help/providers/*.md for the full picture —
+  // most fields here (including `musicbrainz_enabled` itself) exist on
+  // AppConfig but are not yet read by any provider-construction code path.
+  // ==========================================================================
   providers: {
+    // Enable MusicBrainz lookups (free, no credentials required)
+    musicbrainz_enabled: true,
 
-    // ── Music Providers ──
-    apple_music: {
-      enabled: true,
-      storefront: "gb",                // Default storefront (ISO 3166-1 alpha-2)
-      // team_id, key_id, private_key — set via .env or OS keyring
-    },
-    spotify: {
-      enabled: true,
-      fetch_audio_features: true,      // Fetch energy, danceability, tempo, etc.
-      // client_id, client_secret — set via .env or OS keyring
-    },
-    musicbrainz: {
-      enabled: true,
-      // No auth required — uses User-Agent header
-    },
-    deezer: {
-      enabled: true,
-      // No auth required for search API
-    },
-    tidal: {
-      enabled: true,
-      quality_indicators: true,        // Fetch HiFi/Atmos/360 RA flags
-      // client_id, client_secret — set via .env or OS keyring
-    },
-    youtube_music: {
-      enabled: true,
-      // headers_auth — path to headers_auth.json, set via .env
-    },
-    amazon_music: {
-      enabled: false,                  // Disabled by default (closed beta API, ToS risk)
-      // auth — set via .env if community library available
-    },
-    pandora: {
-      enabled: false,                  // No public API — stub provider
-    },
-    shazam: {
-      enabled: true,
-      fingerprint_seconds: 15,         // Seconds of audio to fingerprint (5-30)
-      // No auth required
-    },
-    iheart: {
-      enabled: true,
-      // No auth required (undocumented endpoints)
-    },
+    // Enable Discogs lookups
+    discogs_enabled: false,
 
-    // ── Podcast Providers ──
-    apple_podcasts: {
-      enabled: true,
-      // No auth required (iTunes Search API)
-    },
+    // Discogs personal access token (prefer the MM_DISCOGS_TOKEN env var)
+    discogs_token: null,
 
-    // ── Video Providers ──
-    apple_tv: {
-      enabled: true,
-      storefront: "gb",
-      // No auth required (iTunes Search API)
-    },
-    itunes_store: {
-      enabled: true,
-      storefront: "gb",
-      // No auth required (iTunes Search API)
-    },
-    tmdb: {
-      enabled: true,
-      language: "en-GB",               // Preferred language for results
-      // api_key — set via .env or OS keyring
-    },
-    tvdb: {
-      enabled: true,
-      // api_key — set via .env or OS keyring
-    },
-    imdb: {
-      enabled: true,
-      // No auth required (uses cinemagoer library — GPL-2.0)
-    },
+    // Enable Spotify metadata lookups
+    spotify_enabled: false,
 
-    // ── Identifier Providers ──
-    isrc: {
-      enabled: true,
-      // Federated — uses MusicBrainz + Spotify/Deezer
-    },
-    eidr: {
-      enabled: false,                  // Disabled by default (paid membership required)
-      // client_id, client_secret — set via .env or OS keyring
-    },
-    iswc: {
-      enabled: true,
-      // Federated — uses MusicBrainz work relations
-    },
-  },
+    // Spotify client ID (prefer the MM_SPOTIFY_CLIENT_ID env var)
+    spotify_client_id: null,
 
-  // =========================================================================
-  // Cover Art Preferences (M5)
-  //
-  // Controls what types of cover art are downloaded and how they are stored.
-  // =========================================================================
-  cover_art: {
-    download_static: true,             // Download static cover art (JPEG/PNG)
-    download_animated_square: true,    // Download animated square art (MP4)
-    download_animated_portrait: true,  // Download animated portrait art (MP4)
-    download_artist_spotlight: true,   // Download artist spotlight video (MP4)
-    embed_in_tags: true,               // Embed static cover art in file tags
-    max_static_resolution: 3000,       // Maximum static cover art resolution (pixels)
-    preferred_format: "jpeg",          // Preferred static format: "jpeg" or "png"
-    overwrite_existing: false,         // Overwrite existing cover art files
-  },
+    // Spotify client secret (prefer the MM_SPOTIFY_CLIENT_SECRET env var)
+    spotify_client_secret: null,
+
+    // Enable TMDb (The Movie Database) lookups
+    tmdb_enabled: false,
+
+    // TMDb API key (prefer the MM_TMDB_API_KEY env var)
+    tmdb_api_key: null,
+
+    // Enable AcoustID fingerprint lookups
+    acoustid_enabled: false,
+
+    // AcoustID API key (prefer the MM_ACOUSTID_API_KEY env var)
+    acoustid_api_key: null,
+
+    // Global request timeout for provider API calls, in seconds
+    request_timeout_secs: 30,
+
+    // Maximum concurrent provider requests
+    max_concurrent_requests: 4
+  }
 }

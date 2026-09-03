@@ -371,6 +371,135 @@ impl Default for ProviderConfig {
 // ---------------------------------------------------------------------------
 // Loading logic
 // ---------------------------------------------------------------------------
+//
+// Issue #211 (P1-SETTINGS): `AppConfig` is `#[serde(default)]` at every
+// level and nowhere uses `#[serde(deny_unknown_fields)]`, so historically a
+// settings.json5 file written against a stale/legacy schema (e.g. the old
+// `watch_paths` / `rename_format` / per-provider-map shape) would parse
+// *successfully* straight through to an all-defaults `AppConfig` — every
+// value the user actually set was silently discarded, with no warning at
+// all. Rather than switching to `deny_unknown_fields` (which would turn a
+// typo into a hard load failure — too harsh for a config file users hand-
+// edit) the loader instead parses into a generic `serde_json::Value` first,
+// diffs its key set against `AppConfig::default()`'s own serialised shape,
+// and reports every key that doesn't correspond to a real field. This is
+// deliberately non-fatal: unknown keys are still ignored (exactly as
+// before), just no longer *silently*.
+
+/// Recursively collect dotted key paths present in `value` that have no
+/// corresponding field in `shape` (both are generic `serde_json::Value`s —
+/// `shape` is expected to be `serde_json::to_value(AppConfig::default())`,
+/// i.e. the authoritative "what fields actually exist" reference).
+///
+/// Only descends into a key when BOTH sides have an object at that path —
+/// once a key is unrecognised there is no field-shape to compare its
+/// children against, so the whole unrecognised subtree is reported as one
+/// path (e.g. the legacy `providers: { apple_music: { enabled: true } }`
+/// map reports `providers.apple_music`, not `providers.apple_music.enabled`
+/// as well). Arrays are never descended into: `rename.rules` is a
+/// `Vec<crate::rule_engine::Rule>` that defaults to empty, so there is no
+/// per-element shape to diff against, and we'd rather under-report than
+/// flag legitimate rule fields as unknown.
+fn find_unknown_keys(
+    value: &serde_json::Value,
+    shape: &serde_json::Value,
+    prefix: &str,
+    out: &mut Vec<String>,
+) {
+    // Both sides must be JSON objects for a key-by-key comparison to make
+    // sense; anything else (array, string, number, bool, null) is a leaf
+    // as far as this walk is concerned.
+    let (Some(obj), Some(shape_obj)) = (value.as_object(), shape.as_object()) else {
+        return;
+    };
+
+    for (key, sub_value) in obj {
+        let path = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
+
+        match shape_obj.get(key) {
+            // Recognised field — recurse in case it is itself a nested
+            // section (e.g. "watch", "providers") that might also carry
+            // stray keys of its own.
+            Some(shape_sub) => find_unknown_keys(sub_value, shape_sub, &path, out),
+            // Not a field on `AppConfig` at all — record it.
+            None => out.push(path),
+        }
+    }
+}
+
+/// A suggested replacement for a legacy/unknown dotted config key path.
+///
+/// Distinguishes "here's the modern equivalent" from "there simply isn't
+/// one yet" so the two cases can be phrased differently in the warning
+/// message rather than both reading as "did you mean `no equivalent yet`?".
+enum KeySuggestion {
+    /// A direct modern replacement exists — e.g. `watch_paths` → `watch.folders`.
+    Equivalent(String),
+    /// The legacy key named a real feature that has no config surface yet
+    /// (e.g. `filename_replacements` — see `SanitizeConfig` in
+    /// `crate::renamer`, which is currently code-only).
+    NoneYet,
+}
+
+/// Look up a suggestion for one unknown dotted key path.
+///
+/// Covers the eight legacy keys the shipped `config/settings.json5` used to
+/// carry before it was regenerated from `AppConfig::default()` (issue
+/// #211), plus a pattern match for the old per-provider map shape
+/// (`providers.<name>: { enabled: ... }`), which every one of the 19
+/// provider pages under `help/providers/` used to document and which now
+/// maps onto the flat `providers.<name>_enabled` boolean field.
+fn suggest_replacement(key: &str) -> Option<KeySuggestion> {
+    if let Some(equivalent) = match key {
+        "watch_paths" => Some("watch.folders"),
+        "valid_extensions" => Some("watch.include_extensions"),
+        "rename_format" => Some("rename.template"),
+        "logging.max_log_size_mb" => Some("logging.max_file_size_bytes"),
+        _ => None,
+    } {
+        return Some(KeySuggestion::Equivalent(equivalent.to_string()));
+    }
+
+    if matches!(
+        key,
+        "fallback_metadata" | "filename_replacements" | "cover_art"
+    ) {
+        return Some(KeySuggestion::NoneYet);
+    }
+
+    // `providers.<name>` (old per-provider map) → `providers.<name>_enabled`
+    // (modern flat field). Guard against matching `providers.<name>_enabled`
+    // itself or any other already-nested path — those are either
+    // recognised fields (never reach this function) or genuinely unknown
+    // nested keys we have no specific advice for.
+    if let Some(name) = key.strip_prefix("providers.") {
+        if !name.is_empty() && !name.contains('.') {
+            return Some(KeySuggestion::Equivalent(format!(
+                "providers.{name}_enabled"
+            )));
+        }
+    }
+
+    None
+}
+
+/// Render the `tracing::warn!` message for one unknown config key,
+/// including a suggestion where `suggest_replacement` has one.
+fn format_unknown_key_warning(key: &str) -> String {
+    match suggest_replacement(key) {
+        Some(KeySuggestion::Equivalent(s)) => {
+            format!("unknown config key `{key}` — ignored (did you mean `{s}`?)")
+        }
+        Some(KeySuggestion::NoneYet) => {
+            format!("unknown config key `{key}` — ignored (no equivalent yet)")
+        }
+        None => format!("unknown config key `{key}` — ignored"),
+    }
+}
 
 impl AppConfig {
     /// Load configuration from the platform-default config directory.
@@ -407,39 +536,103 @@ impl AppConfig {
     /// If the file does not exist, returns `AppConfig::default()` with a
     /// warning. If the file exists but is unparseable, returns an error.
     /// After parsing, `.env` overrides are applied.
+    ///
+    /// This is a thin wrapper around [`Self::load_from_with_report`] that
+    /// logs each unknown config key (with a suggestion, where one is known
+    /// — see `suggest_replacement`) via `tracing::warn!` and discards the
+    /// report, returning only the config. Call `load_from_with_report`
+    /// directly if you need the unknown-key list programmatically (e.g. to
+    /// surface it in a CLI command, or — as here — to assert on it in
+    /// tests without standing up a tracing subscriber).
     pub fn load_from(path: &Path) -> MmResult<Self> {
-        // Start with the default configuration
-        let mut config = if path.exists() {
-            info!(path = %path.display(), "Reading configuration file");
+        let (config, unknown_keys) = Self::load_from_with_report(path)?;
 
-            // Read the raw file contents
-            let contents = std::fs::read_to_string(path).map_err(|e| {
-                MmError::Config(format!(
-                    "failed to read config file '{}': {}",
-                    path.display(),
-                    e
-                ))
-            })?;
+        for message in &unknown_keys {
+            warn!("{message}");
+        }
 
-            // Parse JSON5 into the strongly-typed AppConfig struct.
-            // JSON5 is a superset of JSON that allows comments, trailing
-            // commas, unquoted keys, and other conveniences.
-            json5::from_str::<Self>(&contents).map_err(|e| {
-                MmError::Config(format!(
-                    "failed to parse config file '{}': {}",
-                    path.display(),
-                    e
-                ))
-            })?
-        } else {
+        Ok(config)
+    }
+
+    /// Load configuration from a specific file path, returning both the
+    /// config AND a report of any unrecognised keys found in the file.
+    ///
+    /// The report entries are the fully-rendered warning strings (see
+    /// `format_unknown_key_warning`) rather than bare dotted key paths —
+    /// this lets callers (and tests) check for both the offending key and
+    /// its suggested replacement in one string, without needing to
+    /// duplicate `suggest_replacement`'s lookup logic themselves.
+    ///
+    /// A missing file has no keys to report on, so the report is simply
+    /// empty in that case (behaviour otherwise unchanged: falls back to
+    /// `Self::default()` with the existing "file not found" warning).
+    pub fn load_from_with_report(path: &Path) -> MmResult<(Self, Vec<String>)> {
+        if !path.exists() {
             warn!(
                 path = %path.display(),
                 "Configuration file not found — using defaults"
             );
-            Self::default()
-        };
+            let mut config = Self::default();
+            Self::apply_env_overrides(&mut config);
+            Self::validate(&config);
+            debug!(?config, "Final configuration loaded");
+            return Ok((config, Vec::new()));
+        }
 
-        // Apply .env overrides on top of the loaded (or default) config
+        info!(path = %path.display(), "Reading configuration file");
+
+        // Read the raw file contents
+        let contents = std::fs::read_to_string(path).map_err(|e| {
+            MmError::Config(format!(
+                "failed to read config file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+        // Parse JSON5 into a generic value FIRST — this is what makes
+        // unknown-key detection possible. JSON5 is a superset of JSON that
+        // allows comments, trailing commas, unquoted keys, and other
+        // conveniences; `serde_json::Value` is a perfectly valid target
+        // type for `json5::from_str` like any other `Deserialize` type.
+        let parsed: serde_json::Value = json5::from_str(&contents).map_err(|e| {
+            MmError::Config(format!(
+                "failed to parse config file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+        // `AppConfig::default()`'s own serialised shape is the single
+        // source of truth for "what fields actually exist" — this is the
+        // same value the shipped `config/settings.json5` and
+        // `config/schemas/settings.schema.json` are checked against in
+        // this module's tests, so all three stay in lockstep.
+        let default_shape = serde_json::to_value(Self::default())
+            .expect("AppConfig::default() must always serialise to a JSON value");
+
+        let mut unknown_key_paths = Vec::new();
+        find_unknown_keys(&parsed, &default_shape, "", &mut unknown_key_paths);
+        let report: Vec<String> = unknown_key_paths
+            .iter()
+            .map(|key| format_unknown_key_warning(key))
+            .collect();
+
+        // Deserialise strongly from the already-parsed value (not the raw
+        // text again — `serde_json::Value` implements `Deserializer`, so
+        // this is a second, cheap in-memory conversion rather than a
+        // second parse). Every struct in this module is `#[serde(default)]`,
+        // so unknown keys are simply skipped here exactly as before — we
+        // have already captured them above.
+        let mut config: Self = serde_json::from_value(parsed).map_err(|e| {
+            MmError::Config(format!(
+                "failed to parse config file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+        // Apply .env overrides on top of the loaded config
         Self::apply_env_overrides(&mut config);
 
         // Run validation (warnings only for non-critical issues)
@@ -447,7 +640,7 @@ impl AppConfig {
 
         debug!(?config, "Final configuration loaded");
 
-        Ok(config)
+        Ok((config, report))
     }
 
     /// Apply environment variable overrides from `.env` and the process
@@ -1372,5 +1565,191 @@ mod tests {
         unsafe {
             std::env::remove_var("MM_CONFIG_DIR");
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // 8. Shipped `config/settings.json5` / `config/schemas/settings.schema.json`
+    //    stay in sync with `AppConfig` — issue #211 (P1-SETTINGS)
+    // -----------------------------------------------------------------------
+    //
+    // These `include_str!` the actual files shipped in the repository (not a
+    // copy embedded in the test), so a future edit that lets either file
+    // drift from the real `AppConfig` struct fails CI immediately instead of
+    // shipping a config example users can't actually use.
+
+    /// Recursively assert that `schema_node`'s `"properties"` key set matches
+    /// `shape_node`'s object key set at every level where `shape_node` (a
+    /// slice of `serde_json::to_value(AppConfig::default())`) is itself a
+    /// JSON object. Mismatches are collected as human-readable strings
+    /// rather than asserted immediately, so a single test run reports every
+    /// offending path at once instead of stopping at the first one.
+    fn schema_mismatches(
+        schema_node: &serde_json::Value,
+        shape_node: &serde_json::Value,
+        prefix: &str,
+        out: &mut Vec<String>,
+    ) {
+        // A non-object leaf in the struct's default shape (string, bool,
+        // number, array, null) has nothing further to check — arrays in
+        // particular (e.g. `rename.rules`) are deliberately not modelled
+        // field-by-field in the schema, matching `find_unknown_keys`'s same
+        // choice not to walk into them above.
+        let Some(shape_obj) = shape_node.as_object() else {
+            return;
+        };
+
+        let Some(schema_properties) = schema_node.get("properties").and_then(|p| p.as_object())
+        else {
+            out.push(format!(
+                "{}: schema node has no \"properties\" but AppConfig has fields {:?}",
+                if prefix.is_empty() { "<root>" } else { prefix },
+                shape_obj.keys().collect::<Vec<_>>()
+            ));
+            return;
+        };
+
+        let shape_keys: std::collections::BTreeSet<&str> =
+            shape_obj.keys().map(String::as_str).collect();
+        let schema_keys: std::collections::BTreeSet<&str> =
+            schema_properties.keys().map(String::as_str).collect();
+
+        if shape_keys != schema_keys {
+            out.push(format!(
+                "{}: AppConfig fields {:?} != schema properties {:?}",
+                if prefix.is_empty() { "<root>" } else { prefix },
+                shape_keys,
+                schema_keys
+            ));
+        }
+
+        // Recurse only into keys both sides agree exist — a key missing on
+        // one side was already reported above, and there's no matching node
+        // to recurse into on the side that lacks it.
+        for key in shape_keys.intersection(&schema_keys) {
+            let child_path = if prefix.is_empty() {
+                (*key).to_string()
+            } else {
+                format!("{prefix}.{key}")
+            };
+            if let (Some(shape_child), Some(schema_child)) =
+                (shape_obj.get(*key), schema_properties.get(*key))
+            {
+                schema_mismatches(schema_child, shape_child, &child_path, out);
+            }
+        }
+    }
+
+    #[test]
+    fn shipped_settings_json5_has_only_known_keys() {
+        // MUST FAIL FIRST (before the issue #211 fix): the shipped file used
+        // to ship `watch_paths`, `rename_format`, `fallback_metadata`,
+        // `filename_replacements`, `cover_art`, and a per-provider
+        // `providers.<name>: { enabled, ... }` map — none of which exist on
+        // `AppConfig`. Parsing that file against `AppConfig::default()`'s own
+        // shape must report an EMPTY unknown-key list.
+        let shipped: serde_json::Value =
+            json5::from_str(include_str!("../../../../config/settings.json5"))
+                .expect("shipped config/settings.json5 must be valid JSON5");
+        let default_shape = serde_json::to_value(AppConfig::default())
+            .expect("AppConfig::default() must serialise");
+
+        let mut unknown = Vec::new();
+        find_unknown_keys(&shipped, &default_shape, "", &mut unknown);
+
+        assert!(
+            unknown.is_empty(),
+            "shipped config/settings.json5 has keys AppConfig does not recognise: {unknown:#?}"
+        );
+    }
+
+    #[test]
+    fn shipped_settings_json5_deserialises_to_non_default() {
+        // MUST FAIL FIRST (before the issue #211 fix): because the shipped
+        // file used a schema `AppConfig` does not implement, every key a
+        // user might edit was silently discarded and the file deserialised
+        // to (almost) pure defaults — i.e. editing the "example config" had
+        // zero effect. At least one field must now differ from
+        // `AppConfig::default()` after loading the real shipped file.
+        //
+        // NOTE on why this asserts a *specific* field rather than only the
+        // blanket `assert_ne!` below: the OLD shipped file's
+        // `logging: { level: "INFO", ... }` happens to share a field NAME
+        // with the real `LoggingConfig::level` field, so it deserialises to
+        // a non-default (wrongly-cased) value *by accident*, even though
+        // the fields that actually demonstrate the bug (`watch_paths`,
+        // `rename_format`, ...) are still being silently discarded. A plain
+        // `assert_ne!` alone would therefore already pass against the old,
+        // broken file — this targets the defect precisely instead: a
+        // watch-folder list the user configured under the OLD key name
+        // (`watch_paths`) must survive under the NEW key name
+        // (`watch.folders`) once the shipped file is regenerated.
+        let shipped: AppConfig = json5::from_str(include_str!("../../../../config/settings.json5"))
+            .expect("shipped config/settings.json5 must deserialise to AppConfig");
+
+        assert!(
+            !shipped.watch.folders.is_empty(),
+            "shipped config/settings.json5's watch folders came back empty — the file's \
+             example watch-folder list is being silently discarded instead of actually \
+             populating `watch.folders`"
+        );
+        assert_ne!(
+            shipped,
+            AppConfig::default(),
+            "shipped config/settings.json5 deserialises to pure defaults — every example \
+             value in the file is being silently ignored"
+        );
+    }
+
+    #[test]
+    fn settings_schema_properties_match_appconfig() {
+        // MUST FAIL FIRST (before the issue #211 fix): the shipped schema
+        // described `watch_paths`, `rename_format`, `providers.<name>`,
+        // `cover_art`, etc. — a completely different property set from the
+        // real `AppConfig` struct's `watch`, `rename`, `providers.*_enabled`,
+        // and so on. Recursive property-name set equality must hold at
+        // every nested object level.
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../config/schemas/settings.schema.json"
+        ))
+        .expect("config/schemas/settings.schema.json must be valid JSON");
+        let default_shape = serde_json::to_value(AppConfig::default())
+            .expect("AppConfig::default() must serialise");
+
+        let mut mismatches = Vec::new();
+        schema_mismatches(&schema, &default_shape, "", &mut mismatches);
+
+        assert!(
+            mismatches.is_empty(),
+            "settings.schema.json properties do not match AppConfig: {mismatches:#?}"
+        );
+    }
+
+    #[test]
+    fn load_from_reports_unknown_keys_with_suggestion() {
+        // This test calls `load_from_with_report`, which — via
+        // `apply_env_overrides` — reads several `MM_*` process environment
+        // variables even though it never sets any itself. It must therefore
+        // take `ENV_LOCK` like every other test in this module that touches
+        // `load_from`/`load_from_with_report`, or a concurrently-running
+        // env-mutating test could make an unrelated field assertion flake.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        // A file using the single most common legacy key (`watch_paths`,
+        // the old name for `watch.folders`) should be reported by dotted
+        // path AND come with its modern replacement suggested — returning
+        // the list (rather than only logging via `tracing::warn!`) is what
+        // makes this assertable without standing up a tracing subscriber.
+        let file = write_temp_config("{watch_paths:[]}");
+        let (_config, report) = AppConfig::load_from_with_report(file.path())
+            .expect("a file with one unknown key should still load successfully");
+
+        assert!(
+            report
+                .iter()
+                .any(|message| message.contains("watch_paths") && message.contains("watch.folders")),
+            "expected a report entry mentioning both `watch_paths` and `watch.folders`, got: {report:#?}"
+        );
     }
 }
