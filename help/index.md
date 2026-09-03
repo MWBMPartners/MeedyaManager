@@ -13,6 +13,7 @@ Welcome to the MeedyaManager documentation. Choose a topic below to get started.
 | [getting-started.md](getting-started.md) | Install MeedyaManager, run your first scan, and configure watch folders |
 | [configuration.md](configuration.md) | Full reference for all settings in `settings.json5` |
 | [cli-reference.md](cli-reference.md) | Every `meedya` command, subcommand, and flag |
+| [../docs/api/README.md](../docs/api/README.md) | API documentation for developers — Rust crate APIs, the C/UniFFI FFI layer, and the CLI as a scripting interface |
 
 ---
 

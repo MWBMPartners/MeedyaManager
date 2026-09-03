@@ -37,16 +37,26 @@
     <!-- mm_ffi.dll: Rust FFI library bundled with the MSIX package so users do not
          need the Rust toolchain installed. Built by cargo build (release mode)
          before running dotnet publish. The Condition guard prevents build errors on
-         machines where the Rust build has not been run yet. -->
-    <Content Include="..\..\..\target\release\mm_ffi.dll"
-             Condition="Exists('..\..\..\target\release\mm_ffi.dll')">
+         machines where the Rust build has not been run yet.
+
+         PATH DEPTH: this file lives at windows/MeedyaManager/, so `..\..` reaches
+         the repository root — NOT `..\..\..`, which lands one directory ABOVE the
+         checkout and can therefore never exist. With the wrong depth the Condition
+         silently evaluated false forever: the DLL was never bundled, and
+         Interop/MmCore.cs's CheckDllAvailable() consequently found no mm_ffi.dll
+         beside the executable, so the Windows app ran entirely on its hand-written
+         C# stubs no matter how the Rust build went. Count the segments before
+         changing this. -->
+    <Content Include="..\..\target\release\mm_ffi.dll"
+             Condition="Exists('..\..\target\release\mm_ffi.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <PackagePath>.</PackagePath>
     </Content>
 
     <!-- GPL-2.0-or-later licence file — must be distributed alongside the binary.
-         Required by the GPL; the MSIX AppInstaller will display it to the user. -->
-    <Content Include="..\..\..\LICENSE" Condition="Exists('..\..\..\LICENSE')">
+         Required by the GPL; the MSIX AppInstaller will display it to the user.
+         Same path-depth rule as above: `..\..` is the repository root. -->
+    <Content Include="..\..\LICENSE" Condition="Exists('..\..\LICENSE')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

@@ -304,6 +304,7 @@ This project is licensed under the **GPL-2.0-or-later** — see the [`LICENSE`](
 | 📊 [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current progress tracker |
 | 📍 [docs/roadmap.md](docs/roadmap.md) | Milestone timeline |
 | 📦 [docs/changelog.md](docs/changelog.md) | Detailed change log |
+| 🔌 [docs/api/README.md](docs/api/README.md) | API documentation — Rust crates, C/UniFFI FFI, and the CLI as a scripting interface |
 | 📖 [help/getting-started.md](help/getting-started.md) | Getting started guide |
 | ⚙️ [help/configuration.md](help/configuration.md) | Configuration reference |
 | 📐 [help/rule-syntax.md](help/rule-syntax.md) | Rule template syntax guide |

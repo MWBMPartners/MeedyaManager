@@ -9,6 +9,7 @@
 - [Version Format Conventions](#version-format-conventions)
 - [Platform Version Mapping](#platform-version-mapping)
 - [CI/CD Pipeline Overview](#cicd-pipeline-overview)
+- [API Documentation](#api-documentation)
 - [GitHub Secrets Configuration](#github-secrets-configuration)
 - [Release Binary Hardening](#release-binary-hardening)
 - [Dependency Bundling Requirements](#dependency-bundling-requirements)
@@ -322,6 +323,17 @@ MeedyaManager-{version}-SHA256SUMS.txt
 | macOS | Implemented | Apple Developer ID cert (`APPLE_CERT_P12` secret) + notarisation |
 | Windows | Implemented | Authenticode PFX cert (`WINDOWS_CERT_PFX` secret) via signtool |
 | Linux | N/A | Not required for Flatpak/Snap distribution |
+
+---
+
+## API Documentation
+
+MeedyaManager is not web-based (no axum router is ever built, no `.html` files exist in the
+repo), so there is deliberately no OpenAPI/Swagger document. Instead, the three real API surfaces
+— the Rust crate APIs, the C/UniFFI FFI layer consumed by the Windows and macOS native UIs, and
+the `meedya` CLI as a scripting interface (exit codes, `--json` schemas) — are documented under
+[`docs/api/`](docs/api/README.md). Start at `docs/api/README.md`; it explains which page covers
+which surface and how to regenerate each one.
 
 ---
 
