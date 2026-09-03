@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide covers setting up the **iHeart** (iHeartRadio) metadata provider in MeedyaManager. iHeart uses undocumented public API endpoints that require no authentication, making it a zero-configuration provider — though with the caveat that these endpoints may change without notice.
+This guide covers the **iHeart** (iHeartRadio) metadata provider in MeedyaManager. iHeart currently operates as a **stub provider** — the code exists, but it does not talk to iHeartRadio and never returns a result.
 
 ---
 
@@ -13,7 +13,7 @@ This guide covers setting up the **iHeart** (iHeartRadio) metadata provider in M
 3. [Configuration](#configuration)
 4. [Available Data](#available-data)
 5. [Custom Tags](#custom-tags)
-6. [Cover Art](#cover-art)
+6. [Current Status & Limitations](#current-status--limitations)
 7. [Troubleshooting](#troubleshooting)
 8. [Legal Notes](#legal-notes)
 
@@ -21,30 +21,46 @@ This guide covers setting up the **iHeart** (iHeartRadio) metadata provider in M
 
 ## Overview
 
-The iHeart provider uses **undocumented public endpoints** from the iHeartRadio API to search for track metadata. iHeartRadio is primarily a streaming radio platform, but their search API provides basic song metadata including title, artist, album, cover art, and in some cases lyrics.
+`iHeartProvider` is one of six providers built from the same `stub_provider!` macro in
+`crates/mm-providers/src/music/mod.rs`. It has a correct `id()` ("`iheart`"), `display_name()`
+("iHeart") and a declared `ProviderCapabilities` (music search, cover art flagged as supported),
+but its `search()` method makes **no HTTP request of any kind** — it always returns an error:
 
-This provider is classified as **best-effort** — it works reliably as of the time of writing, but because the endpoints are undocumented, they may change, move, or be restricted by iHeartMedia at any time without prior notice.
+- If the stub is disabled (the default) → `ProviderError::NotConfigured`.
+- If the stub is explicitly enabled → `ProviderError::NotSupported("iheart: Provider
+  implementation pending API review")`.
 
-**Key features:**
+There is no iHeartRadio client, no `api.iheart.com` request, and no lyrics/cover-art parsing
+anywhere in the codebase beyond the id/name/capabilities declaration.
 
-- Track search via undocumented public API endpoints
+**Current status:** Stub provider — always returns an error, never a result.
+
+**Planned features (if this is ever implemented):**
+
+- Track search via iHeartRadio's (undocumented) public endpoints
 - Basic metadata: title, artist, album
-- Static cover art (JPEG, resolution varies)
-- Lyrics (when available in the API response)
-- No authentication required
-- Zero configuration setup
+- Static cover art, and lyrics where the response carries them
+
+---
+
+> ⚠️ **Not reachable from the app even if it worked.** `meedya lookup` (the CLI command) is a
+> permanent stub that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`). So even a future,
+> real iHeart implementation would need new wiring in both places before a user could reach it
+> from the shipped application.
 
 ---
 
 ## Authentication
 
-The iHeart provider requires **no authentication**. The undocumented API endpoints used by MeedyaManager are publicly accessible without API keys, tokens, or accounts.
+There is nothing to authenticate — `search()` never sends a request, so no credential of any kind
+is read, checked, or required. iHeartRadio has no official developer programme.
 
-### No setup required
+### No setup possible
 
-The iHeart provider is immediately available with no configuration needed. Simply ensure it is enabled in your settings (it is enabled by default).
-
-> **Note:** Because these are undocumented endpoints, there is no official developer programme, documentation, or support from iHeartMedia. Access could be restricted at any time.
+There is nothing to install or configure; setting an environment variable for iHeart has no
+effect.
 
 ---
 
@@ -52,156 +68,79 @@ The iHeart provider is immediately available with no configuration needed. Simpl
 
 ### Environment Variables (`.env`)
 
-No environment variables are required for iHeart.
+None are read for iHeart.
 
 ### Settings (`settings.json5`)
 
-```json5
-{
-  providers: {
-    iheart: {
-      enabled: true,                    // Enable or disable this provider
-      priority: 9,                      // Provider priority (lower = higher priority)
-    }
-  }
-}
-```
-
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| `enabled` | `true` | Whether this provider is active |
-| `priority` | `9` | Search priority relative to other providers (set low due to best-effort nature) |
-
-> **Recommendation:** Set iHeart's priority lower than dedicated music metadata providers (Spotify, Apple Music, MusicBrainz) since it provides less comprehensive metadata. iHeart is most useful as a supplementary provider.
+`iHeartProvider::new(enabled: bool)` takes a single boolean. There is no per-provider
+`settings.json5` schema for it, and nothing in the CLI or GUI constructs this provider from a
+configuration file. The stub defaults to disabled (`enabled_default = false` in the macro
+invocation).
 
 ---
 
 ## Available Data
 
-The iHeart provider returns the following metadata fields:
+The provider returns no data — `search()` always errors, in both the disabled and enabled states.
 
-| Field | Source | Example |
-| ----- | ------ | ------- |
-| `title` | `song.title` | "Bohemian Rhapsody" |
-| `artist` | `song.artistName` | "Queen" |
-| `album` | `song.albumName` | "A Night at the Opera" |
-| `lyrics` | `song.lyrics` | (full lyrics text, when available) |
-
-### Data limitations
-
-The iHeart API provides basic metadata only:
-
-- No ISRC codes
-- No track or disc numbers
-- No release year or date
-- No genre classification
-- No audio quality information
-- Limited album data
-
-For complete metadata enrichment, use iHeart alongside more comprehensive providers like Spotify, Apple Music, or MusicBrainz.
-
-### API Endpoint
-
-MeedyaManager queries the following undocumented endpoint:
-
-```text
-GET https://api.iheart.com/api/v3/search/all?keywords={query}&maxRows=10
-```
-
-The response includes a `results` object with a `songs` array containing matched tracks.
+| Field | Status |
+| ----- | ------ |
+| `title` | Not available |
+| `artist` | Not available |
+| `album` | Not available |
+| `lyrics` | Not available |
+| Cover art | Not available |
 
 ---
 
 ## Custom Tags
 
-The following custom tags are stored in the file's metadata when matched:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_iheart_id` | iHeartRadio song ID | `"12345678"` |
-| `custom_iheart_url` | Constructed iHeartRadio URL | `"https://www.iheart.com/artist/Queen/12345678"` |
-
-> **Note:** The `custom_iheart_url` is constructed by MeedyaManager from the song ID and artist name, as the API does not always return a direct URL. These URLs may not always resolve to valid pages on iHeartRadio's website.
+No custom tags are produced. Nothing in the codebase writes a `custom_iheart_*` tag.
 
 ---
 
-## Cover Art
+## Current Status & Limitations
 
-iHeart provides static cover art when available in the API response:
+### Why is this a stub?
 
-| Type | Format | Resolution | Source |
-| ---- | ------ | ---------- | ------ |
-| **Static (album artwork)** | JPEG | Varies | `song.imageUrl` |
+iHeartMedia does not publish a developer API; any integration would rely on undocumented,
+reverse-engineered endpoints. The source comments mark this as "pending API review" and no such
+client has been written.
 
-MeedyaManager saves this as `FrontCover.jpg`.
+### What works now
 
-> **Note:** Not all songs in the iHeart API include cover art. The resolution varies and is generally lower quality than dedicated music services. For best cover art, prioritise Apple Music (3000x3000) or Deezer (1000x1000).
+- The provider registers with a correct `id()`, `display_name()`, and declared capabilities.
+- Calling `search()` reliably returns a typed error rather than panicking or hanging.
+
+### What does not work
+
+- No network request is ever made.
+- No metadata, lyrics, or cover art is ever returned.
+- `enabled: true` does not make it functional — it only changes which error variant comes back
+  (`NotSupported` instead of `NotConfigured`).
 
 ---
 
 ## Troubleshooting
 
-### "iHeart search returned 0 results"
+### `NotConfigured` error
 
-**Possible causes:**
-- The track may not be in iHeart's catalog
-- The undocumented API may have changed or become unavailable
-- Search terms may be too specific
+**This is expected.** The stub is disabled by default; this is the "not enabled" error, not a sign
+of a misconfiguration.
 
-**Solutions:**
-1. Try a simpler search (just the song title, without artist or album)
-2. Verify the API is still accessible by testing in a browser:
-   ```text
-   https://api.iheart.com/api/v3/search/all?keywords=bohemian+rhapsody&maxRows=5
-   ```
-3. If the API has changed, MeedyaManager will need an update — check for new releases
+### `NotSupported: Provider implementation pending API review`
 
-### "iHeart search failed" (connection error)
-
-**Possible causes:**
-- Network connectivity issues
-- iHeart's API may be temporarily down
-- The endpoint URL may have changed
-
-**Solutions:**
-1. Check your internet connection
-2. Try again in a few minutes — the error may be transient
-3. If persistent, the undocumented endpoint may have been moved or removed
-4. Check the MeedyaManager logs for the specific HTTP error code
-
-### HTTP 403 or 429 — Access denied or rate limited
-
-**Cause:** iHeartMedia may have added rate limiting or access restrictions to their public endpoints.
-
-**Solutions:**
-- MeedyaManager includes built-in rate limiting to prevent aggressive requests
-- If you receive 403 errors consistently, the endpoint may have been restricted
-- Consider disabling the iHeart provider and relying on other providers
-
-### Missing or incorrect cover art
-
-**Cause:** The `imageUrl` field in the API response may point to a generic placeholder image or an incorrect album cover.
-
-**Solution:** This is a limitation of the undocumented API. For reliable cover art, prioritise Apple Music, Spotify, or Deezer providers.
-
-### Direct song lookup not supported
-
-**Cause:** The iHeart API's undocumented endpoints do not include a reliable direct song lookup by ID. `lookup_by_id()` returns `None`.
-
-**Solution:** This is expected behaviour. The iHeart provider only supports search-based matching, not direct ID-based lookups.
+**This is expected if you set `enabled: true`.** It confirms the stub is reachable but there is no
+real implementation behind it yet.
 
 ---
 
 ## Legal Notes
 
-- iHeartRadio is a service owned by **iHeartMedia, Inc.**
-- The endpoints used by this provider are **undocumented and unofficial** — iHeartMedia does not provide a public developer API
-- These endpoints may change, move, or be restricted at any time without notice
-- Use of undocumented endpoints may be subject to [iHeartMedia's Terms of Use](https://www.iheart.com/content/terms-of-use/)
-- MeedyaManager includes this provider as a **best-effort** convenience with the understanding that it relies on undocumented infrastructure
-- No sensitive data is sent to iHeart's servers — only search query strings
-- Cover art and metadata are the property of their respective rights holders
-- MeedyaManager stores provider IDs and URLs as custom metadata tags for reference only; this does not imply endorsement by iHeartMedia, Inc.
+- iHeartRadio is a service owned by **iHeartMedia, Inc.** MeedyaManager ships no iHeartRadio
+  integration, official or unofficial — the provider is a placeholder only.
+- Any future implementation relying on undocumented endpoints would need to consider
+  [iHeartMedia's Terms of Use](https://www.iheart.com/content/terms-of-use/).
 
 ---
 

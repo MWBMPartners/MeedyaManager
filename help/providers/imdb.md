@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide explains how to configure and use the **IMDb** metadata provider in MeedyaManager.
+This guide explains how to configure and use the **"IMDb" provider** in MeedyaManager — which, in the actual code, is the **OMDb API**, not IMDb itself.
 
 ---
 
@@ -19,35 +19,66 @@ This guide explains how to configure and use the **IMDb** metadata provider in M
 
 ---
 
+> ⚠️ **This is OMDb, not IMDb.** There is no IMDb client, IMDb scraper, or `cinemagoer`-style
+> library anywhere in MeedyaManager. The Rust type behind this page is `OmdbProvider`
+> (`crates/mm-providers/src/video/mod.rs`), with `id()` returning `"omdb"` and `display_name()`
+> returning `"OMDb / IMDb"`. It calls the third-party **OMDb API** (`www.omdbapi.com`), which itself
+> republishes a subset of IMDb's data under its own free/paid tiers. Everything below describes
+> what `OmdbProvider` actually does.
+>
+> **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub that
+> prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`). `OmdbProvider` is
+> compiled and unit-tested (against canned JSON fixtures, not a live or mocked HTTP response), but
+> nothing in the shipped CLI or GUI constructs it.
+
+---
+
 ## Overview
 
-The IMDb provider retrieves movie and TV show metadata from the **Internet Movie Database** (IMDb) — the world's most popular and comprehensive source of film, television, and celebrity information. It accesses IMDb data via HTTP, with no API key or account required.
+`OmdbProvider` searches the **OMDb API** — a free/paid third-party API that serves a subset of
+IMDb's catalogue — via a plain HTTP GET, and **requires an OMDb API key**. This provider is useful
+for:
 
-This provider is useful for:
+- Looking up movie metadata (title, year) by a search string
+- Obtaining the OMDb/IMDb title ID (`imdbID`, `tt`-format) for cross-referencing
+- Retrieving a poster URL
 
-- Looking up movie metadata (title, year, genres, IMDb ratings, vote counts)
-- Retrieving TV series and episode information
-- Obtaining IMDb IDs for cross-referencing with other databases (TMDB, TVDB, etc.)
-- Accessing IMDb's authoritative rating and vote data
-- Downloading movie/TV poster artwork
+It does **not**:
+
+- Access imdb.com directly, scrape any web page, or use any unofficial IMDb library
+- Search TV shows or episodes — the request hard-codes `type=movie` (see
+  [Available Data](#available-data))
+- Return director, genre, rating, vote count, or cast/crew data — none of these fields exist on
+  the parsed response type
 
 ---
 
 ## Authentication
 
-**No API authentication is required.** The IMDb provider accesses IMDb data via HTTP without an API key or account.
-
-You can verify the provider's status with:
+**An OMDb API key is required.** OMDb's free tier is documented (in the source comment) as 1,000
+requests/day; MeedyaManager does not verify this against a live account.
 
 ```bash
-meedya lookup --list-providers
+curl "https://www.omdbapi.com/?s=Inception&apikey=YOUR_KEY"
 ```
 
-You will see:
+Get a key from [omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx).
 
-```text
-imdb          video       No auth required    Available
-```
+### How MeedyaManager would use it
+
+`OmdbProvider::new(api_key: Option<String>)` takes the key directly as a constructor argument.
+There is **no `MM_OMDB_API_KEY` or `MM_IMDB_API_KEY` environment variable read anywhere** —
+`mm_core::config::ProviderConfig` has no OMDb/IMDb field, and no call site in the CLI or GUI
+constructs `OmdbProvider` with a credential today. If you want to use this provider before that
+wiring lands, you would pass the key directly to `OmdbProvider::new(...)` in your own code.
+
+If provider wiring is ever added, credentials would most likely resolve through the generic
+4-tier `CredentialStore` (env `MM_OMDB_API_KEY` → in-memory config map → OS keyring → local
+`credentials.json`) in `crates/mm-providers/src/credentials.rs` — note that tier 4 there is a
+**plain JSON file on disk**, not the AES-256-GCM-encrypted bundle earlier project plans described
+(issue #209).
 
 ---
 
@@ -55,147 +86,105 @@ imdb          video       No auth required    Available
 
 ### Environment Variables (`.env`)
 
-No environment variables are required for this provider.
+None are read today (see above).
 
 ### Settings File (`settings.json5`)
 
-You can optionally configure the provider's behaviour in `config/settings.json5`:
-
-```json5
-{
-  providers: {
-    imdb: {
-      // Enable or disable this provider (default: true)
-      enabled: true,
-
-      // Maximum number of search results to evaluate (1-20, default: 5)
-      result_limit: 5,
-
-      // Whether to fetch full movie/show details (default: true)
-      // Fetching details requires additional page loads per result,
-      // which increases lookup time but provides more complete metadata
-      fetch_full_details: true,
-
-      // Timeout in seconds for IMDb page loads (default: 30)
-      // Increase if on a slow connection; decrease if speed is a priority
-      request_timeout: 30,
-    }
-  }
-}
-```
+There is no per-provider `settings.json5` schema for OMDb/IMDb. `enabled`, `result_limit`,
+`fetch_full_details`, and `request_timeout` are not real settings — nothing in the codebase reads
+them. The only real inputs are the constructor's `api_key` and an optional `base_url` override
+(used by the crate's own tests to point at a mock server).
 
 ---
 
 ## Available Data
 
-The IMDb provider returns the following standard metadata fields:
+`OmdbProvider::search()` sends:
 
-### For Movies
+```text
+GET {base}/?s=<title>&apikey=<key>&type=movie[&y=<year>]
+```
 
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Movie title | `"The Shawshank Redemption"` |
-| `director` | Director name | `"Frank Darabont"` |
-| `artist` | Director name (mapped for consistency) | `"Frank Darabont"` |
-| `genre` | Genres (comma-separated) | `"Drama"` |
-| `year` | Release year | `"1994"` |
+`type=movie` is **hard-coded** — the source comment reads "Default to movies; could be
+configurable", but nothing makes it configurable, so this provider never matches TV shows or
+episodes. `<title>` falls back to `"<query.title> <query.artist>"` trimmed when no title is given
+in the query (there is no dedicated free-text field).
 
-### For TV Shows / Episodes
+The response is OMDb's `Search`-array shape. If the response carries an `Error` field (e.g. "Movie
+not found!"), the whole call fails rather than returning zero results.
 
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Episode title | `"Ozymandias"` |
-| `show` | TV series name | `"Breaking Bad"` |
-| `season` | Season number | `"5"` |
-| `episode` | Episode number | `"14"` |
-| `episode_title` | Episode title | `"Ozymandias"` |
-| `year` | Episode air year | `"2013"` |
+| Field | Response field | Notes |
+| ----- | --------------- | ----- |
+| `title` | `Search[].Title` | |
+| `year` | `Search[].Year` | first 4 characters parsed as an integer |
+| `cover_art` | `Search[].Poster` | skipped when OMDb returns the literal string `"N/A"` or empty |
+| provider ID (metadata) | `Search[].imdbID` | stored under the generic provider-ID metadata key, e.g. `tt1375666` |
+| media type (metadata) | `Search[].Type` | stored verbatim, e.g. `"movie"` |
+
+There is **no** `director`, `artist`, `genre`, `episode`, `season`, `episode_title`, rating, or
+vote-count field anywhere in `OmdbProvider`'s parser — the struct it deserializes into
+(`OmdbSearchResult`) only has `imdbID`, `Title`, `Year`, `Poster`, and `Type`.
 
 ---
 
 ## Custom Tags
 
-In addition to standard fields, the provider writes the following custom tags to media files:
+The only identifier this provider surfaces is the OMDb/IMDb title ID, stored in the generic
+provider-ID metadata slot (not under a dedicated `custom_imdb_*` key — there is no such constant
+anywhere in the crate).
 
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_imdb_id` | IMDb title ID (tt-format) | `"tt0111161"` |
-| `custom_imdb_url` | Direct link on IMDb | `"https://www.imdb.com/title/tt0111161/"` |
-| `custom_imdb_rating` | IMDb user rating (0.0-10.0 scale) | `"9.3"` |
-| `custom_imdb_votes` | Total number of IMDb user votes | `"2800000"` |
-| `custom_imdb_genres` | Full genre list from IMDb | `"Drama"` |
+| Value | Format | Example |
+| ----- | ------ | ------- |
+| IMDb title ID | `tt` + 7-8 digits | `tt0111161` |
 
-The `custom_imdb_id` is the universally recognised IMDb title identifier. It follows the format `tt` followed by 7-8 digits (e.g., `tt0111161`). This ID is invaluable for:
-
-- Cross-referencing with TMDB (which accepts IMDb IDs for lookups)
-- Linking to IMDb pages from your media player
-- Ensuring unique identification of movies/shows regardless of title variations
-
-The `custom_imdb_rating` and `custom_imdb_votes` can be used in rename rules for quality-based organisation:
-
-```json5
-// Example: Sort highly-rated movies into a "Top Rated" folder
-rename_format: "Movies/{custom_imdb_rating >= 8.0 ? 'Top Rated' : 'All'}/{title} ({year}).{extension}"
-```
+There is no `custom_imdb_rating`, `custom_imdb_votes`, `custom_imdb_genres`, or `custom_imdb_url`
+tag produced by this code — OMDb's free-tier `Search` response doesn't carry rating/vote data in
+the first place (that lives on OMDb's separate `?i=<id>` detail endpoint, which this provider
+never calls).
 
 ---
 
 ## Cover Art
 
-The IMDb provider supplies **static JPEG poster images** extracted from IMDb pages.
-
-- The poster URL is retrieved from the movie/show's primary image on IMDb
-- Image format: JPEG
-- Resolution: Varies (typically 500-1000 pixels wide; IMDb does not guarantee specific dimensions)
-- The image is saved as `FrontCover.jpg` alongside the media file
-- If embedding is enabled, the image is also embedded in the file's metadata
-
-> **Note:** IMDb poster images are generally lower resolution than those from TMDB. For the best cover art quality, use TMDB as your primary poster source and IMDb for its authoritative ratings data.
+The `Poster` field, when present and not `"N/A"`, is used as a single cover-art URL with no known
+width or height (OMDb doesn't publish image dimensions in this response). There is no
+higher-resolution variant request, no embedding-specific logic beyond what every video provider
+shares, and no fallback image source.
 
 ---
 
 ## Troubleshooting
 
-### Provider shows "Unavailable"
+### Provider errors with "OMDb error: Movie not found!"
 
-- Ensure the `enabled` setting is not set to `false` in your configuration
-- Verify with `meedya lookup --list-providers`
-- Run `meedya config validate` to check for configuration errors
+OMDb returned a genuine miss for the search string. Try a shorter or differently-spelled title —
+remember this provider only ever searches `type=movie`, so a TV show or episode title will never
+match.
 
-### Searches are slow
+### Provider errors immediately with `NotConfigured`
 
-IMDb access is inherently slower than a dedicated API. To improve speed:
+No `api_key` was supplied when the provider was constructed. There is no environment variable or
+`settings.json5` field to set today — see [Authentication](#authentication).
 
-1. Reduce `result_limit` to minimise the number of lookups performed
-2. Set `fetch_full_details: false` to skip detailed lookups (less metadata but faster results)
-3. Reduce `request_timeout` if you prefer to skip slow responses rather than wait
-4. Consider using TMDB as your primary video provider and IMDb as a supplementary source for ratings data
+### Results are missing director, genre, rating, or vote data
 
-### "Connection error" or "Timeout" during searches
-
-- Check your internet connection
-- IMDb may be temporarily unreachable — the provider will retry automatically
-- Increase `request_timeout` if you are on a slow connection
-- The IMDb provider accesses IMDb's web pages directly; corporate firewalls or content filters may block these requests
-
-### Results are missing or incomplete
-
-The IMDb provider depends on IMDb's page structure. If IMDb changes their website layout:
-
-1. Check for a MeedyaManager update — we track IMDb changes and update the provider
-2. Report persistent issues on the MeedyaManager issue tracker
+**This is expected.** `OmdbProvider`'s parser does not read any of those fields from the `Search`
+response — see [Available Data](#available-data). Nothing you configure will make them appear.
 
 ---
 
 ## Legal Notes
 
-### IMDb Data Usage
-
-- IMDb data is provided by IMDb.com, Inc., a subsidiary of Amazon.com, Inc.
-- IMDb is a trademark of IMDb.com, Inc.
-- Information retrieved is for personal use only — redistribution of IMDb data requires a commercial licence from IMDb.
-- MeedyaManager retrieves metadata solely for the purpose of organising the user's own media library. No data is redistributed.
-- For IMDb's conditions of use, see: [imdb.com/conditions](https://www.imdb.com/conditions)
+- **This provider is OMDb, not IMDb.** OMDb (`omdbapi.com`) is an independent third-party service;
+  it republishes a subset of IMDb data under its own terms and is not affiliated with, endorsed
+  by, or a substitute for a licence from IMDb.com, Inc. or Amazon.com, Inc.
+- OMDb's terms are at [omdbapi.com](https://www.omdbapi.com/) — review them before using this
+  provider for anything beyond personal, non-commercial use.
+- IMDb itself is a trademark of IMDb.com, Inc., a subsidiary of Amazon.com, Inc. See
+  [imdb.com/conditions](https://www.imdb.com/conditions) for IMDb's own conditions of use, which
+  govern any IMDb-sourced data independent of OMDb's terms.
+- MeedyaManager retrieves metadata solely for the purpose of organising the user's own media
+  library. No data is redistributed.
 
 ---
 

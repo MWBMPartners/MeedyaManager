@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide explains how to configure and use the **ISRC Lookup** metadata provider in MeedyaManager.
+This guide explains how the **ISRC Lookup** metadata provider actually works in MeedyaManager: a **MusicBrainz-only** identifier lookup, not a federated cross-reference across multiple registries.
 
 ---
 
@@ -20,19 +20,31 @@ This guide explains how to configure and use the **ISRC Lookup** metadata provid
 
 ---
 
+> ⚠️ **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`), not `IsrcProvider`
+> specifically. `IsrcProvider` is real and has genuine wiremock-backed tests (`crates/mm-providers/
+> src/identifiers/mod.rs`), but nothing in the shipped CLI or GUI constructs it.
+
+---
+
 ## Overview
 
-The ISRC Lookup provider validates and resolves **International Standard Recording Codes** (ISRCs) — the globally unique identifiers assigned to individual audio and music video recordings. Every commercially released song or music video has (or should have) an ISRC.
+`IsrcProvider` (`crates/mm-providers/src/identifiers/mod.rs`) validates and resolves
+**International Standard Recording Codes** (ISRCs) using **MusicBrainz alone**. There is no
+Spotify or Deezer cross-referencing, no GTIN/barcode resolution, and no way to search by anything
+other than an ISRC the caller already has — this provider cannot discover an ISRC from a title/artist
+search; it only resolves metadata *from* an ISRC you already supply.
 
 This provider is useful for:
 
-- **Validating** ISRC codes already present in your media files' tags
-- **Looking up** recording metadata by ISRC via MusicBrainz
-- **Cross-referencing** ISRCs with GTIN/UPC barcodes for album identification
-- **Resolving** recording details (title, artist, release) from an ISRC code
-- **Enriching** metadata by federated lookup across multiple sources
+- **Validating** the format of an ISRC already present in your media files' tags
+- **Resolving** recording details (title, artist, release) from a known ISRC code via MusicBrainz
 
-The ISRC provider uses a **federated approach** — it queries MusicBrainz as its primary source and can optionally cross-reference results with Spotify and Deezer if those providers are configured and available.
+It is **not** a federated lookup: earlier documentation describing Spotify/Deezer
+cross-referencing or barcode (GTIN/UPC) resolution described a feature that does not exist in this
+codebase.
 
 ---
 
@@ -42,7 +54,7 @@ The ISRC provider uses a **federated approach** — it queries MusicBrainz as it
 
 ## How the Lookup Works
 
-MeedyaManager looks up an ISRC in two stages against MusicBrainz:
+MeedyaManager looks up an ISRC in two stages, both against MusicBrainz:
 
 1. **Direct lookup (primary).** A single, cheap, exact-match request against the dedicated ISRC endpoint:
 
@@ -59,25 +71,22 @@ MeedyaManager looks up an ISRC in two stages against MusicBrainz:
 
 A **rate-limited** response from the direct lookup is returned immediately, without attempting the fallback — piling a second request onto a server that just asked us to back off would be exactly the wrong response.
 
+If the caller doesn't supply an ISRC in the query at all, `search()` returns `NotSupported`
+immediately — there is no path from a title/artist search to an ISRC in this provider.
+
 > **Result limit.** The direct lookup endpoint takes no `limit` parameter of its own — MusicBrainz returns every recording registered against the ISRC. MeedyaManager truncates the parsed results to the requested result count itself, so a direct hit never returns more results than the fallback search would.
 
 ---
 
 ## Authentication
 
-**No dedicated authentication is required.** The ISRC provider's primary data source is MusicBrainz, which is freely accessible without an API key.
+**No dedicated authentication is required.** MusicBrainz is freely accessible without an API key;
+only a contact-bearing User-Agent header is needed (see [musicbrainz.md](musicbrainz.md#authentication)).
 
-### Federated Sources
-
-The ISRC provider queries the following sources (in priority order):
-
-| Source | Auth Required | Purpose |
-| ------ | ------------- | ------- |
-| **MusicBrainz** | No (free, rate-limited) | Primary ISRC lookup, recording details, GTIN/barcode cross-reference |
-| **Spotify** | Yes (if configured) | Optional: verify ISRC, fetch additional metadata |
-| **Deezer** | No (free) | Optional: verify ISRC, fetch additional metadata |
-
-If Spotify credentials are configured in your `.env` file, the ISRC provider will automatically use Spotify as an additional verification source. Deezer's public API is used when available. Neither is required — MusicBrainz alone provides complete ISRC lookup functionality.
+There is **no Spotify or Deezer integration in this provider at all** — `IsrcProvider`'s struct
+holds only an HTTP client, a base URL, and a User-Agent string. Any earlier documentation
+describing "federated sources" or Spotify credentials improving ISRC results was describing a
+feature that isn't in the code.
 
 ---
 
@@ -85,50 +94,20 @@ If Spotify credentials are configured in your `.env` file, the ISRC provider wil
 
 ### Environment Variables (`.env`)
 
-No environment variables are required specifically for the ISRC provider. However, if Spotify is configured for music lookups, the ISRC provider will leverage it automatically:
-
-```env
-# Optional: Spotify credentials improve ISRC cross-referencing
-SPOTIFY_CLIENT_ID=your_spotify_client_id
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
-```
+None are required or read by `IsrcProvider` specifically.
 
 ### Settings File (`settings.json5`)
 
-You can optionally configure the provider's behaviour in `config/settings.json5`:
+There is no per-provider `settings.json5` schema for ISRC — `validate_format`, `resolve_barcodes`,
+`use_spotify`, `use_deezer`, and `musicbrainz_rate_limit` are not real settings; nothing reads
+them, and the features they'd control (barcode resolution, Spotify/Deezer cross-referencing) do
+not exist in the code. The only real inputs are the constructor's User-Agent string and an
+optional `base_url` override used by the crate's own tests.
 
-```json5
-{
-  providers: {
-    isrc: {
-      // Enable or disable this provider (default: true)
-      enabled: true,
-
-      // Whether to validate ISRC format before lookup (default: true)
-      // Rejects malformed ISRCs early, before making network requests
-      validate_format: true,
-
-      // Whether to cross-reference with GTIN/UPC barcodes (default: true)
-      // If a matching release has a barcode, it is stored as custom_gtin
-      resolve_barcodes: true,
-
-      // Whether to use Spotify for cross-referencing (default: true)
-      // Only effective if Spotify credentials are configured
-      use_spotify: true,
-
-      // Whether to use Deezer for cross-referencing (default: true)
-      use_deezer: true,
-
-      // MusicBrainz rate limit: requests per second (default: 1.0)
-      // MusicBrainz enforces a 60-requests/minute (1 request/second, burst 1)
-      // limit for unauthenticated access — enforced automatically by a
-      // shared limiter covering the MusicBrainz, ISRC, and ISWC providers
-      // together, so this setting cannot exceed that shared budget
-      musicbrainz_rate_limit: 1.0,
-    }
-  }
-}
-```
+Rate limiting is real, but it isn't a per-provider dial: `IsrcProvider` shares **one** rate-limit
+bucket with `MusicBrainzProvider` and `IswcProvider` (60 requests/minute — 1 request/second, burst
+1) via `crate::musicbrainz::mb_get()`'s shared per-host limiter. See
+[musicbrainz.md](musicbrainz.md#authentication) for details.
 
 ---
 
@@ -142,29 +121,19 @@ The ISRC provider returns the following standard metadata fields when resolving 
 | `artist` | Artist name(s) | `"Queen"` |
 | `album` | Release/album name (from first matching release) | `"A Night at the Opera"` |
 | `year` | Release year | `"1975"` |
-| `isrc` | The validated ISRC code itself | `"GBUM71029604"` |
-| `track_num` | Track position on the release (if available) | `"11"` |
+| `isrc` | The queried ISRC, backfilled onto every result | `"GBUM71029604"` |
+
+There is **no `track_num` field populated** by this provider, and **no GTIN/barcode field** —
+neither is read from the MusicBrainz response by this code path.
 
 ---
 
 ## Custom Tags
 
-In addition to standard fields, the provider writes the following custom tags to media files:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_isrc_source` | Which source confirmed the ISRC | `"musicbrainz"` |
-| `custom_gtin` | GTIN/UPC/EAN barcode for the release (if found) | `"0602537492374"` |
-
-The `isrc` field itself is written as a **standard tag** (not a custom tag) because ISRC is part of MeedyaManager's standard tag map and is natively supported by most audio file formats (ID3v2 TSRC frame, Vorbis ISRC comment, MP4 ----:com.apple.iTunes:ISRC).
-
-The `custom_gtin` stores the Global Trade Item Number (GTIN) — also known as UPC or EAN barcode — for the album/release that contains the recording. This is useful for:
-
-- Identifying which specific release (pressing, remaster, deluxe edition) a track belongs to
-- Cross-referencing with music databases that use barcodes (Discogs, MusicBrainz)
-- Linking physical and digital release metadata
-
-The `custom_isrc_source` indicates which data source confirmed the ISRC, useful for auditing and debugging metadata chain of trust.
+This provider does not write a `custom_isrc_source` or `custom_gtin` tag — neither exists anywhere
+in the codebase. The `isrc` field itself is a **standard tag** (not a custom tag) because ISRC is
+part of MeedyaManager's standard tag map and is natively supported by most audio file formats
+(ID3v2 TSRC frame, Vorbis ISRC comment, MP4 `----:com.apple.iTunes:ISRC`).
 
 ---
 
@@ -187,14 +156,13 @@ XX-XXX-YY-NNNNN
 
 ### Validation Rules
 
-MeedyaManager validates ISRCs against these rules:
+`validate_isrc()` checks, after stripping non-alphanumeric characters:
 
-- Exactly 12 characters when unformatted (hyphens are stripped)
-- First 2 characters: uppercase letters (country code)
-- Next 3 characters: uppercase letters or digits (registrant code)
-- Next 2 characters: digits (year)
-- Last 5 characters: digits (designation)
-- The regex pattern: `^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$`
+- Exactly 12 characters
+- First 2 characters: ASCII letters (country code)
+- Next 3 characters: ASCII letters or digits (registrant code)
+- Next 2 characters: ASCII digits (year)
+- Last 5 characters: ASCII digits (designation)
 
 > **Note:** The year component (`YY`) represents when the ISRC was assigned, not when the recording was released. A 1975 recording reissued in 2010 may have year code `10`.
 
@@ -202,36 +170,33 @@ MeedyaManager validates ISRCs against these rules:
 
 ## Troubleshooting
 
-### Provider shows "Available" but returns no results for an ISRC
+### Provider errors with `NotSupported: ISRC query requires an ISRC code`
 
-- **Verify the ISRC is correct.** Check the format matches the pattern described above. Common errors include lowercase letters, extra spaces, or missing digits.
+You queried without an ISRC. This provider cannot search by title/artist — supply an `isrc` on the
+query.
+
+### Provider errors with "Invalid ISRC format"
+
+The supplied ISRC does not match the expected 12-character pattern once punctuation is stripped —
+see [Validation Rules](#validation-rules) above.
+
+### Provider shows "Available" but returns no results for a valid ISRC
+
 - **Check MusicBrainz directly.** Search at [musicbrainz.org](https://musicbrainz.org/search?type=isrc) — if the ISRC is not in MusicBrainz, no results will be returned.
 - **Not all recordings have ISRCs in MusicBrainz.** The MusicBrainz database is community-maintained; older or obscure recordings may not have ISRC entries. Consider tagging your files with MusicBrainz Picard first.
 
-### "Invalid ISRC format" warning
-
-The ISRC in your file's tags does not match the expected 12-character format. Common causes:
-
-- Extra whitespace or hidden characters in the tag value
-- Lowercase letters (ISRCs should be uppercase)
-- Hyphens included in the stored value (MeedyaManager strips these, but verify the underlying data)
-- The tag contains a different identifier type (e.g., a UPC barcode in the ISRC field)
-
 ### Rate limit warnings from MusicBrainz
 
-MusicBrainz enforces a rate limit of 60 requests/minute (1 request/second, burst 1) for unauthenticated access, shared across the MusicBrainz, ISRC, and ISWC providers together. If processing many files:
+MusicBrainz enforces 60 requests/minute (1 request/second, burst 1) for unauthenticated access,
+shared across the MusicBrainz, ISRC, and ISWC providers via one token bucket. A `429`/`503` is
+retried automatically once, honouring the server's `Retry-After` header (capped at 10 seconds).
+An ISRC that falls back to the recording search costs a second request, so those lookups take
+roughly twice as long.
 
-1. MeedyaManager's rate limiter handles this automatically, including one automatic retry on a `429`/`503` that honours the server's `Retry-After` header
-2. Processing will proceed at approximately 1 file per second for ISRC lookups — an unregistered ISRC that falls back to a recording search costs a second request, so those files take roughly twice as long
-3. This rate cannot be increased without a MusicBrainz authentication token (future feature)
+### Expecting GTIN/barcode data or a Spotify/Deezer cross-reference
 
-### GTIN/barcode not found
-
-Not all releases in MusicBrainz have barcodes attached. The `custom_gtin` field will only be populated when:
-
-- The ISRC resolves to a recording in MusicBrainz
-- That recording is linked to at least one release
-- That release has a barcode/GTIN associated with it
+**This is expected to be absent.** Neither exists in this provider — see
+[Available Data](#available-data) and [Authentication](#authentication).
 
 ---
 
@@ -239,7 +204,6 @@ Not all releases in MusicBrainz have barcodes attached. The `custom_gtin` field 
 
 - **MusicBrainz** data is available under the [CC0 (public domain)](https://creativecommons.org/publicdomain/zero/1.0/) licence for core data and [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/) for supplementary data. See [musicbrainz.org/doc/MusicBrainz_License](https://musicbrainz.org/doc/MusicBrainz_License).
 - The ISRC system is managed by the **International ISRC Registration Authority** (IFPI). ISRCs themselves are factual identifiers and are not subject to copyright.
-- Spotify and Deezer data (when used) is subject to their respective API Terms of Service.
 - MeedyaManager retrieves ISRC and related metadata solely for the purpose of organising the user's own media library. No data is redistributed.
 
 ---

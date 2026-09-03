@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide explains how to configure and use the **TMDB** (TheMovieDB) metadata provider in MeedyaManager.
+This guide explains what the **TMDb** metadata provider actually does in MeedyaManager: a real, API-key-gated client against `/3/search/multi`, with a much smaller field set than earlier documentation described.
 
 ---
 
@@ -19,42 +19,45 @@ This guide explains how to configure and use the **TMDB** (TheMovieDB) metadata 
 
 ---
 
+> ⚠️ **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`). `TmdbProvider` is
+> real and compiled, tested against canned JSON fixtures (no wiremock/live-HTTP test exists for
+> it), but nothing in the shipped CLI or GUI constructs it. `MM_TMDB_API_KEY` **is** parsed into
+> `mm_core::config::AppConfig` at startup, but no CLI/GUI command currently constructs a
+> `TmdbProvider` with that value — setting it has no effect on a lookup today.
+
+---
+
 ## Overview
 
-The TMDB provider retrieves movie and TV show metadata from **TheMovieDB** (themoviedb.org), one of the most comprehensive community-maintained databases of film and television information. TMDB is widely used by media centre applications (Plex, Kodi, Jellyfin, Emby) and provides rich, structured data.
-
-This provider is useful for:
-
-- Looking up movie metadata (title, director, year, genres, ratings, cast, crew)
-- Retrieving TV series information including season and episode details
-- Downloading high-resolution movie posters and TV show artwork
-- Cross-referencing with IMDb IDs for interoperability with other tools
-- Obtaining audience ratings, overviews, and synopses
-
-The provider uses the **TMDB API v3** at `https://api.themoviedb.org/3/`.
+`TmdbProvider` (`crates/mm-providers/src/video/mod.rs`) queries TMDb's **`/3/search/multi`**
+endpoint, which returns a mixed feed of movies, TV shows, and people distinguished by a
+`media_type` field. MeedyaManager sends only `api_key`, `query`, `page=1`, and an optional `year`
+— there is no `language`, `region`, `include_credits`, or `include_external_ids` parameter ever
+sent, and no separate request is ever made for cast/crew or external IDs.
 
 ---
 
 ## Authentication
 
-**A free API key is required.** TMDB provides free API access for personal and non-commercial use.
+**A free TMDb API key is required.**
 
-### Step-by-Step: Getting Your TMDB API Key
+1. Create an account at [themoviedb.org/signup](https://www.themoviedb.org/signup).
+2. Go to [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) and request an
+   API key.
+3. Use the **API Key (v3 auth)** value — MeedyaManager sends it as the `api_key` query parameter,
+   not as a v4 Bearer token.
 
-1. **Create a TMDB account** at [themoviedb.org/signup](https://www.themoviedb.org/signup)
-2. **Verify your email address** via the confirmation link TMDB sends you
-3. **Navigate to API settings:**
-   - Click your avatar (top right) > **Settings**
-   - Select **API** from the left sidebar
-   - Or go directly to: [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-4. **Request an API key:**
-   - Click **Create** or **Request an API key**
-   - Select **Developer** as the usage type
-   - Fill in the application details (name: "MeedyaManager", type: "Personal", description: "Personal media library organiser")
-   - Accept the Terms of Use
-5. **Copy your API key (v3 auth)** — this is the long alphanumeric string, not the Bearer token
+### How MeedyaManager reads it today
 
-> **Important:** Use the **API Key (v3 auth)** value, not the API Read Access Token (v4). MeedyaManager uses v3 API authentication.
+`TmdbProvider::new(api_key: Option<String>)` takes the key directly as a constructor argument.
+Separately, `MM_TMDB_API_KEY` **is** read into `mm_core::config::AppConfig` at startup
+(`crates/mm-core/src/config/mod.rs`) — but as the banner above explains, nothing currently threads
+that config value into a constructed `TmdbProvider`. The generic 4-tier `CredentialStore` in
+`crates/mm-providers/src/credentials.rs` would also resolve `MM_TMDB_*` if something called it for
+this provider; nothing does yet. Its tier 4 is a **plain JSON file**, not encrypted (issue #209).
 
 ---
 
@@ -62,182 +65,92 @@ The provider uses the **TMDB API v3** at `https://api.themoviedb.org/3/`.
 
 ### Environment Variables (`.env`)
 
-Add your TMDB API key to the `.env` file in the project root:
-
 ```env
-# TMDB API key (v3 auth) — get it from themoviedb.org/settings/api
-TMDB_API_KEY=your_api_key_here
+MM_TMDB_API_KEY=your_api_key_here
 ```
+
+Parsed into `AppConfig` (see above) but not yet used to construct a working provider.
 
 ### Settings File (`settings.json5`)
 
-You can optionally configure the provider's behaviour in `config/settings.json5`:
-
-```json5
-{
-  providers: {
-    tmdb: {
-      // Enable or disable this provider (default: true)
-      enabled: true,
-
-      // Preferred language for metadata (ISO 639-1, default: "en")
-      // Determines the language of titles, overviews, and genre names
-      language: "en",
-
-      // Preferred region for release dates and certifications (ISO 3166-1, default: "GB")
-      region: "GB",
-
-      // Whether to fetch cast and crew data (default: true)
-      // Adds director, cast names to results but requires an extra API call per result
-      include_credits: true,
-
-      // Whether to fetch external IDs like IMDb ID (default: true)
-      include_external_ids: true,
-
-      // Maximum number of search results to evaluate (1-20, default: 5)
-      result_limit: 5,
-    }
-  }
-}
-```
-
-### Alternative: API Key in Settings
-
-If you prefer not to use a `.env` file, you can place the API key directly in `settings.json5`:
-
-```json5
-{
-  providers: {
-    tmdb: {
-      api_key: "your_api_key_here",
-    }
-  }
-}
-```
-
-> **Security note:** The `.env` approach is preferred because `.env` is git-ignored by default, preventing accidental commits of your API key.
+There is no per-provider `settings.json5` schema for TMDb — `language`, `region`,
+`include_credits`, `include_external_ids`, and `result_limit` are not real settings; nothing reads
+them, and the features they'd control (localisation, cast/crew, IMDb-ID cross-referencing) do not
+exist in this provider's request. The only real input is the constructor's `api_key` and an
+optional `base_url` override used by the crate's own tests.
 
 ---
 
 ## Available Data
 
-The TMDB provider returns the following standard metadata fields:
+| Field | Response field | Notes |
+| ----- | --------------- | ----- |
+| `title` | `title` (movies) or `name` (TV) | |
+| `year` | first 4 digits of `release_date` or `first_air_date` | |
+| cover art | `poster_path`, requested at `original` and `w500` | both JPEG |
+| score | `vote_average` / 10, clamped to 0.0-1.0 | |
+| provider ID (metadata) | `id` | |
+| overview (metadata) | `overview`, when non-empty | plot summary text |
+| media type (metadata) | `media_type` | e.g. `"movie"`, `"tv"` |
 
-### For Movies
-
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Movie title | `"Inception"` |
-| `artist` | Director name | `"Christopher Nolan"` |
-| `director` | Director name | `"Christopher Nolan"` |
-| `genre` | Genres (comma-separated) | `"Science Fiction, Action, Adventure"` |
-| `year` | Release year | `"2010"` |
-
-### For TV Shows / Episodes
-
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Episode title | `"Ozymandias"` |
-| `show` | TV series name | `"Breaking Bad"` |
-| `season` | Season number | `"5"` |
-| `episode` | Episode number | `"14"` |
-| `episode_title` | Episode title | `"Ozymandias"` |
-| `director` | Episode director | `"Rian Johnson"` |
-| `genre` | Series genres | `"Drama, Crime, Thriller"` |
-| `year` | Episode air year | `"2013"` |
+There is **no `artist`/`director`, `genre`, `season`, `episode`, or IMDb-ID field** —
+`/3/search/multi`'s response does carry a `genre_ids` array, but this parser reads it into a
+field marked `#[allow(dead_code)]` and never turns it into a genre string or attaches it to the
+result. No second request is ever made to resolve genre names, credits, or `external_ids`.
 
 ---
 
 ## Custom Tags
 
-In addition to standard fields, the provider writes the following custom tags to media files:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_tmdb_id` | TMDB movie or TV show ID | `"27205"` |
-| `custom_tmdb_url` | Direct link on TMDB | `"https://www.themoviedb.org/movie/27205"` |
-| `custom_tmdb_imdb_id` | Corresponding IMDb ID (if available) | `"tt1375666"` |
-| `custom_tmdb_rating` | TMDB user rating (0.0-10.0 scale) | `"8.4"` |
-| `custom_tmdb_overview` | Plot summary / synopsis | `"A thief who steals corporate secrets..."` |
-
-The `custom_tmdb_imdb_id` is particularly valuable for cross-referencing with other databases and tools. Many media managers and players recognise IMDb IDs natively.
-
-The `custom_tmdb_rating` can be used in rename rules — for example, to sort movies into folders by rating tier:
-
-```json5
-// Example: Sort by rating tier
-rename_format: "Movies/{custom_tmdb_rating > 7 ? 'Highly Rated' : 'Standard'}/{title} ({year}).{extension}"
-```
+Any `custom_tmdb_*` tag would come from the metadata fields above once tag-writing wiring exists
+for this provider (see the reachability banner). There is **no** `custom_tmdb_imdb_id` — no
+external-IDs request is ever made — and no `custom_tmdb_rating` distinct from the internal `score`
+value.
 
 ---
 
 ## Cover Art
 
-The TMDB provider supplies **high-resolution static JPEG poster images** at original resolution.
+Two `CoverArtInfo` entries per result, both derived from `poster_path`:
 
-- Movie posters and TV show posters are fetched from the TMDB image CDN
-- Image URL format: `https://image.tmdb.org/t/p/original/{poster_path}`
-- Image format: JPEG
-- Resolution: Original resolution (typically 2000x3000 for movie posters)
-- The image is saved as `FrontCover.jpg` alongside the media file
-- If embedding is enabled, the image is also embedded in the file's metadata
+| Size | URL | Notes |
+| ---- | --- | ----- |
+| `original` | `https://image.tmdb.org/t/p/original{poster_path}` | no known width/height |
+| `w500` | `https://image.tmdb.org/t/p/w500{poster_path}` | 500×750 |
 
-Available image sizes from TMDB (configurable):
-
-| Size | Typical Dimensions | Use Case |
-| ---- | ------------------ | -------- |
-| `w92` | 92 x 138 | Thumbnail |
-| `w185` | 185 x 278 | Small display |
-| `w500` | 500 x 750 | Medium display |
-| `w780` | 780 x 1170 | Large display |
-| `original` | ~2000 x 3000 | Full resolution (default) |
-
-> **Tip:** If you have limited disk space or are embedding art into many files, consider configuring a smaller image size to reduce file sizes.
+No other TMDb image size (`w92`, `w185`, `w780`) is ever requested, and there is no configurable
+"preferred size" — the two above are always both returned when a poster exists.
 
 ---
 
 ## Troubleshooting
 
-### "Missing credentials" — Provider not available
+### "Missing credentials" — provider not available
 
-- Ensure `TMDB_API_KEY` is set in your `.env` file (or in `settings.json5` under `providers.tmdb.api_key`)
-- Verify the key is correct — copy it directly from [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-- Check that your `.env` file is next to `settings.json5`
-- Run `meedya lookup --list-providers` to verify provider status
+`TmdbProvider::new(None)` — no `api_key` was supplied. There is no environment variable or
+`settings.json5` field that reaches this provider today; you must pass the key directly to the
+constructor (see [Authentication](#authentication)).
 
-### "401 Unauthorized" errors in logs
+### HTTP 429 from TMDb
 
-- Your API key is invalid or has been revoked
-- Log in to TMDB and check your API settings — you may need to regenerate the key
-- Ensure you are using the **API Key (v3 auth)**, not the v4 Read Access Token
+Mapped directly to `ProviderError::RateLimited("tmdb")`. **MeedyaManager's shared rate limiter is
+not consulted before this request** — only MusicBrainz, ISRC, and ISWC go through the shared
+`governor` limiter; TMDb has a configured default (`tmdb` → 40 RPM in
+`crates/mm-providers/src/rate_limiter.rs::default_rpm_for`) that nothing in the request path
+actually checks.
 
-### Results are in the wrong language
+### Expecting cast/crew, IMDb ID, or localisation in another language
 
-- Set the `language` parameter in your provider config (e.g., `language: "en"` for English)
-- TMDB falls back to the original language if a translation is not available
-- Not all movies/shows have translations in all languages
-
-### TV episode matching is inaccurate
-
-- TMDB uses **absolute episode ordering** for some anime series, which differs from season-based ordering. Check TMDB's entry for the show to understand its episode structure.
-- Ensure your files have `show`, `season`, and `episode` metadata populated for best matching
-- Specials and bonus episodes may have different numbering on TMDB compared to TVDB or IMDb
-
-### API rate limiting
-
-TMDB allows approximately 40 requests per 10-second window. MeedyaManager's rate limiter handles this automatically. If processing a very large video library:
-
-1. Processing will proceed at a throttled pace — no manual intervention needed
-2. You can reduce `result_limit` and disable `include_credits` to reduce API calls per file
-3. Check the logs for rate-limit retry messages
+**This is expected to be absent.** None of `include_credits`, `include_external_ids`, or
+`language` is a real setting — see [Available Data](#available-data). TMDb's response is always
+requested in TMDb's default language for the query, with no `language=`/`region=` parameter sent.
 
 ---
 
 ## Legal Notes
 
-- TMDB provides a **free API** for personal and non-commercial use under its [Terms of Use](https://www.themoviedb.org/terms-of-use).
+- TMDb provides a **free API** for personal and non-commercial use under its [Terms of Use](https://www.themoviedb.org/terms-of-use).
 - Attribution: "This product uses the TMDB API but is not endorsed or certified by TMDB."
-- Movie and TV metadata are contributed by TMDB's community and are available under the [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) licence for data fields.
 - Poster images are the property of their respective rights holders (studios, networks, distributors).
 - MeedyaManager retrieves metadata solely for the purpose of organising the user's own media library. No content is redistributed.
 

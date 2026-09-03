@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide covers setting up the **Deezer** metadata provider in MeedyaManager. Deezer's public API requires no authentication, making it one of the simplest providers to use.
+This guide covers the **Deezer** metadata provider in MeedyaManager. Deezer's public API requires no authentication, making it one of the simplest providers to use — but its actual query syntax and returned fields differ from earlier documentation.
 
 ---
 
@@ -19,30 +19,37 @@ This guide covers setting up the **Deezer** metadata provider in MeedyaManager. 
 
 ---
 
+> ⚠️ **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`). `DeezerProvider`
+> is real and compiled, tested against canned JSON fixtures (no wiremock/live-HTTP test exists for
+> it), but nothing in the shipped CLI or GUI constructs it.
+
+---
+
 ## Overview
 
-The Deezer provider uses the **Deezer Public API** to search the Deezer music catalog for track and album metadata. The API is freely accessible with no authentication required, providing reliable metadata including ISRC codes, track/disc positioning, duration, and high-resolution cover art.
+`DeezerProvider` (`crates/mm-providers/src/music/mod.rs`) uses the **Deezer Public API**, which
+requires no authentication. It supports two request shapes:
 
-**Key features:**
-
-- Track and album search via the Deezer catalog
-- ISRC code retrieval for precise track identification
-- Track position and disc number data
-- Duration information (in seconds)
-- Static cover art up to 1000x1000 pixels (JPEG)
-- No authentication required — fully public API
+- **ISRC lookup** (used when the query carries an ISRC): `GET {base}/track/isrc:<isrc>` — a
+  direct hit on a single track.
+- **Keyword search** (otherwise): `GET {base}/search?q=<term>&limit=<n>`, where `<term>` is simply
+  `"<title> <artist>"` concatenated with a space — **there are no `track:`/`artist:`/`album:`
+  field-prefixed query terms**; that syntax is not sent anywhere in this provider.
 
 ---
 
 ## Authentication
 
-Deezer's public search API requires **no authentication**. There are no API keys, tokens, or accounts needed. MeedyaManager can use this provider immediately without any setup.
+Deezer's public search API requires **no authentication** — no API keys, tokens, or accounts.
 
 ### No setup required
 
-The Deezer provider is always available out of the box. Simply ensure it is enabled in your settings (it is enabled by default).
+`DeezerProvider::new()` takes no credentials at all.
 
-> **Note:** Deezer does offer authenticated API endpoints for user-specific data (playlists, favourites, etc.), but MeedyaManager only uses the public search endpoints which require no credentials.
+> **Note:** Deezer does offer authenticated endpoints for user-specific data (playlists, favourites, etc.), but MeedyaManager only ever calls the public `/search` and `/track/isrc:` endpoints, which require no credentials.
 
 ---
 
@@ -50,91 +57,53 @@ The Deezer provider is always available out of the box. Simply ensure it is enab
 
 ### Environment Variables (`.env`)
 
-No environment variables are required for Deezer.
+None are required or read for Deezer.
 
 ### Settings (`settings.json5`)
 
-```json5
-{
-  providers: {
-    deezer: {
-      enabled: true,                    // Enable or disable this provider
-      priority: 4,                      // Provider priority (lower = higher priority)
-    }
-  }
-}
-```
-
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| `enabled` | `true` | Whether this provider is active |
-| `priority` | `4` | Search priority relative to other providers |
+There is no per-provider `settings.json5` schema for Deezer — `enabled` and `priority` are not
+real settings; nothing reads them. `DeezerProvider::new()` takes no arguments (there is an
+optional `base_url` override used by the crate's own tests).
 
 ---
 
 ## Available Data
 
-The Deezer provider returns the following standard metadata fields:
-
 | Field | Source | Example |
 | ----- | ------ | ------- |
-| `title` | `track.title` | "Bohemian Rhapsody" |
-| `artist` | `track.artist.name` | "Queen" |
-| `album` | `track.album.title` | "A Night at the Opera" |
-| `year` | `track.release_date` | "1975" |
-| `track_num` | `track.track_position` | "11" |
-| `disc_num` | `track.disk_number` | "1" |
-| `isrc` | `track.isrc` | "GBUM71029604" |
+| `title` | `data[].title` | "Bohemian Rhapsody" |
+| `artist` | `data[].artist.name` | "Queen" |
+| `album` | `data[].album.title` | "A Night at the Opera" |
+| `isrc` | `data[].isrc` | "GBUM71029604" |
+| score | `data[].rank` (0-100,000, normalised to 0.0-1.0) | 0.62 |
+| content advisory (metadata) | `data[].explicit_lyrics` mapped to `"explicit"`/`"clean"` | "clean" |
+| duration (metadata) | `data[].duration` (seconds, used as-is) | 354 |
+| provider ID (metadata) | `data[].id` | "3157894" |
 
-### Search Syntax
-
-MeedyaManager constructs Deezer search queries using field prefixes for precision:
-
-```text
-track:"Bohemian Rhapsody" artist:"Queen" album:"A Night at the Opera"
-```
-
-This targeted syntax produces more accurate results than simple keyword searches.
+There is **no `year` field** — the Deezer track object this parser reads has no release-date
+field at all — and **no `track_num`/`disc_num` field**; Deezer's search response doesn't carry
+track/disc position and this parser doesn't read one. Any earlier documentation claiming those
+three fields from Deezer was inaccurate.
 
 ---
 
 ## Custom Tags
 
-The following custom tags are stored in the file's metadata when matched:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_deezer_id` | Deezer track ID | `"3157894"` |
-| `custom_deezer_url` | Deezer URL for the track | `"https://www.deezer.com/track/3157894"` |
-| `custom_deezer_isrc` | ISRC code from Deezer | `"GBUM71029604"` |
-| `custom_deezer_duration` | Duration in seconds | `"354"` |
-
-These tags can be used in MeedyaManager rename templates and sorting rules:
-
-```json5
-rename_format: "{artist}/{album}/{track_num} - {title}.{extension}"
-```
+Any `custom_deezer_*` tag would come from the metadata fields above once tag-writing wiring exists
+for this provider (see the reachability banner). The ISRC itself is a **standard tag** (not
+custom), since ISRC is part of MeedyaManager's standard tag map.
 
 ---
 
 ## Cover Art
 
-Deezer provides static cover art in multiple resolutions. MeedyaManager uses the largest available:
+| Type | Format | Resolution | Source field |
+| ---- | ------ | ---------- | ------------ |
+| Primary | JPEG | 1000×1000 | `album.cover_xl` |
+| Fallback | JPEG | 250×250 | `album.cover_medium` |
 
-| Type | Format | Resolution | Source |
-| ---- | ------ | ---------- | ------ |
-| **Static (front cover)** | JPEG | 1000x1000 | `album.cover_xl` |
-
-Deezer cover art resolutions:
-
-| Size Key | Resolution |
-| -------- | ---------- |
-| `cover_small` | 56x56 |
-| `cover_medium` | 250x250 |
-| `cover_big` | 500x500 |
-| `cover_xl` | 1000x1000 |
-
-MeedyaManager always uses `cover_xl` for the best quality and saves it as `FrontCover.jpg`.
+Both are returned when present (`cover_xl` first); MeedyaManager does not request `cover_small` or
+`cover_big`.
 
 ---
 
@@ -142,49 +111,33 @@ MeedyaManager always uses `cover_xl` for the best quality and saves it as `Front
 
 ### "Deezer search returned 0 results"
 
-**Possible causes:**
-- The track may not be available in the Deezer catalog (regional availability varies)
-- The search query may be too specific or contain unusual characters
-
-**Solutions:**
-1. Try searching on [deezer.com](https://www.deezer.com/) directly to confirm the track exists
-2. Simplify the search — try with just title and artist (without album)
-3. Check for unusual characters in the metadata that might interfere with the search syntax
+- The track may not be available in the Deezer catalogue (regional availability varies).
+- The query is a plain `"<title> <artist>"` string with no field weighting — very generic titles
+  may return unrelated matches or nothing useful.
 
 ### HTTP 429 — Rate limit exceeded
 
-**Cause:** Deezer enforces rate limits on their public API (approximately 50 requests per 5 seconds).
+**Cause:** Deezer enforces rate limits on its public API. **MeedyaManager's shared rate limiter is
+not consulted for Deezer** — only MusicBrainz, ISRC, and ISWC requests go through the shared
+`governor` limiter. A non-2xx response (including 429) from Deezer is surfaced directly as
+`ProviderError::NetworkError` with the HTTP status included; there is no automatic retry or
+client-side throttling for this provider.
 
-**Solution:**
-- MeedyaManager includes built-in rate limiting to prevent this
-- If you encounter this during bulk operations, the rate limiter will automatically slow requests
-- Wait a few seconds and retry
+### Missing ISRC, or no year/track number in results
 
-### HTTP 500 / 502 — Server error
-
-**Cause:** Deezer API may be temporarily unavailable.
-
-**Solution:**
-- These are transient errors on Deezer's side
-- MeedyaManager will automatically retry failed requests
-- If persistent, check [Deezer's status page](https://status.deezer.com/) for outages
-
-### Missing ISRC in results
-
-**Cause:** Not all Deezer tracks include ISRC codes. Some catalogue entries, particularly older or regional releases, may lack this field.
-
-**Solution:** This is expected. MeedyaManager will use ISRC data from other providers (Spotify, MusicBrainz, Apple Music) when Deezer does not provide it.
+**This is expected** for missing ISRC on some catalogue entries. A missing year or track number is
+**always** expected — see [Available Data](#available-data): this parser never populates either
+field, regardless of what the track actually has.
 
 ---
 
 ## Legal Notes
 
-- The Deezer Public API is provided under the [Deezer API Terms of Use](https://developers.deezer.com/termsofuse)
-- No account or API key is required for public search endpoints
-- Deezer's API is free to use for non-commercial and personal projects
-- Rate limits apply — MeedyaManager respects these automatically
-- Cover art and metadata are the property of their respective rights holders
-- MeedyaManager stores provider IDs and URLs as custom metadata tags for reference and linking; this does not imply endorsement by Deezer SA
+- The Deezer Public API is provided under the [Deezer API Terms of Use](https://developers.deezer.com/termsofuse).
+- No account or API key is required for the public search/lookup endpoints used here.
+- Cover art and metadata are the property of their respective rights holders.
+- MeedyaManager stores provider IDs as custom metadata tags for reference and linking; this does
+  not imply endorsement by Deezer SA.
 
 ---
 
