@@ -17,12 +17,28 @@ yanked = "warn"
 # Ignore unfixable advisories on transitive dependencies. Each entry must
 # document WHY the advisory can't be addressed and what triggered it.
 ignore = [
-    # Unmaintained crates with no upstream replacement available.
-    "RUSTSEC-2024-0384", # instant — unmaintained (pulled in via parking_lot ← governor)
-    "RUSTSEC-2024-0436", # paste — unmaintained (pulled in via lofty)
-
     # rsa timing sidechannel (Marvin Attack) — no upstream fix yet.
     "RUSTSEC-2023-0071", # rsa — used transitively by sqlx / oauth2
+
+    # quick-xml DoS pair (quadratic attribute-dup check / unbounded namespace
+    # allocation), fixed upstream in quick-xml >=0.41.0. Reaches us on two
+    # paths, both transitive through the meedya-core git dependency, neither
+    # bumpable from this repo alone:
+    #   - RUSTSEC-2026-0194 + RUSTSEC-2026-0195 via quick-xml 0.36.2 ←
+    #     meedya-lyrics ← meedya-core. meedya-core's own workspace manifest
+    #     pins `quick-xml = "0.36"` — true both at our pinned rev (222ca7590493)
+    #     and on meedya-core's current main (29eef388 as of 2026-09-01) — so
+    #     re-pointing our git rev would not pick up a fix.
+    #   - RUSTSEC-2026-0194 + RUSTSEC-2026-0195 via quick-xml 0.38.4 ← plist ←
+    #     meedya-library-import ← meedya-core. The fix needs plist >=1.9.0,
+    #     which declares `rust-version = "1.88.0"` — above our workspace MSRV
+    #     of 1.85 (Cargo.toml [workspace.package].rust-version) — so bumping
+    #     plist alone would break our MSRV even though plist isn't pinned by
+    #     meedya-core.
+    # Revisit trigger: re-check on the next meedya-core rev bump (watch for
+    # meedya-core moving to quick-xml >=0.41, or our MSRV moving to >=1.88).
+    "RUSTSEC-2026-0194", # quick-xml — quadratic attribute-dup check (DoS)
+    "RUSTSEC-2026-0195", # quick-xml — unbounded namespace-decl allocation (DoS)
 ]
 
 [licenses]

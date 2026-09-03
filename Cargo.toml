@@ -126,7 +126,7 @@ libc = "0.2"
 
 # Internationalisation — GNU gettext bindings for translatable strings
 # Package name on crates.io is "gettext-rs"; lib name is "gettextrs"
-gettextrs = { version = "0.7", package = "gettext-rs" }
+gettextrs = { version = "0.8", package = "gettext-rs" }
 
 # Semantic version comparison (mm-update)
 semver = { version = "1", features = ["serde"] }

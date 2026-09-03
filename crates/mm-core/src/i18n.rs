@@ -59,10 +59,30 @@ use gettextrs::{LocaleCategory, bind_textdomain_codeset, bindtextdomain, setloca
 /// function returns, leaving the application running with untranslated strings
 /// (English fallback from `msgid`s is always available).
 #[cfg(target_os = "linux")]
+#[allow(unsafe_code)] // SAFETY justified at the `unsafe` block below.
 pub fn init() {
     // Step 1 — activate the system locale (e.g. "fr_FR.UTF-8").
     // Passing an empty string tells gettext to read the LC_ALL / LANG env vars.
-    setlocale(LocaleCategory::LcAll, "");
+    //
+    // SAFETY: `setlocale` became `unsafe` in gettext-rs 0.8 (RUSTSEC-2026-0244)
+    // because it wraps the C `setlocale()`, which non-atomically mutates a
+    // process-global locale object and reads the environment with no
+    // synchronization — unsound if it races with anything else touching
+    // locale/environment state. Upstream's documented mitigation is to call
+    // it "as early as possible, prior to starting any more threads or
+    // enabling any POSIX signals". We call it once per process, before any
+    // user-visible text is produced: at the very top of `main()`'s body in
+    // `mm-cli/src/main.rs` (the `#[tokio::main]` runtime has parked worker
+    // threads at that point, but none has been handed a task yet, so none is
+    // touching locale/env), and before `adw::init()` in `mm-gtk/src/app.rs`
+    // (single-threaded at that point). Grepping this codebase confirms no
+    // other non-test code path calls `setlocale` or mutates process
+    // environment variables — `std::env::set_var`/`remove_var` appear only
+    // under `#[cfg(test)]` — so there is no concurrent reader/writer for this
+    // call to race with.
+    unsafe {
+        setlocale(LocaleCategory::LcAll, "");
+    }
 
     // Step 2 — resolve the locale directory.
     let locale_dir = resolve_locale_dir();
