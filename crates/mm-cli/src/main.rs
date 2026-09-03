@@ -113,26 +113,71 @@ async fn main() {
     // Parse command-line arguments using clap derive
     let cli = Cli::parse();
 
-    // Initialise tracing subscriber with verbosity level
-    let filter_level = match cli.verbose {
+    // Console verbosity comes from the -v count, never from settings.json5.
+    // The CLI is user-facing, so its terminal output stays quiet by default
+    // even when the config asks for a chatty *file* log.
+    let console_level = match cli.verbose {
         0 => "warn", // Default: warnings only (CLI is user-facing)
         1 => "info",
         2 => "debug",
         _ => "trace",
     };
-    // Ignore subscriber init errors (e.g. if already initialised in tests)
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter_level)
-        .try_init();
+
+    // ── Bootstrap subscriber ────────────────────────────────────────────
+    //
+    // Chicken-and-egg: the real subscriber needs `logging.file` and
+    // `logging.level` from the config, but loading the config itself emits
+    // tracing events (which file it read, why it fell back to defaults) that
+    // are exactly what a user debugging a bad settings.json5 needs to see.
+    //
+    // Solved with a THREAD-LOCAL default that covers only the config load.
+    // `with_default` does not claim the process-global subscriber slot, so
+    // the real subscriber installed below is still the first and only global
+    // one — installing a global here would permanently block the file sink.
+    let bootstrap = tracing_subscriber::fmt()
+        .with_env_filter(console_level)
+        .finish();
 
     // Build the shared CLI context (loads config, sets output format)
-    let ctx = match CliContext::build(cli.config.as_deref(), cli.verbose, cli.json, cli.dry_run) {
+    let ctx_result = tracing::subscriber::with_default(bootstrap, || {
+        CliContext::build(cli.config.as_deref(), cli.verbose, cli.json, cli.dry_run)
+    });
+    let ctx = match ctx_result {
         Ok(ctx) => ctx,
         Err(e) => {
             output::print_error(&format!("Failed to initialise: {e}"));
             std::process::exit(ExitCode::ERROR);
         }
     };
+
+    // ── Real subscriber ─────────────────────────────────────────────────
+    //
+    // Issue #50: `init_logging` had zero callers, so the whole `[logging]`
+    // section of settings.json5 — file path, level, PII redaction — did
+    // nothing. Wire it up now that the config is in hand.
+    let mut log_config = mm_core::logging::LogConfig::from_settings(&ctx.config.logging);
+    // The -v flags own the console; settings.json5 owns the file.
+    log_config.console_level = console_level.to_string();
+    match mm_core::logging::init_logging(&log_config) {
+        Ok(Some(path)) => {
+            tracing::debug!(log_file = %path.display(), "File logging active");
+        }
+        Ok(None) => {
+            // File logging is off — console only. Nothing to announce.
+        }
+        Err(e) => {
+            // A logging failure (unwritable log directory, say) must never
+            // stop the command the user actually asked for. Fall back to a
+            // console-only subscriber so the run is not silent, and tell them
+            // plainly why their configured log file is not being written.
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(console_level)
+                .try_init();
+            output::print_warning(&format!(
+                "Could not initialise file logging: {e} — continuing with console output only"
+            ));
+        }
+    }
 
     // Dispatch to the appropriate subcommand handler
     let exit_code = match cli.command {

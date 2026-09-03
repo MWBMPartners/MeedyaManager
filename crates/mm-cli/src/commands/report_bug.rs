@@ -10,7 +10,7 @@ use crate::context::CliContext;
 use crate::output::{self, ExitCode, OutputFormat};
 use clap::Args;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ─── Command arguments ─────────────────────────────────────────────────────
 
@@ -98,60 +98,39 @@ pub fn run(ctx: &CliContext, args: &ReportBugArgs) -> anyhow::Result<i32> {
 
     // ── 5. Read log tail (if requested) ─────────────────────────────────
     let log_tail = if args.include_logs {
-        // Try to find the most recent log file from the standard log directory.
-        // Log files are named meedya-YYYY-MM-DD.log and rotated daily.
-        let log_dir = dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("MeedyaManager")
-            .join("logs");
-
-        // Glob for log files matching the pattern meedya-*.log
-        let mut log_files = Vec::new();
-
-        if let Ok(entries) = std::fs::read_dir(&log_dir) {
-            for entry in entries.flatten() {
-                if let Ok(metadata) = entry.metadata() {
-                    let path = entry.path();
-                    // Only accept files with the name pattern meedya-YYYY-MM-DD.log
-                    if let Some(name) = path.file_name() {
-                        if let Some(name_str) = name.to_str() {
-                            if name_str.starts_with("meedya-") && name_str.ends_with(".log") {
-                                log_files.push((path, metadata.modified().ok()));
-                            }
-                        }
-                    }
+        // Issue #50: this used to scan the platform log directory for
+        // `meedya-*.log` and, on finding nothing, tell the user to "enable
+        // file output in settings.json5" — advice that did nothing, because
+        // nothing ever called `init_logging`. The lookup is now driven by the
+        // same `[logging]` config the CLI actually installs at startup, so
+        // the path we read and the advice we print are both true.
+        match locate_log_file(&ctx.config.logging, &config_path) {
+            Ok(log_file) => match std::fs::read_to_string(&log_file) {
+                Ok(contents) => {
+                    // Take last 200 lines
+                    let lines: Vec<String> = contents
+                        .lines()
+                        .rev()
+                        .take(200)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .map(std::string::ToString::to_string)
+                        .collect();
+                    Some(lines)
                 }
-            }
-        }
-
-        // Sort by modification time to get the most recent log file (most recent first)
-        use std::cmp::Reverse;
-        log_files.sort_by_key(|a| Reverse(a.1));
-
-        if let Some((log_file, _)) = log_files.first() {
-            if let Ok(contents) = std::fs::read_to_string(log_file) {
-                // Take last 200 lines
-                let lines: Vec<String> = contents
-                    .lines()
-                    .rev()
-                    .take(200)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .map(std::string::ToString::to_string)
-                    .collect();
-                Some(lines)
-            } else {
-                output::print_warning(&format!("Could not read log file: {}", log_file.display()));
+                Err(e) => {
+                    output::print_warning(&format!(
+                        "Could not read log file {}: {e}",
+                        log_file.display()
+                    ));
+                    None
+                }
+            },
+            Err(explanation) => {
+                output::print_warning(&explanation);
                 None
             }
-        } else {
-            output::print_warning(&format!(
-                "No log files found in {}. Logs are written when the logging system is \
-                    initialised with file output enabled (check settings.json5).",
-                log_dir.display()
-            ));
-            None
         }
     } else {
         None
@@ -234,6 +213,84 @@ pub fn run(ctx: &CliContext, args: &ReportBugArgs) -> anyhow::Result<i32> {
     Ok(ExitCode::SUCCESS)
 }
 
+// ─── Log file discovery ────────────────────────────────────────────────────
+
+/// Find the log file to attach to a bug report.
+///
+/// Returns the path on success, or a user-facing explanation of why there is
+/// nothing to attach. The explanation is the whole point of this function:
+/// before issue #50 the command pointed users at a settings toggle that had
+/// no effect anywhere in the codebase, so a "no logs found" message was
+/// actively misleading. Each branch below now describes the real state.
+fn locate_log_file(
+    logging: &mm_core::config::LoggingConfig,
+    config_path: &str,
+) -> Result<PathBuf, String> {
+    let log_config = mm_core::logging::LogConfig::from_settings(logging);
+
+    // Case 1 — file logging is simply off. `logging.file` being unset IS the
+    // off switch, so name it and show what turning it on looks like.
+    let Some(resolved) = log_config.resolved_log_path() else {
+        let suggestion = mm_core::logging::default_log_dir().join("meedya.log");
+        return Err(format!(
+            "File logging is not enabled, so there are no logs to include. \
+             Add `logging: {{ file: \"{}\" }}` to {config_path} and re-run the \
+             command you want to capture, then run `meedya report-bug \
+             --include-logs` again.",
+            suggestion.display()
+        ));
+    };
+
+    // Case 2 — enabled and the configured file is there. The common path.
+    if resolved.is_file() {
+        return Ok(resolved);
+    }
+
+    // Case 3 — enabled with the dated-filename scheme (no explicit path), and
+    // today's file does not exist yet. An earlier day's log is still useful,
+    // so fall back to the most recently modified `meedya-*.log` in the
+    // directory before giving up.
+    if log_config.file_path.is_none()
+        && let Some(previous) = newest_dated_log(&log_config.log_dir)
+    {
+        return Ok(previous);
+    }
+
+    // Case 4 — enabled, but nothing has been written there yet.
+    Err(format!(
+        "File logging is enabled ({}) but that file does not exist yet. It is \
+         created the next time a `meedya` command runs — reproduce the problem \
+         first, then re-run `meedya report-bug --include-logs`.",
+        resolved.display()
+    ))
+}
+
+/// The most recently modified `meedya-<date>.log` in `dir`, if any.
+///
+/// Only used for the dated-filename scheme; an explicitly configured path is
+/// never guessed at.
+fn newest_dated_log(dir: &Path) -> Option<PathBuf> {
+    let mut candidates: Vec<(PathBuf, Option<std::time::SystemTime>)> = Vec::new();
+
+    // A missing log directory is normal (nothing has run yet), not an error.
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.starts_with("meedya-") && name.ends_with(".log") {
+            let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
+            candidates.push((path, modified));
+        }
+    }
+
+    // Most recent first — a stale file from last week is worse than nothing
+    // only if it hides a newer one, so ordering matters here.
+    use std::cmp::Reverse;
+    candidates.sort_by_key(|(_, modified)| Reverse(*modified));
+    candidates.into_iter().next().map(|(path, _)| path)
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -290,5 +347,148 @@ mod tests {
         assert!(output_path.exists());
         let contents = std::fs::read_to_string(&output_path).unwrap();
         assert!(contents.contains("MeedyaManager Bug Report"));
+    }
+
+    // ── Log discovery (issue #50) ───────────────────────────────────────
+
+    /// With no `logging.file` configured, the warning must say file logging
+    /// is off and show how to turn it on — not send the user to a toggle
+    /// that does nothing.
+    #[test]
+    fn locate_log_file_reports_disabled_logging() {
+        let logging = mm_core::config::LoggingConfig::default();
+        assert!(logging.file.is_none(), "precondition: default has no file");
+
+        let err = locate_log_file(&logging, "/etc/meedya/settings.json5").unwrap_err();
+        assert!(err.contains("not enabled"), "got: {err}");
+        assert!(err.contains("logging:"), "no example given: {err}");
+        assert!(
+            err.contains("/etc/meedya/settings.json5"),
+            "config path not named: {err}"
+        );
+    }
+
+    /// Configured but not yet written: say so, rather than claiming logging
+    /// is disabled.
+    #[test]
+    fn locate_log_file_reports_configured_but_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log_path = tmp.path().join("meedya.log");
+        let logging = mm_core::config::LoggingConfig {
+            file: Some(log_path.clone()),
+            ..mm_core::config::LoggingConfig::default()
+        };
+
+        let err = locate_log_file(&logging, "settings.json5").unwrap_err();
+        assert!(err.contains("enabled"), "got: {err}");
+        assert!(err.contains(&log_path.display().to_string()), "got: {err}");
+    }
+
+    /// The happy path: the configured file exists, so it is the one used.
+    #[test]
+    fn locate_log_file_finds_the_configured_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log_path = tmp.path().join("meedya.log");
+        std::fs::write(&log_path, "hello\n").unwrap();
+        let logging = mm_core::config::LoggingConfig {
+            file: Some(log_path.clone()),
+            ..mm_core::config::LoggingConfig::default()
+        };
+
+        assert_eq!(
+            locate_log_file(&logging, "settings.json5").unwrap(),
+            log_path
+        );
+    }
+
+    /// `newest_dated_log` picks the most recently modified `meedya-*.log`
+    /// and ignores unrelated files.
+    #[test]
+    fn newest_dated_log_picks_the_most_recent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let older = tmp.path().join("meedya-2026-01-01.log");
+        let newer = tmp.path().join("meedya-2026-01-02.log");
+        std::fs::write(&older, "old").unwrap();
+        std::fs::write(tmp.path().join("notes.txt"), "ignore me").unwrap();
+        std::fs::write(&newer, "new").unwrap();
+        // Back-date the older file explicitly. Relying on the two writes
+        // above landing on different mtimes would be a coin flip on any
+        // filesystem with coarse timestamp resolution.
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        let times = std::fs::FileTimes::new()
+            .set_accessed(past)
+            .set_modified(past);
+        std::fs::File::options()
+            .write(true)
+            .open(&older)
+            .unwrap()
+            .set_times(times)
+            .unwrap();
+
+        assert_eq!(newest_dated_log(tmp.path()), Some(newer));
+    }
+
+    /// A missing log directory is a normal state, not an error.
+    #[test]
+    fn newest_dated_log_handles_missing_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(newest_dated_log(&tmp.path().join("nope")), None);
+    }
+
+    /// End-to-end: `report-bug --include-logs` with a real log file must put
+    /// that file's contents into the report.
+    #[test]
+    fn report_bug_include_logs_picks_up_an_existing_log() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log_path = tmp.path().join("meedya.log");
+        std::fs::write(
+            &log_path,
+            "{\"level\":\"INFO\",\"msg\":\"marker-abc123\"}\n",
+        )
+        .unwrap();
+
+        let mut config = mm_core::config::AppConfig::default();
+        config.logging.file = Some(log_path);
+
+        let ctx = CliContext {
+            config,
+            output: OutputFormat::Human,
+            verbosity: 0,
+            dry_run: false,
+        };
+        let report_path = tmp.path().join("report.md");
+        let args = ReportBugArgs {
+            output: Some(report_path.clone()),
+            include_logs: true,
+        };
+
+        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
+        let report = std::fs::read_to_string(&report_path).unwrap();
+        assert!(
+            report.contains("## Recent Logs"),
+            "no log section: {report}"
+        );
+        assert!(
+            report.contains("marker-abc123"),
+            "log line missing: {report}"
+        );
+    }
+
+    /// ...and with logging disabled the report simply has no log section —
+    /// the command still succeeds.
+    #[test]
+    fn report_bug_include_logs_without_logging_configured() {
+        let tmp = tempfile::tempdir().unwrap();
+        let report_path = tmp.path().join("report.md");
+        let ctx = test_ctx(false);
+        assert!(ctx.config.logging.file.is_none());
+
+        let args = ReportBugArgs {
+            output: Some(report_path.clone()),
+            include_logs: true,
+        };
+        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
+        let report = std::fs::read_to_string(&report_path).unwrap();
+        assert!(report.contains("MeedyaManager Bug Report"));
     }
 }
