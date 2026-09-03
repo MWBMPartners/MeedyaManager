@@ -257,12 +257,29 @@ impl MetadataProvider for TmdbProvider {
 /// Searches TheTVDB for TV shows and episodes.
 ///
 /// Endpoint: `https://api4.thetvdb.com/v4/search`
-/// Auth:     API key (Bearer token obtained via `/login`)
+/// Auth:     TheTVDB v4 does NOT accept the configured API key as a bearer
+///           token directly. The configured key must first be exchanged for
+///           a short-lived-looking-but-actually-~30-day JWT via
+///           `POST /login` (documented body: `{"apikey": "...", "pin":
+///           "..."}`, with `pin` only required for legacy "user-supported"
+///           keys pinned to a specific subscriber PIN — this provider does
+///           not model that case, so `pin` is omitted). The returned
+///           `data.token` is what subsequent `Authorization: Bearer <jwt>`
+///           requests must carry. `ensure_token()` performs this exchange
+///           and caches the resulting JWT in `token_cache` for the lifetime
+///           of the provider instance (TheTVDB tokens last ~30 days, so a
+///           process-lifetime cache with no refresh logic is correct here —
+///           see issue #210).
 /// Limits:   30 RPM
 pub struct TheTvdbProvider {
     client: Client,
     base_url: String,
     api_key: Option<String>,
+    // Caches the JWT obtained from `POST /login` so one exchange serves
+    // every search this provider instance performs. `std::sync::Mutex`
+    // rather than `tokio::sync::Mutex` is fine because the lock is never
+    // held across an `.await` point — see `ensure_token()`.
+    token_cache: std::sync::Mutex<Option<String>>,
 }
 
 impl TheTvdbProvider {
@@ -275,11 +292,89 @@ impl TheTvdbProvider {
             client: crate::http::build_client(),
             base_url: base_url.into(),
             api_key,
+            token_cache: std::sync::Mutex::new(None),
         }
     }
 
     fn configured(&self) -> bool {
         self.api_key.is_some()
+    }
+
+    /// Returns a valid bearer JWT, performing (and caching) the `/login`
+    /// exchange on first use. Every subsequent call within this provider's
+    /// lifetime reuses the cached token instead of re-authenticating.
+    async fn ensure_token(&self) -> Result<String, ProviderError> {
+        // Fast path: a previous call already exchanged the key for a JWT.
+        // The lock is scoped tightly here so it is dropped before any
+        // `.await` below — holding a `std::sync::Mutex` guard across an
+        // await point would risk blocking the async executor.
+        let cached = self
+            .token_cache
+            .lock()
+            .expect("thetvdb token_cache mutex poisoned")
+            .clone();
+        if let Some(token) = cached {
+            return Ok(token);
+        }
+
+        // `search()` already checked `configured()` before calling this, but
+        // guard again defensively since this is a standalone async fn.
+        let key = self
+            .api_key
+            .as_deref()
+            .ok_or_else(|| ProviderError::NotConfigured("thetvdb".into()))?;
+
+        debug!(
+            provider = "thetvdb",
+            "No cached JWT — exchanging API key for one via POST /login"
+        );
+
+        let login_url = format!("{}/login", self.base_url);
+        let response = self
+            .client
+            .post(&login_url)
+            .json(&serde_json::json!({ "apikey": key }))
+            .send()
+            .await
+            .map_err(net_err)?;
+
+        if !response.status().is_success() {
+            // A distinguishable auth error, not a generic network error —
+            // so a misconfigured/expired API key is diagnosable rather than
+            // looking like a transient outage.
+            return Err(ProviderError::AuthenticationFailed {
+                provider: "thetvdb".into(),
+                reason: format!("login rejected: HTTP {}", response.status()),
+            });
+        }
+
+        let body = response.text().await.map_err(net_err)?;
+
+        #[derive(Deserialize)]
+        struct LoginResponse {
+            data: Option<LoginData>,
+        }
+        #[derive(Deserialize)]
+        struct LoginData {
+            token: Option<String>,
+        }
+
+        let parsed: LoginResponse =
+            serde_json::from_str(&body).map_err(|e| parse_err("TheTVDB login response", e))?;
+
+        let token = parsed.data.and_then(|d| d.token).ok_or_else(|| {
+            ProviderError::AuthenticationFailed {
+                provider: "thetvdb".into(),
+                reason: "login response did not contain a token".into(),
+            }
+        })?;
+
+        *self
+            .token_cache
+            .lock()
+            .expect("thetvdb token_cache mutex poisoned") = Some(token.clone());
+
+        Ok(token)
     }
 
     fn parse_search(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
@@ -367,7 +462,10 @@ impl MetadataProvider for TheTvdbProvider {
         if !self.configured() {
             return Err(ProviderError::NotConfigured("thetvdb".into()));
         }
-        let key = self.api_key.as_deref().unwrap();
+        // Exchange (or reuse the cached exchange of) the configured API key
+        // for the JWT TheTVDB v4 actually requires as a bearer token — the
+        // raw API key is never valid here (issue #210).
+        let token = self.ensure_token().await?;
         let fallback = format!(
             "{} {}",
             query.title.as_deref().unwrap_or(""),
@@ -382,7 +480,7 @@ impl MetadataProvider for TheTvdbProvider {
         let response = self
             .client
             .get(&url)
-            .bearer_auth(key)
+            .bearer_auth(token)
             .query(&[("query", q), ("limit", &limit)])
             .send()
             .await
@@ -1007,6 +1105,137 @@ mod tests {
             TheTvdbProvider::parse_search("thetvdb", "garbage"),
             Err(ProviderError::Other(_))
         ));
+    }
+
+    // -------------------------------------------------------------------
+    // TheTVDB — wiremock integration tests (issue #210)
+    // -------------------------------------------------------------------
+    //
+    // TheTVDB v4 requires exchanging the configured API key for a JWT via
+    // `POST /login` before it will accept any `Authorization: Bearer <jwt>`
+    // search request — the raw API key is never a valid bearer token. These
+    // tests prove the login exchange actually happens on the wire (not just
+    // that the doc comment claims it), that a failed login surfaces as a
+    // distinguishable `AuthenticationFailed` error rather than a generic
+    // network error, and that the resulting token is cached process-lifetime
+    // rather than re-fetched on every search.
+    use wiremock::matchers::{body_partial_json, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn tvdb_search_performs_login_exchange_first() {
+        // MUST FAIL FIRST: current code sends `.bearer_auth(<raw api key>)`
+        // straight to `/v4/search` with no `/login` call at all, so the
+        // `/v4/search` mock below (which only matches the *exchanged* JWT,
+        // not the raw key) never matches and this test fails against
+        // untouched code.
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/login"))
+            .and(body_partial_json(
+                serde_json::json!({ "apikey": "raw-configured-key" }),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(
+                    r#"{"status":"success","data":{"token":"jwt-exchanged-token"}}"#,
+                ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v4/search"))
+            // The bearer MUST be the JWT returned by `/login`, never the raw
+            // configured API key.
+            .and(header("authorization", "Bearer jwt-exchanged-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"data":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider =
+            TheTvdbProvider::with_base_url(Some("raw-configured-key".into()), server.uri());
+        let query = SearchQuery {
+            title: Some("Breaking Bad".into()),
+            ..Default::default()
+        };
+
+        provider
+            .search(&query)
+            .await
+            .expect("search should succeed once the JWT exchange is implemented");
+    }
+
+    #[tokio::test]
+    async fn tvdb_login_failure_surfaces_auth_error() {
+        let server = MockServer::start().await;
+
+        // `/login` rejects the key — no `/v4/search` mock is mounted, so if
+        // the provider wrongly proceeded to search anyway this test would
+        // fail with a connection/mock-mismatch error rather than the
+        // expected auth error.
+        Mock::given(method("POST"))
+            .and(path("/login"))
+            .respond_with(ResponseTemplate::new(401).set_body_string(r#"{"message":"bad key"}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = TheTvdbProvider::with_base_url(Some("wrong-key".into()), server.uri());
+        let query = SearchQuery {
+            title: Some("Breaking Bad".into()),
+            ..Default::default()
+        };
+
+        let err = provider
+            .search(&query)
+            .await
+            .expect_err("a rejected login must surface as an error");
+        assert!(
+            matches!(err, ProviderError::AuthenticationFailed { .. }),
+            "expected AuthenticationFailed, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn tvdb_token_is_reused_across_searches() {
+        let server = MockServer::start().await;
+
+        // `.expect(1)` on the login mock is the assertion: two searches
+        // below must only trigger ONE `/login` call between them.
+        Mock::given(method("POST"))
+            .and(path("/login"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"status":"success","data":{"token":"jwt-cached"}}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v4/search"))
+            .and(header("authorization", "Bearer jwt-cached"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"data":[]}"#))
+            .mount(&server)
+            .await;
+
+        let provider = TheTvdbProvider::with_base_url(Some("some-key".into()), server.uri());
+        let query = SearchQuery {
+            title: Some("Breaking Bad".into()),
+            ..Default::default()
+        };
+
+        provider
+            .search(&query)
+            .await
+            .expect("first search should succeed");
+        provider
+            .search(&query)
+            .await
+            .expect("second search should reuse the cached token, not re-login");
     }
 
     // =========================================================================
