@@ -8,7 +8,7 @@
 **Last updated:** 2026-09-03
 **Updated by:** Claude Opus 5 (1M context), session `07a21012`
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → will PR into **`alpha`**
-**Branch HEAD:** `cf7a6ec` (end of Round 1)
+**Branch HEAD:** `9f3719b` (end of Round 2)
 
 ---
 
@@ -33,7 +33,8 @@ propose ranked next work for the alpha releases.
 | 11 | **Branch consolidation** — 4 stale branches folded into this one | ✅ done (see §9) |
 | 12 | Delete the 4 consolidated branches | ✅ done — all 4 deleted, `archive/*` tags kept |
 | 13 | **Round 1** — 7 alpha-readiness packages | ✅ done (see §10) |
-| 13b | Round 2 — release readiness (#214, #204, #202, #203) | ⏳ next |
+| 13b | **Round 2** — release readiness | ✅ done (see §10c) |
+| 13c | Round 3 — scope being planned | 🔄 in progress |
 | 14 | **Open the PR to `alpha`** | ⏳ owner's call — not created, per the no-PR-stacking rule |
 | 15 | Post-PR dev-cache cleanup (per `.claude/CLAUDE.md`) | ⏳ after the PR exists |
 
@@ -60,10 +61,19 @@ propose ranked next work for the alpha releases.
 | `6894105` | **#128** Test Mode enforced on every write path |
 | `cf7a6ec` | **#201** scan data loss + path traversal closed |
 
-**Latest verification (end of Round 1):** `cargo test --workspace` = **1,303 passed, 0 failed**;
-`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --exclude mm-cloud -- -D warnings`
-clean (`mm-cloud` carries ~40 known pre-existing errors — issue #200); `Cargo.lock` untouched
-across the whole of Round 1.
+**Latest verification (end of Round 2):**
+
+```text
+cargo fmt --all --check                              clean
+cargo test --workspace                    1,304 passed, 0 failed
+cargo clippy --workspace --all-targets -D warnings   0 issues
+cargo deny check          advisories ok, bans ok, licenses ok, sources ok
+actionlint                                           clean
+version                                        1.4.0-alpha.1
+```
+
+`mm-cloud`'s 40 clippy errors are gone (#200), so the gate no longer needs `--exclude mm-cloud`;
+and `--exclude mm-gtk` was dropped too, since the workspace `exclude` key makes it redundant.
 
 > ⚠️ **CI has never run on this branch.** Every workflow triggers on `main` only, so nothing here
 > has been through CI — that is issue #204. Expect the first PR to `alpha` to surface failures,
@@ -304,7 +314,7 @@ GitHub's reflog retention. Push a tag immediately if you need it permanently.
   id** (Fable 5.1 is `claude-fable-5-1`), so they were corrected to the aliases `fable` and
   `haiku`. As written they would not have resolved.
 
-## 10. Round 1 — alpha-readiness work packages (in progress)
+## 10. Round 1 — alpha-readiness work packages (complete)
 
 Planned by a Fable deep-planning pass on 2026-09-03 against tip `3eefc1d`. All seven candidate
 issues were re-verified as still real on the current tree. Packages are **file-disjoint by
@@ -407,8 +417,60 @@ untouched throughout.
 **Lesson for future rounds:** parallel packages in one shared working tree must never run
 workspace-wide formatters or `git stash`. Scope every tool invocation to the package's own files.
 
+## 10c. Round 2 outcomes — release readiness (complete, 2026-09-03)
+
+Closed: **#197, #200, #202, #203, #204, #214**. Commits `79c4be3`, `2f70850`, `e1958e9`, `9beb3ad`,
+`9b7c96c`, `9f3719b`.
+
+### What the packages found beyond the filed issues
+
+- **#202 `release.yml` copied binaries that do not exist.** The CLI binary is `meedya`, not
+  `mm-cli` (wrong at seven sites), and `meedya-gtk` was never built at all because `mm-gtk` is
+  excluded from the workspace. With 25 `2>/dev/null || true` suppressions, every archive it produced
+  would have contained **only `LICENSE`**. Now built explicitly via `--manifest-path`, suppressions
+  removed, `.dmg`/`.deb`/`.zip` added to the artefact filter, and a `workflow_dispatch` with
+  `publish: false` added so the pipeline can be exercised without cutting a release.
+- **#197's diagnosis was wrong.** Both lints that broke the gate — `manual_assert_eq` and
+  `unused_async_trait_impl` — are **pedantic**, not nursery, verified with `clippy-driver -Whelp`.
+  Dropping nursery would have prevented neither. The toolchain is now pinned to `1.98.0`; the
+  eleven `dtolnay/rust-toolchain@stable` usages are deliberately untouched because rustup's
+  `find_override_config` puts a directory `rust-toolchain.toml` ahead of `rustup default`.
+- **A hard-rule violation nobody had noticed:** `ci-rust.yml`'s `push.paths` omitted
+  `rust-toolchain.toml`, `deny.toml`, `clippy.toml` and `.cargo/`, all of which `pr-gate.yml`'s
+  detection covered. A direct push touching only the toolchain pin would never have triggered
+  Rust CI.
+- **Two `deny.toml` ignores were dead entries** — cargo-deny reported `advisory-not-detected`,
+  because `unmaintained = "workspace"` skips transitive crates.
+
+### #214 — the version bump was not a find-and-replace
+
+`1.4.0-alpha.1` is **not expressible** on two platforms: MSIX needs four numeric parts and
+CFBundleShortVersionString needs three integers. Both therefore carry `1.4.0.0` / `1.4.0` for the
+alpha *and* for the eventual final — **MSIX will refuse to install the final over the alpha.**
+No MSIX package exists yet (#148, #202), so this is a follow-up before the first Windows package,
+not a blocker. Debian gets `1.4.0~alpha.1`: under Debian ordering `~` sorts *before* the release,
+whereas `-` would sort *after* it and make the alpha look newer.
+
+Carrier list is now five files, all CI-checked: `Cargo.toml`, `crates/mm-gtk/Cargo.toml` (exact,
+suffix included — it cannot inherit, being outside the workspace), `Info.plist` (suffix stripped),
+`Package.appxmanifest` (suffix stripped), `linux/snap/snapcraft.yaml` (exact — it had drifted to
+`0.9.0`).
+
+### Two known unknowns going into any PR
+
+1. **`mm-gtk` has never been compiled.** Eight files were edited across Round 1 and two more in
+   Round 2; there is no GTK4/pkg-config on this machine. Expect the Linux job to be the most likely
+   red one, and plan a fix-forward wave rather than treating it as a failure.
+2. **Windows CI has never been green** (#148). The release workflow's Windows jobs are
+   `continue-on-error` and excluded from the release gate so they cannot block a macOS/Linux alpha.
+
 ## 11. Change log for this handoff file
 
+- **2026-09-03 (Round 2)** — release-readiness round complete: security advisories, CI on
+  alpha/beta, pinned toolchain, mm-cloud clippy debt, release pipeline, and the 1.4.0-alpha.1
+  version cut. §10c records what the packages found beyond the filed issues.
+- **2026-09-03 (Round 1)** — seven alpha-readiness packages complete; §10b records the three bugs
+  nobody had filed and the four places the package specifications were wrong.
 - **2026-09-03 (later)** — provider rewiring and the full documentation rewrite landed; commit
   table, final verification numbers and next actions recorded. Added the warning that no CI has
   ever run on this branch.
