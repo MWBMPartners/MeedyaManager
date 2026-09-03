@@ -8,7 +8,7 @@
 **Last updated:** 2026-09-03
 **Updated by:** Claude Opus 5 (1M context), session `07a21012`
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → will PR into **`alpha`**
-**Branch HEAD:** `b42e8b4`
+**Branch HEAD:** `cf7a6ec` (end of Round 1)
 
 ---
 
@@ -31,8 +31,9 @@ propose ranked next work for the alpha releases.
 | 9 | Refresh `.claude/CLAUDE.md` + Claude memory | ✅ done |
 | 10 | Present ranked new-work proposals to owner | ✅ done (28 proposals, delivered in chat) |
 | 11 | **Branch consolidation** — 4 stale branches folded into this one | ✅ done (see §9) |
-| 12 | Delete the 4 consolidated branches | ⏳ gated on an independent verification pass |
-| 13 | Autonomous new-work rounds (owner asked to proceed, not just propose) | ⏳ next |
+| 12 | Delete the 4 consolidated branches | ✅ done — all 4 deleted, `archive/*` tags kept |
+| 13 | **Round 1** — 7 alpha-readiness packages | ✅ done (see §10) |
+| 13b | Round 2 — release readiness (#214, #204, #202, #203) | ⏳ next |
 | 14 | **Open the PR to `alpha`** | ⏳ owner's call — not created, per the no-PR-stacking rule |
 | 15 | Post-PR dev-cache cleanup (per `.claude/CLAUDE.md`) | ⏳ after the PR exists |
 
@@ -49,10 +50,20 @@ propose ranked next work for the alpha releases.
 | `1767a76` | Handoff finalised for the reconciliation session |
 | `437f286` | Merge `claude/issue-196-identifier-convergence` (closes #196) |
 | `b42e8b4` | Consolidate `.claude/` config from the two stale config branches |
+| `1f8d31a` | Carry over the last 5 relevant `settings.local.json` permissions |
+| `03823f0` | Record the Round 1 work-package plan |
+| `632b5a3` | **#207** LICENSE + package staging |
+| `85c9285` | **#212** one config-directory resolver + pre-existing flaky-test fix |
+| `44b9ad8` | **#205** CLI stubs return exit 3, not fake success |
+| `f74869b` | **#211** shipped settings match `AppConfig`; CI drift guard |
+| `b5bb6c9` | **#205** nine UI views marked preview-only |
+| `6894105` | **#128** Test Mode enforced on every write path |
+| `cf7a6ec` | **#201** scan data loss + path traversal closed |
 
-**Latest verification:** `cargo test --workspace` = **1,244 passed, 0 failed**;
+**Latest verification (end of Round 1):** `cargo test --workspace` = **1,303 passed, 0 failed**;
 `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --exclude mm-cloud -- -D warnings`
-clean (`mm-cloud` carries ~40 known pre-existing errors — issue #200).
+clean (`mm-cloud` carries ~40 known pre-existing errors — issue #200); `Cargo.lock` untouched
+across the whole of Round 1.
 
 > ⚠️ **CI has never run on this branch.** Every workflow triggers on `main` only, so nothing here
 > has been through CI — that is issue #204. Expect the first PR to `alpha` to surface failures,
@@ -77,15 +88,16 @@ exists. Do not write a spec for a server that cannot run. See §3.
   crate resolves standalone (issue #199, fixed and closed 2026-09-03).
 - **44,183 Rust LOC; 1,392 `#[test]`/`#[tokio::test]` functions.** Docs claiming "8 crates" and
   217/399/444 tests are stale.
-- `cargo test --workspace`: **1,244 passed, 0 failed** (1,207 after the `main` merge; the provider
-  rewiring in `2b08392` added 33, and the #196 merge in `437f286` added 4 guard tests).
+- `cargo test --workspace`: **1,303 passed, 0 failed** (1,207 after the `main` merge → 1,240 after
+  the provider rewiring → 1,244 after the #196 merge → 1,303 after Round 1).
 - Version is **1.3.0** in `Cargo.toml`, `Info.plist` and `Package.appxmanifest`. Versions 1.3.1
   and 1.3.2 were **never cut** despite changelog entries for them. Linux/WinGet manifests are
   unsynced (snap/deb say `0.9.0`, WinGet `1.0.0`, flatpak has a placeholder commit pin).
 - **No public release exists.** The only GitHub release is *"MetaMancer v1.0-M1"* (2025-06-16) —
   the pre-rename project name. Only tag is `v1.0-M1`. The archive tag `v1.5-M6-python-final`
   referenced by `.claude/CLAUDE.md` **does not exist** (this is why #19 was reopened).
-- **No `LICENSE` file** is tracked, though GPL-2.0-or-later is declared everywhere (#207).
+- `LICENSE` is now tracked and byte-identical to the official GNU GPL-2.0 text, and is staged into
+  every package (#207, fixed 2026-09-03). This also fixed an existing Flatpak build break.
 
 ### Completion reality
 
@@ -94,16 +106,15 @@ exists. Do not write a spec for a server that cannot run. See §3.
   has **zero `.html` files**, so #124's web frontend has no deliverable.
 - **M9 export (#112–#119)** — `sqlx`/`tiberius` declared; no pool is ever created, no SQL executed.
 - **M7 cloud (#94–#102)** — no real network calls; OAuth flows exist only as comments.
-- **Test Mode (#128) is never enforced.** `integrity::write_tags_safe` is referenced only by its
-  own tests; all three consumers (`mm-cli/src/commands/edit.rs:116`,
-  `mm-gtk/src/ui/metadata_panel.rs:313`, `mm-ffi/src/uniffi_api.rs:233`) call
-  `metadata::write_tags` directly, which writes to the original file.
-- **`meedya scan --execute` can destroy files** — see #201, the highest-severity finding.
-  `crates/mm-cli/src/commands/scan.rs:173` computes `conflict = !unchanged && dest.exists()` at
-  preview time and never tracks intra-batch duplicate destinations; that stale flag is passed to
-  `execute_rename`, whose guard (`crates/mm-core/src/renamer/mod.rs:349`) therefore passes, and
-  `std::fs::rename` silently overwrites. mm-core's own `simulate_rename` gets this right
-  (`renamer/mod.rs:225`) — the CLI just doesn't use it. Reproduced empirically.
+- ~~Test Mode is never enforced~~ — **fixed** (#128, `6894105`). All three consumers now route
+  through `integrity::*_safe`. Three bugs were found doing it, the worst being that `temp_path`
+  produced an unparseable extension so the standard write path had **never worked on a real file**.
+- ~~`meedya scan --execute` can destroy files~~ — **fixed** (#201, `cf7a6ec`), verified end-to-end
+  with the built binary: both files survive, the second is flagged CONFLICT, exit 2. A **path
+  traversal from tag data** was found in the same code and closed — `simulate_rename` joined
+  unsanitised template directory components, so a tag value could escape the output directory
+  (the regression test wrote to `/etc`). It was reachable through the API `mm-ffi` and `mm-gtk`
+  already call, so it was never CLI-only.
 - **Issues #165–#191 (27 DJ/tagging issues) are correctly closed** — deliberately moved to
   MeedyaSuite-core by owner direction on 2026-05-29. Do not treat as bogus closures.
 - Only **2** `TODO`/`FIXME` markers repo-wide; unfinished work is described in prose. Grep for
@@ -111,7 +122,8 @@ exists. Do not write a spec for a server that cannot run. See §3.
 
 ### GitHub issue state (after this session's sweep)
 
-- Was 17 open / 170 closed. Now **57 open / 130 closed**, plus **15 new** (#201–#215) = 202 total.
+- Was 17 open / 170 closed. After the sweep: 57 open / 130 closed, plus 15 new (#201–#215).
+  After Round 1 and the branch consolidation: **64 open**, 202 total.
 - 95 reconciliation comments posted; 40 issues reopened; 4 relabelled (#193, #197, #199, #200).
 - Full plan with every comment text: `ISSUE_ACTIONS.md` in the session scratchpad (see §5).
 
@@ -358,6 +370,42 @@ conflict tracking and directory splitting correctly but has **zero callers and z
 Xcode is not installed (Command Line Tools only). Windows cannot be built. CI on the eventual PR to
 `alpha` is the authority for those files — and per §1 that will be the **first CI run ever** on
 this branch (#204).
+
+## 10b. Round 1 outcomes (complete, 2026-09-03)
+
+All seven candidate issues closed: **#128, #201, #205, #206, #207, #211, #212**.
+Gate at the end of the round: `cargo test --workspace` **1,303 passed / 0 failed**, `cargo fmt
+--all --check` clean, clippy clean excluding the known `mm-cloud` debt (#200), `Cargo.lock`
+untouched throughout.
+
+### Three bugs nobody had filed, found by packages working on something adjacent
+
+1. **Path traversal from tag data** (`renamer/mod.rs`) — unsanitised template directory components
+   let a tag value escape the output directory; the regression test wrote to `/etc`. Reachable via
+   the API `mm-ffi` and `mm-gtk` already call.
+2. **`write_tags_safe` had never worked on a real file** — `temp_path` produced
+   `track.mp3.meedya_tmp`, and lofty resolves format from the extension alone with no
+   content-sniffing fallback, so it failed `UnknownFormat`. Unnoticed because nothing called it and
+   its own tests only covered failure paths. Routing `edit.rs` through it, which is precisely what
+   #128 asked for, would have broken **every ordinary tag edit**.
+3. **A pre-existing flaky test** — twelve tests in `config/mod.rs` touch the process environment
+   without synchronisation, failing roughly 1 run in 3 on the untouched baseline. The subtle half
+   is that the env-*reading* tests race too: `load_from` applies `MM_*` overrides, so they are
+   affected without ever calling `set_var`.
+
+### Where the package specifications were wrong (implementers were right to override)
+
+- `cargo fmt --all` in a shared tree would have reformatted other packages' in-flight files.
+- `git stash` for fail-first proofs would have swallowed four other packages' uncommitted work.
+  Write the failing tests against untouched production code instead.
+- The prescribed `for<'p> Fn(&'p Path) -> MmResult<EvalContext<'p>>` bound is **unsatisfiable** —
+  an HRTB quantifies over every lifetime including `'static`, and covariance does not rescue it.
+  Use a single named lifetime.
+- A tag containing `/` yields **nested directories**, not an underscore: by the time the renamer
+  sees the evaluated template, a separator from tag data is indistinguishable from a template one.
+
+**Lesson for future rounds:** parallel packages in one shared working tree must never run
+workspace-wide formatters or `git stash`. Scope every tool invocation to the package's own files.
 
 ## 11. Change log for this handoff file
 
