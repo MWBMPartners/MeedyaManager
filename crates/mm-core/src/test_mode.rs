@@ -589,9 +589,20 @@ mod tests {
     }
 
     #[test]
-    fn is_current_prerelease_returns_false_for_stable() {
-        // The workspace version is 1.3.0 (stable) — no pre-release label.
-        assert!(!is_current_prerelease());
+    fn is_prerelease_version_detects_alpha_dot_one() {
+        // Literal coverage for the pre-release detection logic itself,
+        // independent of whatever CARGO_PKG_VERSION happens to be right now.
+        assert!(is_prerelease_version("1.4.0-alpha.1"));
+    }
+
+    #[test]
+    fn is_current_prerelease_matches_cargo_pkg_version() {
+        // Derive the expectation from CARGO_PKG_VERSION itself (a semver
+        // pre-release label is introduced by a hyphen) rather than hardcoding
+        // a boolean, so this assertion never needs touching again on a
+        // future version bump — stable or pre-release.
+        let expected = env!("CARGO_PKG_VERSION").contains('-');
+        assert_eq!(is_current_prerelease(), expected);
     }
 
     // ── File operations (integration-style) ─────────────────────────────────

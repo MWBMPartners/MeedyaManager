@@ -3,15 +3,15 @@
 # MeedyaManager — Snapcraft manifest
 #
 # Build with:
-#   snapcraft  (produces MeedyaManager_0.9.0_amd64.snap)
+#   snapcraft  (produces MeedyaManager_1.4.0-alpha.1_amd64.snap)
 #
 # Publish with:
-#   snapcraft upload --release=stable MeedyaManager_0.9.0_amd64.snap
+#   snapcraft upload --release=stable MeedyaManager_1.4.0-alpha.1_amd64.snap
 #
 # Runtime: core22 (Ubuntu 22.04 LTS base) with GNOME 42 extension
 
 name: meedyamanager
-version: "0.9.0"
+version: "1.4.0-alpha.1"
 summary: Smart cross-platform media file manager and auto-organizer
 icon: linux/flatpak/icons/ltd.MWBMpartners.MeedyaManager-512.png
 description: |

@@ -10,7 +10,7 @@ description = "GTK4/Adwaita desktop GUI for MeedyaManager (Linux)"
 # Excluded crates CANNOT inherit `*.workspace = true` from the root manifest,
 # so all package metadata is inlined here. Keep these in sync with the root
 # Cargo.toml [workspace.package] if it changes.
-version = "1.3.0"
+version = "1.4.0-alpha.1"
 edition = "2024"
 authors = ["MWBM Partners Ltd <dev@mwbm.co.uk>"]
 license = "GPL-2.0-or-later"
