@@ -59,8 +59,10 @@ case it's called out explicitly. See `.claude/HANDOFF.md` §2 for the full verif
 | **Total** | **~44,183** | **1,392** |
 
 `cargo test --workspace` (`mm-gtk` excluded — it needs Linux-only `gettextrs` and is not a
-workspace member) currently reports **1,207 passing, 0 failing**. The gap between 1,392 test
-*functions* and 1,207 *passing* is `mm-gtk`'s 67 (run separately via its own manifest path) plus
+workspace member) currently reports **1,240 passing, 0 failing**. That is higher than the 1,207 of
+earlier in the day because rewiring the MusicBrainz, ISRC and ISWC providers onto the hardened
+`musicbrainz` module (issue #198) added 33 provider tests. The remaining gap between 1,392 test
+*functions* and 1,240 *passing* is `mm-gtk`'s 67 (run separately via its own manifest path) plus
 Swift/.NET tests that aren't part of `cargo test` at all.
 
 ---

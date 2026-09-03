@@ -6,6 +6,15 @@ All notable changes to this project are documented here. This changelog follows 
 
 Format: `## [Version] — YYYY-MM-DD`
 
+> ⚠️ **Historical entries overstate completion.** A codebase audit on 2026-09-03 established that
+> the milestones **M7 (Cloud Storage)**, **M9 (Database Export)** and **M10 (Secure Media Server)**
+> are architectural scaffolding: real types, real tests and real DDL/route-table generation, but no
+> provider makes a network call, no exporter opens a database connection, and `mm-server` never
+> builds an HTTP router. Entries below that describe those crates as "fully implemented" record
+> what was believed when they were written, not what shipped. They are deliberately left intact as
+> a historical record — for the current state of any feature, see `PROJECT_STATUS.md` and the
+> reopened GitHub issues (#94–#101, #113–#118, #120–#126).
+
 ---
 
 ## [Unreleased]
@@ -82,6 +91,12 @@ An adversarial review of this branch's diff caught six further defects before me
 - `cargo fmt --all` → **clean**
 - `cargo clippy -p mm-core -p mm-providers -p mm-cli --all-targets` → **0 warnings** (pre-existing `mm-cloud` clippy debt from the M7 milestone is tracked separately and out of scope here)
 - `cargo test --workspace` → **1,330 tests pass, 0 failures** (plus 6 doctests) — up from 1,302 after the post-review hardening pass added wiremock coverage for the ISRC shape/parse/empty fallback, the dual-form ISWC query, the loosened-retry, the MBID enrichment guard, the `max_results` truncation, and non-finite score filtering
+
+> **Superseded count.** The 1,330 figure above was measured on the pre-merge branch, when the
+> provider layer still used MeedyaManager's local trait system and `mm-providers` carried 386 test
+> functions. After the `main` merge and the port onto the upstream `meedya-providers` API (see
+> "MeedyaSuite-core merge" below), the infrastructure tests live upstream and the workspace total is
+> **1,240**. Both numbers were correct when measured; 1,240 is the current one.
 
 ---
 

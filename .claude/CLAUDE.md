@@ -29,7 +29,7 @@
 - **macOS GUI:** SwiftUI with Liquid Glass on macOS 26+ (falls back to standard vibrancy on older versions)
 - **Windows GUI:** WinUI 3 (C# / WinAppSDK 1.6) with Mica backdrop
 - **Linux GUI:** GTK4 via `gtk4-rs` + `libadwaita` (direct Rust, no FFI needed)
-- **Cargo workspace:** 9 crate directories, 8 workspace members — `mm-core`, `mm-providers`, `mm-cloud`, `mm-export`, `mm-server`, `mm-cli`, `mm-ffi`, `mm-update` (workspace members) plus `mm-gtk` (9th crate directory, excluded from `members`/`default-members` — needs Linux-only `gettextrs`, tracked by issue #199)
+- **Cargo workspace:** 9 crate directories, 8 workspace members — `mm-core`, `mm-providers`, `mm-cloud`, `mm-export`, `mm-server`, `mm-cli`, `mm-ffi`, `mm-update` (workspace members) plus `mm-gtk` (9th crate directory, excluded from `members`/`default-members` — needs Linux-only `gettextrs`). `Cargo.toml` carries `exclude = ["crates/mm-gtk"]` so the crate also resolves standalone via `--manifest-path` (issue #199, fixed and closed 2026-09-03)
 - **Key Rust crates:**
   - `lofty` — Audio/video metadata read/write
   - `notify` — Cross-platform file system watcher
@@ -83,7 +83,7 @@
 ## Milestone Order
 
 Workspace-wide: **44,183 Rust LOC, 1,392 `#[test]`/`#[tokio::test]` functions**;
-`cargo test --workspace` currently reports **1,207 passing, 0 failed**. Docs that still say
+`cargo test --workspace` currently reports **1,240 passing, 0 failed**. Docs that still say
 "217/399/444 tests" are stale — do not repeat those numbers.
 
 1. M0 — Repository Setup & Scaffolding (Complete)
