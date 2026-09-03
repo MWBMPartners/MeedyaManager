@@ -65,7 +65,12 @@
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
       "Bash(gh repo view:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(find:*)",
+      "Bash(chmod:*)",
+      "WebFetch(domain:musicbee.fandom.com)"
     ],
     "additionalDirectories": [
       "/dev",
