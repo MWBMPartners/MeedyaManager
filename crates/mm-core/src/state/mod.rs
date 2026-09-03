@@ -96,8 +96,12 @@ impl AppState {
 
     /// Get the default state file path for this platform
     pub fn default_path() -> PathBuf {
-        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-        config_dir.join("MeedyaManager").join("state.json")
+        // Route through the single config-dir resolver (honours
+        // `MM_CONFIG_DIR`) rather than calling `dirs::config_dir()` directly —
+        // see issue #212 (P0-CONFIGDIR). Preserve the existing "." fallback
+        // behaviour on error.
+        let config_dir = crate::config::app_config_dir().unwrap_or_else(|_| PathBuf::from("."));
+        config_dir.join("state.json")
     }
 }
 
@@ -161,8 +165,12 @@ impl LockFile {
 
     /// Get the default lock file path for this platform
     pub fn default_path() -> PathBuf {
-        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-        config_dir.join("MeedyaManager").join("meedya.lock")
+        // Route through the single config-dir resolver (honours
+        // `MM_CONFIG_DIR`) rather than calling `dirs::config_dir()` directly —
+        // see issue #212 (P0-CONFIGDIR). Preserve the existing "." fallback
+        // behaviour on error.
+        let config_dir = crate::config::app_config_dir().unwrap_or_else(|_| PathBuf::from("."));
+        config_dir.join("meedya.lock")
     }
 }
 
@@ -261,6 +269,7 @@ fn is_process_running(_pid: u32) -> bool {
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -404,6 +413,14 @@ mod tests {
 
     #[test]
     fn default_state_path_contains_meedyamanager() {
+        // Take the ENV_LOCK even though this test doesn't itself set
+        // MM_CONFIG_DIR: `AppState::default_path()` now honours that
+        // variable, so without the lock a concurrently-running test that
+        // points MM_CONFIG_DIR at a tempdir could make this assertion flake.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         let path = AppState::default_path();
         let path_str = path.to_string_lossy();
         assert!(path_str.contains("MeedyaManager"));
@@ -411,6 +428,12 @@ mod tests {
 
     #[test]
     fn default_lock_path_contains_meedyamanager() {
+        // See comment on `default_state_path_contains_meedyamanager` above —
+        // same race, same fix.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         let path = LockFile::default_path();
         let path_str = path.to_string_lossy();
         assert!(path_str.contains("MeedyaManager"));
@@ -464,5 +487,57 @@ mod tests {
             lock.is_ok(),
             "Stale lock with invalid PID should be cleaned on Windows"
         );
+    }
+
+    // ── Config directory resolution — issue #212 (P0-CONFIGDIR) ──────────────
+
+    #[test]
+    fn appstate_default_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path = AppState::default_path();
+        assert!(
+            path.starts_with(tmp.path()),
+            "state path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
+    }
+
+    #[test]
+    fn lockfile_default_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path = LockFile::default_path();
+        assert!(
+            path.starts_with(tmp.path()),
+            "lock file path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
     }
 }

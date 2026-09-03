@@ -23,6 +23,62 @@ use tracing::{debug, info, warn};
 use crate::error::{MmError, MmResult};
 
 // ---------------------------------------------------------------------------
+// Config directory resolution — the SINGLE source of truth
+// ---------------------------------------------------------------------------
+//
+// Historically several modules each computed "the config directory" for
+// themselves, and did so inconsistently: some joined the platform config dir
+// with "MeedyaManager" (uppercase, matching the app's canonical name) while
+// others joined it with "meedyamanager" (lowercase). On a case-INsensitive
+// filesystem (macOS default, Windows) both paths happen to resolve to the
+// same directory on disk, so the bug went unnoticed there — but on a
+// case-sensitive filesystem (Linux) they are two entirely different
+// directories, so state written by one module (e.g. the test-mode manifest)
+// is invisible to another (e.g. the settings loader). `app_config_dir()` is
+// now the ONLY place that decides where "the config directory" lives; every
+// other module must call it rather than touching `dirs::config_dir()`
+// directly.
+
+/// Resolve MeedyaManager's application config directory.
+///
+/// Resolution order (checked every call — no caching, since the override is
+/// only ever set for the lifetime of a test or a headless invocation):
+///
+///   1. If the `MM_CONFIG_DIR` environment variable is set to a non-empty
+///      value, that value is used verbatim as the config directory. This is
+///      the explicit override point used by the test suite (see
+///      `mm_config_dir_env_override_wins` below) to get full isolation from
+///      whatever the real platform config directory happens to be, and by
+///      any future headless/portable run mode.
+///   2. Otherwise, the platform default: `dirs::config_dir()/MeedyaManager`
+///      (uppercase — the canonical spelling of the app name everywhere
+///      else in the codebase).
+///
+/// Note: the `dirs` crate (v6) deliberately ignores `XDG_CONFIG_HOME` on
+/// macOS — it always resolves to `~/Library/Application Support` there,
+/// matching Apple platform conventions. `MM_CONFIG_DIR` is therefore the only
+/// reliable way to redirect MeedyaManager's config directory on macOS, which
+/// is exactly why it exists as an explicit override rather than relying on
+/// XDG variables.
+pub fn app_config_dir() -> MmResult<PathBuf> {
+    // Check the override first — an empty string is treated as "not set" so
+    // that `MM_CONFIG_DIR=` in an inherited environment does not silently
+    // redirect state into the process's current working directory.
+    if let Ok(dir) = std::env::var("MM_CONFIG_DIR") {
+        if !dir.is_empty() {
+            return Ok(PathBuf::from(dir));
+        }
+    }
+
+    // Fall back to the platform-default location, joined with the
+    // canonical (uppercase) application name.
+    let base = dirs::config_dir().ok_or_else(|| {
+        MmError::Config("unable to determine platform config directory".to_string())
+    })?;
+    Ok(base.join("MeedyaManager"))
+}
+
+// ---------------------------------------------------------------------------
 // Top-level application configuration
 // ---------------------------------------------------------------------------
 
@@ -330,13 +386,12 @@ impl AppConfig {
     /// warning logged. After loading the JSON5 file, `.env` overrides are
     /// applied on top.
     pub fn load() -> MmResult<Self> {
-        // Resolve the platform-specific config directory
-        let config_dir = dirs::config_dir().ok_or_else(|| {
-            MmError::Config("unable to determine platform config directory".to_string())
-        })?;
+        // Resolve the application config directory via the single resolver
+        // (honours the `MM_CONFIG_DIR` override — see `app_config_dir`).
+        let config_dir = app_config_dir()?;
 
-        // Build the full path: <config_dir>/MeedyaManager/settings.json5
-        let settings_path = config_dir.join("MeedyaManager").join("settings.json5");
+        // Build the full path: <config_dir>/settings.json5
+        let settings_path = config_dir.join("settings.json5");
 
         info!(
             path = %settings_path.display(),
@@ -578,15 +633,16 @@ impl AppConfig {
         }
     }
 
-    /// Return the platform-default configuration directory path.
+    /// Return the application's configuration directory path.
     ///
     /// This is a convenience method for other modules that need to locate
-    /// files relative to the config directory.
+    /// files relative to the config directory. It is a thin wrapper around
+    /// the module-level `app_config_dir()` resolver, kept here so callers
+    /// that already hold an `AppConfig`-shaped mental model (or just prefer
+    /// the associated-function spelling) don't need to import the free
+    /// function separately.
     pub fn config_dir() -> MmResult<PathBuf> {
-        let base = dirs::config_dir().ok_or_else(|| {
-            MmError::Config("unable to determine platform config directory".to_string())
-        })?;
-        Ok(base.join("MeedyaManager"))
+        app_config_dir()
     }
 
     /// Return the path to the settings file within the platform config dir.
@@ -594,6 +650,24 @@ impl AppConfig {
         Ok(Self::config_dir()?.join("settings.json5"))
     }
 }
+
+// ---------------------------------------------------------------------------
+// Test-only synchronisation for the process-wide environment
+// ---------------------------------------------------------------------------
+//
+// `MM_CONFIG_DIR` (like any environment variable) is process-global state.
+// Rust runs `#[test]` functions concurrently on multiple threads by default,
+// so two tests that set/read/clear this var at the same time can race and
+// see each other's value. This lock is deliberately declared here — at the
+// top of the `config` module rather than nested inside a private `mod
+// tests` block — and marked `pub(crate)` so that every other module's test
+// suite (test_mode, integrity, filetype_registry, tag_registry,
+// settings_bundle, state) can take the SAME lock before touching
+// `MM_CONFIG_DIR`. A lock private to each module's own test block would not
+// help: two different `Mutex` instances do not exclude each other, so the
+// race would still be possible across module boundaries.
+#[cfg(test)]
+pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 // ===========================================================================
 // Tests
@@ -690,6 +764,15 @@ mod tests {
 
     #[test]
     fn test_load_from_missing_file_returns_defaults() {
+        // `load_from` applies MM_* environment overrides, so this test READS the
+        // process-wide environment even though it never writes to it. It must
+        // therefore serialise against the env-mutating tests in this module —
+        // otherwise a concurrent `test_env_override_*` can inject its value
+        // here (e.g. MM_RENAME_TEMPLATE) and fail this assertion spuriously.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // Loading from a non-existent path should succeed with defaults
         let fake_path = Path::new("/tmp/nonexistent_meedya_config_12345.json5");
         let config = AppConfig::load_from(fake_path).expect("should succeed with defaults");
@@ -699,6 +782,15 @@ mod tests {
 
     #[test]
     fn test_load_from_empty_json5_object() {
+        // `load_from` applies MM_* environment overrides, so this test READS the
+        // process-wide environment even though it never writes to it. It must
+        // therefore serialise against the env-mutating tests in this module —
+        // otherwise a concurrent `test_env_override_*` can inject its value
+        // here (e.g. MM_RENAME_TEMPLATE) and fail this assertion spuriously.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // An empty JSON5 object `{}` should deserialize to all defaults
         let file = write_temp_config("{}");
         let config =
@@ -709,6 +801,15 @@ mod tests {
 
     #[test]
     fn test_load_from_partial_json5() {
+        // `load_from` applies MM_* environment overrides, so this test READS the
+        // process-wide environment even though it never writes to it. It must
+        // therefore serialise against the env-mutating tests in this module —
+        // otherwise a concurrent `test_env_override_*` can inject its value
+        // here (e.g. MM_RENAME_TEMPLATE) and fail this assertion spuriously.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // A JSON5 file with only some fields should merge with defaults
         let content = r#"{
             // Override the app name
@@ -736,6 +837,15 @@ mod tests {
 
     #[test]
     fn test_load_from_full_json5() {
+        // `load_from` applies MM_* environment overrides, so this test READS the
+        // process-wide environment even though it never writes to it. It must
+        // therefore serialise against the env-mutating tests in this module —
+        // otherwise a concurrent `test_env_override_*` can inject its value
+        // here (e.g. MM_RENAME_TEMPLATE) and fail this assertion spuriously.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // A fully specified JSON5 file
         let content = r#"{
             app_name: "FullConfig",
@@ -836,6 +946,15 @@ mod tests {
 
     #[test]
     fn test_load_from_invalid_json5_returns_error() {
+        // `load_from` applies MM_* environment overrides, so this test READS the
+        // process-wide environment even though it never writes to it. It must
+        // therefore serialise against the env-mutating tests in this module —
+        // otherwise a concurrent `test_env_override_*` can inject its value
+        // here (e.g. MM_RENAME_TEMPLATE) and fail this assertion spuriously.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // Malformed JSON5 should produce a Config error
         let file = write_temp_config("{ this is not valid json5 at all !!!");
         let result = AppConfig::load_from(file.path());
@@ -853,6 +972,14 @@ mod tests {
 
     #[test]
     fn test_env_override_dry_run() {
+        // Serialise against every other env-mutating test in this crate.
+        // `set_var`/`remove_var` are process-wide, and cargo runs tests
+        // concurrently, so without this a sibling test can observe this
+        // test's variable (or clear one this test is relying on) mid-run.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // MM_DRY_RUN=true should set dry_run to true
         let mut config = AppConfig::default();
         assert!(!config.dry_run);
@@ -872,6 +999,14 @@ mod tests {
 
     #[test]
     fn test_env_override_log_level() {
+        // Serialise against every other env-mutating test in this crate.
+        // `set_var`/`remove_var` are process-wide, and cargo runs tests
+        // concurrently, so without this a sibling test can observe this
+        // test's variable (or clear one this test is relying on) mid-run.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // MM_LOG_LEVEL=debug should override the log level
         let mut config = AppConfig::default();
         assert_eq!(config.logging.level, "info");
@@ -890,6 +1025,14 @@ mod tests {
 
     #[test]
     fn test_env_override_provider_keys() {
+        // Serialise against every other env-mutating test in this crate.
+        // `set_var`/`remove_var` are process-wide, and cargo runs tests
+        // concurrently, so without this a sibling test can observe this
+        // test's variable (or clear one this test is relying on) mid-run.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // Provider API keys should be overridable via env vars
         let mut config = AppConfig::default();
         assert!(config.providers.discogs_token.is_none());
@@ -923,6 +1066,14 @@ mod tests {
 
     #[test]
     fn test_env_override_rename_template() {
+        // Serialise against every other env-mutating test in this crate.
+        // `set_var`/`remove_var` are process-wide, and cargo runs tests
+        // concurrently, so without this a sibling test can observe this
+        // test's variable (or clear one this test is relying on) mid-run.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // MM_RENAME_TEMPLATE should override the rename template
         let mut config = AppConfig::default();
         unsafe {
@@ -939,6 +1090,14 @@ mod tests {
 
     #[test]
     fn test_env_override_watch_poll_interval() {
+        // Serialise against every other env-mutating test in this crate.
+        // `set_var`/`remove_var` are process-wide, and cargo runs tests
+        // concurrently, so without this a sibling test can observe this
+        // test's variable (or clear one this test is relying on) mid-run.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // MM_WATCH_POLL_INTERVAL should override the poll interval
         let mut config = AppConfig::default();
         unsafe {
@@ -959,6 +1118,15 @@ mod tests {
 
     #[test]
     fn test_json5_comments_and_trailing_commas() {
+        // `load_from` applies MM_* environment overrides, so this test READS the
+        // process-wide environment even though it never writes to it. It must
+        // therefore serialise against the env-mutating tests in this module —
+        // otherwise a concurrent `test_env_override_*` can inject its value
+        // here (e.g. MM_RENAME_TEMPLATE) and fail this assertion spuriously.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // JSON5 supports single-line and multi-line comments, plus trailing commas
         let content = r#"{
             // This is a single-line comment
@@ -979,6 +1147,14 @@ mod tests {
 
     #[test]
     fn test_config_dir_returns_path_with_meedyamanager() {
+        // Take the ENV_LOCK even though this test doesn't itself set
+        // MM_CONFIG_DIR: `AppConfig::config_dir()` now honours that variable,
+        // so without the lock a concurrently-running test that points
+        // MM_CONFIG_DIR at a tempdir could make this assertion flake.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // The config directory should end with "MeedyaManager"
         let dir = AppConfig::config_dir();
         // This test will only pass on systems where dirs::config_dir() returns Some
@@ -1030,6 +1206,14 @@ mod tests {
 
     #[test]
     fn test_env_override_conflict_strategy() {
+        // Serialise against every other env-mutating test in this crate.
+        // `set_var`/`remove_var` are process-wide, and cargo runs tests
+        // concurrently, so without this a sibling test can observe this
+        // test's variable (or clear one this test is relying on) mid-run.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
         // MM_RENAME_CONFLICT should override the conflict strategy
         let mut config = AppConfig::default();
         unsafe {
@@ -1041,6 +1225,152 @@ mod tests {
         // Clean up
         unsafe {
             std::env::remove_var("MM_RENAME_CONFLICT");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 7. `MM_CONFIG_DIR` resolution — issue #212 (P0-CONFIGDIR)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn mm_config_dir_env_override_wins() {
+        // Take the process-environment lock before touching MM_CONFIG_DIR —
+        // several other test modules set the same variable, and cargo runs
+        // tests concurrently by default.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        // Point MM_CONFIG_DIR at a freshly-created tempdir so this test is
+        // fully isolated from whatever the real platform config dir is.
+        let tmp = tempfile::tempdir().expect("failed to create tempdir");
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let resolved = app_config_dir().expect("app_config_dir should resolve under override");
+        assert_eq!(
+            resolved,
+            tmp.path(),
+            "MM_CONFIG_DIR should be used verbatim, not joined with 'MeedyaManager'"
+        );
+
+        // Clean up before releasing the lock so the next test starts clean.
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
+    }
+
+    #[test]
+    fn mm_config_dir_env_override_ignores_empty_value() {
+        // An MM_CONFIG_DIR set to the empty string must be treated as unset
+        // (otherwise an inherited `MM_CONFIG_DIR=` would silently redirect
+        // config/state into the current working directory).
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", "");
+        }
+
+        let resolved = app_config_dir();
+        // Falls through to the platform default, which — on this test host —
+        // resolves to Some(..); we only assert it did NOT become an empty path.
+        if let Ok(path) = resolved {
+            assert!(
+                path.ends_with("MeedyaManager"),
+                "empty MM_CONFIG_DIR should fall back to the platform default, got: {}",
+                path.display()
+            );
+        }
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
+    }
+
+    #[test]
+    fn all_core_paths_share_one_directory() {
+        // REGRESSION TEST for issue #212: before the fix, test_mode,
+        // integrity, filetype_registry, tag_registry and settings_bundle each
+        // resolved their own file paths under a *lowercase*
+        // "meedyamanager" directory, while config/state/health used the
+        // canonical *uppercase* "MeedyaManager" — two different directories
+        // on a case-sensitive filesystem (Linux). This test proves every
+        // module now agrees on exactly one directory.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = tempfile::tempdir().expect("failed to create tempdir");
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let expected = app_config_dir().expect("app_config_dir should resolve under override");
+
+        // test_mode — persists `testmode_manifest.json`
+        let test_mode_path =
+            crate::test_mode::manifest_path().expect("test_mode manifest path should resolve");
+        assert!(
+            test_mode_path.starts_with(&expected),
+            "test_mode manifest path {} does not share the config dir {}",
+            test_mode_path.display(),
+            expected.display()
+        );
+
+        // integrity — appends to `corruption.log`
+        let integrity_path = crate::integrity::corruption_log_path()
+            .expect("integrity corruption log path should resolve");
+        assert!(
+            integrity_path.starts_with(&expected),
+            "integrity corruption log path {} does not share the config dir {}",
+            integrity_path.display(),
+            expected.display()
+        );
+
+        // filetype_registry — reads a `filetypes.json5` override
+        let filetype_path = crate::filetype_registry::user_override_path()
+            .expect("filetype_registry override path should resolve");
+        assert!(
+            filetype_path.starts_with(&expected),
+            "filetype_registry override path {} does not share the config dir {}",
+            filetype_path.display(),
+            expected.display()
+        );
+
+        // metadata::tag_registry — reads a `tags.json5` override
+        let tag_path = crate::metadata::tag_registry::user_override_path()
+            .expect("tag_registry override path should resolve");
+        assert!(
+            tag_path.starts_with(&expected),
+            "tag_registry override path {} does not share the config dir {}",
+            tag_path.display(),
+            expected.display()
+        );
+
+        // settings_bundle — reads/writes override files by name
+        let bundle_path = crate::settings_bundle::user_override_path("filetypes.json5")
+            .expect("settings_bundle override path should resolve");
+        assert!(
+            bundle_path.starts_with(&expected),
+            "settings_bundle override path {} does not share the config dir {}",
+            bundle_path.display(),
+            expected.display()
+        );
+
+        // state — persists `state.json` and the single-instance lock file
+        let state_path = crate::state::AppState::default_path();
+        assert!(
+            state_path.starts_with(&expected),
+            "state path {} does not share the config dir {}",
+            state_path.display(),
+            expected.display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
         }
     }
 }

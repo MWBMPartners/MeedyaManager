@@ -8,7 +8,7 @@
 // via `include_str!` and can also be overridden by the user at runtime by
 // placing a modified copy at:
 //
-//   Linux/macOS:  ~/.config/meedyamanager/filetypes.json5
+//   Linux/macOS:  ~/.config/MeedyaManager/filetypes.json5 (or ~/Library/Application Support/MeedyaManager on macOS)
 //   Windows:      %APPDATA%\MeedyaManager\filetypes.json5
 //
 // HOW TO ADD A NEW FORMAT

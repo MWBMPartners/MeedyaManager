@@ -8,7 +8,7 @@
 // time via `include_str!` and can be overridden at runtime by placing a
 // modified copy at:
 //
-//   Linux/macOS:  ~/.config/meedyamanager/tags.json5
+//   Linux/macOS:  ~/.config/MeedyaManager/tags.json5 (or ~/Library/Application Support/MeedyaManager on macOS)
 //   Windows:      %APPDATA%\MeedyaManager\tags.json5
 //
 // HOW TO ADD A STANDARD TAG

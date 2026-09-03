@@ -17,7 +17,7 @@
 //    - **No (revert):**  keep both originals and copies
 // 5. Manifest is cleared after commit or revert
 //
-// The manifest persists at `<config_dir>/meedyamanager/testmode_manifest.json`
+// The manifest persists at `<config_dir>/testmode_manifest.json`
 // and survives application restarts.
 //
 // ## Pre-release Safety
@@ -64,7 +64,7 @@ pub struct TestModeEntry {
 
 /// The persistent test-mode manifest.
 ///
-/// Stored as JSON at `<config_dir>/meedyamanager/testmode_manifest.json`.
+/// Stored as JSON at `<config_dir>/testmode_manifest.json`.
 /// Tracks whether test mode is currently active and all files that have
 /// been written in test mode across all sessions.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -143,10 +143,13 @@ pub fn original_path_from_copy(copy_path: &Path) -> Option<PathBuf> {
 // ---------------------------------------------------------------------------
 
 /// Resolve the path to the test-mode manifest file.
-fn manifest_path() -> MmResult<PathBuf> {
-    let config_root = dirs::config_dir()
-        .ok_or_else(|| MmError::Config("cannot determine platform config directory".into()))?;
-    Ok(config_root.join("meedyamanager").join(MANIFEST_FILENAME))
+///
+/// `pub(crate)` (rather than private) so `config::tests::all_core_paths_share_one_directory`
+/// can assert this path shares a directory with every other module's state —
+/// see issue #212 (P0-CONFIGDIR), the case-sensitive-filesystem directory-name
+/// mismatch this resolver was introduced to fix.
+pub(crate) fn manifest_path() -> MmResult<PathBuf> {
+    Ok(crate::config::app_config_dir()?.join(MANIFEST_FILENAME))
 }
 
 /// Load the test-mode manifest from disk.
@@ -369,6 +372,7 @@ pub fn is_current_prerelease() -> bool {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
     use std::fs;
@@ -564,5 +568,32 @@ mod tests {
         // Revert = keep both, just clear manifest
         assert!(original.exists());
         assert!(copy.exists());
+    }
+
+    // ── Config directory resolution — issue #212 (P0-CONFIGDIR) ─────────────
+
+    #[test]
+    fn manifest_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path = manifest_path().expect("manifest_path should resolve under override");
+        assert!(
+            path.starts_with(tmp.path()),
+            "manifest path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
     }
 }

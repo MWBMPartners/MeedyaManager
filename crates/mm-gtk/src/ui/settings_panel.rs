@@ -644,9 +644,14 @@ impl SettingsPanel {
 // ---------------------------------------------------------------------------
 
 /// Return the platform config file path as a displayable string.
+///
+/// Routed through `mm_core::config::app_config_dir()` (the single resolver —
+/// see issue #212, P0-CONFIGDIR) rather than calling `dirs::config_dir()`
+/// directly, so the path shown here always matches where `AppConfig::load()`
+/// actually reads from.
 fn mm_config_path() -> String {
-    dirs::config_dir()
-        .map(|d| d.join("MeedyaManager").join("settings.json5"))
+    mm_core::config::app_config_dir()
+        .map(|d| d.join("settings.json5"))
         .unwrap_or_default()
         .to_string_lossy()
         .into_owned()
@@ -654,8 +659,7 @@ fn mm_config_path() -> String {
 
 /// Return the platform config directory as a string.
 fn mm_config_dir() -> String {
-    dirs::config_dir()
-        .map(|d| d.join("MeedyaManager"))
+    mm_core::config::app_config_dir()
         .unwrap_or_default()
         .to_string_lossy()
         .into_owned()

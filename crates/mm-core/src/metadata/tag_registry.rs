@@ -5,9 +5,10 @@
 // Provides a lazy-initialised, process-global registry of all metadata tag
 // definitions that MeedyaManager recognises.  Data is sourced from
 // `config/tags.json5` (embedded at compile time) with an optional user
-// override at:
+// override at `<config_dir>/tags.json5` (see `mm_core::config::app_config_dir()`
+// for exactly how `<config_dir>` is resolved on each platform), e.g.:
 //
-//   Linux/macOS:  ~/.config/meedyamanager/tags.json5
+//   Linux/macOS:  ~/.config/MeedyaManager/tags.json5 (or ~/Library/Application Support/MeedyaManager on macOS)
 //   Windows:      %APPDATA%\MeedyaManager\tags.json5
 //
 // Public API:
@@ -38,6 +39,7 @@
 // MeedyaManager's metadata-provider integration (M5+).
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::LazyLock;
 
 // ---------------------------------------------------------------------------
@@ -219,10 +221,18 @@ static REGISTRY: LazyLock<TagRegistryData> = LazyLock::new(|| {
         .expect("built-in config/tags.json5 is malformed — this is a compile-time defect")
 });
 
+/// Resolve the path to the user's `tags.json5` override file.
+///
+/// `pub(crate)` (rather than private) so `config::tests::all_core_paths_share_one_directory`
+/// can assert this path shares a directory with every other module's
+/// state — see issue #212 (P0-CONFIGDIR).
+pub(crate) fn user_override_path() -> Option<PathBuf> {
+    Some(crate::config::app_config_dir().ok()?.join("tags.json5"))
+}
+
 /// Try to read the user's custom `tags.json5` from the OS config directory.
 fn load_user_override() -> Option<String> {
-    let config_root = dirs::config_dir()?;
-    let path = config_root.join("meedyamanager").join("tags.json5");
+    let path = user_override_path()?;
     std::fs::read_to_string(&path).ok()
 }
 
@@ -335,6 +345,7 @@ pub fn all_known_template_tags() -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
 
@@ -564,5 +575,32 @@ atoms = [ { namespace = "itunes", name = "ISRC" } ]
         let s = provider::value_to_string(&v, &provider::TagValueType::String)
             .expect("string conversion");
         assert_eq!(s, "Midnights");
+    }
+
+    // ── Config directory resolution — issue #212 (P0-CONFIGDIR) ──────────────
+
+    #[test]
+    fn user_override_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path = user_override_path().expect("user_override_path should resolve under override");
+        assert!(
+            path.starts_with(tmp.path()),
+            "tag override path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
     }
 }

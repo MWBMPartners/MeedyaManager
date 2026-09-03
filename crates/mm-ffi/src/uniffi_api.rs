@@ -55,10 +55,14 @@ pub fn mm_version() -> String {
 /// Windows: `%APPDATA%\MeedyaManager\settings.json5`
 #[uniffi::export]
 pub fn config_path() -> String {
-    dirs::config_dir()
+    // Routed through `mm_core::config::app_config_dir()` (the single
+    // resolver — see issue #212, P0-CONFIGDIR) rather than calling
+    // `dirs::config_dir()` directly, so this always matches where
+    // `AppConfig::load()` actually reads from.
+    mm_core::config::app_config_dir()
         .map_or_else(
-            || PathBuf::from("settings.json5"),
-            |d| d.join("MeedyaManager").join("settings.json5"),
+            |_| PathBuf::from("settings.json5"),
+            |d| d.join("settings.json5"),
         )
         .to_string_lossy()
         .into_owned()

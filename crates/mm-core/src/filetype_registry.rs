@@ -6,9 +6,11 @@
 //
 // Data is stored in `config/filetypes.json5` (workspace root), embedded into
 // the binary at compile time via `include_str!`.  Users can override the
-// compiled defaults by placing a modified copy at:
+// compiled defaults by placing a modified copy at
+// `<config_dir>/filetypes.json5` (see `mm_core::config::app_config_dir()`
+// for exactly how `<config_dir>` is resolved on each platform), e.g.:
 //
-//   Linux/macOS:  ~/.config/meedyamanager/filetypes.json5
+//   Linux/macOS:  ~/.config/MeedyaManager/filetypes.json5 (or ~/Library/Application Support/MeedyaManager on macOS)
 //   Windows:      %APPDATA%\MeedyaManager\filetypes.json5
 //
 // At first access the registry is lazily parsed from JSON5 and cached for the
@@ -23,6 +25,7 @@
 // JSON5 entry.
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::LazyLock;
 
 // ---------------------------------------------------------------------------
@@ -223,16 +226,24 @@ static REGISTRY: LazyLock<FiletypeRegistryData> = LazyLock::new(|| {
         .expect("built-in config/filetypes.json5 is malformed — this is a compile-time defect")
 });
 
+/// Resolve the path to the user's `filetypes.json5` override file.
+///
+/// `pub(crate)` (rather than private) so `config::tests::all_core_paths_share_one_directory`
+/// can assert this path shares a directory with every other module's
+/// state — see issue #212 (P0-CONFIGDIR).
+pub(crate) fn user_override_path() -> Option<PathBuf> {
+    Some(
+        crate::config::app_config_dir()
+            .ok()?
+            .join("filetypes.json5"),
+    )
+}
+
 /// Try to read the user's custom `filetypes.json5` from the OS config directory.
 ///
 /// Returns `None` if the file does not exist or cannot be read.
 fn load_user_override() -> Option<String> {
-    // `dirs::config_dir()` resolves to:
-    //   Linux/macOS: ~/.config
-    //   Windows:     %APPDATA%  (e.g. C:\Users\User\AppData\Roaming)
-    let config_root = dirs::config_dir()?;
-    let path = config_root.join("meedyamanager").join("filetypes.json5");
-
+    let path = user_override_path()?;
     std::fs::read_to_string(&path).ok()
 }
 
@@ -362,6 +373,7 @@ pub fn mime_for_extension(ext: &str) -> Option<&'static str> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
 
@@ -590,5 +602,32 @@ mod tests {
         // Verifies the embedded JSON5 is well-formed by triggering the LazyLock.
         assert!(!audio_formats().is_empty());
         assert!(!video_formats().is_empty());
+    }
+
+    // ── Config directory resolution — issue #212 (P0-CONFIGDIR) ─────────────
+
+    #[test]
+    fn user_override_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path = user_override_path().expect("user_override_path should resolve under override");
+        assert!(
+            path.starts_with(tmp.path()),
+            "filetype override path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
     }
 }

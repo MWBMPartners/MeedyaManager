@@ -136,9 +136,15 @@ fn write_prerelease_sentinel(version: &str) {
 /// Compute the sentinel file path for a given version string.
 ///
 /// Returns `None` if the platform config directory cannot be determined.
+///
+/// Routed through `mm_core::config::app_config_dir()` (rather than calling
+/// `dirs::config_dir()` directly) so this file lands in the same directory
+/// every other module agrees on — see issue #212 (P0-CONFIGDIR): before this
+/// fix the sentinel used a lowercase "meedyamanager" subdirectory while the
+/// rest of the app used "MeedyaManager", which are two different directories
+/// on a case-sensitive filesystem (Linux — this crate's own platform).
 fn sentinel_path(version: &str) -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|d| {
-        d.join("meedyamanager")
-            .join(format!("prerelease_notified_{version}"))
-    })
+    mm_core::config::app_config_dir()
+        .ok()
+        .map(|d| d.join(format!("prerelease_notified_{version}")))
 }

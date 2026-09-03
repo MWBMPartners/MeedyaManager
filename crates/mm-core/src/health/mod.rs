@@ -210,8 +210,10 @@ pub fn check_disk_space(path: &Path, _min_bytes: u64) -> CheckResult {
 
 /// Check that the config directory is writable (for state and lock files)
 pub fn check_config_dir_writable() -> CheckResult {
-    let config_dir =
-        dirs::config_dir().map_or_else(|| PathBuf::from("."), |d| d.join("MeedyaManager"));
+    // Route through the single config-dir resolver (honours `MM_CONFIG_DIR`)
+    // rather than calling `dirs::config_dir()` directly — see issue #212
+    // (P0-CONFIGDIR). Preserve the existing "." fallback behaviour on error.
+    let config_dir = crate::config::app_config_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     // Try to create the directory if it doesn't exist
     if let Err(e) = std::fs::create_dir_all(&config_dir) {

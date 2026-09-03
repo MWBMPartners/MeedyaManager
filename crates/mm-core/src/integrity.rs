@@ -14,8 +14,8 @@
 //   3. SHA256 hash of the new file after the rename.
 //   4. Rollback — if anything fails the `.meedya_tmp` file is deleted and the
 //      original is untouched.
-//   5. Corruption log — appended to `<config_dir>/meedyamanager/corruption.log`
-//      whenever a post-write hash cannot be verified or a write fails.
+//   5. Corruption log — appended to `<config_dir>/corruption.log` whenever a
+//      post-write hash cannot be verified or a write fails.
 //
 // Public API:
 //   - file_sha256(path)              → hex SHA256 string
@@ -323,24 +323,33 @@ fn failure(path: &Path, sha256_before: String, message: String) -> IntegrityWrit
     }
 }
 
-/// Append a line to `<config_dir>/meedyamanager/corruption.log`.
+/// Resolve the corruption log's full path (`<config_dir>/corruption.log`).
+///
+/// `pub(crate)` (rather than private) so `config::tests::all_core_paths_share_one_directory`
+/// can assert this path shares a directory with every other module's
+/// state — see issue #212 (P0-CONFIGDIR).
+pub(crate) fn corruption_log_path() -> MmResult<PathBuf> {
+    Ok(crate::config::app_config_dir()?.join("corruption.log"))
+}
+
+/// Append a line to `<config_dir>/corruption.log`.
 ///
 /// Silently does nothing if the config directory cannot be determined or the
 /// file cannot be written (we don't want the corruption handler itself to
 /// panic).
 fn append_corruption_log(path: &Path, message: &str) {
-    // Resolve the OS-specific config directory
-    let Some(config_root) = dirs::config_dir() else {
+    // Resolve the log file path via the single config-dir resolver
+    let Ok(log_path) = corruption_log_path() else {
         return;
     };
-    let log_dir = config_root.join("meedyamanager");
+    let Some(log_dir) = log_path.parent() else {
+        return;
+    };
 
     // Ensure the directory exists
-    if std::fs::create_dir_all(&log_dir).is_err() {
+    if std::fs::create_dir_all(log_dir).is_err() {
         return;
     }
-
-    let log_path = log_dir.join("corruption.log");
 
     // Build the log entry (ISO 8601 timestamp + path + message)
     let timestamp = chrono::Utc::now().to_rfc3339();
@@ -361,6 +370,7 @@ fn append_corruption_log(path: &Path, message: &str) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
     use std::fs;
@@ -505,5 +515,33 @@ mod tests {
         assert_eq!(r.sha256_before, "abc");
         assert!(r.sha256_after.is_some());
         assert!(r.error.is_none());
+    }
+
+    // ── Config directory resolution — issue #212 (P0-CONFIGDIR) ─────────────
+
+    #[test]
+    fn corruption_log_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path =
+            corruption_log_path().expect("corruption_log_path should resolve under override");
+        assert!(
+            path.starts_with(tmp.path()),
+            "corruption log path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
     }
 }
