@@ -47,7 +47,7 @@ uniffi::setup_scaffolding!("mm_ffi");
 /// Async callback interfaces for event delivery from Rust to native UIs
 pub mod callbacks;
 
-/// C API: #[no_mangle] extern "C" functions for Windows P/Invoke
+/// C API: \[no_mangle\] extern "C" functions for Windows P/Invoke
 pub mod capi;
 
 /// FFI-safe shared data types (TagEntry, RenamePreviewFfi, MmFfiError, etc.)

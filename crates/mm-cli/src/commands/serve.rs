@@ -49,11 +49,11 @@ pub struct ServeArgs {
     #[arg(long, value_name = "SECRET", hide_env_values = true)]
     pub jwt_secret: Option<String>,
 
-    /// Allowed CORS origin (repeat for multiple: --cors-origin https://app.example.com)
+    /// Allowed CORS origin (repeat for multiple: --cors-origin `` `https://app.example.com` ``)
     #[arg(long, value_name = "ORIGIN")]
     pub cors_origin: Vec<String>,
 
-    /// Media root directory to serve (defaults to config watch_paths[0])
+    /// Media root directory to serve (defaults to config `` `watch_paths[0]` ``)
     #[arg(long, short = 'm', value_name = "PATH")]
     pub media_root: Option<String>,
 

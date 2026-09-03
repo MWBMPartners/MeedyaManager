@@ -53,7 +53,19 @@ struct WatchStartOutput {
 ///
 /// Starts a file system watcher and runs until Ctrl+C is pressed.
 /// Events are printed to stdout with timestamps.
+///
+/// Note: The `--organize` flag is not yet implemented and will cause the
+/// command to exit with code 3 (NOT_IMPLEMENTED).
 pub async fn run(ctx: &CliContext, args: &WatchArgs) -> anyhow::Result<i32> {
+    // Check if --organize was requested — it is not yet implemented
+    if args.organize {
+        output::print_error(
+            "File auto-organising is not yet implemented. \
+            The `--organize` flag cannot be used in this release.",
+        );
+        return Ok(ExitCode::NOT_IMPLEMENTED);
+    }
+
     // Determine which folders to watch
     let folders = if args.paths.is_empty() {
         // Use folders from config
@@ -207,6 +219,34 @@ mod tests {
             no_recursive: false,
             organize: false,
         };
+        assert_eq!(run(&ctx, &args).await.unwrap(), ExitCode::ERROR);
+    }
+
+    /// Watch with --organize reports not implemented
+    #[tokio::test]
+    async fn watch_organize_reports_not_implemented() {
+        let mut ctx = test_ctx();
+        ctx.config.watch.folders.clear();
+        let args = WatchArgs {
+            paths: vec![],
+            no_recursive: false,
+            organize: true,
+        };
+        // Should exit with NOT_IMPLEMENTED (3) before checking folders
+        assert_eq!(run(&ctx, &args).await.unwrap(), ExitCode::NOT_IMPLEMENTED);
+    }
+
+    /// Watch without --organize still validates folders
+    #[tokio::test]
+    async fn watch_without_organize_validates_folders() {
+        let mut ctx = test_ctx();
+        ctx.config.watch.folders.clear();
+        let args = WatchArgs {
+            paths: vec![],
+            no_recursive: false,
+            organize: false,
+        };
+        // Should proceed to folder validation and return ERROR
         assert_eq!(run(&ctx, &args).await.unwrap(), ExitCode::ERROR);
     }
 

@@ -234,6 +234,66 @@ pub fn substitute_template(template: &str, metadata: &HashMap<String, String>) -
     PLACEHOLDER_RE.replace_all(&result, "Unknown").to_string()
 }
 
+/// Do these two paths name the **same file** on disk?
+///
+/// This is the question `PathBuf == PathBuf` cannot answer. On a
+/// case-insensitive filesystem (APFS, NTFS) `abbey road.mp3` and
+/// `Abbey Road.mp3` are one file under two spellings; on a
+/// normalisation-insensitive one (APFS again) so are the NFD and NFC
+/// spellings of `Café.mp3`. Comparing path *bytes* says "different", and
+/// asking `Path::exists` says "the destination is taken" — between them they
+/// made a case-only or normalisation-only rename permanently impossible, even
+/// though `rename(2)` performs both perfectly well.
+///
+/// Deliberately implemented with `std` only — no `same-file`/`nix`
+/// dependency — so `Cargo.lock` is untouched.
+///
+/// On Unix, identity *is* `(dev, ino)`: that pair is precisely what the
+/// kernel compares when `rename(2)` decides that old and new are links to
+/// one file (in which case it succeeds without destroying anything). We use
+/// `symlink_metadata` rather than `metadata` so a symlink is compared as the
+/// directory entry it is, never conflated with the file it points at — a
+/// symlink whose target is the destination must stay a conflict.
+#[cfg(unix)]
+fn is_same_file(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+
+    match (std::fs::symlink_metadata(a), std::fs::symlink_metadata(b)) {
+        // Same device and same inode number ⇒ the same file.
+        (Ok(a_meta), Ok(b_meta)) => a_meta.dev() == b_meta.dev() && a_meta.ino() == b_meta.ino(),
+        // Either path is missing (or unreadable): they cannot be shown to be
+        // the same file, and "not the same" is the cautious answer — it keeps
+        // a conflict reported rather than silently permitting an overwrite.
+        _ => false,
+    }
+}
+
+/// Windows and anything else: fall back to comparing canonical paths.
+///
+/// `canonicalize` resolves the on-disk spelling (case included) and follows
+/// links, so the two spellings of one file collapse to one string. It costs a
+/// syscall and needs both paths to exist, hence the Unix-specific version
+/// above where the cheaper, more precise answer is available.
+#[cfg(not(unix))]
+fn is_same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a_real), Ok(b_real)) => a_real == b_real,
+        _ => false,
+    }
+}
+
+/// Is `destination` occupied by a file *other than* `source`?
+///
+/// This is what "conflict" has to mean. `destination.exists()` on its own
+/// answers "yes" for the source file's own alternative spelling, which is not
+/// a rival file at all. Narrowing the test to *a different file* is what makes
+/// case-only and normalisation-only renames possible, while keeping the #201
+/// guarantee intact: a genuinely distinct file at the destination still
+/// blocks the rename.
+fn destination_taken_by_other(source: &Path, destination: &Path) -> bool {
+    destination.exists() && !is_same_file(source, destination)
+}
+
 /// Simulate a batch rename operation without moving any files.
 ///
 /// Takes source files and a path template, substitutes metadata values,
@@ -279,8 +339,15 @@ pub fn simulate_rename(
         // guarantee, so assert it in debug builds and tests.
         debug_assert!(destination.starts_with(output_dir));
 
-        // Detect conflicts
-        let conflict = destination.exists() || destinations_seen.contains_key(&destination);
+        // Detect conflicts. A destination that turns out to *be* the source
+        // under another spelling is not a conflict — see
+        // `destination_taken_by_other`. Intra-batch clashes are still keyed on
+        // the exact path, which is what earlier entries in this batch claimed.
+        let conflict = destination_taken_by_other(source, &destination)
+            || destinations_seen.contains_key(&destination);
+        // `unchanged` means the same file under a byte-identical name, which
+        // full-path equality already expresses. A case-only rename fails this
+        // test on purpose: it is real work for `rename(2)` to do, not a no-op.
         let unchanged = source == &destination;
 
         // Track this destination to detect intra-batch conflicts
@@ -376,8 +443,15 @@ pub fn simulate_rename_with_rules<'f>(
         // guarantee, so assert it in debug builds and tests.
         debug_assert!(destination.starts_with(output_dir));
 
-        // Detect conflicts
-        let conflict = destination.exists() || destinations_seen.contains_key(&destination);
+        // Detect conflicts. A destination that turns out to *be* the source
+        // under another spelling is not a conflict — see
+        // `destination_taken_by_other`. Intra-batch clashes are still keyed on
+        // the exact path, which is what earlier entries in this batch claimed.
+        let conflict = destination_taken_by_other(source, &destination)
+            || destinations_seen.contains_key(&destination);
+        // `unchanged` means the same file under a byte-identical name, which
+        // full-path equality already expresses. A case-only rename fails this
+        // test on purpose: it is real work for `rename(2)` to do, not a no-op.
         let unchanged = source == &destination;
 
         // Track this destination to detect intra-batch conflicts
@@ -475,7 +549,13 @@ pub fn execute_rename_with(preview: &RenamePreview, opts: &ExecuteOptions) -> Mm
     // Re-check for real. Between preview and execution the destination may
     // have been created by another process, by the user, or — the common
     // case — by an earlier entry in this very batch.
-    if preview.destination.exists() {
+    //
+    // As at preview time, "exists" is too blunt: on a case-insensitive or
+    // normalisation-insensitive filesystem the destination can be the source
+    // itself under another spelling, and refusing that would reject exactly
+    // the case-only and NFD→NFC renames this guard is not aimed at. Only a
+    // *different* file blocks the move.
+    if destination_taken_by_other(&preview.source, &preview.destination) {
         return Err(MmError::Rename(format!(
             "destination appeared since preview: {}",
             preview.destination.display()
@@ -532,7 +612,8 @@ const MAX_CONFLICT_COUNTER: u32 = 9_999;
 ///
 /// # Errors
 /// Returns `MmError::Rename` if no free name is found within
-/// [`MAX_CONFLICT_COUNTER`] attempts.
+/// `MAX_CONFLICT_COUNTER` attempts. (Plain code span, not an intra-doc link:
+/// the constant is private, and linking public docs to it warns.)
 pub fn resolve_conflict_by_counter(
     destination: &Path,
     claimed: &HashSet<PathBuf>,
@@ -1199,5 +1280,237 @@ mod tests {
 
         let result = execute_rename(&preview);
         assert!(result.is_err());
+    }
+
+    // ── Identity of the destination (case-only / normalisation renames) ──
+
+    /// Probe: does the filesystem under `dir` fold letter case in filenames?
+    ///
+    /// A `#[cfg(target_os = "macos")]` gate would be both too narrow and too
+    /// wide: too narrow because NTFS folds case as well, and too wide because
+    /// macOS happily hosts *case-sensitive* APFS volumes (and CI images that
+    /// use them), where the gated test would fail for a reason unrelated to
+    /// the bug. Asking the filesystem in front of us is the only honest test.
+    fn folds_case(dir: &Path) -> bool {
+        let lower = dir.join("mm-case-probe.tmp");
+        touch(&lower);
+        // If the upper-case spelling resolves, the two names are one file.
+        let folded = dir.join("MM-CASE-PROBE.TMP").exists();
+        fs::remove_file(&lower).unwrap();
+        folded
+    }
+
+    /// Probe: does the filesystem fold Unicode normalisation forms?
+    ///
+    /// APFS is normalisation-*insensitive* but *preserving*: a name stored as
+    /// NFD is found under its NFC spelling. ext4 stores bytes and does not.
+    fn folds_normalisation(dir: &Path) -> bool {
+        // "cafe" + U+0301 COMBINING ACUTE ACCENT — the NFD spelling.
+        let nfd = dir.join("mm-cafe\u{301}-probe.tmp");
+        touch(&nfd);
+        // "caf" + U+00E9 LATIN SMALL LETTER E WITH ACUTE — the NFC spelling.
+        let folded = dir.join("mm-caf\u{e9}-probe.tmp").exists();
+        fs::remove_file(&nfd).unwrap();
+        folded
+    }
+
+    /// **Regression — a case-only rename was permanently impossible.**
+    ///
+    /// On a case-insensitive filesystem `destination.exists()` answers "yes"
+    /// for the source file's *own* alternative spelling, so `abbey road.mp3`
+    /// → `Abbey Road.mp3` was reported as a conflict and could never be
+    /// carried out. `rename(2)` handles this case perfectly well.
+    #[test]
+    fn simulate_rename_case_only_is_not_a_conflict() {
+        let dir = TempDir::new().unwrap();
+        if !folds_case(dir.path()) {
+            // Case-sensitive filesystem: the two spellings are genuinely two
+            // different files, so the scenario under test cannot arise here.
+            return;
+        }
+
+        let source = dir.path().join("abbey road.mp3");
+        touch(&source);
+
+        let mut meta = HashMap::new();
+        meta.insert("title".to_string(), "Abbey Road".to_string());
+
+        let files = vec![(source, meta)];
+        let config = SanitizeConfig::default();
+        let summary = simulate_rename(&files, "{title}", dir.path(), &config).unwrap();
+
+        assert!(
+            !summary.previews[0].conflict,
+            "a file's own alternative spelling was mistaken for a rival file"
+        );
+        assert!(
+            !summary.previews[0].unchanged,
+            "a case-only rename is real work, not a no-op"
+        );
+        assert_eq!(summary.renamed, 1);
+        assert_eq!(summary.conflicts, 0);
+    }
+
+    /// **Regression — an NFD → NFC rename was permanently impossible.**
+    ///
+    /// Same root cause as the case-only failure: the destination "exists"
+    /// only because it *is* the source under another spelling.
+    #[test]
+    fn simulate_rename_nfd_to_nfc_is_not_a_conflict() {
+        let dir = TempDir::new().unwrap();
+        if !folds_normalisation(dir.path()) {
+            // Byte-exact filesystem: NFD and NFC are two distinct names.
+            return;
+        }
+
+        // Stored decomposed: "Caf" + "e" + U+0301.
+        let source = dir.path().join("Cafe\u{301}.mp3");
+        touch(&source);
+
+        let mut meta = HashMap::new();
+        // Requested composed: "Caf" + U+00E9.
+        meta.insert("title".to_string(), "Caf\u{e9}".to_string());
+
+        let files = vec![(source, meta)];
+        let config = SanitizeConfig::default();
+        let summary = simulate_rename(&files, "{title}", dir.path(), &config).unwrap();
+
+        assert!(
+            !summary.previews[0].conflict,
+            "the file's own NFD spelling was mistaken for a rival file"
+        );
+        assert_eq!(summary.renamed, 1);
+        assert_eq!(summary.conflicts, 0);
+    }
+
+    /// The rule-engine path shares the defect, so it shares the fix.
+    #[test]
+    fn simulate_rename_with_rules_case_only_is_not_a_conflict() {
+        let dir = TempDir::new().unwrap();
+        if !folds_case(dir.path()) {
+            return;
+        }
+
+        let source = dir.path().join("abbey road.mp3");
+        touch(&source);
+
+        let files = vec![source];
+        let mut tags: crate::metadata::TagMap = HashMap::new();
+        tags.insert("title".to_string(), vec!["Abbey Road".to_string()]);
+
+        let config = SanitizeConfig::default();
+        let summary =
+            simulate_rename_with_rules(&files, &[], "<Title>", dir.path(), &config, |_p| {
+                Ok(EvalContext::new(&tags))
+            })
+            .unwrap();
+
+        assert!(!summary.previews[0].conflict);
+        assert_eq!(summary.renamed, 1);
+    }
+
+    /// The mover must actually change the name on disk — proving the fix
+    /// reaches past the preview into `execute_rename_with`'s re-check.
+    #[test]
+    fn execute_rename_performs_a_case_only_rename() {
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("abbey road.mp3");
+        let dest = dir.path().join("Abbey Road.mp3");
+        fs::write(&source, b"the-same-bytes").unwrap();
+
+        let preview = RenamePreview {
+            // `source` is not needed again — the assertions below read the
+            // directory itself, which is the only honest witness on a
+            // case-folding filesystem.
+            source,
+            destination: dest.clone(),
+            conflict: false,
+            unchanged: false,
+        };
+
+        execute_rename(&preview).expect("a case-only rename must be allowed");
+
+        // `exists()` cannot tell us anything on a folding filesystem, so read
+        // the directory and compare the *stored* name byte for byte.
+        let names: Vec<String> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["Abbey Road.mp3".to_string()]);
+        assert_eq!(fs::read(&dest).unwrap(), b"the-same-bytes");
+    }
+
+    /// **Regression guard for #201 — the identity check must not reopen the
+    /// data-loss hole.**
+    ///
+    /// Relaxing "the destination exists" to "the destination exists *and is a
+    /// different file*" is only safe if two genuinely distinct files still
+    /// collide. Both the preview and the mover are checked, and both files
+    /// must survive byte for byte.
+    #[test]
+    fn distinct_file_at_destination_is_still_a_conflict() {
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("old.mp3");
+        let rival = dir.path().join("Taken.mp3");
+        fs::write(&source, b"source-bytes").unwrap();
+        fs::write(&rival, b"rival-bytes").unwrap();
+
+        let mut meta = HashMap::new();
+        meta.insert("title".to_string(), "Taken".to_string());
+
+        let files = vec![(source.clone(), meta)];
+        let config = SanitizeConfig::default();
+        let summary = simulate_rename(&files, "{title}", dir.path(), &config).unwrap();
+
+        assert!(
+            summary.previews[0].conflict,
+            "a different file at the destination must still be a conflict"
+        );
+        assert_eq!(summary.conflicts, 1);
+        assert_eq!(summary.renamed, 0);
+
+        // And the mover refuses even when handed a stale `conflict: false`.
+        let stale = RenamePreview {
+            source: source.clone(),
+            destination: rival.clone(),
+            conflict: false,
+            unchanged: false,
+        };
+        assert!(
+            execute_rename(&stale).is_err(),
+            "the identity check must not let a rival file be overwritten"
+        );
+
+        assert_eq!(fs::read(&source).unwrap(), b"source-bytes");
+        assert_eq!(fs::read(&rival).unwrap(), b"rival-bytes");
+    }
+
+    /// A case-only *collision between two different files* is still a
+    /// conflict on a folding filesystem: `old.mp3` renaming onto the existing
+    /// `TAKEN.mp3` under the spelling `Taken.mp3` is a rival, not itself.
+    #[test]
+    fn distinct_file_under_a_different_case_is_still_a_conflict() {
+        let dir = TempDir::new().unwrap();
+        if !folds_case(dir.path()) {
+            return;
+        }
+
+        let source = dir.path().join("old.mp3");
+        let rival = dir.path().join("TAKEN.mp3");
+        fs::write(&source, b"source-bytes").unwrap();
+        fs::write(&rival, b"rival-bytes").unwrap();
+
+        let mut meta = HashMap::new();
+        meta.insert("title".to_string(), "Taken".to_string());
+
+        let files = vec![(source, meta)];
+        let config = SanitizeConfig::default();
+        let summary = simulate_rename(&files, "{title}", dir.path(), &config).unwrap();
+
+        assert!(
+            summary.previews[0].conflict,
+            "a differently-cased rival file must still be a conflict"
+        );
+        assert_eq!(fs::read(&rival).unwrap(), b"rival-bytes");
     }
 }

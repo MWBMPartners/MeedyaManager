@@ -568,6 +568,11 @@ fn run_search_blocking(
 
     rt.block_on(async move {
         use mm_providers::{MusicBrainzProvider, ProviderRegistry, SearchQuery};
+        // `read_meta()` / `META_PROVIDER_ID` are the shim's way of recovering the
+        // pre-migration `ProviderResult::provider_id` field, which upstream now
+        // stashes inside the free-form `metadata` blob (see `mm_providers::traits`
+        // module docs, "FIELD-LOSS NOTE").
+        use mm_providers::traits::{META_PROVIDER_ID, read_meta};
 
         let mut registry = ProviderRegistry::new();
         // Register only MusicBrainz for the background search (no API key needed).
@@ -600,10 +605,9 @@ fn run_search_blocking(
             mm_core::useragent::build_user_agent_with_contact(),
         ));
 
-        let mut search_query = SearchQuery {
-            query: query.to_owned(),
-            ..Default::default()
-        };
+        // Upstream `SearchQuery` has no free-text `query` field — it takes
+        // structured `title`/`artist` (see `mm_providers::traits` doc comment).
+        let mut search_query = SearchQuery::default();
         if !artist.is_empty() {
             search_query.artist = Some(artist.to_owned());
         }
@@ -619,14 +623,21 @@ fn run_search_blocking(
             .into_iter()
             .map(|r| {
                 let cover_art_url = r.cover_art.into_iter().next().map(|a| a.url);
+                // Upstream `ProviderResult` renamed `provider` -> `provider_name`
+                // and dropped the dedicated `provider_id` field, stashing it in
+                // the `metadata` blob under `META_PROVIDER_ID` instead.
+                let provider_id = read_meta(&r.metadata, META_PROVIDER_ID)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
                 LookupResult {
-                    provider: r.provider,
+                    provider: r.provider_name,
                     title: r.title,
                     artist: r.artist,
                     album: r.album,
                     year: r.year,
                     genre: r.genre,
-                    provider_id: r.provider_id,
+                    provider_id,
                     score: r.score,
                     cover_art_url,
                 }

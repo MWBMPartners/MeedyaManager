@@ -513,7 +513,6 @@ fn build_tag_row(
     {
         let key_owned = key.to_string();
         let state_clone = Rc::clone(state);
-        let entry_map_clone = Rc::clone(entry_map);
         let save_btn_clone = save_btn.clone();
         let revert_btn_clone = revert_btn.clone();
 

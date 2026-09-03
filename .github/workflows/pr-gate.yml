@@ -67,7 +67,10 @@ jobs:
           #             changes Rust build/lint behaviour)
           #   macos   : macos/ or crates/mm-ffi/  (UniFFI Swift bindings)
           #   windows : windows/ or crates/mm-ffi/  (cbindgen C# P/Invoke)
-          #   linux   : crates/mm-gtk/  (GTK4 UI shell only)
+          #   linux   : crates/mm-gtk/, or any crate it depends on directly
+          #             (mm-core, mm-providers, mm-export, mm-server) — mm-gtk
+          #             is direct Rust (no FFI), so a change to any of those
+          #             can break its build with no path of its own touched.
           #
           # SAFETY NET: any change to .github/workflows/ forces a FULL platform
           # sweep. Workflow changes are meta-changes that can break CI for any
@@ -84,7 +87,7 @@ jobs:
             if match '^(crates/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|deny\.toml$|clippy\.toml$|\.cargo/)'; then RUST=true; else RUST=false; fi
             if match '^(macos/|crates/mm-ffi/)';                                                                     then MACOS=true; else MACOS=false; fi
             if match '^(windows/|crates/mm-ffi/)';                                                                   then WINDOWS=true; else WINDOWS=false; fi
-            if match '^crates/mm-gtk/';                                                                              then LINUX=true; else LINUX=false; fi
+            if match '^(crates/mm-gtk/|crates/mm-core/|crates/mm-providers/|crates/mm-export/|crates/mm-server/)';   then LINUX=true; else LINUX=false; fi
           fi
 
           # TEMPORARY DE-SCOPE — Windows is OFF the gate pending investigation

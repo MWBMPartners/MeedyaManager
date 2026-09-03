@@ -31,5 +31,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev libadwaita-1-dev gettext
 
-      - name: Build Rust API documentation
-        run: cargo doc --no-deps --workspace
+      - name: Build Rust API documentation with warnings-as-errors
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
+
+      - name: Upload documentation as artifact
+        # Upload target/doc as a workflow artifact so the generated rustdoc
+        # HTML is retrievable for review. Note: GitHub Pages is not currently
+        # enabled for this repository and would require an owner decision
+        # to deploy these docs to a public URL.
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdoc-html
+          path: target/doc
+          retention-days: 30

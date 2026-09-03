@@ -1,31 +1,45 @@
 # (C) 2025-2026 MWBM Partners Ltd
 # cbindgen configuration for MeedyaManager C API header generation.
 # This header is consumed by the Windows C# project via P/Invoke.
+#
+# issue #64 (header shipped with zero prototypes) had two independent causes,
+# both fixed here:
+#
+#   1. The actual root cause of zero exported prototypes: cbindgen 0.27 only
+#      recognises the bare `#[no_mangle]` attribute, not the Rust-2024
+#      `#[unsafe(no_mangle)]` form capi.rs uses throughout — see Cargo.toml's
+#      version bump to cbindgen >=0.29, which does recognise it.
+#   2. A second, independently-broken bug this file carried: three keys
+#      cbindgen has never accepted in this shape, which made
+#      `cbindgen::Config::from_file` return `Err` under 0.27 *and* 0.29 alike
+#      (confirmed directly against both — `unknown field include_modules` on
+#      0.27, `invalid type: map, expected a boolean` for `[documentation]` on
+#      0.29). The previous build.rs silently caught that with
+#      `.unwrap_or_default()`, so nobody saw the config was never actually
+#      being read. build.rs now panics on a parse failure instead.
+#   - `include_modules` was never a valid top-level key (the correct knob is
+#     `[export] include`/`exclude`, left empty below to mean "everything").
+#   - `[documentation]` is not a table; `documentation`, `documentation_style`
+#     and `documentation_length` are top-level keys.
+#   - `[layout] aligned_n = 0` is not a recognised layout key at all.
 
 # Language to generate bindings for
 language = "C"
 
-# Only include items from the capi module (not UniFFI internals)
-include_modules = ["capi"]
-
 # Wrap the entire header in an extern "C" block for C++ compatibility
 cpp_compat = true
 
-# Use stdint types (uint32_t, int64_t etc.) for portability
+# Include doc comments from Rust source in the generated header
+documentation = true
+documentation_style = "auto"
+documentation_length = "full"
+
 [export]
+# Empty include/exclude means "export every eligible #[no_mangle] extern "C"
+# item found while parsing" — capi.rs is the only module that defines any.
 include = []
 exclude = []
 
 [parse]
-# Parse all .rs files to find #[no_mangle] functions
+# Parse only this crate's own sources to find #[no_mangle] functions.
 parse_deps = false
-
-[layout]
-# Use packed structs for ABI stability across compilers
-packed = false
-aligned_n = 0
-
-[documentation]
-# Include doc comments from Rust source in the generated header
-style = "auto"
-length = "full"

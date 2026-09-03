@@ -467,9 +467,9 @@ pub fn item_key_to_mm_key(ik: &ItemKey) -> Option<&'static str> {
 
 /// Return every MeedyaManager tag key that can actually be persisted to a file.
 ///
-/// Derived from [`tag_key_mappings`], which is the single source of truth for
-/// the key ↔ `ItemKey` bridge, so this list can never drift from what
-/// [`write_tags`] and [`remove_tag`] will accept.
+/// Derived from `tag_key_mappings()` (the internal function that is the single
+/// source of truth for the key ↔ `ItemKey` bridge), so this list can never drift
+/// from what [`write_tags`] and [`remove_tag`] will accept.
 ///
 /// Callers use it to validate user-supplied keys *before* starting any I/O —
 /// see `mm-cli`'s `edit` command, which needs the whole batch to be

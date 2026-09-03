@@ -146,6 +146,16 @@ pub fn scan_directory(
 /// Execute a set of renames (non-conflicting, non-unchanged only).
 ///
 /// Returns the count of files successfully renamed.
+///
+/// Routed through [`renamer::execute_rename`] rather than moving the file
+/// directly via the standard library (issue #201 reached the CLI, mm-core and
+/// mm-gtk but missed this FFI path). That gives the FFI surface the same
+/// safety net every other caller gets: a re-check of the destination
+/// immediately before the move (a preview's `conflict` flag can go stale
+/// between scan and execute — another process, the user, or an earlier
+/// entry in this very batch may have created it since), plus the
+/// create-directories and copy-vs-move policy handling — see
+/// [`renamer::ExecuteOptions`].
 #[uniffi::export]
 pub fn execute_renames(previews: Vec<RenamePreviewFfi>) -> Result<u32, MmFfiError> {
     let mut count = 0u32;
@@ -156,17 +166,16 @@ pub fn execute_renames(previews: Vec<RenamePreviewFfi>) -> Result<u32, MmFfiErro
             continue;
         }
 
-        let src = PathBuf::from(&preview.source);
-        let dst = PathBuf::from(&preview.destination);
+        // Rebuild the mm-core RenamePreview the FFI-safe type was flattened
+        // from, so `execute_rename` gets exactly the facts it re-validates.
+        let core_preview = renamer::RenamePreview {
+            source: PathBuf::from(&preview.source),
+            destination: PathBuf::from(&preview.destination),
+            conflict: preview.conflict,
+            unchanged: preview.unchanged,
+        };
 
-        // Ensure destination directory exists (handles sub-directory templates)
-        if let Some(parent) = dst.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| MmFfiError::Io(e.to_string()))?;
-        }
-
-        // Perform the rename
-        std::fs::rename(&src, &dst)
-            .map_err(|e| MmFfiError::Rename(format!("{}: {e}", preview.source)))?;
+        renamer::execute_rename(&core_preview).map_err(MmFfiError::from)?;
 
         count += 1;
     }
@@ -400,6 +409,66 @@ pub fn list_known_tags() -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Test Mode
+// ---------------------------------------------------------------------------
+//
+// Mirrors `mm_core::test_mode`'s five entry points for the native UIs. Until
+// these were exported, `macos/MeedyaManager/Bindings/MmCore.swift` referenced
+// `testModeEnabled`, `setTestMode`, `testModeFileCount`, `commitTestModeFiles`
+// and `revertTestModeFiles` with nothing on the Rust side to bind to, so the
+// macOS app could not compile against the real generated bindings.
+
+/// Return whether Test Mode is currently enabled.
+///
+/// Fails open (returns `false`) if the manifest cannot be read — see
+/// `mm_core::test_mode::is_enabled` for why that is the safer default for a
+/// UI toggle: the alternative traps the user in a Test Mode they cannot see
+/// how to turn off.
+#[uniffi::export]
+pub fn test_mode_enabled() -> bool {
+    mm_core::test_mode::is_enabled()
+}
+
+/// Enable or disable Test Mode.
+///
+/// Disabling does not itself commit or revert already-staged files — the UI
+/// is expected to call `commit_test_mode_files` or `revert_test_mode_files`
+/// around this, as `mm_core::test_mode::disable` documents.
+#[uniffi::export]
+pub fn set_test_mode(enabled: bool) -> Result<(), MmFfiError> {
+    if enabled {
+        mm_core::test_mode::enable().map_err(MmFfiError::from)
+    } else {
+        mm_core::test_mode::disable().map_err(MmFfiError::from)
+    }
+}
+
+/// Return the number of files currently staged in Test Mode.
+#[uniffi::export]
+pub fn test_mode_file_count() -> u32 {
+    // Manifest files are files-on-disk, never anywhere near u32::MAX.
+    mm_core::test_mode::tracked_file_count() as u32
+}
+
+/// Commit all staged Test Mode files: originals are deleted and their
+/// `_MeedyaManager` copies take the original names.
+///
+/// Returns the number of files successfully committed.
+#[uniffi::export]
+pub fn commit_test_mode_files() -> Result<u32, MmFfiError> {
+    mm_core::test_mode::commit_files()
+        .map(|committed| committed as u32)
+        .map_err(MmFfiError::from)
+}
+
+/// Revert all staged Test Mode files, discarding the staged copies and
+/// leaving the originals untouched.
+#[uniffi::export]
+pub fn revert_test_mode_files() -> Result<(), MmFfiError> {
+    mm_core::test_mode::revert_files().map_err(MmFfiError::from)
+}
+
+// ---------------------------------------------------------------------------
 // File watcher
 // ---------------------------------------------------------------------------
 
@@ -520,6 +589,16 @@ fn collect_media_files_inner(
             // Recurse into sub-directory
             collect_media_files_inner(&path, recursive, out)?;
         } else if path.is_file() {
+            // Skip Test Mode copies (`_MeedyaManager` suffixed duplicates).
+            // A scan that picked these up would offer to rename the staged
+            // copy alongside — or instead of — the real original, which is
+            // exactly the confusion Test Mode exists to prevent: the copy is
+            // an internal implementation detail, not a file the user asked
+            // MeedyaManager to organise.
+            if mm_core::test_mode::is_test_mode_copy(&path) {
+                continue;
+            }
+
             // Check the file extension against the classify module
             let is_media = path
                 .extension()

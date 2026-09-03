@@ -94,6 +94,29 @@ namespace mm_ffi {
     sequence<string> list_known_tags();
 
     // -----------------------------------------------------------------------
+    // Test Mode
+    // -----------------------------------------------------------------------
+
+    /// Return whether Test Mode is currently enabled.
+    boolean test_mode_enabled();
+
+    /// Enable or disable Test Mode.
+    [Throws=MmFfiError]
+    void set_test_mode(boolean enabled);
+
+    /// Return the number of files currently staged in Test Mode.
+    u32 test_mode_file_count();
+
+    /// Commit all staged Test Mode files to their real destinations.
+    /// Returns the number of files successfully committed.
+    [Throws=MmFfiError]
+    u32 commit_test_mode_files();
+
+    /// Revert all staged Test Mode files, discarding changes.
+    [Throws=MmFfiError]
+    void revert_test_mode_files();
+
+    // -----------------------------------------------------------------------
     // File watcher
     // -----------------------------------------------------------------------
 

@@ -344,34 +344,82 @@ pub fn tracked_files() -> Vec<TestModeEntry> {
 ///
 /// This is the "Yes" path when the user disables test mode.
 /// Returns the number of files successfully committed.
+///
+/// # Fabricated-success guard (SCAN-HYGIENE)
+///
+/// A previous version of this function skipped any entry whose copy was
+/// missing from disk (warning and `continue`-ing), but then unconditionally
+/// cleared the *entire* manifest — including the skipped entries — and
+/// returned `Ok(committed)` regardless. A caller (`meedya config test-mode
+/// commit`) that lost every copy to, say, an unguarded `scan --execute`
+/// renaming them out from under the manifest would therefore print
+/// `"✓ Committed 0 … originals deleted"` and exit `0`: success, reported
+/// while the user's edits were silently discarded and the manifest's only
+/// record of them wiped. This is the same fabricated-success pattern issue
+/// #205 removed elsewhere.
+///
+/// Now: only entries that are *actually* committed (copy existed, original
+/// deleted, copy renamed — all three succeeded) are removed from the
+/// manifest. Anything that could not be committed — most importantly a
+/// missing copy — stays tracked, so `status`/`revert` can still find it and
+/// nothing is lost from the manifest even if the file itself already is. And
+/// this function returns `Err` naming every affected file whenever anything
+/// was left uncommitted, so the caller cannot mistake "0 committed" for
+/// success.
+///
+/// # Errors
+/// Returns `MmError::Config` if the manifest cannot be read/written, or if
+/// one or more tracked entries could not be committed (missing copy, or a
+/// filesystem error deleting the original / renaming the copy). The error
+/// message names every affected original.
 pub fn commit_files() -> MmResult<usize> {
     let mut manifest = load_manifest()?;
     let mut committed = 0usize;
+    // Human-readable descriptions of everything that did NOT commit, for the
+    // final error message.
+    let mut problems: Vec<String> = Vec::new();
+    // Entries that must remain tracked because they were not committed.
+    let mut remaining: BTreeMap<String, TestModeEntry> = BTreeMap::new();
 
-    for entry in manifest.files.values() {
-        // Skip entries where the copy no longer exists (user may have
-        // deleted it manually)
+    for (key, entry) in &manifest.files {
+        // The copy no longer exists — the user may have deleted it by hand,
+        // or (the bug this guards against) something else renamed/moved it
+        // out from under the manifest. Either way the edit it held may be
+        // gone, so this is reported as a problem rather than swept aside,
+        // and the entry is kept tracked in case the file turns up again.
         if !entry.copy.exists() {
             warn!(
                 copy = %entry.copy.display(),
-                "test mode copy not found — skipping"
+                original = %entry.original.display(),
+                "test mode copy not found — the edit may be lost; leaving entry tracked"
             );
+            problems.push(format!(
+                "copy missing for '{}' (expected at '{}')",
+                entry.original.display(),
+                entry.copy.display()
+            ));
+            remaining.insert(key.clone(), entry.clone());
             continue;
         }
 
-        // Delete the original if it still exists
-        if entry.original.exists() {
-            if let Err(e) = std::fs::remove_file(&entry.original) {
-                error!(
-                    path = %entry.original.display(),
-                    %e,
-                    "failed to delete original file during commit"
-                );
-                continue;
-            }
+        // Delete the original if it still exists.
+        if entry.original.exists()
+            && let Err(e) = std::fs::remove_file(&entry.original)
+        {
+            error!(
+                path = %entry.original.display(),
+                %e,
+                "failed to delete original file during commit"
+            );
+            problems.push(format!(
+                "failed to delete original '{}': {e}",
+                entry.original.display()
+            ));
+            remaining.insert(key.clone(), entry.clone());
+            continue;
         }
 
-        // Rename the copy to the original's name (removing the suffix)
+        // Rename the copy to the original's name (removing the suffix).
         if let Err(e) = std::fs::rename(&entry.copy, &entry.original) {
             error!(
                 from = %entry.copy.display(),
@@ -379,6 +427,12 @@ pub fn commit_files() -> MmResult<usize> {
                 %e,
                 "failed to rename test mode copy during commit"
             );
+            problems.push(format!(
+                "failed to rename copy '{}' to '{}': {e}",
+                entry.copy.display(),
+                entry.original.display()
+            ));
+            remaining.insert(key.clone(), entry.clone());
             continue;
         }
 
@@ -389,9 +443,20 @@ pub fn commit_files() -> MmResult<usize> {
         );
     }
 
-    // Clear the manifest
-    manifest.files.clear();
+    // Only entries that genuinely committed are dropped — everything else
+    // stays tracked so it is not lost from the manifest as well as the disk.
+    manifest.files = remaining;
     save_manifest(&manifest)?;
+
+    if !problems.is_empty() {
+        let message = format!(
+            "committed {committed} file(s); {} could not be committed and remain tracked — {}",
+            problems.len(),
+            problems.join("; ")
+        );
+        error!("{message}");
+        return Err(MmError::Config(message));
+    }
 
     info!(committed, "test mode commit complete");
     Ok(committed)
@@ -766,5 +831,76 @@ mod tests {
         assert!(manifest_status().unwrap());
         disable().unwrap();
         assert!(!manifest_status().unwrap());
+    }
+
+    // ── commit_files — SCAN-HYGIENE (fabricated-success guard) ─────────────
+
+    /// The ordinary path still works: copy exists, gets promoted over the
+    /// original, and the manifest entry is cleared.
+    #[test]
+    fn commit_files_moves_copy_over_original_and_clears_manifest() {
+        let guard = ConfigDirGuard::new();
+
+        let original = guard.path().join("song.flac");
+        fs::write(&original, b"original bytes").unwrap();
+        let copy = test_mode_path(&original);
+        fs::write(&copy, b"edited bytes").unwrap();
+
+        record_file(&original, &copy).unwrap();
+
+        let committed = commit_files().expect("commit should succeed when the copy exists");
+        assert_eq!(committed, 1);
+        assert_eq!(tracked_file_count(), 0, "committed entry must be cleared");
+        assert!(original.exists());
+        assert!(!copy.exists());
+        assert_eq!(fs::read_to_string(&original).unwrap(), "edited bytes");
+    }
+
+    /// **Regression — fabricated success.**
+    ///
+    /// Reproduces the SCAN-HYGIENE report: the tracked copy is missing (as if
+    /// something had renamed it out from under the manifest). The old
+    /// implementation warned, skipped the entry, then unconditionally wiped
+    /// the whole manifest and returned `Ok(0)` — reported as success while
+    /// the edit was lost with no trace left to investigate.
+    ///
+    /// `commit_files` is exactly what `meedya config test-mode commit`
+    /// (`mm-cli`'s `config_cmd.rs`) calls: its "commit" branch does
+    /// `commit_files().map_err(...)?`, and `main.rs` maps any `Err` an
+    /// `anyhow::Result<i32>` command handler returns to
+    /// `std::process::exit(ExitCode::ERROR)` — so an `Err` here is exactly
+    /// what turns into the CLI's non-zero exit code. This is asserted at the
+    /// mm-core level (rather than by actually invoking the CLI binary)
+    /// because it needs no `MM_CONFIG_DIR` coordination with any other test
+    /// process — mm-core's and mm-cli's test suites already run as separate
+    /// binaries — and mm-cli's own test binary has no crate-wide lock for
+    /// the handful of files that redirect that global environment variable.
+    #[test]
+    fn test_mode_commit_reports_missing_copy_and_exits_non_zero() {
+        let guard = ConfigDirGuard::new();
+
+        let original = guard.path().join("song.flac");
+        fs::write(&original, b"original bytes").unwrap();
+        // The copy this entry names is never created on disk.
+        let copy = test_mode_path(&original);
+        record_file(&original, &copy).unwrap();
+
+        let result = commit_files();
+        assert!(
+            result.is_err(),
+            "a missing tracked copy must fail the commit, not report success"
+        );
+
+        // The entry must still be tracked — silently discarding it here is
+        // exactly how the lost edit went unreported.
+        assert_eq!(
+            tracked_file_count(),
+            1,
+            "the manifest must not be wiped when a copy could not be committed"
+        );
+        assert!(
+            original.exists(),
+            "the original must not be deleted when its copy is missing"
+        );
     }
 }

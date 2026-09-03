@@ -309,7 +309,6 @@ impl ScanPanel {
             let results_box_clone = results_box.clone();
             let execute_btn_clone = execute_btn.clone();
             let template_entry_clone = template_entry.clone();
-            let folder_entry_clone = folder_entry.clone();
 
             scan_btn.connect_clicked(move |_| {
                 let dir_opt = state_clone.borrow().directory.clone();
@@ -474,6 +473,14 @@ fn collect_dir(dir: &PathBuf, recursive: bool) -> std::io::Result<Vec<PathBuf>> 
         if path.is_dir() && recursive {
             paths.extend(collect_dir(&path, recursive)?);
         } else if path.is_file() {
+            // Skip Test Mode copies (the `_MeedyaManager`-suffixed safety-net
+            // duplicates written by Test Mode). Scanning/renaming them
+            // alongside the real file would let a folder that contains a
+            // Test Mode copy get "organised" right along with it, silently
+            // destroying the safety net the copy exists to provide.
+            if mm_core::test_mode::is_test_mode_copy(&path) {
+                continue;
+            }
             paths.push(path);
         }
     }

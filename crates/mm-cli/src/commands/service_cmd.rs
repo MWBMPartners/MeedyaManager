@@ -64,34 +64,21 @@ pub fn run(ctx: &CliContext, args: &ServiceArgs) -> anyhow::Result<i32> {
 // ─── Subcommand handlers ────────────────────────────────────────────────────
 
 /// Install the background service with the OS service manager.
-fn install(ctx: &CliContext, bin_path: Option<&std::path::Path>) -> anyhow::Result<i32> {
-    // Resolve the binary path: use the supplied path, or the current executable
-    let resolved_bin = match bin_path {
-        Some(p) => p.to_path_buf(),
-        None => std::env::current_exe()
-            .map_err(|e| anyhow::anyhow!("cannot determine current executable: {e}"))?,
-    };
-
-    if ctx.dry_run {
-        println!(
-            "Dry-run: would install MeedyaManager service (binary: {})",
-            resolved_bin.display()
-        );
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    match service::install_service(&resolved_bin) {
-        Ok(()) => {
-            output::print_success("MeedyaManager background service installed and enabled.");
-            println!("  The service will start automatically at next login.");
-            println!("  To start immediately: meedya service start");
-            Ok(ExitCode::SUCCESS)
-        }
-        Err(e) => {
-            output::print_error(&format!("Service install failed: {e}"));
-            Ok(ExitCode::ERROR)
-        }
-    }
+///
+/// Currently refuses to install because the service depends on `watch --organize`,
+/// which is not yet implemented. Once `--organize` is available, this will
+/// configure the OS service manager (systemd on Linux, launchd on macOS, Windows
+/// Service Manager on Windows) to run the watcher in the background.
+fn install(_ctx: &CliContext, _bin_path: Option<&std::path::Path>) -> anyhow::Result<i32> {
+    // The background service configuration (systemd unit, launchd plist, Windows SC)
+    // hardcodes the `watch --organize` command, which is not yet implemented.
+    // Refuse to install rather than creating a service that immediately fails.
+    output::print_error(
+        "Service installation is not yet available. \
+        The background service depends on `meedya watch --organize`, which is not \
+        implemented in this release.",
+    );
+    Ok(ExitCode::NOT_IMPLEMENTED)
 }
 
 /// Uninstall the background service.

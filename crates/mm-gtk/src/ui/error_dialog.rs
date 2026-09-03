@@ -9,7 +9,6 @@
 //   show_error(window, "Save Failed", "The file could not be written. Check permissions.");
 
 use adw::prelude::*;
-use gtk::prelude::*;
 use gtk4 as gtk;
 use libadwaita as adw;
 

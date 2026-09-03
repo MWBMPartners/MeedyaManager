@@ -93,6 +93,19 @@ pub fn should_ignore(path: &Path, config: &WatcherConfig) -> bool {
         None => return true, // No filename = ignore
     };
 
+    // Test Mode copies (`_MeedyaManager` suffix) are a virtual duplicate of a
+    // real file, never new media content in their own right. A scan or watch
+    // that treats one as ordinary media can rename it right out from under
+    // the manifest's original<->copy pairing — exactly what breaks
+    // `meedya config test-mode commit` (SCAN-HYGIENE). Skip them here,
+    // unconditionally and ahead of every configurable filter below, so
+    // neither the CLI `scan` walk nor the live `watch` ever sees one as a
+    // plain file. This does not depend on Test Mode being enabled right
+    // now — a copy left over from a previous session is just as fragile.
+    if crate::test_mode::is_test_mode_copy(path) {
+        return true;
+    }
+
     // Check ignore patterns
     for pattern in &config.ignore_patterns {
         if pattern.starts_with(".*") && filename.starts_with('.') {
@@ -324,6 +337,34 @@ mod tests {
         assert!(!should_ignore(Path::new("song.mp3"), &config));
         assert!(!should_ignore(Path::new("video.mkv"), &config));
         assert!(!should_ignore(Path::new("track.flac"), &config));
+    }
+
+    #[test]
+    fn should_ignore_test_mode_copies() {
+        // Regression — SCAN-HYGIENE: a Test Mode copy must never be treated
+        // as an ordinary file by the scan or the watcher, regardless of the
+        // configured include/exclude filters.
+        let config = WatcherConfig::default();
+        assert!(should_ignore(
+            Path::new("/music/song_MeedyaManager.mp3"),
+            &config
+        ));
+        assert!(should_ignore(
+            Path::new("/music/README_MeedyaManager"),
+            &config
+        ));
+        // The plain original next to it is unaffected.
+        assert!(!should_ignore(Path::new("/music/song.mp3"), &config));
+
+        // Still skipped even when an include-list would otherwise admit it.
+        let include_only = WatcherConfig {
+            include_extensions: vec!["mp3".into()],
+            ..Default::default()
+        };
+        assert!(should_ignore(
+            Path::new("/music/song_MeedyaManager.mp3"),
+            &include_only
+        ));
     }
 
     #[test]

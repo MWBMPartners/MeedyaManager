@@ -511,6 +511,22 @@ mod tests {
         assert!(tmp.path().join("settings.json5").exists());
     }
 
+    // ── SCAN-HYGIENE — test-mode commit fabricated-success guard ────────────
+    //
+    // The regression test for this lives in `mm-core`'s `test_mode.rs`
+    // (`test_mode_commit_reports_missing_copy_and_exits_non_zero`), not here.
+    // This "commit" branch is a bare `commit_files().map_err(...)?` — there
+    // is no CLI-side logic of its own to exercise beyond what `?` already
+    // guarantees, and every interesting behaviour (a missing copy makes the
+    // commit fail, and leaves the entry tracked rather than discarding it)
+    // lives entirely in `commit_files` itself. Proving it there also means
+    // never redirecting `MM_CONFIG_DIR` — a single process-global
+    // environment variable — from this binary's test suite, where no test
+    // in this crate shares a lock for it (see `edit.rs`'s private, file-local
+    // `ENV_LOCK`): a second, uncoordinated guard in this file was found to
+    // race it in practice. mm-core's test runs in its own separate `cargo
+    // test` process, so it needs no such coordination at all.
+
     #[test]
     fn config_export_roundtrip() {
         let tmp = tempfile::tempdir().unwrap();

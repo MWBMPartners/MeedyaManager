@@ -98,15 +98,38 @@ pub fn run(ctx: &CliContext, args: &ReportBugArgs) -> anyhow::Result<i32> {
 
     // ── 5. Read log tail (if requested) ─────────────────────────────────
     let log_tail = if args.include_logs {
-        // Try to find the log file from config
+        // Try to find the most recent log file from the standard log directory.
+        // Log files are named meedya-YYYY-MM-DD.log and rotated daily.
         let log_dir = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("MeedyaManager")
             .join("logs");
-        let log_file = log_dir.join("meedya.log");
 
-        if log_file.exists() {
-            if let Ok(contents) = std::fs::read_to_string(&log_file) {
+        // Glob for log files matching the pattern meedya-*.log
+        let mut log_files = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(&log_dir) {
+            for entry in entries.flatten() {
+                if let Ok(metadata) = entry.metadata() {
+                    let path = entry.path();
+                    // Only accept files with the name pattern meedya-YYYY-MM-DD.log
+                    if let Some(name) = path.file_name() {
+                        if let Some(name_str) = name.to_str() {
+                            if name_str.starts_with("meedya-") && name_str.ends_with(".log") {
+                                log_files.push((path, metadata.modified().ok()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort by modification time to get the most recent log file (most recent first)
+        use std::cmp::Reverse;
+        log_files.sort_by_key(|a| Reverse(a.1));
+
+        if let Some((log_file, _)) = log_files.first() {
+            if let Ok(contents) = std::fs::read_to_string(log_file) {
                 // Take last 200 lines
                 let lines: Vec<String> = contents
                     .lines()
@@ -123,7 +146,11 @@ pub fn run(ctx: &CliContext, args: &ReportBugArgs) -> anyhow::Result<i32> {
                 None
             }
         } else {
-            output::print_warning("No log file found");
+            output::print_warning(&format!(
+                "No log files found in {}. Logs are written when the logging system is \
+                    initialised with file output enabled (check settings.json5).",
+                log_dir.display()
+            ));
             None
         }
     } else {

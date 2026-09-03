@@ -25,6 +25,7 @@ use mm_core::renamer::{ExecuteOptions, RenamePreview, RenameSummary, SanitizeCon
 use mm_core::rule_engine::{EvalContext, MissingTagMode};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -61,6 +62,16 @@ pub struct ScanArgs {
     /// Force preview mode even with --execute
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Skip the interactive confirmation prompt before `--execute`
+    //
+    // `--execute` performs irreversible renames. Without this gate, a bare
+    // `--execute` typed against the wrong directory (or copy-pasted from
+    // somewhere) runs immediately. `--yes` is how a script or CI job opts
+    // out of the prompt on purpose; an interactive terminal without it is
+    // asked to confirm. See `execute_pre_confirmed`.
+    #[arg(long)]
+    pub yes: bool,
 }
 
 impl ScanArgs {
@@ -232,6 +243,75 @@ fn scan_files(ctx: &CliContext, args: &ScanArgs) -> MmResult<Vec<PathBuf>> {
     mm_core::watcher::scan_existing_files(&watcher_config)
 }
 
+/// Remove any file the Test Mode manifest tracks as an *original*, warning
+/// once per skipped file.
+///
+/// `meedya config test-mode commit` pairs each original with its
+/// `_MeedyaManager` copy strictly by path (see `mm_core::test_mode`).
+/// `watcher::should_ignore` already keeps the *copy* out of every scan and
+/// watch (a Test Mode copy is never treated as ordinary media). This is the
+/// other half: keeping the *original* out of the rename plan while an edit
+/// of it is still only sitting in the copy. Renaming the original out from
+/// under that pairing is exactly what leaves `commit` unable to find it —
+/// see SCAN-HYGIENE.
+///
+/// Takes the tracked-originals set as a plain parameter (rather than
+/// querying `mm_core::test_mode` itself) so the skip/warn decision is a pure
+/// function, testable without touching any global Test Mode state.
+fn skip_tracked_originals(
+    files: Vec<PathBuf>,
+    tracked_originals: &HashSet<PathBuf>,
+) -> Vec<PathBuf> {
+    if tracked_originals.is_empty() {
+        return files;
+    }
+
+    files
+        .into_iter()
+        .filter(|f| {
+            if tracked_originals.contains(f) {
+                output::print_warning(&format!(
+                    "Test Mode: '{}' is tracked as an original with a pending edit in its \
+                     _MeedyaManager copy — skipping so `meedya config test-mode commit` can \
+                     still find it.",
+                    f.display()
+                ));
+                false
+            } else {
+                true
+            }
+        })
+        .collect()
+}
+
+/// Decide whether `--execute` may proceed without an interactive prompt.
+///
+/// `--yes` always short-circuits it. Otherwise a non-interactive stdin (a
+/// script, a pipe, a CI job) has nothing to prompt against, so it is treated
+/// as already confirmed — only an attended, interactive terminal actually
+/// blocks on a prompt before an irreversible batch of renames.
+fn execute_pre_confirmed(yes: bool, stdin_is_terminal: bool) -> bool {
+    yes || !stdin_is_terminal
+}
+
+/// Ask an interactive terminal to confirm before renaming files under
+/// `path`. Returns `false` — the safe default — on any I/O error or a
+/// non-affirmative answer.
+fn prompt_confirm(path: &Path) -> bool {
+    print!(
+        "About to rename files under '{}'. Continue? [y/N] ",
+        path.display()
+    );
+    if std::io::stdout().flush().is_err() {
+        return false;
+    }
+    let mut input = String::new();
+    if std::io::stdin().read_line(&mut input).is_err() {
+        return false;
+    }
+    matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
 /// Resolve the destination root.
 ///
 /// Precedence: `--output-dir` beats `config.rename.output_dir`, which beats
@@ -388,8 +468,35 @@ pub fn run(ctx: &CliContext, args: &ScanArgs) -> anyhow::Result<i32> {
     // Determine effective dry-run state (global or per-command)
     let dry_run = ctx.dry_run || args.dry_run || !args.execute;
 
+    // `--execute` performs irreversible renames — refuse to run it unattended
+    // past a bare flag. A non-interactive stdin (script/pipe/CI) is treated
+    // as pre-confirmed; only an attended terminal is actually prompted.
+    if !dry_run
+        && args.execute
+        && !execute_pre_confirmed(args.yes, std::io::stdin().is_terminal())
+        && !prompt_confirm(&args.path)
+    {
+        output::print_warning(
+            "Execution cancelled — pass --yes to skip this confirmation next time.",
+        );
+        return Ok(ExitCode::ERROR);
+    }
+
     // ── 1. Scan for files ───────────────────────────────────────────────
     let files = scan_files(ctx, args)?;
+
+    // Test Mode: never rename a file the manifest still tracks as an
+    // original — that would break the original<->copy pairing `commit`
+    // depends on. See `skip_tracked_originals` above.
+    let files = if mm_core::test_mode::is_enabled() {
+        let tracked_originals: HashSet<PathBuf> = mm_core::test_mode::tracked_files()
+            .into_iter()
+            .map(|entry| entry.original)
+            .collect();
+        skip_tracked_originals(files, &tracked_originals)
+    } else {
+        files
+    };
 
     if files.is_empty() {
         output::print_warning("No media files found in the specified directory");
@@ -557,6 +664,11 @@ mod tests {
     }
 
     /// Build a `ScanArgs` for a directory with everything else at its default.
+    ///
+    /// `yes: true` throughout: cargo test's stdin can itself be a terminal
+    /// (see `execute_pre_confirmed`), and `prompt_confirm` blocks on a
+    /// `read_line` no test harness supplies — every test that flips
+    /// `execute` on must carry `yes: true` or the suite hangs.
     fn args_for(path: &Path) -> ScanArgs {
         ScanArgs {
             path: path.to_path_buf(),
@@ -565,6 +677,7 @@ mod tests {
             output_dir: None,
             execute: false,
             dry_run: false,
+            yes: true,
         }
     }
 
@@ -683,6 +796,7 @@ mod tests {
             output_dir: None,
             execute: true,
             dry_run: true,
+            yes: true,
         };
         // dry_run should override execute
         assert!(args.dry_run);
@@ -700,6 +814,7 @@ mod tests {
             output_dir: None,
             execute: true,
             dry_run: true, // Overrides execute
+            yes: true,
         };
         assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
     }
@@ -736,6 +851,7 @@ mod tests {
             output_dir: None,
             execute: true,
             dry_run: false,
+            yes: true,
         };
 
         let code = run(&ctx, &args).unwrap();
@@ -905,6 +1021,91 @@ mod tests {
         assert_eq!(
             resolve_output_dir(&ctx_configured, &flag_args),
             Path::new("/from/flag")
+        );
+    }
+
+    // ── SCAN-HYGIENE ─────────────────────────────────────────────────────
+
+    /// **Regression.** A Test Mode copy (`_MeedyaManager` suffix) must never
+    /// be picked up by `scan` as ordinary media — `watcher::should_ignore`
+    /// is where this is actually enforced, but this proves the wiring holds
+    /// all the way through `scan_files`.
+    #[test]
+    fn scan_skips_test_mode_copies() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_test_wav(&tmp.path().join("song.wav"));
+        // The copy: same directory, `_MeedyaManager` suffix.
+        std::fs::copy(
+            tmp.path().join("song.wav"),
+            tmp.path().join("song_MeedyaManager.wav"),
+        )
+        .unwrap();
+
+        let ctx = test_ctx(false);
+        let args = args_for(tmp.path());
+        let files = scan_files(&ctx, &args).unwrap();
+
+        assert_eq!(files.len(), 1, "the copy must not be scanned as a file");
+        assert!(files[0].ends_with("song.wav"));
+    }
+
+    /// **Regression — the SCAN-HYGIENE report.**
+    ///
+    /// With Test Mode on, a file tracked as an *original* must be left alone
+    /// by `scan --execute`. Renaming it out from under its `_MeedyaManager`
+    /// copy is exactly what left `meedya config test-mode commit` unable to
+    /// find the copy afterwards.
+    ///
+    /// Exercises `skip_tracked_originals` directly with a hand-built tracked
+    /// set, rather than going through a live `mm_core::test_mode` manifest by
+    /// way of `MM_CONFIG_DIR`: that environment variable is a single
+    /// process-global, `cargo test` runs every test in this crate in one
+    /// process, and no lock in this binary coordinates every file that might
+    /// redirect it — `edit.rs`'s Test Mode tests, for one, carry their own
+    /// private lock. Testing the pure skip/warn decision in isolation proves
+    /// the same behaviour without that race. `run`'s wiring of it to the
+    /// live manifest (`is_enabled` + `tracked_files`) is a two-line call —
+    /// see the body of `run` above — and not itself where any bug could
+    /// hide.
+    #[test]
+    fn scan_warns_and_skips_tracked_originals_in_test_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let original = tmp.path().join("song.wav");
+        let untracked = tmp.path().join("other.wav");
+        write_test_wav(&original);
+        write_test_wav(&untracked);
+
+        let tracked: HashSet<PathBuf> = std::iter::once(original.clone()).collect();
+        let files = skip_tracked_originals(vec![original, untracked.clone()], &tracked);
+
+        assert_eq!(
+            files,
+            vec![untracked],
+            "a tracked original must be skipped; an untracked file must not be"
+        );
+    }
+
+    /// `execute_pre_confirmed` is the pure decision behind the confirmation
+    /// gate: `--yes` always wins, otherwise only an interactive terminal
+    /// actually requires the prompt.
+    #[test]
+    fn scan_execute_requires_confirmation_unless_yes() {
+        assert!(
+            execute_pre_confirmed(true, true),
+            "--yes must skip the prompt even on a terminal"
+        );
+        assert!(
+            execute_pre_confirmed(true, false),
+            "--yes must skip the prompt off a terminal too"
+        );
+        assert!(
+            execute_pre_confirmed(false, false),
+            "a non-interactive stdin (script/pipe/CI) has nothing to prompt \
+             against, so it is pre-confirmed"
+        );
+        assert!(
+            !execute_pre_confirmed(false, true),
+            "an interactive terminal without --yes must NOT be pre-confirmed"
         );
     }
 }

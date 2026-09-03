@@ -36,12 +36,24 @@ fn main() {
 
     let header_path = include_dir.join("mm_ffi.h");
 
-    // Load cbindgen.toml config if present, otherwise use defaults
-    let config = cbindgen::Config::from_file(PathBuf::from(&crate_dir).join("cbindgen.toml"))
-        .unwrap_or_default();
+    // Load cbindgen.toml. Unlike the previous `.unwrap_or_default()`, a parse
+    // failure here is fatal: issue #64 was exactly this kind of silent
+    // fallback — a config with three invalid/unrecognised keys (see the
+    // comments in cbindgen.toml) meant cbindgen quietly generated from
+    // `Config::default()`, and nobody noticed the header was empty until a
+    // human went looking.
+    let config_path = PathBuf::from(&crate_dir).join("cbindgen.toml");
+    let config = cbindgen::Config::from_file(&config_path).unwrap_or_else(|e| {
+        panic!(
+            "failed to parse {}: {e}\n\
+             (a bad cbindgen.toml must fail the build loudly, not fall back to \
+             defaults — see issue #64)",
+            config_path.display()
+        )
+    });
 
     // Run cbindgen and write the C header
-    cbindgen::Builder::new()
+    let bindings = cbindgen::Builder::new()
         .with_crate(&crate_dir)
         .with_config(config)
         .with_language(cbindgen::Language::C)
@@ -53,8 +65,31 @@ fn main() {
             " */"
         ))
         .generate()
-        .unwrap_or_else(|e| panic!("cbindgen failed: {e}"))
-        .write_to_file(&header_path);
+        .unwrap_or_else(|e| panic!("cbindgen failed: {e}"));
+
+    bindings.write_to_file(&header_path);
+
+    // -----------------------------------------------------------------------
+    // Guard against a repeat of issue #64: a header cbindgen "successfully"
+    // generated but which declares zero (or suspiciously few) `mm_ffi_*`
+    // prototypes is worse than a build failure — it ships silently and every
+    // Windows P/Invoke signature goes unverified against it. capi.rs defines
+    // 11 `#[unsafe(no_mangle)] pub extern "C" fn mm_ffi_*` functions today, so
+    // fail the build outright if the generated header contains fewer than 11
+    // `mm_ffi_` occurrences (each prototype's name appears once).
+    // -----------------------------------------------------------------------
+    const MIN_MM_FFI_PROTOTYPES: usize = 11;
+    let header_text =
+        std::fs::read_to_string(&header_path).expect("just-written header must be readable");
+    let prototype_count = header_text.matches("mm_ffi_").count();
+    assert!(
+        prototype_count >= MIN_MM_FFI_PROTOTYPES,
+        "generated {} declares only {prototype_count} `mm_ffi_` occurrence(s), \
+         expected at least {MIN_MM_FFI_PROTOTYPES} — cbindgen likely exported \
+         nothing (see issue #64: check cbindgen.toml and that capi.rs functions \
+         use an attribute form this cbindgen version recognises)",
+        header_path.display()
+    );
 
     // Re-run this script whenever any source file changes
     println!("cargo:rerun-if-changed=src/");

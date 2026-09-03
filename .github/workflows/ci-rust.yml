@@ -87,6 +87,15 @@ jobs:
         # workspace level, so --exclude here only produces a warning.
         run: cargo test --workspace
 
+      - name: Build documentation with warnings-as-errors
+        # Gate rustdoc builds: ensure no warnings remain. This catches broken
+        # intra-doc links, malformed HTML tags, unresolved references, etc.
+        # The build is skipped on macOS and Windows (mm-gtk GTK4 deps), but
+        # a ubuntu-latest job is sufficient to catch rustdoc issues that are
+        # platform-independent.
+        if: runner.os == 'Linux'
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+
   # ---------------------------------------------------------------------------
   # Version Sync — verify all platform version files match Cargo.toml
   # ---------------------------------------------------------------------------

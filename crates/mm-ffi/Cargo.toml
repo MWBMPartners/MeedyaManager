@@ -21,8 +21,10 @@ crate-type = ["cdylib", "lib"]
 # Internal crates — expose core business logic through the FFI boundary
 mm-core = { path = "../mm-core" }
 
-# UniFFI runtime — handles type conversion and scaffolding for Swift bindings
-uniffi = { version = "0.31", features = ["tokio"] }
+# UniFFI runtime — handles type conversion and scaffolding for Swift bindings.
+# "cli" pulls in uniffi_bindgen/clap/camino (already resolved in Cargo.lock via
+# cbindgen's own deps) and is what makes `src/bin/uniffi-bindgen.rs` buildable.
+uniffi = { version = "0.31", features = ["tokio", "cli"] }
 
 # Async runtime — required for UniFFI async callbacks
 tokio = { version = "1", features = ["full"] }
@@ -44,8 +46,11 @@ notify = "7"
 # UniFFI build support — generates scaffolding from UDL file at build time
 uniffi = { version = "0.31", features = ["build"] }
 
-# cbindgen — generates C headers from #[no_mangle] extern "C" functions
-cbindgen = "0.27"
+# cbindgen — generates C headers from #[no_mangle] extern "C" functions.
+# Pinned >=0.29: 0.27 only recognises the bare `#[no_mangle]` attribute, not
+# the Rust-2024 `#[unsafe(no_mangle)]` form used throughout capi.rs, and so
+# silently exported zero prototypes (issue #64).
+cbindgen = "0.29"
 
 [lints]
 workspace = true

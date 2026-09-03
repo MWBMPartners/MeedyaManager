@@ -34,7 +34,7 @@ pub enum MissingTagMode {
     /// Return an empty string (default — silent)
     #[default]
     Empty,
-    /// Return the tag name in angle brackets, e.g. "<Artist>"
+    /// Return the tag name in angle brackets, e.g. `` `<Artist>` ``
     Literal,
     /// Return an error
     Error,
