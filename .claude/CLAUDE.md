@@ -269,3 +269,51 @@ rm -rf ~/.cargo/registry/cache ~/.cargo/registry/src \
 **If the C# project layout changes** (a new project added under `windows/`), update the `rm` list in step 3 rather than reaching for `find -name bin -o -name obj` — those names are too common to wildcard safely.
 
 **After cleanup,** briefly mention to the user that the next build will be cold so they're not surprised.
+
+## Standing rule — write in plain English
+
+Everything written for the user is in plain, everyday English: chat replies, progress
+reports, commit messages, issue comments, documentation and in-app help. No jargon. Where a
+technical term genuinely cannot be avoided (a file name, a function name, a standard such as
+WCAG), use it and then say in ordinary words what it means and why it matters.
+
+Restated by the owner as a **standing rule** on 2026-09-05, having already been set out in the
+global preferences. It was restated because jargon kept appearing, so treat it as
+under-applied rather than as a box already ticked.
+
+This does not lower the standard of the work. The code and the analysis stay exactly as
+rigorous — only the way they are explained changes. Prefer more words if they make the meaning
+clearer, use short sentences, and always explain *why* and not only *what*.
+
+When reporting on work done, be blunt about what is finished, what is not, what was not
+checked and what went wrong. "I could not test this because there is no database on this
+machine" is worth far more than an implication that something was verified.
+
+## Disc images are first-class media, not archives
+
+The owner's requirement, confirmed on 2026-09-05: MeedyaManager manages **raw, bit-for-bit
+disc images** of original media discs — Audio CD, enhanced CD, mixed-mode CD, DTS CD, HDCD,
+DVD, HD DVD, Bluray and 3D Bluray. The formats in scope are:
+
+`.iso` `.nrg` `.mdx` `.mds` (with `.mdf`) `.cue` `.bin` `.cdr`
+
+**A `.cue` and its `.bin` must keep the same base name and stay side by side.** Separating
+them or renaming one of them destroys the disc image.
+
+Three owner decisions govern the behaviour:
+
+1. **The whole containing folder moves as one sealed unit.** A rip normally carries a log, a
+   checksum file and artwork that only make sense next to the image, so nothing inside the
+   folder is renamed, reordered or split off.
+2. **Naming is tried in this order:** read the `.cue` sheet (plain text, carries `PERFORMER`
+   and `TITLE`), then a disc fingerprint looked up online *offered as a suggestion rather than
+   applied automatically*, then the folder name. **If none of these gives a confident answer,
+   do not rename at all.**
+3. **Look inside the image** to tell an Audio CD from a DVD or a Bluray, so music discs follow
+   the music rules and film discs follow the film rules.
+
+**Known starting state (verified 2026-09-05, not inferred):** `ISO` was classified as
+`MediaGroup::Archive` beside ZIP/MSI/DEB/APK, so a CD copy was treated like an installer. The
+`companion` module recognised disc images but the renamer never called it — its only real
+consumer was the `debug` command. `.mdx` and `.cdr` did not appear anywhere. No whole-folder
+move existed. See issue #217.
