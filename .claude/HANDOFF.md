@@ -5,10 +5,10 @@
 > **Purpose:** the single place to look to resume work after any interruption.
 > Records *verified* state only — never aspirational state. Update after every task.
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-05
 **Updated by:** Claude Opus 5 (1M context), session `07a21012`
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → will PR into **`alpha`**
-**Branch HEAD:** `9f3719b` (end of Round 2)
+**Branch HEAD:** `f33e80b` (Round 4 + disc-image reconciliation)
 
 ---
 
@@ -539,3 +539,101 @@ it.
   40 reopens, #201–#215 filed); documentation scope recorded; pagination gap documented.
 - **2026-09-02** — created. Recorded branch divergence, the 9-crate/1,392-test inventory, the
   M7/M9/M10 stub findings, the owner decisions, and the pending merge analysis.
+
+---
+
+## 12. Round 3 regression, Round 4, and the disc-image finding (2026-09-05)
+
+### 12a. A regression we shipped, and caught
+
+Round 3 committed the generated macOS binding files under
+`macos/MeedyaManager/Bindings/generated/`. The Swift package declares its app target as
+`path: "MeedyaManager"` with nothing excluded, so the build tried to compile those generated
+files. They depend on a module (`mm_ffiFFI`) that no part of the package provides.
+
+Measured with `swift build`, ignoring the `#Preview` errors that only happen locally because
+they need full Xcode rather than the Command Line Tools:
+
+| Commit | Real error lines |
+| ------ | ---------------- |
+| before the binding files were added | 1 |
+| as Round 3 committed it | **841** |
+| after the fix (`9e61ee0`) | 1 |
+
+Had this reached CI it would have failed the macOS check on this branch's first ever run, and
+the macOS release file too — and it would have looked like a long-standing problem rather than
+something introduced a day earlier.
+
+**Correction that matters more than the fix.** This handoff previously said macOS could not be
+checked on this machine. **That was wrong, and it is why Round 3 shipped this blind.**
+`swift build` works with the Command Line Tools. Filter out `#Preview` / `PreviewsMacros` /
+"external macro" lines and the correct baseline is **1** remaining error line.
+
+### 12b. Round 4 — three fixes, all verified offline
+
+- **`2027096` — TheTVDB (#210, closed).** The provider was sending the raw API key as its
+  password. TheTVDB requires trading that key for a temporary pass first, so every request
+  would have been rejected in production. It now trades the key, remembers the pass for the
+  life of the process, and reports a bad key clearly instead of as a vague network error.
+- **`7bd4a0f` — file watching (#45, still open).** The setting controlling how long to wait
+  before reacting was worked out and then thrown away, so `meedya watch` printed several
+  events for a single file save. Events are now grouped properly. The other half of #45 — a
+  fallback for network drives where the normal watching method is unreliable — is still not
+  built.
+- **`db33e85` — logging (#50, still open).** The logging system had **no callers at all**. Worse,
+  `meedya report-bug --include-logs` told people to switch on a setting that did nothing. It
+  now works, and the code that strips out usernames and home folder paths (written and tested
+  long ago, never once used) is finally applied. Log file rotation is still not built.
+
+Tests were run **twice** for the logging change, because installing a logger affects the whole
+program and a single passing run would not prove the tests are safe in any order.
+
+### 12c. Disc images are not handled (#217, #218 — new)
+
+The owner asked on 2026-09-05 whether raw, bit-for-bit disc image copies were already managed.
+**They are not.** Verified by reading code, not documents:
+
+1. `classify/mod.rs:863` puts `ISO` in the **Archive** group with `ZIP`, `MSI`, `DEB` and `APK`.
+   A perfect copy of an Audio CD is treated like an installer package.
+2. `companion/mod.rs:130-132` **does** recognise disc images and cue sheets — but the renamer,
+   the code that actually moves files, never calls it. Its only real user is the `debug`
+   command. Same "written, tested, never called" pattern as the logging bug.
+3. **No whole-folder move exists anywhere.** Zero matches across the codebase. Everything works
+   one file at a time.
+4. `.mdx` and `.cdr` appear nowhere at all.
+5. Nothing can tell an Audio CD image apart from a Bluray image.
+
+**The documentation actively claims otherwise, which is worse than saying nothing.**
+`README.md:77` promises "Moves subtitles, cover art, and disc images alongside media" and
+`help/faq.md:67` repeats it. Both are false today and must be corrected.
+
+**Owner decisions (2026-09-05), now also in `.claude/CLAUDE.md`:**
+
+1. The **whole containing folder moves as one sealed unit**. A rip carries a log, a checksum
+   and artwork that only make sense beside the image, so nothing inside is renamed or split off.
+2. Naming order: read the **cue sheet** → **disc fingerprint, offered as a suggestion, never
+   applied automatically** → **folder name**. If none is confident, **do not rename at all**.
+3. **Look inside the image** to tell an audio disc from a film disc, so each follows its own rules.
+
+The fingerprint step is #218, kept separate because it needs the lookup providers reachable
+from the command line first (#83) and only helps audio CDs — there is no equivalent for DVD or
+Bluray.
+
+### 12d. There is no API and no website, so there is nothing to document yet
+
+Checked on 2026-09-05: **zero** OpenAPI or Swagger files, **zero** HTML files, and **zero**
+routes defined in `mm-server` despite it holding 1,956 lines across 4 files. The media server
+is scaffolding. Writing API documentation now would document something that does not exist —
+precisely the habit this project is trying to break. Proposed instead as deliberate
+"design the contract first, then build to it" work, clearly labelled as not yet built.
+
+### 12e. Current gate (verified at `f33e80b`)
+
+    cargo test --workspace     1,354 passed, 0 failed
+    cargo clippy -D warnings   clean
+    cargo doc -D warnings      passes
+    cargo deny check           clean
+    actionlint                 clean
+    swift build (macOS)        1 error line = correct baseline
+
+Everything is committed and pushed. Nothing is waiting in the working tree.
