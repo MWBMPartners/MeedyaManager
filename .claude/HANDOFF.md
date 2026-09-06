@@ -637,3 +637,69 @@ precisely the habit this project is trying to break. Proposed instead as deliber
     swift build (macOS)        1 error line = correct baseline
 
 Everything is committed and pushed. Nothing is waiting in the working tree.
+
+---
+
+## 13. Queued: full GitHub issue sweep — the specification (owner, 2026-09-06)
+
+Not started. Needs a Fable agent, and **Fable runs strictly one at a time** — the owner asked
+for this explicitly on 2026-09-06, because several Fable agents running together risk hitting a
+usage limit part-way and blocking each other. So this waits until no other Fable agent is
+running.
+
+**A first attempt was launched on 2026-09-05 and ended without ever delivering its findings.
+That work is lost and must be redone from scratch.**
+
+### What the owner asked for
+
+1. **Sweep every issue, open and closed.**
+2. **Reopen any issue found not to be complete.**
+3. **Update the detail on every issue — open *and* closed — not only the ones whose state
+   changes.** A closed issue that is genuinely finished still gets a comment recording what was
+   verified and how, so the record is trustworthy on its own.
+4. **Update the project state documents** to match what is actually true.
+
+### The rule that makes or breaks this sweep
+
+**Check MeedyaSuite-core before calling anything missing.** Most shared functionality lives
+upstream, not in this repository. MeedyaManager pins `meedya-core` by git revision with
+`features = ["full"]`; the local checkout is at `../MeedyaSuite-core`.
+
+Checking the crate is present is **not enough** — check whether the relevant **feature flag** is
+switched on. A crate can be compiled in while the part you want sits behind a default-off
+switch. That is exactly what happened with the audio-decoding half of the fingerprinting: it
+looked absent and was not.
+
+### Verify against code, never against documents
+
+This project's documents and commit messages have repeatedly overstated what is finished. The
+specific pattern to hunt for: **a module fully written, well tested, with zero callers.** Known
+real cases — the logging system had no callers at all; the code that strips usernames from logs
+was tested but never invoked; the module that recognises disc images is never called by the code
+that moves files. **A feature nobody can reach is not finished.**
+
+Cite a file and line actually read, or a command actually run with its output. Never infer state
+from an issue title, a commit message, or a previous issue comment.
+
+### Already established, so it need not be re-derived (but verify anything relied on)
+
+- **#219 (P0, open):** `meedya scan --execute` splits a `.cue` from its `.bin` and destroys disc
+  images. Reproduced against the real binary. Being fixed now by the #217 work.
+- **#182 (reopened):** duplicate detection was closed with nothing built here — but the
+  fingerprinting itself exists upstream in `meedya-fingerprint`, in pure Rust
+  (`rusty-chromaprint` + `symphonia`), needing no C library and no bundling.
+- **#48 (closed, wrong):** the companion detector was built and works, but nothing calls it, so
+  from a user's point of view the feature does not exist.
+- Closed correctly and recently: #210, #201, #205, #211, #128, #203, #204, #197, #200, #202,
+  #214, #212, #207, #206. Closed as not planned with reasons recorded: #74, #80, #104, #106,
+  #146. Deliberately still open after partial fixes: #45 (polling fallback missing), #50 (log
+  rotation missing).
+- **There is no API and no website.** Zero routes in `mm-server` despite 1,956 lines, zero HTML
+  files, zero OpenAPI files. Any issue implying a working server or web front end is wrong.
+
+### Output wanted
+
+Grouped by verdict: closed correctly / closed but wrong / open and still valid / open but
+actually done / open and should be closed as not planned / duplicate or overlapping. Then a
+ranked list of the issues whose current state is most misleading, and any gap in the code with
+no issue tracking it at all.
