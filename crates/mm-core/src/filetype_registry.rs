@@ -555,6 +555,18 @@ mod tests {
         assert_eq!(cf.scope, CompanionScope::Album);
     }
 
+    #[test]
+    fn mdx_is_album_scoped_companion() {
+        let cf = companion_format("mdx").expect("mdx must be in companion registry");
+        assert_eq!(cf.scope, CompanionScope::Album);
+    }
+
+    #[test]
+    fn cdr_is_album_scoped_companion() {
+        let cf = companion_format("cdr").expect("cdr must be in companion registry");
+        assert_eq!(cf.scope, CompanionScope::Album);
+    }
+
     // ── Case-insensitive lookup ───────────────────────────────────────────────
 
     #[test]

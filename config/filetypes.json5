@@ -164,6 +164,8 @@
     { "ext": "nrg",     "mime": "application/x-nrg",            "name": "Nero Image (.nrg)",           "scope": "album" },
     { "ext": "mdf",                                              "name": "Media Descriptor Image (.mdf)", "scope": "album" },
     { "ext": "mds",                                              "name": "MDS Sidecar (.mds)",          "scope": "album" },
+    { "ext": "mdx",                                              "name": "Daemon Tools Image (.mdx)",  "scope": "album" },
+    { "ext": "cdr",     "mime": "application/x-iso9660-image",  "name": "Apple CD/DVD Master (.cdr)", "scope": "album" },
     { "ext": "daa",                                              "name": "PowerISO Image (.daa)",       "scope": "album" },
     { "ext": "udf",                                              "name": "UDF Disc Image (.udf)",       "scope": "album" },
 

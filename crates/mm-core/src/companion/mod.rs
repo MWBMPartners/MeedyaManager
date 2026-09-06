@@ -34,7 +34,7 @@ pub enum CompanionType {
     CueSheet,
     /// Cover art image (cover.jpg, folder.png, album.jpg, etc.)
     CoverArt,
-    /// Disc / optical image (.iso, .bin, .img, .nrg, .mdf, .mds, .daa)
+    /// Disc / optical image (.iso, .bin, .img, .nrg, .mdf, .mds, .mdx, .cdr, .daa)
     DiscImage,
     /// Compressed archive containing album release files (.zip, .rar, .7z)
     Archive,
@@ -129,7 +129,7 @@ pub fn classify_companion(extension: &str) -> Option<CompanionType> {
         // ── Cue sheets ───────────────────────────────────────────────────────
         "cue" => Some(CompanionType::CueSheet),
         // ── Disc / optical images ─────────────────────────────────────────────
-        "iso" | "bin" | "img" | "nrg" | "mdf" | "mds" | "daa" | "udf" => {
+        "iso" | "bin" | "img" | "nrg" | "mdf" | "mds" | "mdx" | "cdr" | "daa" | "udf" => {
             Some(CompanionType::DiscImage)
         }
         // ── Archives (ZIP, RAR and friends travel with album releases) ────────
@@ -338,6 +338,8 @@ mod tests {
     fn classify_disc_image_extensions() {
         assert_eq!(classify_companion("iso"), Some(CompanionType::DiscImage));
         assert_eq!(classify_companion("bin"), Some(CompanionType::DiscImage));
+        assert_eq!(classify_companion("mdx"), Some(CompanionType::DiscImage));
+        assert_eq!(classify_companion("cdr"), Some(CompanionType::DiscImage));
     }
 
     #[test]
