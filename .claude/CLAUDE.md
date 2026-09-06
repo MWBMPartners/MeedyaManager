@@ -289,6 +289,39 @@ When reporting on work done, be blunt about what is finished, what is not, what 
 checked and what went wrong. "I could not test this because there is no database on this
 machine" is worth far more than an implication that something was verified.
 
+## This application is about media — classify by meaning, not by file mechanics
+
+When deciding how to categorise, group or handle any file type, ask **"what does this mean to
+somebody's media library?"** Never ask only "what is this file technically?" That second
+question gives the wrong answer, and it has already caused a real defect.
+
+**In scope:** audio and video (the primary content); raw bit-for-bit disc images of original
+media discs; associated documents such as booklets and liner notes as PDFs, artwork as images
+and animated or motion artwork as MP4; and companion files such as subtitles, lyrics, cue
+sheets, rip logs, checksum files and playlists.
+
+**The mistake this rule exists to prevent.** On 2026-09-05 the owner asked why an `.iso` was
+being treated as software. It was added in commit `e80be51`, a bulk tidy-up that worked through
+a list of container formats and dropped `ISO` into the Archive group beside `ZIP`, `GZ`, `MSI`,
+`DEB` and `APK`. Nobody decided it — it was inherited from a checklist. Technically it was even
+defensible, because ISO 9660 really is a filesystem format, a way of packing many files into
+one, exactly like ZIP. But it answered the wrong question. **A bit-perfect copy of an Audio CD
+is a record, not an installer.**
+
+That same mistake then produced false documentation: `README.md` and `help/faq.md` both
+promised disc images move alongside their media, because whoever wrote them described what the
+product was *meant* to do while the code followed different logic entirely.
+
+**How to apply it.** Formats that genuinely are software — `DMG`, `MSI`, `DEB`, `RPM`, `PKG`,
+`APK`, `JAR` — stay archives; they are not media. Anything that can hold a recording, a
+performance, a booklet or artwork belongs in the media model with the tags and rules that
+implies. When a new format appears, decide from the library's point of view first and only then
+work out the technical handling. **Be suspicious of bulk "add all the formats" passes** — that
+is exactly how this slipped in.
+
+**Codex and other agents:** the repository root carries `AGENTS.md` with the same rules. If you
+change a rule in one file, change it in the other.
+
 ## Disc images are first-class media, not archives
 
 The owner's requirement, confirmed on 2026-09-05: MeedyaManager manages **raw, bit-for-bit
