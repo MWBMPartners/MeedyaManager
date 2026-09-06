@@ -34,6 +34,9 @@ pub mod renamer;
 /// Companion file detection and grouping
 pub mod companion;
 
+/// Disc image handling
+pub mod disc;
+
 /// Metadata extraction and tag writing
 pub mod metadata;
 
