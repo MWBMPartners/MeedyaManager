@@ -289,6 +289,39 @@ When reporting on work done, be blunt about what is finished, what is not, what 
 checked and what went wrong. "I could not test this because there is no database on this
 machine" is worth far more than an implication that something was verified.
 
+## Always check MeedyaSuite-core before saying a feature is missing
+
+**MeedyaSuite-core is where shared functionality lives for every "Meedya" application.** This
+repository is only half the picture. Never declare a feature missing, absent or unimplemented
+until you have checked upstream as well.
+
+MeedyaManager consumes it as a pinned git dependency in the workspace `Cargo.toml`:
+
+```
+meedya-core = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = "...", features = ["full"] }
+```
+
+The local checkout sits beside the app repositories at `../MeedyaSuite-core`. Sibling projects
+include MeedyaConverter, MeedyaDB, MeedyaDL, MeedyaPlayer and MeedyaSubtitler.
+
+**Why this rule exists.** On 2026-09-06 the `meedya-fingerprint` tool referenced by issue #182
+was reported as not existing. It did exist — in MeedyaSuite-core, already a dependency here, at
+the exact revision this project was pinned to. That revision was the merge of a branch named
+*"meedya-fingerprint-and-lyrics"*. The claim was wrong and had to be corrected publicly.
+
+**How to check, in order:**
+
+1. Search this repository. If it looks absent, **do not stop there.**
+2. Search the local MeedyaSuite-core checkout for the same terms.
+3. Check which upstream crates are actually pulled in **and which feature flags are enabled** —
+   a crate can be compiled in while the part you want sits behind a switch that is off by
+   default. That was precisely the case with the audio-decoding half of the fingerprinting.
+4. Only then state whether it exists, and say plainly **where** it lives.
+
+**This is a design rule too, not just a research habit.** Anything useful to more than one
+Meedya application belongs upstream in MeedyaSuite-core, not copied here. Prefer the upstream
+crate over a local equivalent, and push genuinely shared improvements upstream.
+
 ## This application is about media — classify by meaning, not by file mechanics
 
 When deciding how to categorise, group or handle any file type, ask **"what does this mean to
