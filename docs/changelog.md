@@ -19,7 +19,68 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
-> Nothing has landed on top of `v1.4.0-alpha.1` yet.
+### Fixed
+
+- **`meedya scan --execute` destroyed disc images by splitting them up (issue
+  [#219](https://github.com/MWBMPartners/MeedyaManager/issues/219), P0).** A `.cue` sheet names
+  its `.bin` image by bare file name, so the pair only works while both sit in the same
+  directory. `scan` had no idea the two files were related: with an everyday template such as
+  `<Extension>/<Filename>` it moved `Album.cue` into `cue/` and `Album.bin` into `bin/`, printed
+  `OK` for both, and reported success. The rip was destroyed — silently, with no unusual
+  settings, and with no way to undo it. Reproduced on the real binary, not theorised.
+
+  The cause was that the default `include_extensions` list is empty, so `scan_existing_files`
+  returned *every* file in the tree and each one went through the rename simulator as an
+  unrelated item. The macOS and Linux interfaces were safe only by accident (both filter to
+  Audio/Video first); the command-line tool, which is the one alpha testers use, was not.
+
+  **Fixed.** A new `mm_core::disc::partition_for_scan` runs before anything is renamed and lifts
+  disc image files out of the per-file rename plan entirely. The rule it enforces has no
+  opt-out: **a disc image file or cue sheet is never renamed individually, by anyone,
+  anywhere** — both for files inside a detected disc folder and for a stray `.cue`/`.bin` pair
+  in a folder that is otherwise ordinary. Verified by a test written *before* the fix, which
+  failed first exactly as described above.
+
+### Added
+
+- **Disc folder detection (`mm_core::disc`).** `scan` now recognises a directory holding one or
+  more disc images and reports it as a unit in a new **Disc Folders** table (and a
+  `disc_folders` array in `--json`), showing the folder, what kind of disc it is, where its name
+  came from, and how many files and bytes it holds.
+  - BIN/CUE pairs are matched by resolving the cue sheet's `FILE` lines case-insensitively
+    against its siblings; MDS/MDF pairs by their shared name; `.iso`, `.nrg`, `.mdx` and `.cdr`
+    on sight. An `.mdf` on its own is **ignored**, because SQL Server uses that extension for
+    database files. A lone `.bin` counts only when its first twelve bytes carry the raw CD
+    sector sync pattern, so an ordinary firmware blob is never mistaken for a disc.
+  - Disc kind is read from the cue sheet's track layout (`Audio CD`, `Enhanced CD`,
+    `Mixed Mode CD`, `Data Disc`), and is honestly `Unknown` without one — telling a DVD film
+    from a music disc needs the image's contents read, which is issue
+    [#217](https://github.com/MWBMPartners/MeedyaManager/issues/217).
+  - Naming prefers a cue sheet's own `PERFORMER` **and** `TITLE` (both required — half a name is
+    not a name), falling back to an `Artist - Album` folder name with a trailing ` (1997)` or
+    ` [1997]` lifted out as the year, and otherwise recording that there is no confident name.
+  - `disc::synth_tags` maps a disc's details onto the ordinary tag names the rule engine already
+    speaks (`artist`, `album_artist`, `album`, `title`, `year`, `disc_total`), so existing
+    templates work on a disc folder unchanged.
+  - **Whole-folder *moving* is not built yet** — the Status column says
+    `detected (not moved — folder moves arrive with the next stage)` and means it (issue #217).
+    Detection plus exclusion is the whole of this change.
+- A useful side effect of the exclusion: `scan` no longer tries to read audio tags out of
+  multi-gigabyte `.bin` and `.iso` files, work that never had any chance of succeeding.
+
+### Changed
+
+- **`.iso` is no longer classified as `MediaGroup::Archive` — it is now `MediaGroup::Disc`.**
+  A bit-perfect copy of an optical disc (e.g. an Audio CD) was being grouped with ZIP, MSI, DEB
+  and APK, which is wrong: those are software containers by definition, a disc image is not.
+  `.iso` now shares a new `Disc` group with five other unambiguous disc-image extensions
+  (`.nrg`, `.mds`, `.mdx`, `.cdr`, plus `.iso` itself); `.bin`, `.cue` and `.mdf` gained
+  `MediaFormat` variants too but are deliberately left unresolved from the extension alone
+  (each is ambiguous on its own — see `help/supported-formats.md`). **This is a visible
+  behaviour change for any existing rule keyed on `<Media Group>` == `Archive`**: a rule that
+  used to match `.iso` files will no longer do so; add a rule branch for `Disc` if you want to
+  keep routing them. `DMG`, `MSI`, `DEB`, `RPM`, `PKG`, `JAR` and `APK` are unaffected and stay
+  in `Archive`.
 
 ---
 

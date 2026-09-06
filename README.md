@@ -74,7 +74,7 @@
 | ✏️ **Metadata Editing** | Read/write tags across audio and video formats via `lofty` |
 | 🔍 **19 Registered Metadata Providers** | 13 real HTTP clients (MusicBrainz, Spotify, Apple Music, Deezer, TMDb, TheTVDB, OMDb, Apple TV, iTunes Store, Apple Podcasts, ISRC, EIDR, ISWC) + 6 disabled stubs (YouTube Music, Amazon Music, Pandora, Tidal, Shazam, iHeart). **Partial:** `meedya lookup` (CLI) is still a stub (exits `3`, `NOT_IMPLEMENTED`); only MusicBrainz is wired into the GTK lookup panel today |
 | 🧠 **Smart Classification** | 4-level hierarchy: Media Group → Format → Class → Quality |
-| 🔄 **Companion File Tracking** | Moves subtitles, cover art, and disc images alongside media |
+| 🔄 **Companion File Detection** | Detects and groups subtitles, cover art, and disc images alongside their media file by shared filename/folder. **Status: detection and classification only — nothing actually moves yet** (issue [#217](https://github.com/MWBMPartners/MeedyaManager/issues/217) tracks the whole-folder move) |
 | 🗂️ **External JSON5 Config** | File types and metadata tags defined in `filetypes.json5` / `tags.json5` — editable without recompile, user-overridable |
 | 🔒 **File Integrity Checking** | SHA256 hash before/after every metadata write; atomic rename (`rename(2)`); rollback + corruption log on failure — enforced on every real write path (`meedya edit`, the GTK metadata panel, the FFI layer) |
 | ⚙️ **Background Service Mode** | Runs as systemd user unit (Linux), launchd agent (macOS), or Windows Service; managed via `meedya service` CLI |

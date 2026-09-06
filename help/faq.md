@@ -64,7 +64,7 @@ Yes. The `<Quality Type>` tag automatically classifies files as `Lossy` or `Loss
 
 ### What about subtitle files and cover art?
 
-MeedyaManager recognises companion files (SRT, LRC, ASS, cover art, disc images, CUE sheets) and moves them alongside their associated media files when the primary file is renamed.
+MeedyaManager recognises and groups companion files (SRT, LRC, ASS, cover art, disc images, CUE sheets) with their associated media file. **Status: detection and classification only** — moving them alongside the media file on rename is not built yet (issue [#217](https://github.com/MWBMPartners/MeedyaManager/issues/217)).
 
 ---
 

@@ -95,6 +95,44 @@ registry.
 
 ---
 
+## 💿 Disc Images (first-class media)
+
+Optical disc images have their own top-level `Disc` classification group
+(`crates/mm-core/src/classify/mod.rs`), separate from `Archive` — a bit-perfect copy of an
+Audio CD or DVD is not a software installer the way `.dmg`/`.msi`/`.deb`/`.apk` are, so it no
+longer gets grouped with them.
+
+The `Disc` `MediaFormat` enum covers eight extensions in total. Five of them are unambiguous on
+their own and classify straight to the `Disc` group from the extension alone:
+
+| Extension | Format Name |
+| --------- | ----------- |
+| `.iso` | ISO 9660 Disc Image |
+| `.nrg` | Nero Image |
+| `.mds` | Alcohol Descriptor |
+| `.mdx` | Daemon Tools Image |
+| `.cdr` | Apple CD/DVD Master |
+
+The remaining three extensions exist as `MediaFormat` variants but are **not** reachable from
+the extension alone, because each one is ambiguous in isolation — `.bin` is used for any
+generic binary file, `.cue` next to FLAC/WAV tracks is a track index rather than a disc image,
+and `.mdf` collides with SQL Server's own data-file extension. Files with these extensions
+currently classify as `Unknown` until a later stage resolves them by looking at sibling files:
+
+| Extension | Format Name | Status |
+| --------- | ----------- | ------ |
+| `.bin` | Raw CD Image | Ambiguous — classifies as `Unknown` today |
+| `.cue` | Cue Sheet | Ambiguous — classifies as `Unknown` today |
+| `.mdf` | Alcohol Image | Ambiguous — classifies as `Unknown` today |
+
+**What's honest to say today:** these eight extensions are recognised and correctly classified
+(or correctly left as `Unknown` where the extension alone is ambiguous). What is **not** built
+yet is whole-folder moving of a disc image's sibling files, or detecting *what kind* of disc an
+image actually holds (Audio CD vs. DVD vs. data) — both are tracked by issue
+[#217](https://github.com/MWBMPartners/MeedyaManager/issues/217).
+
+---
+
 ## 🔊 Audio Quality Classification
 
 MeedyaManager classifies quality using the `lossless` flag recorded per audio format in the

@@ -89,8 +89,27 @@ struct ScanOutput {
     directory: String,
     total_files: usize,
     classification_summary: Vec<GroupCount>,
+    /// Disc folders found and deliberately left alone — see `DiscFolderEntry`.
+    disc_folders: Vec<DiscFolderEntry>,
     rename_previews: Vec<PreviewEntry>,
     summary: ScanSummary,
+}
+
+/// One detected disc folder, for JSON output.
+///
+/// Reported separately from `rename_previews` on purpose: these files are
+/// **not** part of the rename plan and never will be while renaming happens
+/// one file at a time. A caller that merged the two lists would be back to
+/// the issue #219 behaviour of treating a `.cue` and its `.bin` as unrelated.
+#[derive(Serialize)]
+struct DiscFolderEntry {
+    path: String,
+    kind: String,
+    name_source: String,
+    image_format: String,
+    image_count: usize,
+    file_count: usize,
+    total_bytes: u64,
 }
 
 /// File count by media group for JSON output.
@@ -455,6 +474,27 @@ fn execute_previews(
     report
 }
 
+/// Render a byte count the way a person would read it.
+///
+/// Disc images run to gigabytes, and "4700372992" tells a reader nothing at a
+/// glance. Binary units (1 KiB = 1024 bytes) are used because that is what
+/// every operating system's file manager shows for a disc image, so the
+/// number matches what the user will see elsewhere.
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    // Plain bytes below a kibibyte — no decimal point on "512 B".
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64;
+    let mut unit = 0usize;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    format!("{value:.1} {}", UNITS[unit])
+}
+
 // ─── Command execution ─────────────────────────────────────────────────────
 
 /// Execute the `meedya scan` command.
@@ -498,7 +538,23 @@ pub fn run(ctx: &CliContext, args: &ScanArgs) -> anyhow::Result<i32> {
         files
     };
 
-    if files.is_empty() {
+    // Issue #219 — a live data-loss bug. A `.cue` sheet and the `.bin` image
+    // it names are one disc, and the cue refers to the image by bare file
+    // name, so the pair only works while both sit in the same directory. Left
+    // in this list they were two unrelated files, and a template such as
+    // `<Extension>/<Filename>` moved one into `cue/` and the other into
+    // `bin/` — destroying the rip, silently, with no unusual settings. This
+    // call lifts every disc image member out of the per-file rename plan
+    // before anything is renamed, and reports the folders they live in
+    // instead. Whole-folder moving arrives with the next stage (#217);
+    // excluding these files from per-file renaming is what stops the loss.
+    //
+    // Useful side benefit: because they leave the list here, `extract_all`
+    // below no longer tries to read audio tags out of multi-gigabyte `.bin`
+    // and `.iso` files — work that never had any chance of succeeding.
+    let (disc_folders, files) = mm_core::disc::partition_for_scan(files, &args.path)?;
+
+    if files.is_empty() && disc_folders.is_empty() {
         output::print_warning("No media files found in the specified directory");
         return Ok(ExitCode::SUCCESS);
     }
@@ -570,12 +626,26 @@ pub fn run(ctx: &CliContext, args: &ScanArgs) -> anyhow::Result<i32> {
         v
     };
 
+    let disc_entries: Vec<DiscFolderEntry> = disc_folders
+        .iter()
+        .map(|folder| DiscFolderEntry {
+            path: folder.dir.display().to_string(),
+            kind: folder.info.kind.to_string(),
+            name_source: folder.info.name_source.to_string(),
+            image_format: folder.info.image_format.to_string(),
+            image_count: folder.info.image_count,
+            file_count: folder.file_count,
+            total_bytes: folder.total_bytes,
+        })
+        .collect();
+
     match ctx.output {
         OutputFormat::Json => {
             output::print_json(&ScanOutput {
                 directory: args.path.display().to_string(),
                 total_files: files.len(),
                 classification_summary: group_counts_vec,
+                disc_folders: disc_entries,
                 rename_previews: previews,
                 summary: ScanSummary {
                     total: files.len(),
@@ -598,6 +668,31 @@ pub fn run(ctx: &CliContext, args: &ScanArgs) -> anyhow::Result<i32> {
                 .map(|gc| vec![gc.group.clone(), gc.count.to_string()])
                 .collect();
             output::print_table(&["Media Group", "Count"], &rows);
+
+            // Disc folders. Printed before the rename preview because the
+            // point being made is "these were deliberately left out of the
+            // list below", and a reader needs that before reading the list.
+            if !disc_entries.is_empty() {
+                output::print_header("Disc Folders");
+                let disc_rows: Vec<Vec<String>> = disc_entries
+                    .iter()
+                    .map(|d| {
+                        vec![
+                            d.path.clone(),
+                            d.kind.clone(),
+                            d.name_source.clone(),
+                            d.file_count.to_string(),
+                            format_bytes(d.total_bytes),
+                            "detected (not moved — folder moves arrive with the next stage)"
+                                .to_string(),
+                        ]
+                    })
+                    .collect();
+                output::print_table(
+                    &["Folder", "Kind", "Name source", "Files", "Size", "Status"],
+                    &disc_rows,
+                );
+            }
 
             // Rename preview (if we generated any)
             if !previews.is_empty() {
@@ -1107,5 +1202,142 @@ mod tests {
             !execute_pre_confirmed(false, true),
             "an interactive terminal without --yes must NOT be pre-confirmed"
         );
+    }
+
+    // ── Issue #219 — a disc image must never be split up ────────────────
+
+    /// Build the fixture from issue #219: a raw CD rip in its own folder —
+    /// a cue sheet, the `.bin` image it names, the ripper's log, and the
+    /// cover art. Returns the bytes written for the cue and the bin so a
+    /// test can prove they were not merely left *present* but left
+    /// *untouched*.
+    fn write_disc_rip_fixture(root: &Path) -> (Vec<u8>, Vec<u8>) {
+        let rip = root.join("Rip");
+        std::fs::create_dir_all(&rip).unwrap();
+
+        // A minimal but completely ordinary single-file BIN/CUE rip.
+        let cue = concat!(
+            "PERFORMER \"Test Artist\"\n",
+            "TITLE \"Test Album\"\n",
+            "FILE \"Album.bin\" BINARY\n",
+            "  TRACK 01 AUDIO\n",
+            "    INDEX 01 00:00:00\n",
+        )
+        .as_bytes()
+        .to_vec();
+
+        // 4 KiB of image payload. The content does not matter; the point is
+        // that it is a distinct blob we can compare byte-for-byte afterwards.
+        let bin = vec![0x5Au8; 4096];
+
+        std::fs::write(rip.join("Album.cue"), &cue).unwrap();
+        std::fs::write(rip.join("Album.bin"), &bin).unwrap();
+        std::fs::write(rip.join("Album.log"), b"Exact Audio Copy log\n").unwrap();
+        std::fs::write(rip.join("cover.jpg"), b"\xFF\xD8\xFF\xE0 not a real JPEG").unwrap();
+
+        (cue, bin)
+    }
+
+    /// Issue #219, the live data-loss bug: `meedya scan --execute` used to
+    /// treat `Album.cue` and `Album.bin` as two unrelated files and move
+    /// each one somewhere different. The cue still says `FILE "Album.bin"`,
+    /// but that file is no longer beside it — the rip is destroyed, silently,
+    /// with no unusual settings and no way to undo it.
+    ///
+    /// **This test was written before the fix, and it failed, as intended.**
+    /// What the first run printed, verbatim (paths shortened to `<tmp>`):
+    ///
+    /// ```text
+    /// Rename Preview
+    /// Source                 Destination            Status
+    /// <tmp>/Rip/Album.bin    <tmp>/bin/Album.bin    OK
+    /// <tmp>/Rip/Album.cue    <tmp>/cue/Album.cue    OK
+    /// <tmp>/Rip/Album.log    <tmp>/log/Album.log    OK
+    /// <tmp>/Rip/cover.jpg    <tmp>/jpg/cover.jpg    OK
+    ///
+    /// Summary
+    /// Total: 4 / To rename: 4 / Unchanged: 0 / Conflicts: 0
+    /// ✓ Renames executed
+    ///
+    /// thread 'commands::scan::tests::scan_execute_never_splits_a_cue_bin_pair'
+    ///   panicked at crates/mm-cli/src/commands/scan.rs:1179:9:
+    /// issue #219: Album.cue was moved away from its .bin — the rip is destroyed
+    ///
+    /// test result: FAILED. 0 passed; 1 failed
+    /// ```
+    #[test]
+    fn scan_execute_never_splits_a_cue_bin_pair() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (cue_bytes, bin_bytes) = write_disc_rip_fixture(tmp.path());
+
+        let ctx = test_ctx(false);
+        let mut args = args_for(tmp.path());
+        // The exact template from the bug report: route every file into a
+        // folder named after its extension.
+        args.template = Some("<Extension>/<Filename>".to_string());
+        args.execute = true;
+        args.yes = true;
+
+        run(&ctx, &args).unwrap();
+
+        let cue_path = tmp.path().join("Rip/Album.cue");
+        let bin_path = tmp.path().join("Rip/Album.bin");
+
+        assert!(
+            cue_path.is_file(),
+            "issue #219: Album.cue was moved away from its .bin — the rip is destroyed"
+        );
+        assert!(
+            bin_path.is_file(),
+            "issue #219: Album.bin was moved away from its .cue — the rip is destroyed"
+        );
+        assert_eq!(
+            std::fs::read(&cue_path).unwrap(),
+            cue_bytes,
+            "the cue sheet must be left byte-identical"
+        );
+        assert_eq!(
+            std::fs::read(&bin_path).unwrap(),
+            bin_bytes,
+            "the disc image must be left byte-identical"
+        );
+
+        // The template would have created these two directories on its way to
+        // splitting the pair, so their absence is a second, independent proof
+        // that no per-file rename was attempted on a disc image.
+        assert!(
+            !tmp.path().join("cue").exists(),
+            "no `cue/` directory may be created — a cue sheet is never renamed on its own"
+        );
+        assert!(
+            !tmp.path().join("bin").exists(),
+            "no `bin/` directory may be created — a disc image is never renamed on its own"
+        );
+    }
+
+    /// The same fixture without `--execute`: a disc image must not even be
+    /// *offered* as a rename. Showing it in the preview table would invite a
+    /// user to re-run with `--execute` and hit the very bug above.
+    #[test]
+    fn scan_disc_files_never_appear_in_file_previews() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _ = write_disc_rip_fixture(tmp.path());
+
+        let ctx = test_ctx(false);
+        let mut args = args_for(tmp.path());
+        args.template = Some("<Extension>/<Filename>".to_string());
+
+        let files = scan_files(&ctx, &args).unwrap();
+        let (_disc_folders, loose) = mm_core::disc::partition_for_scan(files, &args.path).unwrap();
+        let extracted = extract_all(&loose);
+        let summary = preview_renames(&ctx, &args, &loose, &extracted).unwrap();
+
+        for preview in summary.iter().flat_map(|s| s.previews.iter()) {
+            let source = preview.source.display().to_string().to_ascii_lowercase();
+            assert!(
+                !source.ends_with(".cue") && !source.ends_with(".bin"),
+                "a disc image member must never reach the rename preview: {source}"
+            );
+        }
     }
 }

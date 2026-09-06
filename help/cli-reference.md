@@ -177,6 +177,70 @@ meedya scan <PATH> [OPTIONS]
 > template, a separator coming from tag data is indistinguishable from one in the template
 > itself.
 
+### 💿 Disc images are never renamed one file at a time (issue [#219](https://github.com/MWBMPartners/MeedyaManager/issues/219))
+
+A raw disc rip is not one file. A `.cue` sheet names its `.bin` image **by bare file name**, so
+the two only work while they sit in the same directory. Move one and the rip is destroyed.
+
+`meedya scan --execute` used to have no idea the two files were related. With an everyday
+template such as `<Extension>/<Filename>` it moved `Album.cue` into `cue/` and `Album.bin` into
+`bin/`, printed `OK` for both, and reported success. The rip was gone, silently, with no unusual
+settings and no way to undo it.
+
+**This is fixed.** Before anything is renamed, `scan` now separates disc image files out of the
+rename plan entirely, and reports them as *folders* instead. The rule has no opt-out:
+
+> A disc image file or cue sheet is never renamed individually, by anyone, anywhere.
+
+Two separate exclusions carry that rule:
+
+1. **Everything inside a disc folder** — a directory holding at least one disc image and no
+   ordinary audio or video files — leaves the rename plan, right down through its
+   subdirectories. That whole folder will eventually move as one sealed unit, because a rip
+   carries a log, a checksum and artwork that only make sense beside the image.
+2. **Every disc image file anywhere**, even in a folder that is *not* a disc folder. A `.cue`
+   and its `.bin` sitting in a folder full of FLAC files are still a disc image, and splitting
+   them still destroys it — so they are protected while the FLACs around them keep being renamed
+   normally.
+
+What counts as a disc image:
+
+| Shape | Recognised when |
+| ----- | --------------- |
+| `.cue` + `.bin` (or `.iso`) | The cue sheet's `FILE` lines all describe raw disc images **and** all resolve, case-insensitively, to files beside it |
+| `.mds` + `.mdf` | Both halves are present with the same name. **An `.mdf` on its own is ignored** — SQL Server uses that extension for database files, and those are far more common |
+| `.iso`, `.nrg`, `.mdx`, `.cdr` | Always — each extension means exactly one thing |
+| A lone `.bin` with no cue sheet | **Only** if its first twelve bytes are the raw CD sector sync pattern. Without that evidence a `.bin` is left completely alone, so an ordinary firmware blob is never mistaken for a disc |
+
+Detected folders appear in their own **Disc Folders** table:
+
+```text
+Disc Folders
+Folder  Kind      Name source  Files  Size     Status
+./Rip   Audio CD  cue sheet    4      4.1 KiB  detected (not moved — folder moves arrive with the next stage)
+```
+
+* **Kind** is read from the cue sheet's track layout: all audio → `Audio CD`; audio then a
+  trailing data track → `Enhanced CD`; a leading data track then audio → `Mixed Mode CD`; all
+  data → `Data Disc`. With no cue sheet, the honest answer is `Unknown` — telling a DVD film
+  from a music disc needs the image's contents read, which is
+  [#217](https://github.com/MWBMPartners/MeedyaManager/issues/217).
+* **Name source** is `cue sheet` when the sheet has **both** a performer and a title (half a
+  name is not a name), otherwise `folder name` when the folder is called `Artist - Album`
+  (a trailing ` (1997)` or ` [1997]` is lifted out as the year), otherwise `none`.
+* **Files** and **Size** cover the whole subtree, dotfiles included, because that is what will
+  move.
+
+In `--json` mode the same information arrives as a `disc_folders` array of
+`{ path, kind, name_source, image_format, image_count, file_count, total_bytes }`, separate
+from `rename_previews`.
+
+**What is not built yet:** actually *moving* a disc folder. `Status` says
+`detected (not moved — folder moves arrive with the next stage)` and means it —
+whole-folder moving is issue [#217](https://github.com/MWBMPartners/MeedyaManager/issues/217).
+Detection plus exclusion is the whole of this change, and the exclusion is what stops the data
+loss.
+
 ### Examples
 
 ```bash

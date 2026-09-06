@@ -104,7 +104,7 @@ read from file metadata:
 
 | Tag | Description | Example Values |
 | --- | ----------- | -------------- |
-| `<Media Group>` | Top-level classification | Audio, Video, Image, Document, Archive |
+| `<Media Group>` | Top-level classification | Audio, Video, Image, Document, Archive, Disc |
 | `<Media Class>` | What the file actually is | Music, Podcast, Audiobook, Movie, TVShow, MusicVideo, Concert |
 | `<Media Format>` | Container/codec classification | MP3, FLAC, AAC, WAV, AIFF, ALAC, OGG |
 | `<Media Quality>` | Quality tier | Lossless, HiRes, Lossy320, Lossy256, Lossy192, Lossy128, LossyLow |
