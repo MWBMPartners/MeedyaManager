@@ -19,6 +19,29 @@
 
 import Foundation
 
+// MARK: – Engine availability (issue #222)
+//
+// `MM_FFI_AVAILABLE` is only ever set once the Rust core is actually linked
+// into this build (see Package.swift's comment on line 73 — nothing defines
+// it today, so every build of this app is currently running on stubs).
+// Everything below exists so that an unlinked build is *incapable* of moving,
+// copying or deleting a real file, rather than relying on a warning nobody
+// may ever see.
+
+/// Thrown by every MmCore method that would otherwise need to touch the
+/// Rust engine, when that engine is not present in this build.
+///
+/// Before this fix, the "no engine" case silently fell back to inventing
+/// data (fake scan previews, fake metadata) that the rest of the app then
+/// treated as real and safe to act on — including renaming actual files on
+/// disk. Throwing here removes that whole failure mode: there is no code
+/// path left that manufactures a result the UI could mistake for genuine.
+struct EngineUnavailableError: LocalizedError {
+    var errorDescription: String? {
+        "This build of MeedyaManager does not include its engine (the Rust core is not linked, issue #66), so this action is unavailable. Nothing on disk has been changed."
+    }
+}
+
 // MARK: – Data transfer types (mirroring UniFFI-generated structs)
 
 /// A single metadata tag pair passed across the FFI boundary.
@@ -51,6 +74,22 @@ final class MmCore: @unchecked Sendable {
     // mutable stored properties without revisiting the Sendable conformance.
     static let shared = MmCore()
     private init() {}
+
+    /// Whether this build actually links the Rust engine (mm-ffi).
+    ///
+    /// A `static let` rather than a stored instance property, so it does not
+    /// disturb the "no mutable stored properties" invariant above — it is
+    /// computed once from a compile-time flag and never changes at runtime.
+    /// Every screen that could act on engine output (scan previews, tag
+    /// edits, renames) must check this before offering that action, and must
+    /// refuse plainly rather than substitute fabricated data. See issue #222.
+    static let isEngineAvailable: Bool = {
+        #if MM_FFI_AVAILABLE
+        return true
+        #else
+        return false
+        #endif
+    }()
 
     // MARK: – Version
 
@@ -98,10 +137,14 @@ final class MmCore: @unchecked Sendable {
             return raw.map { FfiRenamePreview(source: $0.source, destination: $0.destination, conflict: $0.conflict, unchanged: $0.unchanged) }
         }.value
         #else
-        // Stub: scan using FileManager, return placeholder previews
-        return try await Task.detached(priority: .userInitiated) {
-            try self.stubScanDirectory(directory: directory, template: template)
-        }.value
+        // No engine linked: refuse outright. This used to walk the folder
+        // with FileManager and invent a "Preview"-prefixed destination for
+        // every audio file, without ever reading the user's template. Every
+        // one of those fabricated previews was then flagged safe to execute,
+        // so pressing Execute renamed real files to meaningless names — see
+        // issue #222. There is no honest stand-in for a real scan, so this
+        // now throws instead of guessing.
+        throw EngineUnavailableError()
         #endif
     }
 
@@ -118,7 +161,10 @@ final class MmCore: @unchecked Sendable {
             return raw.map { FfiTagEntry(key: $0.key, value: $0.value) }
         }.value
         #else
-        return stubMetadata(for: path)
+        // No engine linked: refuse rather than return the old "Sample Track"
+        // placeholder tags, which looked like a real file's metadata and
+        // were not (issue #222).
+        throw EngineUnavailableError()
         #endif
     }
 
@@ -134,8 +180,11 @@ final class MmCore: @unchecked Sendable {
             try writeMetadata(path: path, tags: ffi)
         }.value
         #else
-        // Stub: no-op (cannot write to actual files without the FFI layer)
-        try await Task.sleep(nanoseconds: 200_000_000) // simulate delay
+        // No engine linked: refuse rather than silently pretend the write
+        // happened. The old stub slept for 200ms and returned success,
+        // which told the user their tags were saved when nothing was
+        // written anywhere (issue #222).
+        throw EngineUnavailableError()
         #endif
     }
 
@@ -152,7 +201,10 @@ final class MmCore: @unchecked Sendable {
             return "\(ext) · \(p.sampleRateHz) Hz · \(p.channels)ch · \(mins):\(String(format: "%02d", secs)) · \(p.bitrateKbps) kbps"
         }.value
         #else
-        return stubAudioProperties(for: path)
+        // No engine linked: refuse rather than return the old made-up
+        // "44100 Hz · 2ch · 3:42 · 320 kbps (stub)" string, which read like
+        // a genuine measurement of the file (issue #222).
+        throw EngineUnavailableError()
         #endif
     }
 
@@ -229,10 +281,10 @@ final class MmCore: @unchecked Sendable {
         // Real: call mm-ffi testModeFileCount()
         return Int(testModeFileCount())
         #else
-        // Stub: return a realistic number when test mode is on, 0 otherwise
-        return UserDefaults.standard.bool(forKey: "mm_test_mode_enabled")
-            ? UserDefaults.standard.integer(forKey: "mm_test_mode_file_count")
-            : 0
+        // No engine linked: there is no staging area to count files in, so
+        // the honest answer is always zero — not a made-up number read back
+        // from UserDefaults (issue #222).
+        return 0
         #endif
     }
 
@@ -248,9 +300,10 @@ final class MmCore: @unchecked Sendable {
             try commitTestModeFiles()
         }.value
         #else
-        // Stub: simulate a commit delay, then reset the staged file count
-        try await Task.sleep(nanoseconds: 500_000_000)
-        UserDefaults.standard.set(0, forKey: "mm_test_mode_file_count")
+        // No engine linked: there is nothing staged to commit, so refuse
+        // rather than pretend a commit happened after a fake delay
+        // (issue #222).
+        throw EngineUnavailableError()
         #endif
     }
 
@@ -266,61 +319,54 @@ final class MmCore: @unchecked Sendable {
             try revertTestModeFiles()
         }.value
         #else
-        // Stub: simulate a revert delay, then reset the staged file count
-        try await Task.sleep(nanoseconds: 300_000_000)
-        UserDefaults.standard.set(0, forKey: "mm_test_mode_file_count")
+        // No engine linked: there is nothing staged to revert, so refuse
+        // rather than pretend a revert happened after a fake delay
+        // (issue #222).
+        throw EngineUnavailableError()
+        #endif
+    }
+
+    // MARK: – Renaming (the only place allowed to move a file — issue #222)
+
+    /// Move each of `previews`'s source files to its destination for real.
+    ///
+    /// This is the single method in the whole app permitted to touch the
+    /// filesystem for a rename — `ScanModel` used to move files via the
+    /// file manager itself, straight after a stub had
+    /// invented the destination names, which is exactly how issue #222's
+    /// data loss happened. Routing every rename through here, on top of the
+    /// stub no longer producing anything executable, means there is no
+    /// second path back into the same mistake.
+    ///
+    /// Named `applyRenames` (not `executeRenames`) because the UniFFI
+    /// bindings below already generate a free function of that name, and
+    /// Swift resolves an unqualified call to the nearer instance method
+    /// first — silently shadowing the real one. Keeping the names distinct
+    /// avoids that trap entirely rather than relying on careful call-site
+    /// qualification.
+    ///
+    /// - Returns: The number of files the engine actually renamed.
+    func applyRenames(_ previews: [FfiRenamePreview]) async throws -> Int {
+        #if MM_FFI_AVAILABLE
+        // UNVERIFIED — cannot be compiled or exercised on this machine, since
+        // MM_FFI_AVAILABLE is never defined anywhere yet (issue #66) and the
+        // generated bindings this depends on are excluded from the build
+        // (see Package.swift's comment on `Bindings/generated`). Written to
+        // mirror the existing `scanDirectory` real-branch pattern above so
+        // that wiring it up is a small, obvious change once the XCFramework
+        // is actually linked, not a redesign.
+        return try await Task.detached(priority: .userInitiated) {
+            let ffi = previews.map { RenamePreviewFfi(source: $0.source, destination: $0.destination, conflict: $0.conflict, unchanged: $0.unchanged) }
+            return Int(try executeRenames(previews: ffi))
+        }.value
+        #else
+        throw EngineUnavailableError()
         #endif
     }
 
     // MARK: – Stubs (development-only, removed when FFI is available)
 
     #if !MM_FFI_AVAILABLE
-
-    private func stubScanDirectory(directory: String, template: String) throws -> [FfiRenamePreview] {
-        // Walk the directory and create placeholder previews
-        let url = URL(fileURLWithPath: directory)
-        let fm  = FileManager.default
-        let audioExtensions = Set(["mp3", "flac", "m4a", "aac", "ogg", "opus", "wav"])
-
-        guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: nil) else {
-            return []
-        }
-
-        var previews: [FfiRenamePreview] = []
-
-        for case let fileURL as URL in enumerator {
-            guard audioExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
-            let src = fileURL.path
-            // Placeholder destination (template not evaluated in stub)
-            let dst = fileURL.deletingLastPathComponent()
-                .appendingPathComponent("[Preview] \(fileURL.lastPathComponent)").path
-            previews.append(FfiRenamePreview(source: src, destination: dst, conflict: false, unchanged: false))
-        }
-
-        return previews.prefix(50).sorted { $0.source < $1.source }
-    }
-
-    private func stubMetadata(for path: String) -> [FfiTagEntry] {
-        // Return sample metadata so the UI is non-empty in development
-        let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
-        var tags: [FfiTagEntry] = [
-            FfiTagEntry(key: "title",        value: "Sample Track"),
-            FfiTagEntry(key: "artist",       value: "Sample Artist"),
-            FfiTagEntry(key: "album",        value: "Sample Album"),
-            FfiTagEntry(key: "year",         value: "2024"),
-            FfiTagEntry(key: "track_number", value: "1"),
-            FfiTagEntry(key: "genre",        value: "Electronic"),
-        ]
-        if ["flac", "wav", "aiff"].contains(ext) {
-            tags.append(FfiTagEntry(key: "comment", value: "Lossless format"))
-        }
-        return tags.sorted { $0.key < $1.key }
-    }
-
-    private func stubAudioProperties(for path: String) -> String {
-        let ext = URL(fileURLWithPath: path).pathExtension.uppercased()
-        return "\(ext) · 44100 Hz · 2ch · 3:42 · 320 kbps (stub)"
-    }
 
     private func stubValidateTemplate(_ template: String) -> (isValid: Bool, message: String) {
         guard !template.trimmingCharacters(in: .whitespaces).isEmpty else {

@@ -25,7 +25,16 @@ struct ScanView: View {
         HSplitView {
             // ── Left pane: controls ────────────────────────────────────────
             VStack(alignment: .leading, spacing: 0) {
-                OptionsPane(model: model, showFolderPicker: $showFolderPicker)
+                OptionsPane(
+                    model: model,
+                    showFolderPicker: $showFolderPicker,
+                    engineAvailable: MmCore.isEngineAvailable,
+                    // Read via appState (rather than a plain constant) so the
+                    // banner and the Execute button both react the moment the
+                    // user flips the Settings toggle, without needing this
+                    // view to reload.
+                    testModeEnabled: appState.testModeEnabled
+                )
                 Divider()
                 Spacer()
 
@@ -62,7 +71,52 @@ private struct OptionsPane: View {
     @Bindable var model: ScanModel
     @Binding var showFolderPicker: Bool
 
+    /// Whether this build actually links the Rust engine. When it doesn't,
+    /// nothing this pane offers (scan, execute) can produce a trustworthy
+    /// result — see `EngineMissingBanner` and issue #222.
+    let engineAvailable: Bool
+
+    /// The current Test Mode setting. Renames are never staged by Test
+    /// Mode (only tag writes are), so while it is on, Execute must stay
+    /// disabled rather than imply the rename would be made safely
+    /// reversible — see issue #222.
+    let testModeEnabled: Bool
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Exactly one of these notices shows at a time: the engine being
+            // missing is the more serious condition (nothing at all can be
+            // trusted), so it takes priority over the Test Mode notice.
+            if !engineAvailable {
+                EngineMissingBanner()
+                    .padding([.horizontal, .top], 12)
+            } else if testModeEnabled {
+                NoticeBanner(
+                    text: "Test Mode is on. Renames are disabled — Test Mode only ever protects tag edits, not renames, so turn it off in Settings to rename files for real."
+                )
+                .padding([.horizontal, .top], 12)
+            }
+
+            optionsForm
+        }
+    }
+
+    /// Explains *why* the Execute button is unavailable, when it is, so
+    /// VoiceOver users get the same reasoning sighted users read in the
+    /// banner above rather than a plain "button is disabled".
+    private var executeAccessibilityHint: String {
+        if !engineAvailable {
+            return "Disabled because this build does not include the MeedyaManager engine."
+        }
+        if testModeEnabled {
+            return "Disabled because Test Mode is on. Turn it off in Settings to rename files for real."
+        }
+        return "Permanently renames all previewed files on disk. This cannot be undone."
+    }
+
+    /// The actual controls — pulled into its own property only so `body`
+    /// above can stay readable with the new banner logic in front of it.
+    private var optionsForm: some View {
         Form {
             // Folder picker row — also accepts drag-and-drop from Finder
             Section("Source") {
@@ -114,14 +168,18 @@ private struct OptionsPane: View {
             // Scan + Execute buttons
             Section {
                 HStack(spacing: 8) {
-                    // Execute — only enabled when there are valid previews
+                    // Execute — only enabled when there are valid previews,
+                    // the engine is linked, and Test Mode is off (issue #222:
+                    // Test Mode has never staged renames, only tag writes, so
+                    // it must block Execute rather than imply protection it
+                    // cannot give).
                     Button("Execute Renames") {
-                        Task { await model.executeRenames() }
+                        Task { await model.executeRenames(testModeEnabled: testModeEnabled) }
                     }
-                    .disabled(!model.canExecute || model.isRunning)
+                    .disabled(!model.canExecute || model.isRunning || testModeEnabled)
                     .foregroundStyle(.red)
                     .accessibilityLabel("Execute renames")
-                    .accessibilityHint("Permanently renames all previewed files on disk. This cannot be undone.")
+                    .accessibilityHint(executeAccessibilityHint)
 
                     Spacer()
 

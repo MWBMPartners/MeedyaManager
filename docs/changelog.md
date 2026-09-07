@@ -21,6 +21,42 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ### Fixed
 
+- **The macOS app renamed real music files to made-up names (issue
+  [#222](https://github.com/MWBMPartners/MeedyaManager/issues/222), P0, data loss).** Open the
+  app, scan a folder, press Execute — and up to 50 real files were renamed to
+  `Preview <original name>`, in place, for real, with no undo. The cause: `macos/Package.swift`
+  has never actually linked the Rust engine (its `MM_FFI_AVAILABLE` build flag is commented out
+  and defined nowhere), so every build ran on a stand-in that invented a destination for each
+  file instead of reading the user's template, marked every one of those invented destinations
+  "safe to execute", and the Execute button then moved the files for real. Two things reported
+  earlier turned out to be wrong and made the picture worse, not better: the pre-release warning
+  that was meant to catch this can never fire (the shipped version string has its `-alpha.1`
+  suffix stripped, so the warning's own hyphen check never triggers), and Test Mode — which
+  sounds like exactly the safety net that should have caught this — has never covered renames at
+  all, only tag edits; `crates/mm-core/src/renamer/mod.rs` calls the file-rename system call
+  directly and has no Test Mode awareness whatsoever, in any build, before or after this fix.
+
+  **Fixed with four independent checks, not one flag.** An unlinked build now refuses outright
+  rather than guessing: every `MmCore` method that would need the engine throws a plain
+  "the engine is not linked" error instead of returning invented data; `ScanModel.canExecute`
+  additionally requires the engine to be linked, so a fabricated preview can never be marked
+  executable again; every place a rename could be requested (the model and the Execute button)
+  independently refuses while Test Mode is on, because Test Mode cannot protect a rename it has
+  never staged; and both screens that used to show made-up results (Library, Metadata) now show
+  a plain banner explaining the engine is missing and nothing on disk will change. The one
+  remaining place in the app allowed to move a file at all is a single new `MmCore.applyRenames`
+  method — everywhere else that used to call the file manager's move directly has been deleted.
+  Two pieces of shipped text that promised protection renames never had (macOS Settings' Test
+  Mode description, and the pre-release launch alert) have been corrected to describe what Test
+  Mode actually does.
+
+  This is a Swift-only, UI-layer fix, and it is **macOS only**. Issue #222 also documents the
+  identical shape of bug on Windows (`MmCore.cs`'s `StubScanDirectory`, `File.Move` in
+  `ScanPage.xaml.cs`) — that side is not part of this change and remains open. On macOS, the
+  underlying engine is still not linked into the shipped app (that is issue #66), so scanning,
+  metadata and renaming remain genuinely unavailable in this build — the difference is that the
+  app now says so plainly instead of fabricating a result the user could act on.
+
 - **`meedya scan --execute` destroyed disc images by splitting them up (issue
   [#219](https://github.com/MWBMPartners/MeedyaManager/issues/219), P0).** A `.cue` sheet names
   its `.bin` image by bare file name, so the pair only works while both sit in the same

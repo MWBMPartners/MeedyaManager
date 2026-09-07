@@ -254,7 +254,7 @@ final commit) — up from the 1,240 baseline.
 | `mm-ffi` | `crates/mm-ffi/` | Working — `uniffi_api.rs` now routes writes through Test Mode enforcement (#128) | 23 baseline, **grew** (static `#[test]` count at `9f3719b`: 25) |
 | `mm-update` | `crates/mm-update/` | Working | 29 |
 | `mm-gtk` | `crates/mm-gtk/` | Working (not a workspace member — build with `-p mm-gtk`); Server/Export/Cloud tabs now show a preview-only banner with controls disabled (#205) | 67 |
-| macOS SwiftUI app | `macos/` | Working UI shell; Server/Export/Cloud tabs now show a preview-only banner with controls disabled (#205) | 134 |
+| macOS SwiftUI app | `macos/` | Working UI shell; Server/Export/Cloud tabs now show a preview-only banner with controls disabled (#205). The Rust engine is still not linked into this app (issue #66) — but as of #222, an unlinked build now refuses to scan, read metadata or rename rather than fabricating results, and the Library/Metadata tabs show a plain "engine missing" banner instead | 115, corrected from a stale 134 (verified: `grep -rE '^\s*@Test' macos/MeedyaManagerTests/*.swift \| wc -l`) |
 | Windows WinUI 3 app | `windows/` | Working UI shell; Server/Export/Cloud tabs now show a preview-only banner with controls disabled (#205) | 124 |
 
 `cargo test --workspace` (the 8 workspace members, `mm-gtk` excluded) reports **1,304 passed, 0

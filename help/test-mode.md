@@ -41,12 +41,22 @@ changes, while `track.mp3` remains untouched.
 
 ## Enabling and Disabling
 
-### GUI (Linux only, today)
+### GUI (all three platforms)
 
-Navigate to **Settings** and toggle **Test Mode** on or off. This toggle currently exists only
-in the Linux GTK app (`crates/mm-gtk/src/ui/settings_panel.rs`) — the FFI layer the macOS and
-Windows apps use does not expose a Test Mode function, so there is no equivalent GUI control
-on those platforms yet. Use the CLI below on macOS/Windows.
+Navigate to **Settings** and toggle **Test Mode** on or off. This control exists in all three
+native apps: the Linux GTK app (`crates/mm-gtk/src/ui/settings_panel.rs`), the macOS SwiftUI app
+(`macos/MeedyaManager/Views/SettingsView.swift`) and the Windows WinUI 3 app
+(`windows/MeedyaManager/Views/SettingsPage.xaml`). The FFI layer used by the macOS and Windows
+apps gained the five Test Mode entry points it was previously missing in commit `633f8e3`
+("Test Mode protection") — this section previously said, wrongly, that only Linux had a GUI
+toggle; that was true before `633f8e3` and stopped being true afterwards, but the text here was
+never updated. The CLI below works everywhere too, if you prefer it.
+
+**Important — Test Mode does not cover renames, on any platform (issue #222).** It protects
+tag edits and cover art only, by writing to a `_MeedyaManager` copy instead of the original.
+Renaming a file has never gone through a staging step anywhere in the codebase — the renamer
+calls the operating system's rename directly. The macOS app enforces this by disabling Execute
+in the Library tab while Test Mode is on, rather than implying it stages the rename safely.
 
 ### CLI
 

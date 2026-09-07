@@ -28,6 +28,13 @@ final class ScanModelLogic {
     var previews:      [ScanPreviewItem] = []
     var isRunning:     Bool = false
 
+    // Added for issue #222 — mirrors the two new properties MmCore.swift and
+    // ScanModel.swift use to keep an unlinked build from moving real files.
+    // Real defaults ("engine present, Test Mode off") so the pre-existing
+    // tests above, which know nothing about either flag, keep passing.
+    var engineAvailable: Bool = true
+    var testModeEnabled: Bool = false
+
     var summary: String {
         guard !previews.isEmpty else { return "No files scanned." }
         let total     = previews.count
@@ -37,7 +44,24 @@ final class ScanModelLogic {
         return "\(total) files — \(toRename) to rename, \(unchanged) unchanged, \(conflicts) conflicts"
     }
 
-    var canExecute: Bool { previews.contains(where: \.isExecutable) }
+    // Mirrors ScanModel.canExecute: requires the engine to be linked, on top
+    // of the pre-existing per-preview check.
+    var canExecute: Bool { engineAvailable && previews.contains(where: \.isExecutable) }
+
+    // Mirrors ScanModel.executeRefusalReason. Kept as a free-standing static
+    // function (not reading `self`) for the same reason as the original: the
+    // production code and this replica must be checking the exact same
+    // decision, in the exact same order, or the "mirrors production" claim
+    // in this file's own header comment stops being true.
+    static func executeRefusalReason(engineAvailable: Bool, testModeEnabled: Bool) -> String? {
+        if !engineAvailable {
+            return "Nothing was renamed. This build does not include the MeedyaManager engine, so there are no trustworthy previews to apply. (issue #222)"
+        }
+        if testModeEnabled {
+            return "Nothing was renamed. Test Mode is on, and renames are not staged by Test Mode — turn it off in Settings to rename files for real."
+        }
+        return nil
+    }
 }
 
 // MARK: – Tests
@@ -118,5 +142,44 @@ struct ScanModelTests {
     @Test("isRunning defaults to false")
     func isRunning_default_false() {
         #expect(ScanModelLogic().isRunning == false)
+    }
+
+    // MARK: – issue #222: engine-missing / Test Mode guards
+    //
+    // Honesty note (asked for explicitly in the brief this was written
+    // against): because this file only replicates ScanModel's logic rather
+    // than importing the real thing, none of these four tests can ever fail
+    // against the production code — SwiftPM has no way to link them
+    // together. What they prove is that the replicated contract is
+    // internally consistent and does what issue #222 asked for; the actual
+    // proof that the real ScanModel/MmCore behave this way is the
+    // `swift build` + `grep` pair in the acceptance criteria, not this file.
+
+    @Test("engine missing disables execute even when a rename is pending")
+    func engine_missing_disables_execute_even_with_renames() {
+        let m = ScanModelLogic()
+        m.engineAvailable = false
+        m.previews = [
+            ScanPreviewItem(sourcePath: "/a", destinationPath: "/b", conflict: false, unchanged: false),
+        ]
+        #expect(m.canExecute == false)
+    }
+
+    @Test("refusal names the missing engine before it names Test Mode")
+    func refusal_names_engine_first() {
+        let reason = ScanModelLogic.executeRefusalReason(engineAvailable: false, testModeEnabled: true)
+        #expect(reason?.contains("engine") == true)
+    }
+
+    @Test("refusal names Test Mode when only Test Mode is the problem")
+    func refusal_names_test_mode() {
+        let reason = ScanModelLogic.executeRefusalReason(engineAvailable: true, testModeEnabled: true)
+        #expect(reason?.contains("Test Mode") == true)
+    }
+
+    @Test("refusal is nil when the engine is present and Test Mode is off")
+    func refusal_nil_when_clear_to_execute() {
+        let reason = ScanModelLogic.executeRefusalReason(engineAvailable: true, testModeEnabled: false)
+        #expect(reason == nil)
     }
 }

@@ -137,6 +137,15 @@ cd macos && swift build
 # Or: open Package.swift in Xcode (26.3+ / Swift 6.3 toolchain required)
 ```
 
+> **The command above does not link the Rust library you just built.** `macos/Package.swift`'s
+> `MM_FFI_AVAILABLE` flag is commented out and set nowhere, so `swift build` always produces an
+> app that runs on stand-in code, not the engine — that is issue #66, still open. Running this
+> build is safe: as of issue #222, the app detects that the engine is missing and shows a plain
+> banner ("This build is running without the MeedyaManager engine…") instead of inventing scan
+> results or metadata, and disables Execute so it cannot rename anything. Do not read a
+> successful `swift build` as "the app works end-to-end" — it only proves the SwiftUI shell
+> compiles.
+
 ### Build the Windows App (WinUI 3)
 
 ```powershell

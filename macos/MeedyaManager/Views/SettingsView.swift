@@ -73,8 +73,16 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             // Primary label for the test mode toggle
                             Text("Test Mode")
-                            // Description explaining what test mode does
-                            Text("When enabled, renames and tag writes go to a staging area instead of modifying real files.")
+                            // Description explaining what test mode does.
+                            //
+                            // Corrected for issue #222: Test Mode has never
+                            // staged renames — crates/mm-core/src/renamer/mod.rs
+                            // calls std::fs::rename directly and has no Test
+                            // Mode awareness at all. Only tag writes and cover
+                            // art ever went through the staging copy. The old
+                            // wording here promised protection for renames
+                            // that did not exist in any build, linked or not.
+                            Text("When on, tag edits are written to a _MeedyaManager copy instead of the original. Renames are not staged: Execute in the Library tab is disabled while Test Mode is on.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -100,7 +108,9 @@ struct SettingsView: View {
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .accessibilityLabel("Test Mode")
-                        .accessibilityHint("When enabled, file operations go to a staging area instead of modifying real files")
+                        // Same correction as the visible description above —
+                        // renames are never staged by Test Mode (issue #222).
+                        .accessibilityHint("When on, tag edits go to a copy instead of the original. Renames are disabled while this is on.")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)

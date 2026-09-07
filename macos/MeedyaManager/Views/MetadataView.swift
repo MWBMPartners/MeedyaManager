@@ -17,6 +17,14 @@ struct MetadataView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Persistent notice when this build has no engine linked — this
+            // tab's stub used to invent "Sample Track" / "Sample Artist"
+            // tags that looked like genuine file contents. See issue #222.
+            if !MmCore.isEngineAvailable {
+                EngineMissingBanner()
+                    .padding([.horizontal, .top], 12)
+            }
+
             // ── Toolbar: file picker + audio properties ────────────────────
             HStack(spacing: 12) {
                 Image(systemName: "doc.fill")
