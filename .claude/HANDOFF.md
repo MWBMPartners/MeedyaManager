@@ -763,6 +763,9 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (small hours, later)** — the audit now also checks the Linux app's own lock file
+  (`210e942`). It passes `--config deny.toml` explicitly, because cargo-deny finds its policy relative to
+  the working folder, not the manifest. Reviewed by Sonnet, whose one finding is fixed in the commit.
 - **2026-09-15 (small hours)** — stage (b) review: the locking is sound; the misleading lock-unavailable
   advice and the delete-the-lock help text must be fixed before committing. Sonnet fixer started.
   Filed #235 (Test Mode commit and revert take no lock). Also committed: the `.claude/worktrees/`
