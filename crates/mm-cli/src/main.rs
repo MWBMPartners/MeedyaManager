@@ -25,6 +25,12 @@ mod commands;
 mod context;
 // Output formatting helpers (tables, JSON, colours)
 mod output;
+// Helpers shared by the unit tests of several command modules — chiefly the
+// single process-wide lock that guards the `MM_CONFIG_DIR` environment
+// variable. Compiled only when running tests; see `test_support.rs` for why
+// it has to be shared rather than duplicated per module.
+#[cfg(test)]
+mod test_support;
 
 use clap::Parser;
 use context::CliContext;

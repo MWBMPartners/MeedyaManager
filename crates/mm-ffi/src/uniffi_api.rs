@@ -143,6 +143,10 @@ pub fn scan_directory(
     Ok(previews)
 }
 
+/// The purpose text recorded in the write lock's info note while this
+/// function holds it — see `mm_core::state::LockFile::try_acquire`.
+const LOCK_PURPOSE: &str = "the MeedyaManager app moving files";
+
 /// Execute a set of renames (non-conflicting, non-unchanged only).
 ///
 /// Returns the count of files successfully renamed.
@@ -158,6 +162,48 @@ pub fn scan_directory(
 /// [`renamer::ExecuteOptions`].
 #[uniffi::export]
 pub fn execute_renames(previews: Vec<RenamePreviewFfi>) -> Result<u32, MmFfiError> {
+    // Take the write lock before moving anything (issue #49).
+    //
+    // **Correction (issue #49, review round):** this comment used to say
+    // "the desktop apps reach the mover through this one function" — true
+    // only of the macOS app. The Windows app moves files itself without
+    // ever calling `execute_renames`, and the Linux (GTK) app calls
+    // mm-core's per-file `renamer::execute_rename` directly; neither of
+    // those two takes this lock at all yet (#226). So today this guard only
+    // actually protects the macOS app against colliding with a
+    // `meedya scan --execute` already running in a terminal — it is not yet
+    // the single choke point every platform goes through.
+    //
+    // `_write_lock` stays alive for the whole function, so it is given back
+    // the moment we return, however we return — see `mm_core::state`'s
+    // module docs for what "given back" means now (the file is never
+    // deleted; only the operating system's lock on it is released).
+    //
+    // `try_acquire_default` distinguishes "somebody already holds it" (an
+    // `Ok(None)`, the ordinary busy case) from "the lock could not even be
+    // attempted" (an `Err`, e.g. a settings folder on a network drive that
+    // does not support file locking) — both are turned into text by the
+    // shared functions in `mm_core::state` (issue #49, review round: this
+    // used to build its own separate wording here, naming no holder and
+    // saying "or stop it" — stopping a copy of MeedyaManager part-way
+    // through a batch of renames can leave a library half-moved, which is
+    // exactly why that advice was wrong and the CLI's own wording never
+    // included it). Both still map to `MmFfiError::Rename` rather than a
+    // new enum case, because adding one would change the generated Swift
+    // bindings and require every caller to be rebuilt.
+    let write_lock = mm_core::state::LockFile::try_acquire_default(LOCK_PURPOSE)
+        .map_err(|e| MmFfiError::Rename(mm_core::state::lock_unavailable_message(&e)))?;
+
+    let Some(_write_lock) = write_lock else {
+        // Busy — read who holds it, best effort, purely to tell the user
+        // something useful; `holder` never decides anything, the refusal
+        // above already came straight from the operating system's own lock.
+        let holder = mm_core::state::LockFile::holder(&mm_core::state::LockFile::default_path());
+        return Err(MmFfiError::Rename(mm_core::state::lock_busy_message(
+            holder.as_ref(),
+        )));
+    };
+
     let mut count = 0u32;
 
     for preview in previews {
@@ -812,5 +858,65 @@ mod tests {
             before,
             "a rejected write must not touch the file"
         );
+    }
+    // ── The write lock — issue #49 ──────────────────────────────────────────
+
+    /// **Regression — two copies moving files at once.**
+    ///
+    /// The desktop apps call `execute_renames` straight through this
+    /// function. Before the fix it took no lock at all, so pressing the
+    /// rename button while a `meedya scan --execute` was running in a
+    /// terminal had both processes moving the same files.
+    ///
+    /// Rewritten for the #49 lock redesign: the previous version of this
+    /// test planted a *file naming this process's own PID* to stand in for a
+    /// second holder. That plant no longer means anything under the new
+    /// design — the lock is the operating system's own file lock, not
+    /// anything read out of the file's content — so this now genuinely
+    /// takes the lock first, via the same `LockFile` API a real second
+    /// process would use, and keeps it alive for the whole test.
+    #[test]
+    fn execute_renames_refuses_while_the_lock_is_held() {
+        let guard = ConfigDirGuard::new("writelock");
+
+        let source = guard.path().join("before.wav");
+        write_wav_fixture(&source);
+        let original_bytes = std::fs::read(&source).unwrap();
+        let destination = guard.path().join("after.wav");
+
+        // Genuinely hold the write lock, standing in for a second live copy
+        // of MeedyaManager already moving files.
+        let lock_path = mm_core::state::LockFile::default_path();
+        let held_lock = mm_core::state::LockFile::try_acquire(&lock_path, "another test")
+            .expect("acquiring must not error")
+            .expect("nothing else holds this lock yet");
+
+        let result = execute_renames(vec![RenamePreviewFfi {
+            source: source.display().to_string(),
+            destination: destination.display().to_string(),
+            conflict: false,
+            unchanged: false,
+        }]);
+
+        assert!(
+            result.is_err(),
+            "execute_renames must refuse to move anything while another \
+             process holds the write lock: {result:?}"
+        );
+        assert!(
+            source.is_file(),
+            "the source file must still be where it started"
+        );
+        assert_eq!(
+            std::fs::read(&source).unwrap(),
+            original_bytes,
+            "the source file must be byte-for-byte unchanged"
+        );
+        assert!(
+            !destination.exists(),
+            "nothing may have been written to the destination"
+        );
+
+        drop(held_lock);
     }
 }

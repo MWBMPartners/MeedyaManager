@@ -489,12 +489,9 @@ fn render(
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-// `std::env::set_var`/`remove_var` are `unsafe` in Edition 2024 because they
-// race with concurrent readers.  The tests below serialise every mutation
-// behind `ENV_LOCK` and restore the variable from `Drop`, which is exactly
-// the discipline the `unsafe` marker is asking for — mirrors the same
-// allow on mm-core's own test modules.
-#[allow(unsafe_code)]
+// No `unsafe` here any more: the environment-variable juggling these tests
+// need now lives in `crate::test_support`, which carries the lock that makes
+// it safe and the explanation of why.
 mod tests {
     use super::*;
     use crate::output::OutputFormat;
@@ -602,79 +599,12 @@ mod tests {
 
     // ── Test Mode enforcement (#128) & strict keys (#206) ───────────────────
 
-    /// Process-wide lock for `MM_CONFIG_DIR`.
-    ///
-    /// mm-core owns an equivalent lock for its own test modules, but it is
-    /// `pub(crate)` there, so mm-cli needs its own.  Every test in this file
-    /// that redirects the config directory takes it, so the Test Mode manifest
-    /// of one test can never be observed by another.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    /// RAII guard that points `MM_CONFIG_DIR` at a private tempdir for the
-    /// lifetime of one test and restores the environment on drop.
-    ///
-    /// Restoring on `Drop` rather than at the end of the test body matters:
-    /// an assertion panic would skip a trailing `remove_var` and leak the
-    /// override — and, worse, a *live Test Mode manifest* — into sibling
-    /// tests running in the same process.
-    struct ConfigDirGuard {
-        // Dropped top-to-bottom: tempdir removed before the lock is released.
-        _dir: tempfile::TempDir,
-        _lock: std::sync::MutexGuard<'static, ()>,
-    }
-
-    impl ConfigDirGuard {
-        fn new() -> Self {
-            let lock = ENV_LOCK
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let dir = tempfile::tempdir().unwrap();
-            // SAFETY: the ENV_LOCK above serialises every mutation of this
-            // variable within the mm-cli test binary.
-            unsafe {
-                std::env::set_var("MM_CONFIG_DIR", dir.path());
-            }
-            Self {
-                _dir: dir,
-                _lock: lock,
-            }
-        }
-    }
-
-    impl Drop for ConfigDirGuard {
-        fn drop(&mut self) {
-            unsafe {
-                std::env::remove_var("MM_CONFIG_DIR");
-            }
-        }
-    }
-
-    /// Build a minimal but *real* WAV file on disk.
-    ///
-    /// lofty refuses a bare 44-byte header with no `data` payload, so the
-    /// fixture carries 0.1 s of 8 kHz 16-bit mono silence (1,600 bytes of
-    /// samples, 1,644 bytes total).
-    fn write_wav_fixture(path: &std::path::Path) {
-        const DATA_LEN: u32 = 1600;
-
-        let mut bytes: Vec<u8> = Vec::with_capacity(44 + DATA_LEN as usize);
-        bytes.extend_from_slice(b"RIFF"); // RIFF container magic
-        bytes.extend_from_slice(&(36 + DATA_LEN).to_le_bytes()); // size after this field
-        bytes.extend_from_slice(b"WAVE"); // RIFF form type
-        bytes.extend_from_slice(b"fmt "); // format chunk id (note trailing space)
-        bytes.extend_from_slice(&16u32.to_le_bytes()); // PCM format chunk is 16 bytes
-        bytes.extend_from_slice(&1u16.to_le_bytes()); // audio format: 1 = PCM
-        bytes.extend_from_slice(&1u16.to_le_bytes()); // channels: mono
-        bytes.extend_from_slice(&8000u32.to_le_bytes()); // sample rate: 8 kHz
-        bytes.extend_from_slice(&16000u32.to_le_bytes()); // byte rate = rate x align
-        bytes.extend_from_slice(&2u16.to_le_bytes()); // block align: 1ch x 16-bit
-        bytes.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
-        bytes.extend_from_slice(b"data"); // sample data chunk id
-        bytes.extend_from_slice(&DATA_LEN.to_le_bytes()); // sample data length
-        bytes.extend_from_slice(&vec![0u8; DATA_LEN as usize]); // silence
-
-        std::fs::write(path, &bytes).expect("WAV fixture must be writable");
-    }
+    // The helpers these tests rely on — the `MM_CONFIG_DIR` lock, the guard
+    // that redirects the configuration directory, and the WAV fixture writer
+    // — live in `crate::test_support`. They used to be private to this file,
+    // but `scan.rs` needs the very same lock: two private locks would each be
+    // held happily while both tests fought over one environment variable.
+    use crate::test_support::{ConfigDirGuard, write_wav_fixture};
 
     /// Test Mode must divert the write to a `_MeedyaManager` copy and leave
     /// the user's original file byte-for-byte identical.

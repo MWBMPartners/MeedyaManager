@@ -1553,12 +1553,15 @@ mod tests {
             expected.display()
         );
 
-        // state — persists `state.json` and the single-instance lock file
-        let state_path = crate::state::AppState::default_path();
+        // state — where the write lock lives while renames are being carried
+        // out. It has to sit in the same directory every copy of the
+        // application looks in, or two copies would each take "the" lock in
+        // a different place and neither would ever see the other.
+        let lock_path = crate::state::LockFile::default_path();
         assert!(
-            state_path.starts_with(&expected),
-            "state path {} does not share the config dir {}",
-            state_path.display(),
+            lock_path.starts_with(&expected),
+            "write lock path {} does not share the config dir {}",
+            lock_path.display(),
             expected.display()
         );
 

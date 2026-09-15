@@ -309,18 +309,24 @@ fn skip_tracked_originals(
 /// script, a pipe, a CI job) has nothing to prompt against, so it is treated
 /// as already confirmed — only an attended, interactive terminal actually
 /// blocks on a prompt before an irreversible batch of renames.
-fn execute_pre_confirmed(yes: bool, stdin_is_terminal: bool) -> bool {
+///
+/// Shared with `meedya watch --organize`, which asks the same question once
+/// at start-up before it begins moving files unattended.
+pub(crate) fn execute_pre_confirmed(yes: bool, stdin_is_terminal: bool) -> bool {
     yes || !stdin_is_terminal
 }
 
-/// Ask an interactive terminal to confirm before renaming files under
-/// `path`. Returns `false` — the safe default — on any I/O error or a
+/// Ask an interactive terminal a yes/no question before doing something
+/// irreversible. Returns `false` — the safe default — on any I/O error or a
 /// non-affirmative answer.
-fn prompt_confirm(path: &Path) -> bool {
-    print!(
-        "About to rename files under '{}'. Continue? [y/N] ",
-        path.display()
-    );
+///
+/// Takes the whole question as text rather than a path, because the two
+/// callers are asking genuinely different things: `scan` is about to rename
+/// one directory now, while `watch --organize` is about to keep moving files
+/// for as long as it runs. A shared helper that built the sentence itself
+/// could only ever be right for one of them.
+pub(crate) fn prompt_confirm(message: &str) -> bool {
+    print!("{message} [y/N] ");
     if std::io::stdout().flush().is_err() {
         return false;
     }
@@ -330,6 +336,25 @@ fn prompt_confirm(path: &Path) -> bool {
     }
     matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
+
+/// The purpose text recorded in the write lock's info note while this
+/// command holds it — see `mm_core::state::LockFile::try_acquire`. Written
+/// once here, rather than inline at the call site, so the value actually
+/// passed to `try_acquire_default` cannot silently drift from the strings
+/// anybody debugging a stuck lock will see in `meedya.lock.info` (via
+/// `mm_core::state::LockFile::holder`) or in the busy message built by
+/// `mm_core::state::lock_busy_message`.
+const LOCK_PURPOSE: &str = "meedya scan --execute";
+
+// The message-building helpers that used to live here —
+// `describe_holder`/`lock_busy_message` and `lock_unavailable_message` —
+// moved to `mm_core::state` (issue #49, review round). That is the single
+// place both this command and the FFI layer's `execute_renames` now call
+// into, so a user sees exactly the same wording whichever one blocked
+// them — see the doc comments on `mm_core::state::lock_busy_message` and
+// `mm_core::state::lock_unavailable_message` for the full reasoning,
+// including why the old wording here (telling a blocked user to set
+// `MM_CONFIG_DIR`) was actively harmful rather than merely unhelpful.
 
 /// Resolve the destination root.
 ///
@@ -514,13 +539,60 @@ pub fn run(ctx: &CliContext, args: &ScanArgs) -> anyhow::Result<i32> {
     if !dry_run
         && args.execute
         && !execute_pre_confirmed(args.yes, std::io::stdin().is_terminal())
-        && !prompt_confirm(&args.path)
+        && !prompt_confirm(&format!(
+            "About to rename files under '{}'. Continue?",
+            args.path.display()
+        ))
     {
         output::print_warning(
             "Execution cancelled — pass --yes to skip this confirmation next time.",
         );
         return Ok(ExitCode::ERROR);
     }
+
+    // Take the write lock before looking at a single file.
+    //
+    // Order matters here, and it is deliberate. The confirmation prompt
+    // comes first, because there is no point locking other people out while
+    // we wait for somebody to type "y" — or, worse, holding the lock during
+    // a prompt they walk away from. But the lock is taken *before* the scan,
+    // not after it: the scan works out where every file is going, and if
+    // another copy is moving files while we do that, our plan is out of date
+    // before we ever act on it.
+    //
+    // `_write_lock` is bound (rather than being a bare expression) so it
+    // stays alive for the rest of this function. The moment it goes out of
+    // scope — normal return, early return or panic — the operating system's
+    // lock on `meedya.lock` is released (the file itself is never deleted —
+    // see `mm_core::state`'s module docs for why), so a crash cannot leave
+    // renaming blocked for good.
+    let _write_lock = if !dry_run && args.execute {
+        match mm_core::state::LockFile::try_acquire_default(LOCK_PURPOSE) {
+            Ok(Some(lock)) => Some(lock),
+            Ok(None) => {
+                // Busy — read who holds it, best effort, purely to tell the
+                // user something useful. `holder` never decides anything;
+                // the refusal above already came straight from the operating
+                // system's own lock.
+                let holder =
+                    mm_core::state::LockFile::holder(&mm_core::state::LockFile::default_path());
+                output::print_error(&mm_core::state::lock_busy_message(holder.as_ref()));
+                return Ok(ExitCode::ERROR);
+            }
+            Err(err) => {
+                // `err` is the raw `std::io::Error` from `try_acquire` (not
+                // wrapped in `MmError`) precisely so its `ErrorKind` reaches
+                // `lock_unavailable_message` intact — see that function's
+                // doc comment for what decides on that basis.
+                output::print_error(&mm_core::state::lock_unavailable_message(&err));
+                return Ok(ExitCode::ERROR);
+            }
+        }
+    } else {
+        // Previewing does not move anything, so it never needs the lock and
+        // must never block a real rename that is already under way.
+        None
+    };
 
     // ── 1. Scan for files ───────────────────────────────────────────────
     let files = scan_files(ctx, args)?;
@@ -776,61 +848,12 @@ mod tests {
         }
     }
 
-    /// Write a real, playable WAV file: 16-bit mono PCM, 8 kHz, 0.1 s silence.
-    ///
-    /// A bare 44-byte header with no `data` payload is rejected by lofty, so
-    /// the tests would never exercise the tag path. 800 frames × 2 bytes =
-    /// 1,600 data bytes, for 1,644 bytes total.
-    fn write_test_wav(path: &Path) {
-        const SAMPLE_RATE: u32 = 8_000;
-        const CHANNELS: u16 = 1;
-        const BITS_PER_SAMPLE: u16 = 16;
-        const FRAMES: u32 = 800; // 0.1 s at 8 kHz
-
-        let block_align = CHANNELS * BITS_PER_SAMPLE / 8;
-        let byte_rate = SAMPLE_RATE * u32::from(block_align);
-        let data_len = FRAMES * u32::from(block_align);
-
-        let mut wav: Vec<u8> = Vec::with_capacity(44 + data_len as usize);
-
-        // ── RIFF container header ───────────────────────────────────────
-        wav.extend_from_slice(b"RIFF");
-        // Everything after this field: 4 ("WAVE") + 24 (fmt) + 8 + data
-        wav.extend_from_slice(&(4 + 24 + 8 + data_len).to_le_bytes());
-        wav.extend_from_slice(b"WAVE");
-
-        // ── "fmt " chunk (16-byte PCM form) ─────────────────────────────
-        wav.extend_from_slice(b"fmt ");
-        wav.extend_from_slice(&16u32.to_le_bytes());
-        wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
-        wav.extend_from_slice(&CHANNELS.to_le_bytes());
-        wav.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
-        wav.extend_from_slice(&byte_rate.to_le_bytes());
-        wav.extend_from_slice(&block_align.to_le_bytes());
-        wav.extend_from_slice(&BITS_PER_SAMPLE.to_le_bytes());
-
-        // ── "data" chunk — real silence, not an empty stub ──────────────
-        wav.extend_from_slice(b"data");
-        wav.extend_from_slice(&data_len.to_le_bytes());
-        wav.extend(std::iter::repeat_n(0u8, data_len as usize));
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        std::fs::write(path, &wav).unwrap();
-    }
-
-    /// Write a WAV and stamp artist/album/title onto it.
-    fn write_tagged_wav(path: &Path, artist: &str, album: &str, title: &str) {
-        write_test_wav(path);
-
-        let mut tags: TagMap = TagMap::new();
-        tags.insert("artist".to_string(), vec![artist.to_string()]);
-        tags.insert("album".to_string(), vec![album.to_string()]);
-        tags.insert("title".to_string(), vec![title.to_string()]);
-
-        mm_core::metadata::write_tags(path, &tags).unwrap();
-    }
+    // The WAV fixture writers and the `MM_CONFIG_DIR` guard are shared with
+    // the other command modules' tests — see `crate::test_support` for why
+    // the guard in particular cannot be duplicated per module.
+    use crate::test_support::{
+        ConfigDirGuard, write_tagged_wav, write_wav_fixture as write_test_wav,
+    };
 
     /// Scan returns error for non-existent directory
     #[test]
@@ -923,6 +946,11 @@ mod tests {
     /// file's bytes were destroyed and the command still exited SUCCESS.
     #[test]
     fn scan_execute_two_untagged_files_both_survive() {
+        // Renaming for real now takes the write lock, which lives in the
+        // configuration directory. Point that at a private folder so this
+        // test cannot collide with another test doing the same thing.
+        let _config = ConfigDirGuard::new();
+
         let tmp = tempfile::tempdir().unwrap();
         let first = tmp.path().join("first.wav");
         let second = tmp.path().join("second.wav");
@@ -1028,6 +1056,11 @@ mod tests {
     /// `conflict_strategy = "rename"` re-points the loser onto " (1)".
     #[test]
     fn conflict_strategy_rename_appends_counter() {
+        // Renaming for real now takes the write lock, which lives in the
+        // configuration directory. Point that at a private folder so this
+        // test cannot collide with another test doing the same thing.
+        let _config = ConfigDirGuard::new();
+
         let tmp = tempfile::tempdir().unwrap();
         write_test_wav(&tmp.path().join("first.wav"));
         write_test_wav(&tmp.path().join("second.wav"));
@@ -1055,6 +1088,11 @@ mod tests {
     /// `conflict_strategy = "overwrite"` must NOT re-enable the data-loss path.
     #[test]
     fn conflict_strategy_overwrite_warns_and_skips() {
+        // Renaming for real now takes the write lock, which lives in the
+        // configuration directory. Point that at a private folder so this
+        // test cannot collide with another test doing the same thing.
+        let _config = ConfigDirGuard::new();
+
         let tmp = tempfile::tempdir().unwrap();
         write_test_wav(&tmp.path().join("first.wav"));
         write_test_wav(&tmp.path().join("second.wav"));
@@ -1267,6 +1305,11 @@ mod tests {
     /// ```
     #[test]
     fn scan_execute_never_splits_a_cue_bin_pair() {
+        // Renaming for real now takes the write lock, which lives in the
+        // configuration directory. Point that at a private folder so this
+        // test cannot collide with another test doing the same thing.
+        let _config = ConfigDirGuard::new();
+
         let tmp = tempfile::tempdir().unwrap();
         let (cue_bytes, bin_bytes) = write_disc_rip_fixture(tmp.path());
 
@@ -1339,5 +1382,112 @@ mod tests {
                 "a disc image member must never reach the rename preview: {source}"
             );
         }
+    }
+    // ── The write lock — issue #49 ──────────────────────────────────────────
+
+    /// **Regression — two copies moving files at once.**
+    ///
+    /// `LockFile` existed but nothing ever called it, so a second
+    /// `meedya scan --execute` (or the desktop app's rename button) could
+    /// start moving the very same files while the first was still working.
+    /// One process would rename a file out from under the other's plan, and
+    /// both would report success.
+    ///
+    /// Rewritten for the #49 lock redesign: the previous version of this
+    /// test planted a *file naming this process's own PID* to stand in for a
+    /// second holder. That plant no longer means anything — the new lock is
+    /// the operating system's own file lock, not anything read out of the
+    /// file's content — so this now genuinely takes the lock first, via the
+    /// same `LockFile` API a real second process would use, and keeps it
+    /// alive for the whole test.
+    #[test]
+    fn scan_execute_refuses_while_another_process_holds_the_lock() {
+        // Redirect the configuration directory so the lock this test takes
+        // is a private one, not the real user's.
+        let _guard = ConfigDirGuard::new();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let track = tmp.path().join("song.wav");
+        write_tagged_wav(&track, "Band", "Album", "Song");
+
+        // Genuinely hold the write lock, standing in for a second live copy
+        // of MeedyaManager already moving files.
+        let lock_path = mm_core::state::LockFile::default_path();
+        let held_lock = mm_core::state::LockFile::try_acquire(&lock_path, "another test")
+            .expect("acquiring must not error")
+            .expect("nothing else holds this lock yet");
+
+        let ctx = test_ctx(false);
+        let args = ScanArgs {
+            template: Some("<Artist>/<Title>".to_string()),
+            execute: true,
+            ..args_for(tmp.path())
+        };
+
+        let code = run(&ctx, &args).unwrap();
+
+        assert_eq!(
+            code,
+            ExitCode::ERROR,
+            "scan --execute must refuse to start while another process holds \
+             the write lock"
+        );
+        assert!(
+            track.is_file(),
+            "the file must still be where it started — nothing may move while \
+             another process holds the write lock"
+        );
+
+        // The refusal must not have deleted the other process's lock file —
+        // this module never deletes it at all, see `mm_core::state`'s
+        // module docs — and this test's own hold on it must still be live.
+        assert!(
+            lock_path.is_file(),
+            "a refused run must leave the other process's lock file alone"
+        );
+        drop(held_lock);
+    }
+
+    // The two tests that used to live here (`lock_error_message_names_the_
+    // holder_and_its_process_id`, `lock_error_message_without_a_readable_
+    // holder_still_makes_sense`) exercised `lock_busy_message`, which moved
+    // to `mm_core::state` along with `lock_unavailable_message` (issue #49,
+    // review round — see the comment above `LOCK_PURPOSE`). Their coverage
+    // moved with it: see `mm_core::state::tests::the_busy_message_names_
+    // the_holder_when_known`, `..._omits_the_holder_sentence_when_unknown`,
+    // `the_unavailable_message_mentions_network_drives_only_when_
+    // unsupported` and `no_lock_message_ever_suggests_moving_settings_or_
+    // deleting_files` in `crates/mm-core/src/state/mod.rs`. What stays
+    // useful here, in this crate, is proving the command actually *uses*
+    // that shared wording when refused — `scan_execute_refuses_while_
+    // another_process_holds_the_lock` above already does that end to end.
+
+    /// Once the first run finishes and drops its lock, the next run may take
+    /// it. A lock that could not be re-taken would leave the command
+    /// permanently broken after a single use.
+    #[test]
+    fn releasing_the_lock_lets_the_next_run_take_it() {
+        let _guard = ConfigDirGuard::new();
+
+        {
+            let _lock = mm_core::state::LockFile::try_acquire_default(LOCK_PURPOSE)
+                .expect("acquiring must not error")
+                .expect("first run must be able to take the write lock");
+            assert!(
+                matches!(
+                    mm_core::state::LockFile::try_acquire_default(LOCK_PURPOSE),
+                    Ok(None)
+                ),
+                "a second run must be refused while the first still holds it"
+            );
+        } // first lock dropped here — released, but the file itself stays
+
+        assert!(
+            matches!(
+                mm_core::state::LockFile::try_acquire_default(LOCK_PURPOSE),
+                Ok(Some(_))
+            ),
+            "the lock must be available again once the first run has finished"
+        );
     }
 }
