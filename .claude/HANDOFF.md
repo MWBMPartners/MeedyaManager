@@ -8,7 +8,7 @@
 **Last updated:** 2026-09-15
 **Updated by:** Claude Opus 5, session `07a21012`
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → will PR into **`alpha`**
-**Branch HEAD:** `83628d9` (pushed) — **plus four pieces of uncommitted work awaiting independent review; see §0**
+**Branch HEAD:** latest code commit `eb2c2a9` (pushed) — **plus the uncommitted write lock (#49) and organiser (#180), which the review found unsafe; see §0**
 
 ---
 
@@ -16,9 +16,9 @@
 
 ### In one paragraph
 
-The branch is pushed and clean up to `83628d9`. On top of it sit **four pieces of finished but
-uncommitted work** — 19 changed files and 2 new ones — waiting for an independent review before
-they are committed. **Codex, the usual reviewer, cannot run until 2026-09-20 16:30**, so a fresh
+The branch is pushed and clean up to `83628d9`. Of the four pieces of work built on top of it, the **release guard** (`b694d70`) and the **Windows
+guard** (`eb2c2a9`) are now committed after review. The **write lock** (#49) and the **organiser** (#180)
+remain uncommitted, because the review found them unsafe; their redesign is being planned. **Codex, the usual reviewer, cannot run until 2026-09-20 16:30**, so a fresh
 Opus agent that built none of it is reviewing in its place — Fable, the first stand-in, was out of
 usage credits as well. Two P0 data-loss bugs were found and
 fixed this fortnight: #219 is committed, and #222 is committed for macOS with its Windows half in
@@ -30,8 +30,8 @@ support (#229) on top. **No Android code exists yet.**
 
 | Piece | Issue | Built by | State |
 | --- | --- | --- | --- |
-| The Windows app cannot move files without its engine | #222 | Sonnet agent | Complete. **Never compiled** — there is no .NET on this machine. |
-| The release pipeline stops attaching an engine-less macOS app | #222 | Sonnet agent | Complete. `actionlint` clean. Has never run. |
+| The Windows app cannot move files without its engine | #222 | Sonnet agent | ✅ **Committed `eb2c2a9`** after review, with the Test Mode promise fixed. **Never compiled** — no .NET here; #222 stays open until verified on Windows. |
+| The release pipeline stops attaching an engine-less macOS app | #222 | Sonnet agent | ✅ **Committed `b694d70`**, with the engine-check fix. `actionlint` clean. Has never run. |
 | The write lock is taken before renames; the unused `AppState` is deleted | #49 | Opus agent | Complete, with tests written to fail first. |
 | `watch --organize` made real; the background service made honest | #180 | Opus agent | **The agent ran out of credit part-way and never reported.** The code is complete and tested; **its documentation was never written.** |
 
@@ -74,6 +74,7 @@ citing the source line behind each claim. It was instructed not to touch code.
   extra input unless it is given `< /dev/null`. The second hit Codex's usage limit: *"try again
   at Sep 20th, 2026 4:30 PM"*.
 - **First stand-in, Fable, failed at once:** out of usage credits on 2026-09-15.
+- **Fable failed again** later that day when asked to plan the fixes, so **Opus is planning in its place.** Try Fable first on the next planning run.
 - **Second stand-in, Opus — review complete (see the verdict below):** a fresh Opus agent (the dev-team `opus-builder`, in the reviewer
   role), working from the snapshot `review-snapshot.patch` (§5). Its verdict decides what gets
   committed. **Its independence is uneven, and that must stay visible:**
@@ -166,7 +167,8 @@ work. The detail for each row is in the section it names.
 | 13e | Disc images #217 stages 1–3, and the P0 data loss #219 | ✅ done — `c68719c`, `36d737e`, `04f8ddf` |
 | 13f | Second full issue sweep — all 207 issues, against code **and** upstream | ✅ analysis done 2026-09-06 (§14a) · ⏳ **the per-issue comments have not been posted** |
 | 13g | P0 #222 — the macOS app renamed real files to "[Preview] …" | ✅ fixed `83628d9` |
-| 13h | #222 Windows half and release guard, #49 write lock, #180 organiser | 🔄 **built, uncommitted, under independent review** (§0) |
+| 13h | #222 Windows half and release guard | ✅ committed `eb2c2a9` and `b694d70` after review · the Windows code has never been compiled |
+| 13h2 | #49 write lock and #180 organiser | 🔄 **review verdict: not safe** · fixes being planned (Opus, standing in for Fable) |
 | 13i | Security advisory #227 (`rustls`) | ⏳ after 13h, in a commit of its own |
 | 13j | Mobile platforms | ✅ decided 2026-09-15: **the Apple app stays macOS-only** (#228 closed) · 📝 **Android phone app** #230, side-loadable, with foldables in #229 · no Android code yet |
 | 14 | **Open the PR to `alpha`** | ⏳ owner's call — not created, per the no-PR-stacking rule |
@@ -757,6 +759,9 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (night)** — release guard committed (`b694d70`) and Windows guard committed (`eb2c2a9`), both after
+  review plus an orchestrator line-by-line check of the fixes. Fable failed again for planning; Opus
+  is planning the lock and organiser fixes.
 - **2026-09-15 (evening, later)** — the stand-in review's serious findings were verified; filed
   #231 (committed `scan` defect) and #232 (Windows settings erase); §8 item 1 now lists the fix order.
 - **2026-09-15 (evening)** — the Opus stand-in review returned: release guard safe; Windows guard,
@@ -1087,8 +1092,8 @@ The detail is on #228 and #229.
 - **Claude's monthly spend limit** stopped the `watch --organize` agent part-way through, shortly
   after 2026-09-07. It left compiling, tested code with no report and no documentation.
 - **Codex's usage limit** blocks the usual independent review until **2026-09-20 16:30**.
-- **Fable was out of usage credits** on 2026-09-15, so the first stand-in review failed the moment
-  it started. Opus stood in instead — independent of the Sonnet-built work, but the same model as
+- **Fable was out of usage credits** on 2026-09-15, twice: the first stand-in review failed the
+  moment it started, and so did the planning run for the fixes. Opus stood in instead — independent of the Sonnet-built work, but the same model as
   the builder of the write lock and the organiser.
 
 **Tried and rejected — do not repeat these:**
