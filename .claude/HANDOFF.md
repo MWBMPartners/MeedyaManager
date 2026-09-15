@@ -763,6 +763,10 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (small hours)** — stage (b) review: the locking is sound; the misleading lock-unavailable
+  advice and the delete-the-lock help text must be fixed before committing. Sonnet fixer started.
+  Filed #235 (Test Mode commit and revert take no lock). Also committed: the `.claude/worktrees/`
+  exclusion (`1138c6f`) and the Linux app's `rustls` update (`6a9d757`).
 - **2026-09-15 (late night, later)** — #233 confirmed to affect the default settings and raised to
   P0; added to the open P0 list. (The example `config/settings.json5` is safe, and briefly looked as
   though it proved the defaults were — it does not.)
@@ -1311,4 +1315,16 @@ After Codex's review: remove the two refusals.
   `incompatible_msrv` allowance sits on two functions, not one. **Windows lint unverified** — a
   dependency's C build needs a Windows C toolchain. Now: an Opus review, and proving the commit on its
   own in a throwaway worktree.
+  **Review verdict (Opus, reviewing Sonnet's work): the locking itself is sound, but not yet safe to commit.**
+  - **Blocking, in code:** the "cannot hold a lock" message told users to point `MM_CONFIG_DIR` at another
+    folder. That separates the terminal from the app and the service, resets settings to defaults, turns
+    Test Mode off, and blames network drives even for a permissions error.
+  - **Blocking, in the uncommitted #49 help pages:** they still tell users to delete `meedya.lock`. The
+    reviewer proved it: with a live holder running, deleting the file let `scan --execute` move files. Those
+    pages stay out of the commit and are rewritten in stage (f).
+  - **Minor:** the macOS app's busy message said "or stop it"; some comments were inaccurate (Windows share
+    mode, network drives, leftover `libc`/`winapi`); some test details were weak.
+  - **A new coverage gap:** Test Mode commit and revert move files without the lock (#235).
+  - A Sonnet fixer is working on the code findings. **The worktree proof that was started before the fixes
+    is now stale; re-run it after them.**
 - **(c)–(g):** not started.
