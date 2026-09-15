@@ -178,6 +178,31 @@ public sealed partial class ScanPage : Page
 
     // ── Scan ────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Says why Execute must refuse, or <see langword="null"/> when it is safe
+    /// to rename files for real. Checked both when Execute is enabled/disabled
+    /// after a scan and again at the top of <see cref="ExecuteButton_Click"/>,
+    /// so the button being (mis-)enabled can never be the only thing standing
+    /// between a click and a real file move (issue #222).
+    /// </summary>
+    /// <param name="engineAvailable">Whether mm_ffi.dll was found (<see cref="MmCore.IsEngineAvailable"/>).</param>
+    /// <param name="testModeEnabled">Whether Test Mode is currently on.</param>
+    /// <returns>A user-facing refusal message, or null when Execute may proceed.</returns>
+    internal static string? ExecuteRefusalReason(bool engineAvailable, bool testModeEnabled)
+    {
+        if (!engineAvailable)
+        {
+            return "Nothing was renamed. This build does not include the MeedyaManager engine, " +
+                   "so there are no trustworthy previews to apply. (issue #222)";
+        }
+        if (testModeEnabled)
+        {
+            return "Nothing was renamed. Test Mode is on, and renames are not staged by Test Mode " +
+                   "— turn it off in Settings to rename files for real.";
+        }
+        return null;
+    }
+
     /// <summary>Runs a scan of the selected folder and populates the results list.</summary>
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
     {
@@ -194,6 +219,21 @@ public sealed partial class ScanPage : Page
         if (!isValid)
         {
             StatusText.Text = "Please enter a valid template first.";
+            return;
+        }
+
+        // Without the engine, ScanDirectory now returns an empty list rather
+        // than fabricating previews (see MmCore, issue #222) — but that reads
+        // to the user exactly like "no media files found" in an empty real
+        // folder. Say the true reason plainly instead, and never let the
+        // Execute button reach an enabled state on a fabricated scan.
+        if (!MmCore.IsEngineAvailable)
+        {
+            StatusText.Text = "This build does not include the MeedyaManager engine, " +
+                               "so scanning is unavailable. (issue #222)";
+            EmptyState.Visibility  = Visibility.Visible;
+            ResultsList.Visibility = Visibility.Collapsed;
+            ExecuteButton.IsEnabled = false;
             return;
         }
 
@@ -233,7 +273,14 @@ public sealed partial class ScanPage : Page
             ResultsList.Visibility = Visibility.Visible;
         }
 
-        ExecuteButton.IsEnabled = renamed > 0;
+        // Even with real previews in hand, Execute must still stay off when
+        // there is a standing reason to refuse (engine missing, Test Mode
+        // on) — this is the same check ExecuteButton_Click makes at its own
+        // top, kept here too so the button's own enabled state never lies
+        // about whether a click would do anything (issue #222).
+        ExecuteButton.IsEnabled =
+            renamed > 0 &&
+            ExecuteRefusalReason(MmCore.IsEngineAvailable, MmCore.Instance.TestModeEnabled()) is null;
         SetScanning(false);
     }
 
@@ -242,12 +289,32 @@ public sealed partial class ScanPage : Page
     /// <summary>Executes all non-conflicting, changed renames.</summary>
     private async void ExecuteButton_Click(object sender, RoutedEventArgs e)
     {
+        // Refuse regardless of whether the button itself is (mis-)enabled —
+        // this is the last line of defence against the data-loss bug in
+        // issue #222, so it must not depend on any other code path having
+        // already got IsEnabled right.
+        string? refusal = ExecuteRefusalReason(MmCore.IsEngineAvailable, MmCore.Instance.TestModeEnabled());
+        if (refusal is not null)
+        {
+            StatusText.Text = refusal;
+            ExecuteButton.IsEnabled = false;
+            return;
+        }
+
         SetScanning(true);
         ExecuteButton.IsEnabled = false;
         StatusText.Text = "Renaming…";
 
         int success = 0, failed = 0;
 
+        // File.Move stays here, guarded by the refusal check above, rather
+        // than being deleted the way the macOS fix for the same bug (#222)
+        // deleted its file-moving loop outright: the mm-ffi C header exports
+        // no execute/rename function at all, only mm_ffi_scan_directory for
+        // previews, so there is no Rust-side execute path to hand this off
+        // to on Windows. Reaching this point already means the engine is
+        // present and Test Mode is off, so the previews above came from a
+        // real scan.
         await Task.Run(() =>
         {
             foreach (PreviewRow row in Previews)

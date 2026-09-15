@@ -49,8 +49,53 @@ public partial class App : Application
         // Activate (show) the window
         MainWindow.Activate();
 
+        // Tell the user plainly when this build has no engine at all, before
+        // the pre-release check below — a build with no engine can also be
+        // a non-pre-release build (e.g. a stable version tag with the DLL
+        // missing from packaging), so this must not be folded into that
+        // check (issue #222).
+        ShowEngineMissingNoticeAsync();
+
         // Check for pre-release version and show warning if applicable
         CheckPreReleaseAndEnableTestMode();
+    }
+
+    // -----------------------------------------------------------------
+    // Engine-missing notice (issue #222)
+    // -----------------------------------------------------------------
+
+    /// <summary>
+    /// Shows a one-time dialog when mm_ffi.dll was not found beside the
+    /// executable, so the user knows scanning, renaming and tag saving are
+    /// all unavailable rather than discovering it silently, page by page.
+    /// </summary>
+    private async void ShowEngineMissingNoticeAsync()
+    {
+        if (MmCore.IsEngineAvailable)
+            return;
+
+        // Wait briefly for the XAML tree to finish loading before showing a
+        // dialog, matching the pattern used by CheckPreReleaseAndEnableTestMode
+        // below (a XamlRoot is not guaranteed to exist immediately after
+        // Activate returns).
+        if (MainWindow?.Content is not FrameworkElement rootElement)
+            return;
+
+        await System.Threading.Tasks.Task.Delay(200);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Running without the engine",
+            Content = "This build of MeedyaManager does not include mm_ffi.dll, the " +
+                      "MeedyaManager engine. Scanning, renaming and saving tags are all " +
+                      "unavailable until a build with the engine is installed. " +
+                      "(issue #222)",
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = rootElement.XamlRoot,
+        };
+
+        await dialog.ShowAsync();
     }
 
     // -----------------------------------------------------------------
@@ -89,11 +134,21 @@ public partial class App : Application
         var dialog = new ContentDialog
         {
             Title = "Pre-Release Build Detected",
+            // Corrected wording (issue #222 follow-up): the previous text
+            // promised that saved tag edits would be diverted to a
+            // safety-copy file elsewhere, using MeedyaManager's copy-file
+            // naming pattern. That was false on Windows — Test Mode here is
+            // only a flag (see MmCore.SetTestMode's comment: there is no
+            // P/Invoke call yet), and neither MetadataPage nor ScanPage
+            // checked it before MetadataPage's Save guard was added. A
+            // tester who believed the old sentence and saved tags was
+            // rewriting the real file.
             Content = $"You are running MeedyaManager {version}.\n\n" +
                       "This is a pre-release build. Test Mode has been automatically " +
-                      "enabled to protect your files. All file operations (renames, " +
-                      "tag writes) will be journalled and can be committed or reverted " +
-                      "from the Settings page.\n\n" +
+                      "enabled to protect your files. While Test Mode is on, " +
+                      "MeedyaManager will not rename files or save tag changes. In this " +
+                      "Windows build, Test Mode is a safety switch only; it does not make " +
+                      "copies.\n\n" +
                       "You can disable Test Mode at any time in Settings.",
             CloseButtonText = "OK",
             DefaultButton = ContentDialogButton.Close,

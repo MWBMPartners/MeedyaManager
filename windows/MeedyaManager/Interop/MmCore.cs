@@ -6,8 +6,14 @@
 // All functions communicate through JSON strings to avoid complex
 // marshalling of nested structs across the P/Invoke boundary.
 //
-// In development builds without the compiled DLL the class returns
-// realistic stub values so the UI can be previewed without a Rust toolchain.
+// In development builds without the compiled DLL, calls that would move,
+// rename or overwrite a real file now refuse (empty result / false) rather
+// than inventing data. This header used to say the class "returns realistic
+// stub values" — that was true once, but those realistic-looking stub
+// values were exactly what let a build with no engine attached invent scan
+// previews and tag data that looked real (issue #222); Template syntax
+// checking and the known-tag list are the only stub logic left, and both
+// are pure C# with no file access.
 //
 // Generated C header: crates/mm-ffi/include/mm_ffi.h
 // Library name:       mm_ffi.dll  (placed beside the executable by CI)
@@ -61,7 +67,10 @@ public record AudioProperties(
 /// <summary>
 /// Single entry point for all calls into the mm-ffi Rust library.
 /// Use <see cref="Instance"/> throughout the application.
-/// All methods gracefully degrade to stubs when the DLL is absent.
+/// When the DLL is absent, methods that would move, rename or overwrite a
+/// real file refuse (empty result / false) instead of inventing data — see
+/// issue #222. Template syntax checking and the known-tag list are pure C#
+/// logic and keep working without the engine.
 /// </summary>
 public sealed class MmCore
 {
@@ -76,6 +85,14 @@ public sealed class MmCore
 
     // True when the native DLL was successfully loaded at startup
     private static readonly bool _dllAvailable = CheckDllAvailable();
+
+    /// <summary>
+    /// True when mm_ffi.dll was found beside the executable at startup.
+    /// The UI must check this before treating a scan result, a metadata
+    /// read or a save as real — without it, every one of those calls
+    /// refuses rather than fabricating an answer (issue #222).
+    /// </summary>
+    public static bool IsEngineAvailable => _dllAvailable;
 
     /// <summary>Checks whether mm_ffi.dll exists beside the executable.</summary>
     private static bool CheckDllAvailable()
@@ -232,7 +249,14 @@ public sealed class MmCore
             }
             catch { /* fall through */ }
         }
-        return StubScanDirectory(directory, template);
+        // No engine linked: refuse rather than invent previews. This used to
+        // walk the folder and prefix every audio file's name with a marker
+        // word — never reading the user's template — and every one of those
+        // fabricated rows was then flagged safe to execute, so pressing
+        // Execute renamed real files to meaningless names (issue #222). An
+        // empty list means "nothing to show", which is the truth: there is
+        // no trustworthy preview without the engine.
+        return [];
     }
 
     /// <summary>Reads all metadata tags from a media file.</summary>
@@ -249,13 +273,20 @@ public sealed class MmCore
             }
             catch { /* fall through */ }
         }
-        return StubMetadata(path);
+        // No engine linked: refuse rather than return the old "Sample Track"
+        // placeholder tags, which looked like a real file's metadata and
+        // were not (issue #222).
+        return [];
     }
 
     /// <summary>Writes updated tag values to a media file.</summary>
     public bool WriteMetadata(string path, IReadOnlyList<TagEntry> tags)
     {
-        if (!_dllAvailable) return true; // Stub: pretend success
+        // No engine linked: refuse rather than pretend the write happened.
+        // Returning true here used to tell the user their tags were saved
+        // when nothing was written anywhere (issue #222) — that was
+        // precisely the bug, so this now reports failure honestly.
+        if (!_dllAvailable) return false;
 
         // Serialise tags to JSON array [{key, value}, ...]
         string tagsJson = JsonSerializer.Serialize(
@@ -366,48 +397,6 @@ public sealed class MmCore
         "Filename", "Extension", "Folder", "Duration",
         "BitrateKbps", "SampleRateHz", "MediaClass", "MediaFormat",
     ];
-
-    private static IReadOnlyList<RenamePreview> StubScanDirectory(string directory, string template)
-    {
-        // Walk directory with FileInfo and return placeholder previews
-        var previews = new List<RenamePreview>();
-        var audioExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav" };
-
-        try
-        {
-            foreach (string file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
-            {
-                if (!audioExts.Contains(Path.GetExtension(file))) continue;
-                string dir = Path.GetDirectoryName(file) ?? directory;
-                string dst = Path.Combine(dir, $"[Preview] {Path.GetFileName(file)}");
-                previews.Add(new RenamePreview(file, dst, false, false));
-                if (previews.Count >= 50) break;
-            }
-        }
-        catch { /* Ignore permission errors */ }
-
-        previews.Sort((a, b) => string.Compare(a.Source, b.Source, StringComparison.Ordinal));
-        return previews;
-    }
-
-    private static IReadOnlyList<TagEntry> StubMetadata(string path)
-    {
-        string ext = Path.GetExtension(path).ToLowerInvariant();
-        var tags = new List<TagEntry>
-        {
-            new("title",        "Sample Track"),
-            new("artist",       "Sample Artist"),
-            new("album",        "Sample Album"),
-            new("year",         "2024"),
-            new("track_number", "1"),
-            new("genre",        "Electronic"),
-        };
-        if (ext is ".flac" or ".wav" or ".aiff")
-            tags.Add(new("comment", "Lossless format"));
-        tags.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.Ordinal));
-        return tags;
-    }
 
     // -----------------------------------------------------------------
     // Private JSON DTOs (snake_case names from Rust serialisation)
