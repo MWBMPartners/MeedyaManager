@@ -214,11 +214,72 @@ jobs:
         working-directory: macos
         run: swift build -c release
 
+      # Issue #66 is not done yet: the SwiftUI app currently builds and runs,
+      # but does not link against the Rust engine, so it would show no real
+      # data if shipped. Detect that here instead of assuming it, so the day
+      # #66 lands and the define is uncommented, the app starts being
+      # attached automatically with no further change to this workflow.
+      #
+      # Two independent checks, both must hold before we call it "linked":
+      #   - DEFINE_ON: has Package.swift been told to compile in the FFI code
+      #     path at all (the .define("MM_FFI_AVAILABLE") line uncommented)?
+      #   - SYMBOLS_ON: did the resulting binary actually pull in the Rust
+      #     symbols? `nm` (not `otool -L`) is used because it lists symbols
+      #     from the binary's own text/data, so it finds them whether
+      #     libmm_ffi was linked statically or dynamically.
+      - name: Check whether the app links the Rust engine
+        id: link
+        working-directory: macos
+        run: |
+          set -uo pipefail
+
+          if grep -Eq '^\s*\.define\("MM_FFI_AVAILABLE"' Package.swift; then
+            DEFINE_ON=true
+          else
+            DEFINE_ON=false
+          fi
+
+          # Written to a file first rather than piped straight into
+          # `grep -q`. Under `set -o pipefail` (above), `grep -q` exits the
+          # instant it finds its first match — which closes its end of the
+          # pipe while `nm` is often still writing, `nm` is then killed with
+          # a broken-pipe error, and `pipefail` reports that non-zero exit as
+          # the whole pipeline's result. That turns a real "yes, linked" into
+          # a false "no". Reproduced: on a binary containing the symbol 15
+          # times, the piped form said "not linked" 5 times out of 5;
+          # searching a file containing the same `nm` output said "linked" 5
+          # times out of 5. Do not "simplify" this back into a pipe.
+          #
+          # `|| true` on the `nm` line: a missing binary (build failed
+          # earlier, or this step run out of context) must still leave
+          # SYMBOLS_ON=false rather than failing the step outright — the
+          # warning below already says plainly that the app isn't linked.
+          NM_OUTPUT="${RUNNER_TEMP}/mm-ffi-nm-output.txt"
+          nm .build/release/MeedyaManager > "${NM_OUTPUT}" 2>/dev/null || true
+          if grep -q uniffi_mm_ffi_fn_func_execute_renames "${NM_OUTPUT}" 2>/dev/null; then
+            SYMBOLS_ON=true
+          else
+            SYMBOLS_ON=false
+          fi
+
+          if [ "$DEFINE_ON" = true ] && [ "$SYMBOLS_ON" = true ]; then
+            echo "linked=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "linked=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=macOS app not published::The SwiftUI app does not link the Rust engine (define=$DEFINE_ON, symbols=$SYMBOLS_ON). Only the command-line tool is shipped for macOS until issue #66 is done — see #222."
+          fi
+
       # No Apple signing secrets are configured, so create-dmg.sh emits a
       # warning and falls through to an unsigned, un-notarised hdiutil DMG.
       # That path uses only tools present on every macOS runner, so the script
       # is invoked strictly — a genuine failure must fail the job.
+      #
+      # Only run this at all when the app actually links the engine (#222
+      # item 4) — otherwise we would be packaging and shipping an app that
+      # shows no real data, which misleads users into thinking macOS has a
+      # working GUI already.
       - name: Package macOS DMG
+        if: steps.link.outputs.linked == 'true'
         env:
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
           APPLE_TEAM_ID:      ${{ secrets.APPLE_TEAM_ID }}
@@ -233,41 +294,66 @@ jobs:
           mkdir -p staging
 
           # Rust outputs. `meedya` is the CLI binary name (crate mm-cli).
+          # These are the real macOS deliverable of this alpha and are always
+          # staged, regardless of whether the SwiftUI app links the engine.
           cp target/release/libmm_ffi.dylib staging/
           cp target/release/meedya staging/
 
-          # Swift build output — the SwiftUI executable.
-          cp macos/.build/release/MeedyaManager staging/
+          # Swift build output — the SwiftUI executable. Only worth shipping
+          # once it actually links the Rust engine (#222 item 4); before that
+          # it is a shell with no real data and would only mislead users.
+          if [ "${{ steps.link.outputs.linked }}" = "true" ]; then
+            cp macos/.build/release/MeedyaManager staging/
+          fi
 
           # GPL-2.0-or-later requires the licence to accompany every binary (#207).
           cp LICENSE staging/
 
           # COPYFILE_DISABLE stops BSD tar writing AppleDouble "._" companions
           # for the extended attributes macOS puts on freshly built binaries.
-          COPYFILE_DISABLE=1 tar -czf "${PREFIX}-macos-arm64.tar.gz" \
-            -C staging MeedyaManager meedya libmm_ffi.dylib LICENSE
+          if [ "${{ steps.link.outputs.linked }}" = "true" ]; then
+            COPYFILE_DISABLE=1 tar -czf "${PREFIX}-macos-arm64.tar.gz" \
+              -C staging MeedyaManager meedya libmm_ffi.dylib LICENSE
+          else
+            COPYFILE_DISABLE=1 tar -czf "${PREFIX}-macos-arm64.tar.gz" \
+              -C staging meedya libmm_ffi.dylib LICENSE
+          fi
 
           # One checksum file per platform, covering the artefacts we upload.
-          shasum -a 256 \
-            "${PREFIX}-macos-arm64.tar.gz" \
-            "${PREFIX}-macos-arm64.dmg" \
-            > "${PREFIX}-macos-arm64.sha256"
+          # The .dmg only exists when the app links the engine — checksum it
+          # only then, or shasum fails on a file that was never created.
+          if [ "${{ steps.link.outputs.linked }}" = "true" ]; then
+            shasum -a 256 \
+              "${PREFIX}-macos-arm64.tar.gz" \
+              "${PREFIX}-macos-arm64.dmg" \
+              > "${PREFIX}-macos-arm64.sha256"
+          else
+            shasum -a 256 \
+              "${PREFIX}-macos-arm64.tar.gz" \
+              > "${PREFIX}-macos-arm64.sha256"
+          fi
 
           echo "Staged for macOS arm64:"
           ls -l staging
           cat "${PREFIX}-macos-arm64.sha256"
 
-      - name: Upload macOS artifacts
+      - name: Upload macOS CLI archive
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
-          # Explicit filenames, not globs: create-dmg.sh also writes a
-          # "<dmg>.sha256" sidecar, and uploading both it and the per-platform
-          # .sha256 would duplicate lines in the consolidated SHA256SUMS.
           path: |
             ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.tar.gz
-            ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.dmg
             ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.sha256
+          if-no-files-found: error
+
+      # Separate from the archive upload above: the .dmg only exists when the
+      # app links the Rust engine, so its upload step is gated the same way.
+      - name: Upload macOS app DMG
+        if: steps.link.outputs.linked == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-dmg
+          path: ${{ needs.prepare.outputs.artifact_prefix }}-macos-arm64.dmg
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
@@ -725,16 +811,36 @@ jobs:
             WIN_STATUS="**No Windows archives are attached** — the Windows jobs did not produce one."
           fi
 
+          # Mirrors WIN_STATUS above: the macOS app .dmg is only produced when
+          # the SwiftUI app actually links the Rust engine (issue #66, #222
+          # item 4). Check for the file itself rather than trusting a job
+          # result, for the same reason as the Windows check.
+          #
+          # The whole bullet is built here, not just a status clause bolted
+          # onto a fixed sentence: a review found the old wording explained
+          # the .dmg, Gatekeeper and the /Applications install path even when
+          # no app was attached at all — nonsensical to read, since there was
+          # nothing to open. The two cases now get two different bullets.
+          if compgen -G 'release-artifacts/macos-*/*.dmg' > /dev/null; then
+            MACOS_LINE="- **macOS** — the \`.dmg\` is not signed with a Developer ID and has not been"
+            MACOS_LINE+=" notarised by Apple. Gatekeeper will refuse to open it on first launch;"
+            MACOS_LINE+=" right-click the app and choose *Open*, or clear the quarantine attribute"
+            MACOS_LINE+=" with \`xattr -dr com.apple.quarantine /Applications/MeedyaManager.app\`."
+            MACOS_LINE+=" The macOS app **is** attached to this release."
+          else
+            MACOS_LINE="- **macOS** — **no app is attached to this release.** The SwiftUI app does"
+            MACOS_LINE+=" not yet link the Rust engine (issue #66) and would show no real data;"
+            MACOS_LINE+=" only the \`meedya\` command-line tool is shipped for macOS, and it needs"
+            MACOS_LINE+=" no Gatekeeper workaround. See #222."
+          fi
+
           {
             echo "## ⚠️ Unsigned alpha build — read before installing"
             echo ""
             echo "This build is **unsigned and un-notarised**. No code-signing secrets are"
             echo "configured for this repository, so:"
             echo ""
-            echo "- **macOS** — the \`.dmg\` is not signed with a Developer ID and has not been"
-            echo "  notarised by Apple. Gatekeeper will refuse to open it on first launch;"
-            echo "  right-click the app and choose *Open*, or clear the quarantine attribute"
-            echo "  with \`xattr -dr com.apple.quarantine /Applications/MeedyaManager.app\`."
+            echo "${MACOS_LINE}"
             echo "- **Windows** — the executables carry no Authenticode signature, so"
             echo "  SmartScreen will warn. The Windows jobs are also marked"
             echo "  \`continue-on-error\` (issue #148), so they may produce nothing at all."
