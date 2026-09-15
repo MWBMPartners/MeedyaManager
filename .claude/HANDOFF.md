@@ -8,7 +8,7 @@
 **Last updated:** 2026-09-15
 **Updated by:** Claude Opus 5, session `07a21012`
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → will PR into **`alpha`**
-**Branch HEAD:** latest code commit `eb2c2a9` (pushed) — **plus the uncommitted write lock (#49) and organiser (#180), which the review found unsafe; see §0**
+**Branch HEAD:** latest code commit `599d921` (pushed) — **plus the uncommitted organiser (#180) and its documentation; see §0 and §15**
 
 ---
 
@@ -32,7 +32,7 @@ support (#229) on top. **No Android code exists yet.**
 | --- | --- | --- | --- |
 | The Windows app cannot move files without its engine | #222 | Sonnet agent | ✅ **Committed `eb2c2a9`** after review, with the Test Mode promise fixed. **Never compiled** — no .NET here; #222 stays open until verified on Windows. |
 | The release pipeline stops attaching an engine-less macOS app | #222 | Sonnet agent | ✅ **Committed `b694d70`**, with the engine-check fix. `actionlint` clean. Has never run. |
-| The write lock is taken before renames; the unused `AppState` is deleted | #49 | Opus agent | Complete, with tests written to fail first. |
+| The write lock is taken before renames; the unused `AppState` is deleted | #49 | Opus, then redesigned by Sonnet | ✅ **Committed `599d921`** as an operating-system file lock, after review and fix-ups. #49 stays open until the help pages are rewritten (stage f). |
 | `watch --organize` made real; the background service made honest | #180 | Opus agent | **The agent ran out of credit part-way and never reported.** The code is complete and tested; **its documentation was never written.** |
 
 Gate on the working tree as it stands, 2026-09-15:
@@ -763,6 +763,8 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (morning, later)** — stage (b), the lock redesign, committed as `599d921` after review, fix-ups and a
+  proof on its own. #49 stays open for the help-page rewrite.
 - **2026-09-15 (morning)** — stage (a) review: a crash on non-Latin names and a library-freezing
   stray cue block commit 1; the rebuild with fixes has started. Filed #236 (name length
   in bytes against characters).
@@ -1332,7 +1334,7 @@ After Codex's review: remove the two refusals.
     `210e942`).
   - **An older bug it spotted is now filed (#236):** the name-length limit is
     measured in bytes but applied in characters, so long non-Latin names can still be too long.
-- **(b): built, not yet committed.** Sonnet's builder reported every must-fail test failing on the old
+- **(b): ✅ committed `599d921`.** Proof on its own: cargo fmt clean; clippy -D warnings clean; cargo test --workspace 1403 passed, 0 failed, run twice (identical); cargo doc clean; cargo deny fails only on RUSTSEC-2026-0285. The history of how it got there follows. Sonnet's builder reported every must-fail test failing on the old
   code and passing on the new; `cargo test --workspace` 1,412 passed twice; clippy and doc clean. Hand
   check on a 150,000-file scratch library: a second copy was refused with the specified message and
   exit 1; after `kill -9` of the first, the next run proceeded; `meedya.lock` still present. The
