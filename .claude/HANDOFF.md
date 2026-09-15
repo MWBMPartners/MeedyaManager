@@ -93,8 +93,14 @@ citing the source line behind each claim. It was instructed not to touch code.
 ### Stand-in review verdict — 2026-09-15
 
 Opus, standing in for Codex and Fable, reviewed the four pieces against the snapshot. It changed
-nothing, and ran only previews and scratch-folder tests. **Orchestrator verification of its
-findings is in progress — treat them as reported, not yet confirmed.** Its full report is in this
+nothing, and ran only previews and scratch-folder tests. **Verified by the orchestrator on 2026-09-15**, by reproducing the problem or reading the code:
+#1 — a preview moved `Album.cue` and `Album.log` away while `Album.bin` was still downloading,
+**and planned to move the half-downloaded `Album.bin.crdownload` itself**, a further defect in
+the already-committed `scan` (now #231); #2 — a preview planned `01 - song.wav → 01 - 01 - song.wav`;
+#3 — the prompt mentions only files "as they arrive"; #4; #5; #6; #8 — `nm | grep -q` said
+"not linked" five times out of five with the symbol present, while reading from a file said
+"linked" five out of five; and #10 (now #232). **Not independently verified:** the Ctrl+C part of
+#3, and #7, #11–#17. Its full report is in this
 session's subagent transcripts.
 
 | Piece | Safe to commit? | Blocking findings |
@@ -460,11 +466,13 @@ The docs audit found **121 specific inaccuracies** across **55 `.md` files**. Hi
 
 In order:
 
-1. **Finish the review in §0.** Fix what it finds, then commit the four pieces **separately**,
-   each commit message saying plainly that it was reviewed by a fresh Opus stand-in, not by Codex — and, for the write lock and the organiser, by the
-   same model that built them.
-   Before committing #180, update `help/background-service.md`, `help/getting-started.md`,
-   `help/faq.md` and `docs/api/cli.md`.
+1. **Act on the stand-in review (§0).** In order: commit the **release guard** with finding #8
+   fixed; fix the **Windows guard**'s false Test Mode promise (#5) and commit it; fix the committed
+   `scan` defects in #231 in their own commit; **redesign the write lock** around an
+   operating-system file lock, which is released even when a process crashes (#6, #7, #16); and
+   fix the **organiser**'s critical and high findings (#1–#4) before committing #180. Consider
+   keeping `watch --organize` and `service install` refusing until Codex has reviewed them. Every
+   commit message must say who reviewed it.
 2. **#227** — `cargo update -p rustls` to 0.23.45 or later, alone in its own commit, then confirm
    `cargo deny check` is clean. Upstream (0.23.40) and MeedyaDL (0.23.42) are affected too.
 3. **Codex catch-up review** once it is available (after 2026-09-20 16:30), covering everything
@@ -749,6 +757,8 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (evening, later)** — the stand-in review's serious findings were verified; filed
+  #231 (committed `scan` defect) and #232 (Windows settings erase); §8 item 1 now lists the fix order.
 - **2026-09-15 (evening)** — the Opus stand-in review returned: release guard safe; Windows guard,
   write lock and organiser not safe. Verdicts and all 18 findings recorded in §0 before verification,
   so they cannot be lost.
@@ -1036,6 +1046,8 @@ had drifted. **What it could not verify:** anything needing GTK4, Xcode or Windo
 | #227 | A `rustls` security advisory fails the dependency audit |
 | #228 | iPhone Duo support — **closed as not planned** on 2026-09-15; the Apple app stays macOS-only |
 | #229 | Foldable Android support — the layer on top of #230 |
+| #231 | `scan` moves half-downloaded files, and a `.cue` whose `.bin` has not arrived — blocks #180 |
+| #232 | Windows Settings "Save" erases `settings.json5` down to five settings |
 | #230 | Android phone app — side-loadable; the base for #229 |
 
 ### 14d. iPhone Duo and foldable Android — what matters for planning
