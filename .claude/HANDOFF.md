@@ -139,6 +139,10 @@ it would compile.
 
 ### Open P0s
 
+- **#233** — renaming drops the file extension whenever the new name contains a full stop, **with
+  default settings**. Every default template — the engine's, `meedya config init`'s and all three apps' —
+  omits the extension token; only the repository's *example* `config/settings.json5` is safe. Being fixed
+  in stage (a) (§15).
 - **#222** — the apps renamed real files to "[Preview] …". macOS fixed in `83628d9`; the Windows
   fix is in the uncommitted work.
 - **#19** — labelled P0: the Python archive tag does not exist. Owner decision: create it, or
@@ -759,6 +763,9 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (late night, later)** — #233 confirmed to affect the default settings and raised to
+  P0; added to the open P0 list. (The example `config/settings.json5` is safe, and briefly looked as
+  though it proved the defaults were — it does not.)
 - **2026-09-15 (late night)** — the fix plan recorded as §15; filed #233 (lost extensions) and #234
   (minimum Rust version); stages (a) with `rustls`, and (b), started with Sonnet builders.
 - **2026-09-15 (night)** — release guard committed (`b694d70`) and Windows guard committed (`eb2c2a9`), both after
@@ -1266,7 +1273,8 @@ After Codex's review: remove the two refusals.
 
 ### What the plan found on top of the review
 
-- Lost extensions in committed code (#233).
+- Lost extensions in committed code (#233) — **the default settings are affected**, so it was raised
+  to P0.
 - Subfolders of disc folders unprotected (#231).
 - A music CD's `.bin` has no sync pattern (#231).
 - `try_lock` fails Clippy under `rust-version` 1.85 (#234).
