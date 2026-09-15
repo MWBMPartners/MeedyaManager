@@ -50,10 +50,23 @@ The organiser was also checked by hand, isolated from real settings with an empt
 `MM_CONFIG_DIR`: with no watch folders it now gives a plain error and exits 1 (it used to exit 3),
 and a dry-run sweep of a folder moved nothing.
 
-**Still missing before #180 can be committed:** `help/background-service.md` was written before
-the feature existed and does not mention the Windows refusal, the settle window, `--yes` or the
-forced "skip" conflict strategy. `help/getting-started.md`, `help/faq.md` and `docs/api/cli.md`
-were never touched.
+**#180 documentation — now written, not yet committed.** A Sonnet documentation agent updated
+`help/background-service.md`, `help/getting-started.md`, `help/faq.md`, `docs/api/cli.md`,
+`help/cli-reference.md`, `docs/changelog.md`, `Dev_Notes.md`, `PROJECT_STATUS.md` and `README.md`,
+citing the source line behind each claim. It was instructed not to touch code.
+
+**Two things found while checking that documentation — settle both before committing #180:**
+
+- **The organiser ignores the configured output folder.** In `crates/mm-cli/src/commands/watch.rs`,
+  `organise_directory` passes `output_dir: Some(root)` — always the watched folder — so the
+  `rename.output_dir` setting and `--output-dir` have no effect on it. The plan was to honour the
+  setting and fall back to the watched folder only when none is set. The new documentation
+  accurately describes the code *as it is*, so if the code changes, that page must change with it.
+- **Files from a folder whose run only partly succeeds are not retried.** `organise_settled` retries
+  only when the scan returns `ERROR`, which usually means the write lock is held. A conflict or a
+  single failed move returns `PARTIAL`, and those files leave the queue with no extra message from
+  the organiser. Not retrying a conflict is reasonable, because waiting will not resolve it — but
+  confirm the scan's own output makes the outcome visible in the service log.
 
 ### Review status — read before trusting any of the above
 
@@ -696,6 +709,9 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (later still)** — the #180 documentation is written (uncommitted); recorded two
+  organiser findings from checking it: the configured output folder is ignored, and partly
+  successful runs are not retried.
 - **2026-09-15 (later)** — owner decisions on mobile platforms: the Apple app stays macOS-only
   (#228 closed as not planned); a side-loadable Android phone app is planned (#230), with #229's
   file-access recommendation corrected. The full Test Mode reasoning is recorded on #225.
