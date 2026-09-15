@@ -1295,8 +1295,15 @@ After Codex's review: remove the two refusals.
 
 ### Progress, 2026-09-15
 
-- **(a) and `rustls`:** a Sonnet builder is working in an isolated git worktree and will make two local
-  commits, to be reviewed and then cherry-picked.
+- **(a) and `rustls`: built as two local commits, not yet on the branch.** `b023adf` (stage a) and
+  `3739c19` (`rustls` 0.23.37 → 0.23.45, plus `rustls-webpki`, `aws-lc-rs` and `aws-lc-sys`; lock file
+  only), in the worktree `.claude/worktrees/agent-ac1c1ad32f50eb48f`, branch
+  `worktree-agent-ac1c1ad32f50eb48f`. The builder reported 1,405 tests passing (the 10 new ones), the
+  renamer and disc tests shown failing first (the two watcher tests only by construction), `cargo deny`
+  clean after commit 2, and a matching hand check. **The worktree was created 74 commits behind the
+  branch head; the builder noticed and moved it forward to `4cd8fa0` first.** Now: an Opus review,
+  then cherry-pick both onto the branch — after the stage (b) review finishes, because the `rustls`
+  change rebuilds dependencies.
 - **(b): built, not yet committed.** Sonnet's builder reported every must-fail test failing on the old
   code and passing on the new; `cargo test --workspace` 1,412 passed twice; clippy and doc clean. Hand
   check on a 150,000-file scratch library: a second copy was refused with the specified message and
