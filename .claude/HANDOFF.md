@@ -146,7 +146,7 @@ it would compile.
 
 ### What to do next
 
-See §8. In short: finish the review, commit the four pieces separately with honest review
+See §15 for the fix plan now being carried out, and §8. In short: finish the review, commit the four pieces separately with honest review
 notes, fix `rustls` in its own commit (#227), then run the Codex catch-up review once Codex is
 available.
 
@@ -759,6 +759,8 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (late night)** — the fix plan recorded as §15; filed #233 (lost extensions) and #234
+  (minimum Rust version); stages (a) with `rustls`, and (b), started with Sonnet builders.
 - **2026-09-15 (night)** — release guard committed (`b694d70`) and Windows guard committed (`eb2c2a9`), both after
   review plus an orchestrator line-by-line check of the fixes. Fable failed again for planning; Opus
   is planning the lock and organiser fixes.
@@ -1116,3 +1118,176 @@ The detail is on #228 and #229.
   the real proof is zero actual calls.
 - **Reading Apple's *Designing for iPhone Duo* guidelines page.** Its content could not be read on
   2026-09-15.
+
+---
+
+## 15. The fix plan for #231, #233, #49 and #180 (2026-09-15)
+
+Planned by **Opus standing in for Fable** (out of credits), after the stand-in review in §0. The full
+report is in this session's subagent transcripts. What follows is the plan as adopted — enough to carry
+on without that report.
+
+### Rules for carrying it out
+
+- **Order:**
+  - (a) `scan` defects
+  - (b) the lock
+  - (c) the organiser's critical findings
+  - (d) the start-up sweep, Ctrl+C and service honesty
+  - (e) the remaining findings
+  - (f) documentation
+  - (g) switch organising on
+- **`watch --organize` (except with `--dry-run`) and `service install` keep refusing (exit 3) until (g).**
+  Stage (g) happens only after Codex reviews (b)–(e) as one body of work, and not before 2026-09-20 16:30.
+- **Prove each commit on its own** in a throwaway `git worktree`. The gate run in the working tree
+  includes uncommitted work, so it proves nothing about a single commit.
+- **Do not commit the uncommitted #49/#180 documentation with the code.** It describes behaviour that
+  is being changed.
+- **Build with Sonnet, review with Opus.** With Codex and Fable unavailable, that is the only way to
+  get a reviewer from a different model.
+
+### (a) `scan` — #231 and #233
+
+Files: `renamer/mod.rs`, `watcher/mod.rs`, `disc/mod.rs` — all unchanged in the working tree.
+
+- **Lost extensions.** One helper, used by both simulate functions, adds the source's ending back unless
+  the new name already ends with `.<ending>`, compared case-insensitively. Trade-off: a template that
+  writes a different ending gets both.
+- **Downloads in progress.** `watcher::is_download_in_progress` covers:
+  - the endings `crdownload part partial download opdownload filepart tmp temp aria2 !ut !qb`;
+  - files inside a `.download` folder;
+  - rsync's `.name.XXXXXX` temporary files;
+  - names starting `~$`.
+
+  `should_ignore` ignores these unconditionally. Today `scan` and `watch` pass empty ignore lists, so the
+  default list is never used.
+- **Discs.**
+  - A cue naming disc-image files forms a set even when some files are missing.
+  - An `.mds` without its `.mdf` forms a set.
+  - **Any file ending in `iso nrg mds mdf mdx cdr bin cue` is never renamed on its own.**
+  - The false comments are corrected.
+- **Tests that must fail first:**
+  - `a_name_containing_a_full_stop_keeps_its_file_ending`
+  - `a_title_containing_a_full_stop_keeps_its_file_ending`
+  - `a_partial_download_keeps_its_whole_name`
+  - `downloads_in_progress_are_ignored_even_with_empty_settings_lists`
+  - `a_file_inside_a_safari_download_folder_is_ignored`
+  - `a_cue_whose_image_has_not_arrived_still_protects_its_folder`
+  - `an_unreadable_cue_sheet_is_never_renamed_on_its_own`
+  - `a_cue_indexing_flac_tracks_stays_beside_them`
+  - `a_music_bin_without_a_sync_pattern_is_never_renamed_on_its_own`
+  - `an_mds_without_its_mdf_protects_its_folder`
+- **The `rustls` update (#227)** is built in the same isolated copy, as a separate lock-file-only commit.
+
+### (b) The write lock — #49
+
+- **`std::fs::File::try_lock`** (stable from Rust 1.89; the toolchain is pinned to 1.98), with
+  `#[allow(clippy::incompatible_msrv)]` because `rust-version` is 1.85 (#234).
+- **Never delete `meedya.lock`**; closing the file releases the lock. A `meedya.lock.info` note
+  (`key=value` text, best effort, used for messages only) says who holds it. On Windows the file is
+  opened without delete sharing.
+- **The operating system releases the lock however the process ends**, including `panic = "abort"` and
+  kill -9. It covers only the same settings folder on the same computer. **Deleting the file by hand
+  while it is held defeats it on macOS and Linux**, so `help/troubleshooting.md` must stop advising that.
+- `is_process_running`, the `unsafe` blocks and `extern crate libc` are deleted.
+- **The blocked message:** *"Another copy of MeedyaManager is moving files right now, so nothing has
+  been moved. It appears to be process N (…, started HH:MM). Wait for it to finish, then run this
+  again."* Exit code 1.
+- **This commit also carries #180's small change in `scan.rs`** — `prompt_confirm` taking the message
+  text. It sits right beside the lock code, and splitting the two risks a commit that does not build.
+- **Tests that must fail first:**
+  - `a_lock_file_naming_an_unrelated_live_process_does_not_block`
+  - `an_empty_lock_file_does_not_block`
+  - `releasing_never_deletes_the_lock_file`
+  - `a_holder_never_deletes_a_lock_file_that_was_replaced` (Unix)
+
+  **Regression tests:** 8 threads × 200 rounds, plus child-process tests for a holder that aborts and a
+  holder that stays alive.
+
+### (c) The organiser's critical findings (#1, #2)
+
+Files: `renamer`, `scan.rs`, `disc`, `watch.rs`, `context.rs`.
+
+- **The rename loop.**
+  - A shared `plan_destination`, plus `destinations_that_would_move_again`, which recalculates each
+    planned destination as though the file were already there. Such files are left alone with the status
+    *"Left alone: would be renamed again next time"*, a JSON field `repeats`, and exit code 2.
+  - `RenamePreview` and `RenameSummary` keep their shape, because `mm-gtk` depends on them.
+- **Disc subfolders.** `ScanArgs.protect_within` sets a boundary, and every folder up to it is checked.
+- **Partial downloads.** A folder directly holding a download in progress is skipped.
+- **Switched off.** `watch --organize` without `--dry-run` refuses with exit code 3.
+
+### (d) The start-up sweep, Ctrl+C and service honesty (#3, #4)
+
+- **The sweep is opt-in** (`--organize-existing`). The prompt counts the files and folders that will
+  move; the deepest watched folder owns each file; the service never sweeps.
+- **No terminal and no `--yes` means refuse.** This protects services installed without `--yes`.
+- **Ctrl+C:**
+  - a stop flag is checked between folders;
+  - the first press prints *"Stopping after the folder being organised now…"*;
+  - a second press exits with code 130 — but first check how moves across drives are carried out;
+  - "Watcher stopped" is printed only once it really has stopped.
+- **Install is honest:** it registers the service, starts it, and says so. It refuses when no watch
+  folders are set. **In this build it refuses outright**; `--dry-run` prints the unit or plist.
+- **Separate Windows and non-Windows install helpers**, which also fixes a confirmed `needless_return`
+  Clippy failure on Windows.
+
+### (e) The remaining findings (#11–#17)
+
+- **"Settled"** means all of:
+  - no events for the settle time;
+  - the same file list, with the same sizes and modified times, as a list taken at least one settle time
+    earlier;
+  - no download in progress;
+  - the folder still exists.
+
+  The default settle time is **30 seconds**.
+- **A folder moved in whole** is organised recursively once it has settled.
+- **A busy lock:** retry with a growing wait, from 30 s up to a cap of 10 min, printing one message per
+  busy spell. The sweep retries too.
+- **Also:**
+  - honour the configured output folder;
+  - resolve watch folders and event paths to their real paths;
+  - write macOS logs to `~/Library/Logs/MeedyaManager/`;
+  - quote the systemd `ExecStart` path and escape the plist;
+  - use `Restart=on-abnormal` with a start limit.
+
+### (f) Documentation
+
+Only after the other doc edits are committed. These searches must come back empty:
+- advice to delete `meedya.lock`;
+- `/tmp/meedyamanager`;
+- "set to start at login";
+- a prompt that only says "as they arrive".
+
+### (g) Switch organising on
+
+After Codex's review: remove the two refusals.
+
+### What the plan found on top of the review
+
+- Lost extensions in committed code (#233).
+- Subfolders of disc folders unprotected (#231).
+- A music CD's `.bin` has no sync pattern (#231).
+- `try_lock` fails Clippy under `rust-version` 1.85 (#234).
+- Ctrl+C prints "Watcher stopped" while files are still moving.
+- Old service definitions lack `--yes` (#180).
+- One `.iso` at a library root freezes the library (#217).
+- Folders moved in whole are never organised (#180).
+- The organiser undoes manual template runs (#180).
+
+### Not now
+
+- Whole-folder moves (#217), fingerprinting, and FLAC-plus-cue images.
+- Waiting for an unplugged drive, a sweep inside the service, stopping gracefully on a stop signal, and
+  running in the background on Windows.
+- Raising `rust-version` (#234), and deciding what to do about a root-level `.iso`.
+- The engine bridge's missing disc protection (#223), and the rename counter bug (#224).
+- Stopping part-way through one huge folder, and an override for one-off `<Filename>` renames.
+
+### Progress, 2026-09-15
+
+- **(a) and `rustls`:** a Sonnet builder is working in an isolated git worktree and will make two local
+  commits, to be reviewed and then cherry-picked.
+- **(b):** a Sonnet builder is working in the main tree, with no commit until it is reviewed.
+- **(c)–(g):** not started.
