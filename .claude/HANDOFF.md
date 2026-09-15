@@ -74,7 +74,7 @@ citing the source line behind each claim. It was instructed not to touch code.
   extra input unless it is given `< /dev/null`. The second hit Codex's usage limit: *"try again
   at Sep 20th, 2026 4:30 PM"*.
 - **First stand-in, Fable, failed at once:** out of usage credits on 2026-09-15.
-- **Second stand-in, now reviewing:** a fresh Opus agent (the dev-team `opus-builder`, in the reviewer
+- **Second stand-in, Opus — review complete (see the verdict below):** a fresh Opus agent (the dev-team `opus-builder`, in the reviewer
   role), working from the snapshot `review-snapshot.patch` (§5). Its verdict decides what gets
   committed. **Its independence is uneven, and that must stay visible:**
   - For the **Windows guard** and **release guard**, built by Sonnet, Opus is a different model —
@@ -89,6 +89,46 @@ citing the source line behind each claim. It was instructed not to touch code.
 - Claude also hit its **monthly spend limit** shortly after 2026-09-07; that is what stopped the
   organiser agent. Three limit messages in one fortnight — two from Claude, one from Codex — suggests a limit
   needs raising, rather than the work needing to be re-planned.
+
+### Stand-in review verdict — 2026-09-15
+
+Opus, standing in for Codex and Fable, reviewed the four pieces against the snapshot. It changed
+nothing, and ran only previews and scratch-folder tests. **Orchestrator verification of its
+findings is in progress — treat them as reported, not yet confirmed.** Its full report is in this
+session's subagent transcripts.
+
+| Piece | Safe to commit? | Blocking findings |
+| --- | --- | --- |
+| Release guard (`release.yml`) | **Yes** | none — but fix #8 in the same commit |
+| Windows guard | **No** | #5 |
+| Write lock (#49) | **No** | #6, #7, #16 — replace with an operating-system file lock (`File::try_lock`, available in the pinned Rust 1.98) |
+| Organiser and service (#180) | **No** | #1, #2, #3, #4 |
+
+| # | Severity | Piece | Finding |
+| --- | --- | --- | --- |
+| 1 | **Critical** | Organiser | A `.cue` whose `.bin` has not arrived under its final name yet — still downloading, or mid-copy under a temporary name — counts as a loose file and is moved, destroying the disc image. Also affects plain `scan` on an incomplete rip. A comment in `disc/mod.rs` claiming a cue sheet is never renamed on its own is false. |
+| 2 | **Critical** | Organiser | Templates built on `<Filename>` do not settle: the organiser's own move raises a new event and renames again (`01 - 01 - 01 - song.wav`). Forcing "skip" does not stop it. |
+| 3 | High | Organiser | Starting it reorganises the whole existing library at once; the prompt mentions only files "as they arrive"; Ctrl+C does not stop the sweep. |
+| 4 | High | Service | macOS `service install` starts the service immediately (`RunAtLoad` plus `launchctl load`) while telling the user it has not started. |
+| 5 | High | Windows | Test Mode is only a flag inside the app, never passed to the engine, so tag saves rewrite the real file — and this patch added a dialog promising edits go to copies. |
+| 6 | High | Lock | Two processes can both hold the lock: clearing a leftover lock is several separate steps, and `release` deletes whatever lock file is present, even another process's. Demonstrated with the real code. |
+| 7 | Medium | Lock | A lock file naming a process number since reused by an unrelated program blocks renaming forever. Release builds abort on panic, so a crash leaves the file behind. |
+| 8 | Medium | Release | The "does the app link the engine?" check reports "no" even when it does (`nm \| grep -q` under `pipefail`). Fails safe, but the app would never be attached once #66 lands. |
+| 9 | Medium | Windows, docs | Windows Execute does not take the write lock, but the new documentation says the desktop apps do. |
+| 10 | Medium | Windows (older code) | Settings "Save" replaces the whole `settings.json5` with five keys, erasing templates, watch folders and rules. Needs its own issue. |
+| 11 | Medium | Organiser | "Settled" means only "no events for 2 seconds"; a slow copy can be organised half-written. |
+| 12 | Low–medium | Organiser | Lock-busy retries never give up and fill the log; the start-up sweep never retries. |
+| 13 | Low–medium | Organiser | Ignores the configured output folder; nested watch folders disagree about who owns a file. |
+| 14 | Low–medium | Service | The macOS agent logs to fixed file names in `/tmp`, which another account on a shared Mac can redirect. |
+| 15 | Low | Organiser | Watch folders given through a symlink or relative path are swept once, then ignored on macOS. |
+| 16 | Low | Lock | A failed write leaves an empty lock file that blocks every later run. |
+| 17 | Low | Service | Unquoted path in the systemd unit, unescaped XML in the macOS agent file, restart loop when a watched drive is unplugged. |
+| 18 | Low | Tests, wording | The C# test checks a copy of the logic; several stale comments; release-notes wording; tests changing a shared environment variable. |
+
+**What the reviewer confirmed is correct:** the lock is held for the whole function and taken before
+the scan; "skip" really is forced on every organiser path; `--dry-run` moves nothing; every installed
+service command includes `--yes`; Windows refuses service install honestly; the C# reads as though
+it would compile.
 
 ### Open P0s
 
@@ -709,6 +749,9 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (evening)** — the Opus stand-in review returned: release guard safe; Windows guard,
+  write lock and organiser not safe. Verdicts and all 18 findings recorded in §0 before verification,
+  so they cannot be lost.
 - **2026-09-15 (later still)** — the #180 documentation is written (uncommitted); recorded two
   organiser findings from checking it: the configured output folder is ignored, and partly
   successful runs are not retried.
