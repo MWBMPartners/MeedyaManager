@@ -128,11 +128,17 @@ the command-line tool used a different one; the code that strips usernames out o
 tested but never once invoked; the module that recognises disc images is never called by the
 code that moves files. A feature nobody can reach is not finished.
 
+## Platforms
+
+Windows, macOS and Linux. **There is no iPhone/iPad app and no Android app** — both have been
+asked for (#228 iPhone Duo, #229 foldable Android) and neither has started. The macOS app does not
+link the Rust engine yet (#66). See `.claude/HANDOFF.md` §0 and §2 for what actually exists.
+
 ## Build and test
 
 Cargo is not on the default `PATH`. Run `export PATH="$HOME/.cargo/bin:$PATH"` first.
 
-    cargo test --workspace                              # 1,354 passing, 0 failing
+    cargo test --workspace                              # 1,395 passing at 83628d9
     cargo clippy --workspace --all-targets -- -D warnings
     cargo deny check
     cd macos && swift build                             # baseline is 1 error line

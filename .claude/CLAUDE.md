@@ -10,6 +10,9 @@
 - **Licence:** GPL-2.0-or-later
 - **Copyright:** MWBM Partners Ltd
 - **Platforms:** Windows (x64/ARM), macOS (Apple Silicon only), Linux (x64/ARM)
+- **Asked for, not started:** an iPhone/iPad app with iPhone Duo support (#228) and a universal
+  Android app with foldable support (#229). **Neither exists**, and neither can be built on the
+  current development machine.
 
 ## Session continuity
 
@@ -82,10 +85,10 @@
 
 ## Milestone Order
 
-Workspace-wide: **44,183 Rust LOC, 1,392 `#[test]`/`#[tokio::test]` functions** (baseline);
-`cargo test --workspace` reports **1,304 passing, 0 failed** at `9f3719b` (up from the 1,240
-baseline, after the Round 1/Round 2 alpha-readiness fixes below). Docs that still say
-"217/399/444 tests" are stale — do not repeat those numbers.
+Workspace-wide: **54,121 Rust lines and 1,467 test functions** in `crates/` (working tree,
+2026-09-15). `cargo test --workspace` reports **1,395 passing, 0 failed** at `83628d9`, and 1,402
+on the working tree with the uncommitted work described in `.claude/HANDOFF.md` §0. Older
+figures — 44,183 / 1,392, or 217 / 399 / 444 tests — are stale; do not repeat them.
 
 1. M0 — Repository Setup & Scaffolding (Complete)
 2. M1 — Core Engine (Complete)
@@ -157,7 +160,9 @@ defects referenced above and cut the version to `1.4.0-alpha.1` — see `docs/ch
 - **Cargo** builds native Rust binaries (no runtime dependency)
 - **Swift Package Manager** builds macOS SwiftUI app
 - **MSBuild/.NET 8** builds Windows WinUI 3 app (MSIX package)
-- **Cargo** builds Linux GTK4 binary (Flatpak/Snap/AppImage/.deb)
+- **Cargo** builds the Linux GTK4 binary — **in practice `release.yml` builds only a `.deb` and a
+  tarball**; the Flatpak and Snap recipes point at tags, commits and binary names that do not
+  exist (#107)
 - App is fully self-contained — users need ZERO pre-installed software
 - All packages include SHA256 checksums
 - Release workflow generates draft GitHub Releases with artifacts
