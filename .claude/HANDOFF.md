@@ -1297,5 +1297,11 @@ After Codex's review: remove the two refusals.
 
 - **(a) and `rustls`:** a Sonnet builder is working in an isolated git worktree and will make two local
   commits, to be reviewed and then cherry-picked.
-- **(b):** a Sonnet builder is working in the main tree, with no commit until it is reviewed.
+- **(b): built, not yet committed.** Sonnet's builder reported every must-fail test failing on the old
+  code and passing on the new; `cargo test --workspace` 1,412 passed twice; clippy and doc clean. Hand
+  check on a 150,000-file scratch library: a second copy was refused with the specified message and
+  exit 1; after `kill -9` of the first, the next run proceeded; `meedya.lock` still present. The
+  `incompatible_msrv` allowance sits on two functions, not one. **Windows lint unverified** — a
+  dependency's C build needs a Windows C toolchain. Now: an Opus review, and proving the commit on its
+  own in a throwaway worktree.
 - **(c)–(g):** not started.
