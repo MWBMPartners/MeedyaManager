@@ -763,6 +763,9 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (morning)** — stage (a) review: a crash on non-Latin names and a library-freezing
+  stray cue block commit 1; the rebuild with fixes has started. Filed #236 (name length
+  in bytes against characters).
 - **2026-09-15 (small hours, later)** — the audit now also checks the Linux app's own lock file
   (`210e942`). It passes `--config deny.toml` explicitly, because cargo-deny finds its policy relative to
   the working folder, not the manifest. Reviewed by Sonnet, whose one finding is fixed in the commit.
@@ -1311,6 +1314,24 @@ After Codex's review: remove the two refusals.
   branch head; the builder noticed and moved it forward to `4cd8fa0` first.** Now: an Opus review,
   then cherry-pick both onto the branch — after the stage (b) review finishes, because the `rustls`
   change rebuilds dependencies.
+  **Review verdict (Opus, reviewing Sonnet's work):**
+  - **Commit 1 must not land as built.**
+    - **Critical:** the new extension check sliced names by byte position, so names in Japanese, Chinese or
+      Russian crash the whole scan (exit code 101), on default settings. The reviewer reproduced this with old
+      and new binaries.
+    - **High:** a stray `.cue` naming a missing file, or a lone `.mds`, turned a library root into a disc
+      folder and froze every rename beneath it.
+    - **Lower:** the `~` and Safari skipping rules were too broad; some comments were wrong.
+  - **Commit 2 is safe**, but `aws-lc-sys` 0.45 may link a copy of AWS-LC already on the build machine unless
+    `AWS_LC_SYS_USE_SYSTEM=0` is set.
+  - **Rebuilding both commits** in the same worktree with those fixes: Sonnet builds, then an Opus re-review.
+    **The disc fix is deliberately narrower than the reviewer suggested.** An incomplete set protects its
+    folder only when no subfolder holds audio or video. "The scan root is never a disc folder" would have
+    scattered the log and artwork when a single rip folder is scanned directly.
+  - The reviewer's point that the Linux lock file was still vulnerable was already fixed (`6a9d757`, audit
+    `210e942`).
+  - **An older bug it spotted is now filed (#236):** the name-length limit is
+    measured in bytes but applied in characters, so long non-Latin names can still be too long.
 - **(b): built, not yet committed.** Sonnet's builder reported every must-fail test failing on the old
   code and passing on the new; `cargo test --workspace` 1,412 passed twice; clippy and doc clean. Hand
   check on a 150,000-file scratch library: a second copy was refused with the specified message and
