@@ -21,6 +21,51 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ### Fixed
 
+- **Two copies of MeedyaManager could move the same files at the same time (issue
+  [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49)).** A write lock had been
+  written months ago and then never called by anything — `LockFile::acquire` had zero callers
+  anywhere in the codebase. So nothing stopped a `meedya scan --execute` in one terminal, a
+  second one in another, and the desktop app's Execute button all moving the same library at
+  once. Renaming is a plan worked out first and then carried out one file at a time; two copies
+  carrying out two plans disagree about where files are, and each moves files the other is still
+  expecting to find. Both then report success.
+
+  **Fixed by actually taking the lock** in the two places that move files through the engine:
+  `meedya scan --execute` (`crates/mm-cli/src/commands/scan.rs`) and the macOS app's rename call
+  (`crates/mm-ffi/src/uniffi_api.rs::execute_renames`) — the only desktop app that goes through
+  this same function. **The Windows and Linux apps do not take this lock**: Windows moves files
+  itself with `File.Move` rather than calling into the engine, and Linux calls the engine's
+  per-file rename function directly instead of this locked batch function (issue
+  [#226](https://github.com/MWBMPartners/MeedyaManager/issues/226)). A blocked run stops before
+  touching a single file, names the process ID holding the lock so you can go and find it, and
+  exits `1` (`ERROR`). Previewing never takes the lock, so looking at what a run *would* do is
+  never blocked.
+
+  **Taking the lock was also made safe against two copies starting at the same instant.** The
+  old code asked "does the lock file exist?" and then created it — two separate steps, with a
+  gap in between in which both copies could look, see nothing, and both create it. It now asks
+  the operating system to create the file *only if it does not already exist*, as one
+  indivisible step, so exactly one copy can win. A lock left behind by a run that crashed is
+  still cleared away automatically (the process ID in it is checked against the running
+  processes first), but the retry after clearing it happens once, not in a loop.
+
+  Scope worth being clear about: this is **not** a "you may only run one copy" rule. Reading
+  tags with `meedya debug`, previewing a rename and leaving `meedya watch` running are all
+  unaffected — the lock is held only while a batch of renames is actually being carried out, and
+  released the moment that batch ends.
+
+### Removed
+
+- **`AppState` — a state file nothing ever read (issue
+  [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49)).** `crates/mm-core/src/state/`
+  carried a `state.json` file recording how many files had been processed and when each watched
+  folder was last scanned. It had a full set of tests and not one reader anywhere in the
+  application — nothing loaded it, and nothing acted on it. It is **not** the library database
+  (issue [#220](https://github.com/MWBMPartners/MeedyaManager/issues/220)), which does not exist
+  yet and is where a record of "what happened when" will properly belong. Dead code that looks
+  like a working feature is worse than no code at all, so it has been deleted along with its ten
+  tests, and `crates/mm-core/src/state/` is now solely about the write lock described above.
+
 - **The macOS app renamed real music files to made-up names (issue
   [#222](https://github.com/MWBMPartners/MeedyaManager/issues/222), P0, data loss).** Open the
   app, scan a folder, press Execute — and up to 50 real files were renamed to
@@ -78,6 +123,36 @@ Format: `## [Version] — YYYY-MM-DD`
   failed first exactly as described above.
 
 ### Added
+
+- **`meedya watch --organize` and the background service actually work now (issue
+  [#180](https://github.com/MWBMPartners/MeedyaManager/issues/180)).** Both used to be stubs:
+  `--organize` printed a "not yet implemented" message and exited `3` before even looking at
+  which folders were configured, and `meedya service install` refused unconditionally for the
+  same reason. Now `--organize` delegates each settled folder to the same engine as
+  `meedya scan --execute`, so it automatically gets every safety rule that command already has —
+  the write lock, the disc-image whole-folder protection, Test Mode hygiene — for free, with no
+  second copy of that logic to drift out of sync.
+
+  New flags: `--yes` skips the one-off confirmation `--organize` shows an attended terminal
+  before it starts moving files (needed for any unattended use — a script, or the service, which
+  passes it automatically); `--settle-secs` (default `2`) is how long a file must go untouched
+  before it is organised, so a file still being copied in is never picked up half-written.
+
+  **Conflict handling is always forced to `"skip"` while organising**, whatever
+  `conflict_strategy` your settings actually say, and it warns once if it overrode something.
+  This is deliberate, not an oversight: the `"rename"` strategy's counter logic recomputes a
+  file's destination from its tags on every pass, so two files that happen to share identical
+  tags would be renamed again and again, forever, every time the watcher rechecked the folder —
+  a separately tracked bug (issue #224). Forcing "skip" contains that under the watcher without
+  claiming the underlying bug is fixed.
+
+  `meedya service install` now genuinely registers a systemd user unit (Linux) or a launchd
+  LaunchAgent (macOS), both running `meedya watch --organize --yes`. **On Windows it still
+  refuses, and says why in full**: a Windows Service has to report back to the Service Control
+  Manager within about thirty seconds of starting or Windows kills it, and it would run as the
+  LocalSystem account — a different account, reading a different settings file from the one the
+  installer can see. `meedya service install` on Windows now names Task Scheduler as the
+  supported alternative instead of quietly failing later.
 
 - **Disc folder detection (`mm_core::disc`).** `scan` now recognises a directory holding one or
   more disc images and reports it as a unit in a new **Disc Folders** table (and a

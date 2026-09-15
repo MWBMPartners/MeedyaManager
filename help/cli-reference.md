@@ -177,6 +177,45 @@ meedya scan <PATH> [OPTIONS]
 > template, a separator coming from tag data is indistinguishable from one in the template
 > itself.
 
+### 🔒 Only one copy may move files at a time (issue [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49))
+
+Renaming a library is not one action. It is a plan worked out first — this file goes there, that
+file goes here — and then carried out one file at a time. If a second copy of MeedyaManager starts
+carrying out *its* plan halfway through, the two disagree about where things are: one moves a file
+the other is still expecting to find, and both finish reporting success.
+
+`meedya scan --execute` now takes a **write lock** before it does anything, and gives it back the
+moment it finishes. If another copy already holds it you will see:
+
+```text
+✗ Another MeedyaManager process is already moving files (another instance is running (PID 4321)).
+  Wait for it to finish — or stop it — and try again.
+```
+
+and the command exits `1` (`ERROR`) **without touching a single file**. The process ID in brackets
+is there so you can find the other copy.
+
+The same lock guards the **macOS app's** Execute button, because it calls straight through to the
+same engine function that takes the lock, so pressing it while a terminal run is under way is
+refused in exactly the same way. **The Windows and Linux apps do not take this lock yet** —
+Windows moves files itself with `File.Move` rather than going through the engine, and the Linux
+app calls the engine's per-file rename function directly rather than the locked batch function
+(issue [#226](https://github.com/MWBMPartners/MeedyaManager/issues/226)) — so on those two
+platforms a terminal run and a desktop Execute click can still collide.
+
+Three things worth knowing:
+
+- **This is not a "one copy only" rule.** Reading tags with `meedya debug`, previewing a rename,
+  and leaving `meedya watch` running are all safe alongside anything else. None of them takes the
+  lock, because none of them moves files.
+- **Previewing is never blocked.** `meedya scan` without `--execute` does not take the lock, so
+  you can always look at what a run would do while another run is in progress.
+- **A crash does not block you forever.** The lock is a small file holding the process ID of
+  whichever copy is moving files. If that copy dies without cleaning up, the next run checks
+  whether that process is still alive, finds it is not, clears the leftover file away and carries
+  on. You should never need to delete it by hand — but if you ever do, it is `meedya.lock` in your
+  configuration directory.
+
 ### 💿 Disc images are never renamed one file at a time (issue [#219](https://github.com/MWBMPartners/MeedyaManager/issues/219))
 
 A raw disc rip is not one file. A `.cue` sheet names its `.bin` image **by bare file name**, so
@@ -279,11 +318,24 @@ meedya watch [PATHS]... [OPTIONS]
 | `[PATHS]...` | Directories to watch (uses the config's `watch.folders` if omitted) |
 | `--no-recursive` | Disable recursive watching (recursive is the default) |
 | `--organize` | Auto-organise (rename/move) files when changes are detected |
+| `--yes` | Skip the one-off confirmation prompt `--organize` shows on an attended terminal before it starts moving files. Needed for any non-interactive use — a script, a cron job, the background service |
+| `--settle-secs <N>` | How many seconds a file must go untouched before `--organize` acts on it (default `2`) — stops a file still being copied in from being organised half-written |
 | `--dry-run` | Preview mode — log what would happen without moving files (global flag) |
 
 > **Without `--organize`, `watch` only logs file-system events — it does not rename or move
 > anything.** This differs from earlier documentation that implied `watch` processes files by
 > default.
+>
+> **`--organize` is fully implemented (issue #180).** It delegates each settled folder to the
+> same engine as `meedya scan --execute`, so it inherits that command's safety rules (the write
+> lock, the disc-image whole-folder protection, Test Mode hygiene) automatically. Two things are
+> worth knowing before you rely on it: conflict handling is always forced to `"skip"` while
+> organising, whatever `conflict_strategy` your settings file has (a real bug in the "rename"
+> counter logic — issue #224 — makes that strategy loop forever under the watcher), and the
+> organised result always lands under the *watched* folder, never under a subfolder a file
+> happened to arrive in. See [background-service.md](background-service.md) for the full,
+> step-by-step explanation, including what running it as an installed service adds on top of
+> this.
 
 ### Examples
 
@@ -295,16 +347,24 @@ meedya watch
 meedya watch ~/Downloads/Media
 
 # Watch and actually organise files as they arrive
-meedya watch ~/Downloads/Media --organize
+meedya watch ~/Downloads/Media --organize --yes
 
 # Preview what --organize would do, without moving files
 meedya watch ~/Downloads/Media --organize --dry-run
+
+# Wait longer than the 2-second default before treating a file as finished arriving
+meedya watch ~/Downloads/Media --organize --yes --settle-secs 10
 
 # Verbose output showing each detected event
 meedya -v watch
 ```
 
-> **Note:** Press `Ctrl+C` to stop the watcher gracefully.
+> **Note:** Press `Ctrl+C` to stop the watcher gracefully. Without `--yes`, an attended terminal
+> is asked to confirm once before `--organize` starts moving files — a non-interactive stdin
+> (a script, a pipe, CI) is treated as already confirmed. With no watch folders resolved (neither
+> arguments nor config), `--organize` now fails exactly like plain `watch` does — exit `1`
+> (`ERROR`) — rather than the `3` (`NOT_IMPLEMENTED`) it used to return before this feature
+> existed.
 
 ---
 
@@ -499,8 +559,8 @@ For Test Mode details, see [test-mode.md](test-mode.md).
 
 ## meedya service
 
-Manage the MeedyaManager background service. This is real, working code (`crates/mm-core/src/
-service.rs`) — it shells out to `systemctl` (Linux), `launchctl` (macOS), or `sc` (Windows).
+Manage the MeedyaManager background service. This is real, working code
+(`crates/mm-core/src/service.rs`) — it shells out to `systemctl` (Linux) or `launchctl` (macOS).
 
 ```text
 meedya service <SUBCOMMAND>
@@ -508,21 +568,37 @@ meedya service <SUBCOMMAND>
 
 | Subcommand | Description |
 | ---------- | ----------- |
-| `install [--bin-path <PATH>]` | Register with the OS service manager |
+| `install [--bin-path <PATH>]` | Register with the OS service manager. **Linux and macOS only** — see below |
 | `uninstall` | Remove the service registration |
 | `start` | Start the service |
 | `stop` | Stop the service |
 | `status` | Display current service status |
 
-The service's `ExecStart` runs `meedya watch --organize` — the background service does organise
-files, unlike a plain foreground `meedya watch`.
+The service's `ExecStart` runs `meedya watch --organize --yes` — the background service does
+organise files, unlike a plain foreground `meedya watch`. `--yes` is required because a service
+has no terminal to answer the confirmation prompt `--organize` would otherwise show.
+
+> **`install` refuses on Windows and explains why (issue #180), instead of registering something
+> broken.** A Windows Service has to report back to the Service Control Manager within about
+> thirty seconds of starting, or Windows kills it — `meedya` does not speak that protocol. It
+> would also run as the LocalSystem account, which reads a different settings file from yours
+> and may not reach your media folders at all. `meedya service install` on Windows prints this
+> explanation and exits `3` (`NOT_IMPLEMENTED`), and suggests Task Scheduler instead, running
+> `meedya watch --organize --yes` at logon under your own account. `--dry-run` makes no
+> difference here — the refusal happens before dry-run is even checked.
+>
+> `--dry-run` on Linux/macOS prints what would be registered (the resolved binary path and the
+> command it will run) without writing anything.
 
 ### Examples
 
 ```bash
-# Install and start
+# Install and start (Linux/macOS)
 meedya service install
 meedya service start
+
+# See what installing would do, without doing it
+meedya --dry-run service install
 
 # Check status
 meedya service status
@@ -536,7 +612,9 @@ meedya service uninstall
 meedya service install --bin-path /opt/meedya/bin/meedya
 ```
 
-For full service setup instructions, see [background-service.md](background-service.md).
+For full service setup instructions — including exactly what the watcher does once it is
+running, the settle window, and why conflict handling is forced to "skip" — see
+[background-service.md](background-service.md).
 
 ---
 

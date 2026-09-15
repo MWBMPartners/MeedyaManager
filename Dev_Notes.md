@@ -795,31 +795,65 @@ single config directory resolved by `mm_core::config::app_config_dir()` (issue #
 
 ## Background Service Mode
 
-MeedyaManager can run as an OS background service to continuously monitor
-watch folders and auto-organise media.
+MeedyaManager can run as an OS background service to continuously monitor watch folders and
+organise new media as it arrives — see [background-service.md](help/background-service.md) for
+the full, user-facing explanation of what it does step by step, the settle window, and why
+conflict handling is forced to `"skip"`. This section is the developer-facing summary (issue #180).
 
 ### Platform Implementations
 
-| Platform | Mechanism | Unit/Config Location |
-| -------- | --------- | -------------------- |
-| Linux | systemd user service | `~/.config/systemd/user/meedyamanager.service` |
-| macOS | launchd user agent | `~/Library/LaunchAgents/com.mwbm.meedyamanager.plist` |
-| Windows | Windows Service via `sc.exe` | Windows Service Control Manager |
+| Platform | Mechanism | Unit/Config Location | Status |
+| -------- | --------- | -------------------- | ------ |
+| Linux | systemd user service | `~/.config/systemd/user/meedyamanager.service` | Working |
+| macOS | launchd user agent | `~/Library/LaunchAgents/com.mwbm.meedyamanager.plist` | Working |
+| Windows | Windows Service via `sc.exe` | Windows Service Control Manager | **Refused deliberately** — see below |
+
+**Windows is not a smaller version of the same feature — it genuinely does not work, and
+`meedya service install` says so instead of registering something broken.** Two separate,
+real problems: a Windows Service must report back to the Service Control Manager within about
+thirty seconds of starting and keep responding to it afterwards, which `meedya` (an ordinary
+console program) does not do — Windows would decide it had hung and kill it. It would also run
+as the LocalSystem account, a different account with its own home directory, so it would load a
+different `settings.json5` from the one the installer can see and may not reach their media
+folders at all. `crates/mm-cli/src/commands/service_cmd.rs::install` refuses on Windows
+(`#[cfg(target_os = "windows")]`) before any of `mm_core::service`'s Windows code runs, printing
+the explanation and pointing at Task Scheduler (`meedya watch --organize --yes` at logon) as the
+supported alternative. The `sc create` code path in `crates/mm-core/src/service.rs` still
+exists and is exercised by that module's own tests, but nothing in the CLI ever calls it.
 
 ### CLI Management
 
 ```bash
-meedya service install    # Register and enable at login
+meedya service install    # Register and enable at login — Linux/macOS only
 meedya service start      # Start immediately
 meedya service stop       # Stop
 meedya service status     # Check if running
 meedya service uninstall  # Remove registration
 ```
 
-The service runs `meedya watch --organize` at background/idle CPU priority,
-minimising impact on interactive use.
+`install` accepts the global `--dry-run` flag on Linux/macOS (prints what would be registered,
+writes nothing); on Windows it refuses regardless of `--dry-run` — the refusal happens before
+that flag is even checked.
 
-Template files for the unit/plist are in `platform/linux/` and `platform/macos/`.
+Both installed services run `meedya watch --organize --yes` — the `--yes` is not optional in
+practice, because `--organize` otherwise asks an attended terminal to confirm once before it
+starts moving files, and a service has no terminal to answer that. Linux's unit runs at
+`CPUSchedulingPolicy=idle`/`IOSchedulingClass=idle`; macOS's LaunchAgent sets
+`ProcessType=Background`. Both are there to minimise impact on interactive use.
+
+### How `--organize` actually organises
+
+`crates/mm-cli/src/commands/watch.rs` builds a `ScanArgs` by hand for each settled folder and
+calls `scan::run` as an ordinary function, rather than re-implementing any rename logic — the
+project has been burned before by keeping two copies of the same rules and having them drift
+apart (issue #219). This means `--organize` automatically inherits `scan`'s write lock,
+disc-image whole-folder protection and Test Mode hygiene with no extra code. A new file is only
+acted on once it has gone `--settle-secs` (default `2`) seconds without any further change, and
+conflict handling is force-set to `"skip"` for the duration of the watch run regardless of
+`config.rename.conflict_strategy` — the `"rename"` strategy's counter logic recomputes a
+destination from tags on every pass, so two files sharing identical tags would be renamed
+forever under a watcher that keeps re-checking the same folder (issue #224, tracked separately;
+forcing "skip" contains it rather than fixing the underlying counter logic).
 
 ---
 

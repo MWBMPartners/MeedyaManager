@@ -24,7 +24,8 @@ There is no public release yet — see [getting-started.md](getting-started.md) 
 
 ### Does it run in the background?
 
-Yes. MeedyaManager can run as a system service that starts automatically:
+Yes, on **Linux and macOS**. MeedyaManager can run as a system service that starts
+automatically:
 
 ```bash
 meedya service install    # register with the OS service manager
@@ -32,11 +33,32 @@ meedya service start      # start immediately
 meedya service status     # check if running
 ```
 
-See [background-service.md](background-service.md) for full details.
+**Not yet on Windows** — `meedya service install` refuses there and explains why, with a Task
+Scheduler alternative. See [background-service.md](background-service.md) for full details.
 
 ### Will it mess up my files?
 
-By default, `meedya watch` only **logs** file-system events — it does not rename or move anything at all unless you pass `--organize`, and `--dry-run` previews what `--organize` would do. There is currently no file-lock detection: the file watcher (`crates/mm-core/src/watcher`) has no lock/retry/queue logic, so a file that's still being written by another application could in principle be picked up mid-write. In practice this mostly matters for `--organize`/the background service; plain `meedya watch` without `--organize` never touches files regardless.
+By default, `meedya watch` only **logs** file-system events — it does not rename or move
+anything at all unless you pass `--organize`, and `--dry-run` previews what `--organize` would
+do without moving anything for real.
+
+With `--organize` on, a file is not acted on the moment it appears: MeedyaManager waits for it
+to sit unchanged for a couple of seconds first (the "settle window", `--settle-secs`, default
+`2`), specifically so a file that is still being copied in is never organised half-written.
+Organising also always behaves as if your conflict-handling setting were `"skip"`, regardless of
+what `settings.json5` actually says — this avoids a known runaway-renaming bug (issue #224) that
+the ordinary "rename" behaviour can hit when the watcher re-checks the same folder repeatedly.
+And if another copy of MeedyaManager is already moving files (a manual `scan --execute`, or the
+desktop app's Execute button), organising waits its turn rather than racing it.
+
+There is still no detection of a file being held open by *another application* (a media player
+with the file open, say) — the settle window only checks whether the file system has reported
+any changes recently, not whether some other program still has the file open. The file watcher
+(`crates/mm-core/src/watcher`) has no such lock/retry/queue logic. In practice this only matters
+once `--organize` is on; plain `meedya watch` without it never touches a file regardless.
+
+See [background-service.md](background-service.md) for the full detail, including exactly what
+the background service does and does not do.
 
 ---
 

@@ -116,10 +116,11 @@
 | `meedya config` — show, path, init, export, import, test-mode | Done |
 | `meedya scan` — directory scan + rename preview + execute | Done — see conflict-handling note below |
 | `meedya edit` — metadata write (`--set`, `--remove`, `--cover`, `--remove-cover`, `--dry-run`) | Done — now routes through Test Mode enforcement (#128) |
-| `meedya watch` — foreground watcher with event logging | Done (only logs unless `--organize` is passed) |
+| `meedya watch` — foreground watcher with event logging | Done — `--organize` (auto-rename/move as files arrive) is now real too, not just logging (issue #180): forces conflict handling to `"skip"`, waits `--settle-secs` (default 2) before acting on a file, and reuses `scan`'s write lock and disc-image protection |
 | `meedya lookup` — provider search | **Status: not yet implemented** — prints a factual "not available in this alpha" notice and exits `3` (`NOT_IMPLEMENTED`) (`crates/mm-cli/src/commands/lookup.rs`), unchanged since M3 despite M5 having since landed |
 | `meedya report-bug` — system info + log collection | Done |
-| `meedya serve` / `meedya export` / `meedya service` | Added after M3, see M9/M10 below — `serve`/`export` now exit `3` instead of fabricating success (#205, #206) |
+| `meedya serve` / `meedya export` | Added after M3, see M9/M10 below — both now exit `3` instead of fabricating success (#205, #206) |
+| `meedya service` | Added after M3 — **not scaffolding**: `install` genuinely registers a systemd user unit (Linux) or launchd LaunchAgent (macOS) running `meedya watch --organize --yes` (issue #180). Refuses on Windows and explains why (Service Control Manager protocol, LocalSystem account), suggesting Task Scheduler instead |
 
 > **`scan --execute` data-loss risk fixed (#201).** `meedya scan` now delegates to
 > `mm_core::renamer::simulate_rename_with_rules`, which tracks every destination claimed within

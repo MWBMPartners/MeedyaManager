@@ -228,7 +228,7 @@ MeedyaManager/
 | M9 | 🗄️ Database Export | ⚠️ **Preview / scaffold only** | Schema/DDL generation and CLI plumbing exist for all 5 backends, but no backend opens a real database connection |
 | M10 | 🌐 Secure Media Server | ⚠️ **Preview / scaffold only** | JWT + range-parsing types exist, but no `axum` router is ever built; `meedya serve` prints a stub message and exits — no working REST API, streaming, or web frontend |
 | — | 🔧 Post-Release Enhancements (i18n, accessibility) | ⚠️ **Preview / scaffold only** | Translation catalogues (`.po`/`.xcstrings`/`.resw`) exist but there are **zero** `gettext()` call sites anywhere in the codebase — translating them has no runtime effect yet |
-| — | 🔧 Post-Release Enhancements (tags/integrity/service) | ✅ **Complete** | External JSON5 tag registry, file integrity (SHA256 + atomic write) for metadata writes, background service mode, settings export/import |
+| — | 🔧 Post-Release Enhancements (tags/integrity/service) | ✅ **Complete on Linux/macOS** | External JSON5 tag registry, file integrity (SHA256 + atomic write) for metadata writes, background service mode (`meedya service install`, Windows not yet supported — see [background-service.md](help/background-service.md)), settings export/import |
 
 > **No version of MeedyaManager has ever been publicly released.** The version in `Cargo.toml` is
 > `1.4.0-alpha.1` — the first pre-release label the project has ever carried; the only GitHub

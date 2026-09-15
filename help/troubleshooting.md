@@ -199,6 +199,41 @@ Options: `"skip"` (default) and `"rename"` are implemented today. `"overwrite"` 
 accepted but currently just warn once and fall back to `"skip"` — there is no interactive prompt
 yet, and `"overwrite"` deliberately doesn't re-enable the data-loss path closed by issue #201.
 
+### "Another MeedyaManager process is already moving files"
+
+**What you will see:**
+
+```text
+✗ Another MeedyaManager process is already moving files (another instance is running (PID 4321)).
+  Wait for it to finish — or stop it — and try again.
+```
+
+**What it means:** another copy of MeedyaManager — a `meedya scan --execute` in a second terminal,
+or the Execute button in the desktop app — is part-way through moving files. Letting a second copy
+start at the same time is how files go missing: each one works from a plan of where every file is
+going, and the other one moves things out from underneath it. So the second copy refuses to start
+and **nothing is touched**.
+
+**What to do:** wait for the first run to finish, or stop it. The process ID in brackets (`4321`
+above) tells you which one it is.
+
+**This does not stop you doing anything else.** Only *moving files* takes the lock. Inspecting a
+file with `meedya debug`, previewing a rename with a plain `meedya scan`, and leaving
+`meedya watch` running are all fine at any time.
+
+**If nothing else is running and you still see this,** a previous run was probably killed
+mid-rename. Normally that sorts itself out: the next run checks whether the process named in the
+lock is still alive, finds it is not, clears the file away and carries on. The one case that
+cannot sort itself out is a lock file whose contents are damaged — that is treated as live on
+purpose, because refusing to run is an inconvenience while two copies moving the same files is
+data loss. Delete `meedya.lock` from your configuration directory and try again:
+
+| Platform | Location |
+|----------|----------|
+| macOS | `~/Library/Application Support/MeedyaManager/meedya.lock` |
+| Linux | `~/.config/MeedyaManager/meedya.lock` |
+| Windows | `%APPDATA%\MeedyaManager\meedya.lock` |
+
 ### File in use by another application
 
 **Status: not yet implemented.** There is no file-lock detection or retry-queue in

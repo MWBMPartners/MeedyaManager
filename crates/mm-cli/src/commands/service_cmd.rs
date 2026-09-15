@@ -65,20 +65,94 @@ pub fn run(ctx: &CliContext, args: &ServiceArgs) -> anyhow::Result<i32> {
 
 /// Install the background service with the OS service manager.
 ///
-/// Currently refuses to install because the service depends on `watch --organize`,
-/// which is not yet implemented. Once `--organize` is available, this will
-/// configure the OS service manager (systemd on Linux, launchd on macOS, Windows
-/// Service Manager on Windows) to run the watcher in the background.
-fn install(_ctx: &CliContext, _bin_path: Option<&std::path::Path>) -> anyhow::Result<i32> {
-    // The background service configuration (systemd unit, launchd plist, Windows SC)
-    // hardcodes the `watch --organize` command, which is not yet implemented.
-    // Refuse to install rather than creating a service that immediately fails.
-    output::print_error(
-        "Service installation is not yet available. \
-        The background service depends on `meedya watch --organize`, which is not \
-        implemented in this release.",
-    );
-    Ok(ExitCode::NOT_IMPLEMENTED)
+/// On Linux this writes a systemd **user** unit; on macOS a launchd
+/// **LaunchAgent**. Both run as the person who installed them, which matters:
+/// they read that person's `settings.json5` and can see that person's files.
+/// Both run `meedya watch --organize --yes`.
+///
+/// On Windows this deliberately refuses — see the explanation printed below.
+fn install(ctx: &CliContext, bin_path: Option<&std::path::Path>) -> anyhow::Result<i32> {
+    // ── Windows: honestly out of scope, and say why ─────────────────────
+    //
+    // `sc create` registers a *Windows Service*, and a Windows Service is not
+    // just "a program Windows starts". It has to talk back to the Service
+    // Control Manager within about thirty seconds of starting, to report that
+    // it is running and to accept stop requests. `meedya` does not speak that
+    // protocol, so Windows would decide it had hung and kill it.
+    //
+    // There is a second problem underneath the first. A service registered
+    // this way runs as **LocalSystem**, which is a different account with a
+    // different home directory — so it would load a different settings file
+    // from the one the person configuring it can see, and would very likely
+    // have no access to their media folders at all.
+    //
+    // Both are real engineering jobs, not one-line fixes, so rather than
+    // installing something that quietly does not work, this says so.
+    #[cfg(target_os = "windows")]
+    {
+        // Silence the unused-parameter warnings on this platform only.
+        let _ = (ctx, bin_path);
+        output::print_error(
+            "Installing a background service is not available on Windows yet.\n\n\
+             A program registered with `sc create` has to report back to the Windows \
+             Service Control Manager within about thirty seconds of starting. \
+             MeedyaManager does not speak that protocol, so Windows would stop it \
+             again almost immediately. It would also run as the LocalSystem account, \
+             which reads a different settings file from yours and may not be able to \
+             reach your media folders at all.\n\n\
+             What to do instead: use Task Scheduler to run\n\
+             \x20   meedya watch --organize --yes\n\
+             at logon. That runs as you, reads your settings, and keeps working.",
+        );
+        return Ok(ExitCode::NOT_IMPLEMENTED);
+    }
+
+    // ── Linux and macOS: actually install it ────────────────────────────
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Work out which binary the service should run. Defaulting to the
+        // currently running executable is what makes `meedya service install`
+        // work with no arguments — but the path is resolved *now* and baked
+        // into the unit file, so moving or reinstalling `meedya` afterwards
+        // means installing the service again.
+        let resolved: std::path::PathBuf = match bin_path {
+            Some(path) => path.to_path_buf(),
+            None => match std::env::current_exe() {
+                Ok(path) => path,
+                Err(e) => {
+                    output::print_error(&format!(
+                        "Cannot work out where the meedya binary is: {e}. \
+                         Pass --bin-path with the full path to it."
+                    ));
+                    return Ok(ExitCode::ERROR);
+                }
+            },
+        };
+
+        if ctx.dry_run {
+            println!(
+                "Dry-run: would register the MeedyaManager background service to run \n  \
+                 '{} watch --organize --yes' automatically at login.",
+                resolved.display()
+            );
+            return Ok(ExitCode::SUCCESS);
+        }
+
+        match service::install_service(&resolved) {
+            Ok(()) => {
+                output::print_success(
+                    "MeedyaManager background service installed and set to start at login.",
+                );
+                println!("  It runs: {} watch --organize --yes", resolved.display());
+                println!("  To start it now without logging out: meedya service start");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                output::print_error(&format!("Service install failed: {e}"));
+                Ok(ExitCode::ERROR)
+            }
+        }
+    }
 }
 
 /// Uninstall the background service.

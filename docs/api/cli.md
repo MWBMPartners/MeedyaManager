@@ -23,9 +23,10 @@ Defined in `crates/mm-cli/src/output.rs::ExitCode`:
 `NOT_IMPLEMENTED` is a deliberate, checkable signal that a script can distinguish from a real
 failure. As of this commit, three commands unconditionally return it for their main operation:
 `meedya lookup`, `meedya export` (unless `--show-schema` is passed), and `meedya serve` (unless
-`--show-routes` or `--check-config` is passed). `meedya service install` also always returns it
-(the background service depends on `watch --organize`, which does not exist yet). `meedya watch
---organize` returns it too, without starting the watcher at all.
+`--show-routes` or `--check-config` is passed). `meedya service install` also returns it, but
+only on Windows — it refuses there and explains why (see the `meedya service` section below);
+on Linux and macOS it actually installs the service. `meedya watch --organize` is fully
+implemented (issue #180) and no longer returns it at all.
 
 Every per-command exit code below describes a deliberate `Ok(ExitCode::…)` return in that
 command's `run()` function. On top of these, an unexpected failure that a command does not
@@ -176,15 +177,38 @@ schema. `null` on failure; `error` is `null` on success.
 
 ## `meedya watch`
 
-Fully implemented as a foreground watcher; `--organize` is not. **Exit code:**
-`NOT_IMPLEMENTED` immediately if `--organize` is passed (checked before folder validation runs);
-`ERROR` if no folders resolve (neither args nor config) or a given path is not a directory;
-otherwise the process runs until Ctrl+C, then returns `SUCCESS`.
+Fully implemented, including `--organize` (issue #180) — a foreground watcher that, with
+`--organize`, also renames/moves files by delegating each settled folder to `scan::run`
+internally (same engine as `meedya scan --execute`, so it inherits every safety rule that
+command has: the write lock, the disc-image whole-folder protection, Test Mode hygiene).
+
+**New flags added by #180:**
+
+| Flag | Default | Meaning |
+| ---- | ------- | ------- |
+| `--yes` | off | Skip the one-off confirmation prompt before `--organize` starts moving files. Required in practice for any non-interactive use (a script, a cron job, the background service) — without it, an attended terminal is asked to confirm once at start-up, and a non-interactive stdin is treated as pre-confirmed already. |
+| `--settle-secs <N>` | `2` | How many seconds a file must go untouched before `--organize` will act on it. Exists so a file still being copied in is never organised half-written. |
+
+**Exit code:** `ERROR` if no folders resolve (neither args nor config) or a given path is not a
+directory — this now applies to `--organize` too (previously it returned `NOT_IMPLEMENTED`
+before folders were even looked at); `ERROR` also if an attended terminal declines the
+`--organize` confirmation prompt. Otherwise the process runs until Ctrl+C, then returns
+`SUCCESS`. There is no exit code that reflects organising failures encountered *during* the run
+— those are logged to stdout/stderr as they happen (a per-folder failure is reported and that
+folder's files are dropped; a folder blocked by another process holding the write lock is
+retried after another settle window; see `help/background-service.md`), but the watcher keeps
+running regardless and always exits `SUCCESS` when stopped with Ctrl+C.
+
+**Conflict handling while organising is always forced to `"skip"`**, regardless of
+`config.rename.conflict_strategy` — a warning is printed once, at start-up, if the configured
+strategy was something other than `"skip"`. This avoids a known runaway-renaming defect, tracked
+as issue #224, that the `"rename"` strategy can hit when the watcher re-evaluates the same
+folder on every settle.
 
 **Startup JSON** (`WatchStartOutput`, printed once):
 
 ```json
-{ "folders": ["string"], "recursive": true, "organize": false }
+{ "folders": ["string"], "recursive": true, "organize": false, "settle_secs": 2 }
 ```
 
 **Per-event JSON** (`WatchEventOutput`, printed as one JSON object per line as events arrive — this
@@ -326,16 +350,31 @@ without `--no-tls`) or if the JWT service itself fails to initialise; `SUCCESS` 
 
 ## `meedya service`
 
-**Exit code:** `install` always `NOT_IMPLEMENTED` (refuses outright — the service definition
-hardcodes `watch --organize`, which does not exist). `uninstall`/`start`/`stop` return `SUCCESS` or
-`ERROR` from the underlying `mm_core::service` call. `status` returns `SUCCESS` only when the
-service is actually `Running` — `Stopped`, `NotInstalled` and `Unknown` all return `ERROR`, which
-is unusual among `meedya` subcommands (most treat "nothing to report" as success) and worth a
-script author noting explicitly.
+`install` is fully implemented on **Linux and macOS** (issue #180) — it writes and enables/loads
+a real systemd user unit or launchd LaunchAgent, running `meedya watch --organize --yes`. On
+**Windows it always returns `NOT_IMPLEMENTED`** and refuses outright, regardless of `--dry-run`:
+a program registered via `sc create` has to answer the Windows Service Control Manager within
+about thirty seconds of starting (`meedya` does not speak that protocol) and would run as the
+LocalSystem account, reading a different settings file than the one the installer edited.
+`meedya service install` prints this explanation and points at Task Scheduler as the supported
+alternative instead of registering something that would not work.
+
+**Exit code:** `install` — `SUCCESS` on a successful Linux/macOS install (or on
+`--dry-run`, which prints what would be registered and writes nothing); `ERROR` if the current
+executable's path cannot be resolved and no `--bin-path` was given, or if the underlying OS
+command fails; `NOT_IMPLEMENTED` unconditionally on Windows. `uninstall`/`start`/`stop` return
+`SUCCESS` or `ERROR` from the underlying `mm_core::service` call — on Windows these still shell
+out to `sc.exe`, but since `install` never registers anything there, they have nothing to act
+on. `status` returns `SUCCESS` only when the service is actually `Running` — `Stopped`,
+`NotInstalled` and `Unknown` all return `ERROR`, which is unusual among `meedya` subcommands
+(most treat "nothing to report" as success) and worth a script author noting explicitly.
 
 `status --json` (the only subcommand that honours `--json` — see the gotcha above) emits an ad hoc
 shape, not a `#[derive(Serialize)]` struct:
 
 ```json
-{ "service": "meedyamanager", "status": "Running|Stopped|NotInstalled|Unknown", "running": true }
+{ "service": "meedyamanager", "status": "running|stopped|not-installed|unknown", "running": true }
 ```
+
+`status` is the lowercase `Display` form of `ServiceStatus` (`crates/mm-core/src/service.rs`),
+not the enum's variant name — note the hyphen in `not-installed` specifically.

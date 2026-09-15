@@ -141,8 +141,20 @@ meedya watch --organize
 meedya watch --organize --dry-run
 ```
 
+With `--organize`, a new file is not touched the instant it appears — MeedyaManager waits for
+it to go two seconds without any further change first (`--settle-secs`, default `2`), so it
+never organises a file that is still being copied in. An attended terminal is asked to confirm
+once before it starts moving anything; add `--yes` to skip that (this is what the background
+service does, since it has nobody to answer the question).
+
 > **Tip:** Always run with `--organize --dry-run` first to verify your rules produce the
 > expected results before enabling live file operations.
+
+To run this continuously in the background instead of in a terminal you keep open, see
+[background-service.md](background-service.md) — it covers installing it as a proper background
+service on Linux and macOS (Windows is not supported yet, with a Task Scheduler alternative
+given there), the settle window, and why it always uses the safer "skip" behaviour for
+conflicting files rather than whatever your settings say.
 
 ### Launch the GUI
 
