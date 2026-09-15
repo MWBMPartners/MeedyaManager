@@ -130,8 +130,9 @@ code that moves files. A feature nobody can reach is not finished.
 
 ## Platforms
 
-Windows, macOS and Linux. **There is no iPhone/iPad app and no Android app** — both have been
-asked for (#228 iPhone Duo, #229 foldable Android) and neither has started. The macOS app does not
+Windows, macOS and Linux. **The Apple app is macOS-only by decision** — iPhone, iPad, Vision Pro
+and Apple Watch were judged unsuitable (#228 closed). **An Android phone app is planned** (#230,
+side-loadable, with foldable support in #229), but no Android code exists yet. The macOS app does not
 link the Rust engine yet (#66). See `.claude/HANDOFF.md` §0 and §2 for what actually exists.
 
 ## Build and test

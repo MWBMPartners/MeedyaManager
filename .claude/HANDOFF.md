@@ -22,8 +22,9 @@ they are committed. **Codex, the usual reviewer, cannot run until 2026-09-20 16:
 Opus agent that built none of it is reviewing in its place — Fable, the first stand-in, was out of
 usage credits as well. Two P0 data-loss bugs were found and
 fixed this fortnight: #219 is committed, and #222 is committed for macOS with its Windows half in
-the uncommitted work. The owner has also asked for iPhone Duo support (#228) and foldable Android
-support (#229) — **neither an iPhone app nor an Android app exists**.
+the uncommitted work. On 2026-09-15 the owner decided **the Apple app stays macOS-only** (#228, iPhone Duo, closed
+as not planned), and that a **side-loadable Android phone app** is wanted (#230), with foldable
+support (#229) on top. **No Android code exists yet.**
 
 ### The uncommitted work — do not commit it without a review
 
@@ -108,7 +109,7 @@ work. The detail for each row is in the section it names.
 | 13g | P0 #222 — the macOS app renamed real files to "[Preview] …" | ✅ fixed `83628d9` |
 | 13h | #222 Windows half and release guard, #49 write lock, #180 organiser | 🔄 **built, uncommitted, under independent review** (§0) |
 | 13i | Security advisory #227 (`rustls`) | ⏳ after 13h, in a commit of its own |
-| 13j | iPhone Duo #228 and foldable Android #229 | 📝 issues filed · owner decisions needed · **neither app exists** |
+| 13j | Mobile platforms | ✅ decided 2026-09-15: **the Apple app stays macOS-only** (#228 closed) · 📝 **Android phone app** #230, side-loadable, with foldables in #229 · no Android code yet |
 | 14 | **Open the PR to `alpha`** | ⏳ owner's call — not created, per the no-PR-stacking rule |
 | 15 | Post-PR dev-cache cleanup (per `.claude/CLAUDE.md`) | ⏳ after the PR exists |
 
@@ -215,8 +216,8 @@ on a security advisory published after `04f8ddf` (#227) — nothing in this bran
 | macOS app | Builds. **Does not link the Rust engine** — `MM_FFI_AVAILABLE` is commented out in `Package.swift`. Since `83628d9` it cannot move a file, and says so. |
 | Windows app | Never green in CI (#148). Falls back to stubs when `mm_ffi.dll` is missing; the fix for that is in the uncommitted work (§0). |
 | Linux GTK app | The only interface running on the real engine. Cannot be compiled on this machine (no GTK4). Moves files without taking the write lock (#226). |
-| iPhone / iPad app | **Does not exist** (#228). |
-| Android app | **Does not exist** (#229). The only MWBM Android app is iHymns'. |
+| iPhone, iPad, Vision Pro, Apple Watch | **Not planned.** Judged unsuitable on 2026-09-15 (#228 closed). The Apple app is macOS-only. |
+| Android app | **Does not exist yet; planned** as a side-loadable phone app (#230) with foldable support (#229). The only MWBM Android app today is iHymns'. |
 | Library database | **Does not exist**, here or upstream (#220). `state/mod.rs` only ever counted work; upstream `meedya-db` is a client for a web service and contains no SQL. |
 | API or web server | **Does not exist.** Zero `.route(` calls in `mm-server`, zero `.html` files, zero OpenAPI files. |
 | Metadata providers | 13 real ones in code. Only MusicBrainz is reachable — through the GTK panel, search only, with no way to apply a result. `meedya lookup` exits 3 (#83). |
@@ -270,8 +271,8 @@ on a security advisory published after `04f8ddf` (#227) — nothing in this bran
 | Media Kind and Art Kind (#221) | Extend the existing companion-type list instead of adding a second vocabulary; use the MusicBrainz artwork vocabulary; Static or Animated art type; identify animated art by filename first. | 2026-09-06 |
 | Music stems | **Real audio with a role**, not a sidecar, with its own naming — for example `<Artist> - <Title> [<Stem Part/Instrument>]`. | 2026-09-06 |
 | DJ sidecar files | **Track-specific** files — VirtualDJ `.vdjstems` and `.vdjedit` — are sidecars and **move and rename with their media**. Library-wide files such as Rekordbox XML are a different problem. Both were in the original brief. | 2026-09-06 |
-| iPhone Duo | Wanted in the Apple app (#228). No iPhone version exists; decisions pending. | 2026-09-15 |
-| Foldable Android | Wanted in a native universal Android app (#229). No Android app exists; decisions pending. | 2026-09-15 |
+| Apple mobile platforms | **Not suitable — the Apple app stays macOS-only.** iPhone, iPad, Vision Pro and Apple Watch cannot reach a user's media library as files or run background watch folders, and outside the EU ship only through the App Store. Revisit only as a *companion* app if the media server (#120) is ever built. #228 closed as not planned. | 2026-09-15 |
+| Android | **An Android phone app is viable and wanted** (#230), distributed mainly as a direct download, where Google Play's review of "All files access" does not apply. Foldable support (#229) is a layer on top. | 2026-09-15 |
 | Pushing to `alpha` | **Never directly** — not even this file. Work reaches `alpha` only through the pull request. | 2026-09-15 |
 
 Standing instructions:
@@ -432,9 +433,9 @@ In order:
 
 | Issue | Question | Recommendation |
 | --- | --- | --- |
-| #225 | Should Test Mode protect renames? | Not yet: keep refusing to rename while Test Mode is on, and revisit once #220 exists |
-| #228 | An iPhone/iPad app at all? In what shape? Lowest iOS version? | If yes: organise folders the user hands over; do not require iOS 27.1 for the whole app |
-| #229 | An Android app at all? Which file-access model? Target and minimum versions? Distribution? | If yes: user-picked folders, to match #228; target current Android; `minSdk 26` like iHymns |
+| #225 | Should Test Mode protect renames? | Not yet: keep refusing to rename while Test Mode is on; build rename *undo* on #220's history, then revisit. Full reasoning on #225, including the hard-link and clone counter-argument |
+| #230 | Distribution channel? Register MWBM Partners Ltd as a verified Android developer? First-version scope? | Direct download first; register before Google's 2027 worldwide rollout; tags, previews and renames first, with periodic checks instead of instant watch folders |
+| #229 | File-access model | "All files access" for the direct-download build; user-picked folders only if a Google Play build is ever wanted. Target current Android; `minSdk 26` like iHymns |
 | #19 | Create the Python archive tag, or close as not planned? | Close as not planned unless the tag is actually wanted |
 | #215 | Successors for the mirror issues #9–#17 | Decide per issue — #9 and #10 need none |
 
@@ -695,6 +696,9 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (later)** — owner decisions on mobile platforms: the Apple app stays macOS-only
+  (#228 closed as not planned); a side-loadable Android phone app is planned (#230), with #229's
+  file-access recommendation corrected. The full Test Mode reasoning is recorded on #225.
 - **2026-09-15** — brought fully up to date after nine days of drift. Added §0 (current state,
   uncommitted work, review status, limits hit) and §14 (the sweep's verdicts, the two P0s, and the
   new platform issues). Rewrote §1, §2, §3, §5, §7 and §8. Corrected two earlier claims: issues
@@ -971,10 +975,21 @@ had drifted. **What it could not verify:** anything needing GTK4, Xcode or Windo
 | #225 | Decide whether Test Mode should cover renames |
 | #226 | The Linux app moves files without the write lock |
 | #227 | A `rustls` security advisory fails the dependency audit |
-| #228 | iPhone Duo support — no iPhone app exists |
-| #229 | Foldable Android support — no Android app exists |
+| #228 | iPhone Duo support — **closed as not planned** on 2026-09-15; the Apple app stays macOS-only |
+| #229 | Foldable Android support — the layer on top of #230 |
+| #230 | Android phone app — side-loadable; the base for #229 |
 
 ### 14d. iPhone Duo and foldable Android — what matters for planning
+
+> **Updated later on 2026-09-15 — read this first.** The owner asked whether Apple's mobile platforms
+> suit MeedyaManager at all. **They do not**, so #228 is closed and the Apple app stays macOS-only.
+> An **Android phone app** is planned instead (#230). Side-loading changes the file-access picture:
+> a directly distributed app is not subject to Google Play's review of "All files access", so the
+> engine can use real file paths unchanged — #229's recommendation was corrected accordingly. Google's
+> developer verification (from 30 September 2026 in four countries, worldwide from 2027) means
+> MWBM Partners Ltd must register as a verified developer. Since Android 15, the background service
+> types suited to watch folders may run only 6 hours per day, so Android gets periodic checks.
+> Parts of the bullets below that discuss iPhone are kept only as history.
 
 The detail is on #228 and #229.
 

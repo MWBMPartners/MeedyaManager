@@ -10,9 +10,12 @@
 - **Licence:** GPL-2.0-or-later
 - **Copyright:** MWBM Partners Ltd
 - **Platforms:** Windows (x64/ARM), macOS (Apple Silicon only), Linux (x64/ARM)
-- **Asked for, not started:** an iPhone/iPad app with iPhone Duo support (#228) and a universal
-  Android app with foldable support (#229). **Neither exists**, and neither can be built on the
-  current development machine.
+- **Apple mobile platforms are out of scope.** iPhone, iPad, Vision Pro and Apple Watch were judged
+  unsuitable on 2026-09-15: they cannot reach a user's media library as files or run background
+  watch folders. The Apple app is **macOS-only** (#228 closed as not planned).
+- **Planned, not started:** a side-loadable **Android phone app** (#230), with foldable support
+  (#229) as a layer on top. No Android code exists, and none can be built on the current
+  development machine.
 
 ## Session continuity
 
