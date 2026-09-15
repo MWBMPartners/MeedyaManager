@@ -22,6 +22,10 @@ on:
       - "Cargo.toml"
       - "deny.toml"
       - ".github/workflows/audit.yml"
+      # The Linux GTK app has its own manifest and lock file (see the second
+      # cargo-deny step below), so changes to them must trigger this audit too.
+      - "crates/mm-gtk/Cargo.lock"
+      - "crates/mm-gtk/Cargo.toml"
 
 jobs:
   audit:
@@ -48,3 +52,34 @@ jobs:
         # A separate cargo-audit step was tried (#156) but turned out to be
         # redundant AND had runner-side DB-fetch issues (#157). Dropped.
         run: cargo deny check
+
+      - name: Run cargo-deny checks for the Linux GTK app (its own lock file)
+        # crates/mm-gtk is deliberately excluded from the Cargo workspace (it
+        # needs the Linux-only gettextrs), so it resolves its dependencies into
+        # its OWN lock file, crates/mm-gtk/Cargo.lock. The step above never
+        # reads that file. On 2026-09-15 that file still carried rustls
+        # 0.23.43, affected by RUSTSEC-2026-0285 (issue #227). The root check
+        # happened to be failing on the same advisory at the time — but only
+        # because the ROOT lock file was affected too. Once the root was fixed,
+        # the step above would have reported clean while the Linux build still
+        # shipped the flaw, and nothing would have noticed. Do not remove this
+        # step as "redundant".
+        #
+        # `--config deny.toml` is passed explicitly, on purpose. cargo-deny
+        # looks for its policy file relative to the folder the command runs
+        # FROM, not the folder of --manifest-path (a deliberate change in
+        # cargo-deny 0.19.0). Without the flag this only works because the
+        # step happens to run from the repository root. Were anyone to add
+        # `working-directory: crates/mm-gtk`, cargo-deny would silently fall
+        # back to its generic built-in policy and keep reporting "ok" for the
+        # wrong reasons. Found by review on 2026-09-15 and reproduced.
+        # Both options belong to `cargo deny` itself and so come BEFORE `check`
+        # (since cargo-deny 0.20.0, `check` rejects them).
+        # It only reads dependency metadata and never compiles anything, so it
+        # needs no GTK4 system libraries on the runner.
+        #
+        # `success() || failure()` makes this run even when the root check
+        # above has failed, so both results are always visible rather than one
+        # hiding the other. (A cancelled run still skips it.)
+        if: success() || failure()
+        run: cargo deny --manifest-path crates/mm-gtk/Cargo.toml --config deny.toml check
