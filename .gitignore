@@ -183,3 +183,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.spec
+
+# Temporary git worktrees created by Claude Code agents working in isolation.
+# Each is a complete checkout with its own build folder — often several
+# gigabytes — so it must never be picked up by `git add`. Added 2026-09-15,
+# when one sat untracked inside the repository at 8.2 GB.
+.claude/worktrees/
