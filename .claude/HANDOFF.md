@@ -143,16 +143,34 @@ it would compile.
   default settings**. Every default template — the engine's, `meedya config init`'s and all three apps' —
   omits the extension token; only the repository's *example* `config/settings.json5` is safe. Being fixed
   in stage (a) (§15).
-- **#222** — the apps renamed real files to "[Preview] …". macOS fixed in `83628d9`; the Windows
-  fix is in the uncommitted work.
+- **#222** — the apps renamed real files to "[Preview] …". macOS fixed in `83628d9`, Windows in
+  `eb2c2a9`, and the release guard in `b694d70`. Stays open until the Windows fix is tried on a real
+  Windows machine.
 - **#19** — labelled P0: the Python archive tag does not exist. Owner decision: create it, or
   close it as not planned.
 
 ### What to do next
 
-See §15 for the fix plan now being carried out, and §8. In short: finish the review, commit the four pieces separately with honest review
-notes, fix `rustls` in its own commit (#227), then run the Codex catch-up review once Codex is
-available.
+See §15 for the fix plan now being carried out, and §8. **Where it stands right now (2026-09-15, midday):**
+
+- Stages (a) and (b) are the only ones started. **(b), the lock, is committed** (`599d921`).
+- **(a) is being rebuilt** with the review's fixes, by a Sonnet agent in the worktree
+  `.claude/worktrees/agent-ac1c1ad32f50eb48f`. After the rebuild comes an Opus re-review, then its
+  two commits are copied onto the branch: one for #231 and #233, one for rustls (#227). Then the
+  worktree is deleted, which frees about 9 GB.
+- **The issue sweep is being refreshed.** The 2026-09-06 report was checked against `04f8ddf`, and 21
+  commits have landed since. An Opus agent (Fable was out of credits for the fourth time) is
+  re-checking every verdict against HEAD `7be7e1c`. It writes `sweep-actions.json`,
+  `sweep-new-issues.json` and `sweep-refresh-summary.md` to the session scratchpad, and changes
+  nothing on GitHub.
+  - The orchestrator reviews that output, then runs `post-sweep.py` from the same folder: a dry run
+    first, then `--execute`.
+  - The script checks every entry before it writes anything, and is safe to re-run after an
+    interruption.
+  - **If the scratchpad has gone, re-run the refresh from §14a's verdicts**; the brief is in this
+    session's transcript.
+- Then stages (c)–(g), and the Codex catch-up review once Codex is available (after 2026-09-20
+  16:30).
 
 ---
 
@@ -763,6 +781,9 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (midday)** — the sweep refresh started, run by Opus because Fable was out of credits a
+  fourth time. #222's Windows fix is recorded as committed (`eb2c2a9`). The "what to do next" section
+  is rewritten to match the work actually in flight.
 - **2026-09-15 (morning, later)** — stage (b), the lock redesign, committed as `599d921` after review, fix-ups and a
   proof on its own. #49 stays open for the help-page rewrite.
 - **2026-09-15 (morning)** — stage (a) review: a crash on non-Latin names and a library-freezing
@@ -1113,7 +1134,8 @@ The detail is on #228 and #229.
 - **Claude's monthly spend limit** stopped the `watch --organize` agent part-way through, shortly
   after 2026-09-07. It left compiling, tested code with no report and no documentation.
 - **Codex's usage limit** blocks the usual independent review until **2026-09-20 16:30**.
-- **Fable was out of usage credits** on 2026-09-15, twice: the first stand-in review failed the
+- **Fable was out of usage credits** on 2026-09-15, four times in all. The third was the lock
+  redesign's planning. The fourth was the sweep refresh at midday, which Opus took over. The first two: the first stand-in review failed the
   moment it started, and so did the planning run for the fixes. Opus stood in instead — independent of the Sonnet-built work, but the same model as
   the builder of the write lock and the organiser.
 
