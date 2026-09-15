@@ -154,10 +154,19 @@ it would compile.
 See §15 for the fix plan now being carried out, and §8. **Where it stands right now (2026-09-15, midday):**
 
 - Stages (a) and (b) are the only ones started. **(b), the lock, is committed** (`599d921`).
-- **(a) is being rebuilt** with the review's fixes, by a Sonnet agent in the worktree
-  `.claude/worktrees/agent-ac1c1ad32f50eb48f`. After the rebuild comes an Opus re-review, then its
-  two commits are copied onto the branch: one for #231 and #233, one for rustls (#227). Then the
-  worktree is deleted, which frees about 9 GB.
+- **(a) has been rebuilt** with the review's fixes. There are two commits on the worktree branch
+  `worktree-agent-ac1c1ad32f50eb48f`:
+  - `35cc858` — #231 and #233, touching only `disc`, `renamer` and `watcher`;
+  - `a37d37a` — rustls for #227, plus `.cargo/config.toml` setting `AWS_LC_SYS_USE_SYSTEM=0`.
+  - The builder reports 1,416 tests passing, and `cargo deny` clean after the second commit.
+  - **Not yet trusted.** The orchestrator checked that both commits touch only those files, share no
+    file with anything committed since their base `4cd8fa0`, and that the uncommitted organiser code
+    calls none of the changed functions.
+  - **An Opus re-review is running now.** Codex was tried again at midday and is still blocked until
+    2026-09-20 16:30. The review goes to `review-a2.md` in the session scratchpad.
+  - If it approves, both commits are copied onto the branch, the gate is re-run on the combined tree,
+    they are pushed, #227 is closed, and #231 and #233 get comments. Then the worktree is deleted,
+    which frees about 10 GB.
 - **The issue sweep is being refreshed.** The 2026-09-06 report was checked against `04f8ddf`, and 21
   commits have landed since. An Opus agent (Fable was out of credits for the fourth time) is
   re-checking every verdict against HEAD `7be7e1c`. It writes `sweep-actions.json`,
@@ -781,6 +790,8 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-15 (early afternoon)** — stage (a) rebuilt as `35cc858` and `a37d37a`, not yet
+  cherry-picked. An Opus re-review is running. Codex is still blocked.
 - **2026-09-15 (midday)** — the sweep refresh started, run by Opus because Fable was out of credits a
   fourth time. #222's Windows fix is recorded as committed (`eb2c2a9`). The "what to do next" section
   is rewritten to match the work actually in flight.
