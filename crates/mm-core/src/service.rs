@@ -31,9 +31,11 @@
 //      different `settings.json5` from the one the person installing it edited,
 //      and may have no access to their media folders at all.
 //
-// The supported way to run this in the background on Windows today is Task
+// The supported way to run this in the background on Windows is Task
 // Scheduler, running `meedya watch --organize --yes` at logon — that runs as
-// the person themselves, with their settings and their file access.
+// the person themselves, with their settings and their file access. (While
+// real organising is switched off in this build — #180 — that command refuses
+// with exit code 3, so there is nothing useful to schedule yet.)
 //
 // Service defaults: ENABLED, auto-start on login.
 //

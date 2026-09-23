@@ -404,6 +404,38 @@ fn print_event(output_format: OutputFormat, event: &mm_core::watcher::WatchEvent
     }
 }
 
+/// Whether `watch --organize` may move files for real, and whether
+/// `service install` may register the background service that runs it.
+///
+/// **Switched off** by owner decision on 2026-09-23 (#180), until the review's
+/// data-loss findings are fixed and reviewed — see `.claude/HANDOFF.md` §0 and
+/// §15. A `--dry-run` preview works either way, because it moves nothing.
+/// Stage (g) of the fix plan sets this back to `true`.
+pub(crate) const ORGANISING_SWITCHED_ON: bool = false;
+
+/// What a refusal looks like to a script that asked for `--json`.
+#[derive(Serialize)]
+struct SwitchedOffOutput {
+    /// Always `"switched_off"`, so a script can tell this apart from an
+    /// ordinary error without parsing the message.
+    status: &'static str,
+    /// The same plain-English explanation a person would see.
+    message: &'static str,
+}
+
+/// Print the "switched off in this build" refusal, as JSON when `--json` was
+/// asked for and as an error message otherwise. Shared with `service install`
+/// so the two refusals always look alike.
+pub(crate) fn print_switched_off(format: OutputFormat, message: &'static str) {
+    match format {
+        OutputFormat::Json => output::print_json(&SwitchedOffOutput {
+            status: "switched_off",
+            message,
+        }),
+        OutputFormat::Human => output::print_error(message),
+    }
+}
+
 // ─── Event loop ─────────────────────────────────────────────────────────────
 
 /// Log events, and organise them once they have settled, until the watcher is
@@ -488,6 +520,32 @@ pub async fn run(ctx: &CliContext, args: &WatchArgs) -> anyhow::Result<i32> {
 
     // ── Set up organising, if it was asked for ──────────────────────────
     let organiser = if args.organize {
+        // ── Safety catch: organising for real is switched off (#180) ────
+        //
+        // The owner decided on 2026-09-23 to switch real organising off
+        // until the review's known data-loss findings are fixed and reviewed
+        // (`.claude/HANDOFF.md` §0 and §15). Two of them can damage a
+        // library: a `.cue` can be moved away from a `.bin` that is still
+        // downloading, and a `<Filename>` template can rename the same file
+        // again and again. A `--dry-run` preview moves nothing, so it is
+        // still allowed. `--yes` does not get past this — it is exactly what
+        // an installed background service passes.
+        //
+        // Stage (g) of the fix plan turns `ORGANISING_SWITCHED_ON` back on.
+        if !ORGANISING_SWITCHED_ON && !ctx.dry_run {
+            print_switched_off(
+                ctx.output,
+                "Automatic organising is switched off in this build while known problems \
+                 are fixed — it could separate a disc image from its cue sheet, or rename \
+                 the same file over and over. Nothing has been moved.\n\n\
+                 You can still preview what it would do:\n\
+                 \x20   meedya --dry-run watch --organize <folder>\n\
+                 or organise a folder yourself, checking the preview first:\n\
+                 \x20   meedya scan <folder>",
+            );
+            return Ok(ExitCode::NOT_IMPLEMENTED);
+        }
+
         // A clone, so the forced conflict strategy below belongs to this watch
         // run and to nothing else.
         let mut organise_ctx = ctx.clone();
@@ -672,6 +730,46 @@ mod tests {
             settle_secs: 2,
         };
         assert_eq!(run(&ctx, &args).await.unwrap(), ExitCode::ERROR);
+    }
+
+    /// **Safety catch (#180, owner decision 2026-09-23).** Until the
+    /// organiser's known data-loss findings are fixed and reviewed, a real
+    /// `--organize` run must refuse with exit code 3 (`NOT_IMPLEMENTED`) and
+    /// move nothing — even with `--yes`, which is what an installed service
+    /// passes. Only a `--dry-run` preview is allowed through.
+    #[tokio::test]
+    async fn watch_organize_without_dry_run_refuses_and_moves_nothing() {
+        let _config = ConfigDirGuard::new();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("incoming").join("track.wav");
+        write_tagged_wav(&source, "Portishead", "Dummy", "Roads");
+
+        let ctx = test_ctx();
+        let args = WatchArgs {
+            paths: vec![tmp.path().to_path_buf()],
+            no_recursive: false,
+            organize: true,
+            yes: true,
+            settle_secs: 2,
+        };
+
+        // Bounded, because without the safety catch `run` starts the
+        // watcher and then waits for Ctrl+C for ever. A timeout turns that
+        // into a plain test failure instead of a hung test run.
+        let code = tokio::time::timeout(Duration::from_secs(20), run(&ctx, &args))
+            .await
+            .expect("run should refuse at once, not start watching")
+            .unwrap();
+        assert_eq!(code, ExitCode::NOT_IMPLEMENTED);
+        assert!(
+            source.is_file(),
+            "the refusal must leave the file exactly where it was"
+        );
+        assert!(
+            !tmp.path().join("Portishead").exists(),
+            "the refusal must not create any destination folders"
+        );
     }
 
     /// Watch without --organize still validates folders

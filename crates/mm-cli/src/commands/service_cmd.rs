@@ -100,9 +100,11 @@ fn install(ctx: &CliContext, bin_path: Option<&std::path::Path>) -> anyhow::Resu
              again almost immediately. It would also run as the LocalSystem account, \
              which reads a different settings file from yours and may not be able to \
              reach your media folders at all.\n\n\
-             What to do instead: use Task Scheduler to run\n\
+             Automatic organising itself is also switched off in this build while known \
+             problems are fixed, so there is nothing to run in the background yet. Once it \
+             is switched back on, the way to do this will be Task Scheduler, running\n\
              \x20   meedya watch --organize --yes\n\
-             at logon. That runs as you, reads your settings, and keeps working.",
+             at logon. That runs as you and reads your settings.",
         );
         return Ok(ExitCode::NOT_IMPLEMENTED);
     }
@@ -135,7 +137,35 @@ fn install(ctx: &CliContext, bin_path: Option<&std::path::Path>) -> anyhow::Resu
                  '{} watch --organize --yes' automatically at login.",
                 resolved.display()
             );
+            if !super::watch::ORGANISING_SWITCHED_ON {
+                println!(
+                    "Note: a real install is switched off in this build, because automatic \
+                     organising is switched off while known problems are fixed."
+                );
+            }
             return Ok(ExitCode::SUCCESS);
+        }
+
+        // ── Safety catch: switched off with organising (#180) ───────────
+        //
+        // The service runs `meedya watch --organize --yes`, and real
+        // organising is switched off in this build (owner decision,
+        // 2026-09-23 — see the matching block in `watch.rs`). Installing it
+        // would register a service that refuses at every start, which
+        // systemd and launchd would then restart over and over. So refuse
+        // here too, before anything is written or registered. The dry-run
+        // preview above is still allowed. Stage (g) of the fix plan turns
+        // the shared switch back on.
+        if !super::watch::ORGANISING_SWITCHED_ON {
+            super::watch::print_switched_off(
+                ctx.output,
+                "Installing the background service is switched off in this build, because \
+                 automatic organising is switched off while known problems are fixed. \
+                 Nothing has been installed.\n\n\
+                 If you installed the service from an earlier build, remove it with:\n\
+                 \x20   meedya service uninstall",
+            );
+            return Ok(ExitCode::NOT_IMPLEMENTED);
         }
 
         match service::install_service(&resolved) {
