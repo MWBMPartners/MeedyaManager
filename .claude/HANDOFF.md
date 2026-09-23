@@ -6,10 +6,11 @@
 > Records *verified* state only — never aspirational state. Update **as you go**, not only after
 > each task (owner, 2026-09-23).
 
-**Last updated:** 2026-09-23, about 21:30 UK time
-**Updated by:** Claude Code (cloud session `74f17925`), for issue #237
+**Last updated:** 2026-09-23, late evening UK time
+**Updated by:** Claude Code (cloud session `74f17925`), for issues #237 and #180
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → one pull request into **`alpha`**, later, when the owner says
-**Branch HEAD:** on GitHub, `0a439df` (the safety catch). **Locally there is one more commit, not pushed** — the help pages and rule corrections that go with it; the owner pushes (see "Pushing" below). Check with `git status -sb`.
+**Branch HEAD on GitHub:** `6adaae0` (help pages and rule corrections for the safety catch), on top of `0a439df` (the safety catch itself) — both pushed at the owner's request. **Locally:** one further commit that only updates this file, **not pushed** unless the owner asks. Check with `git status -sb`.
+**Pushing:** do **not** push unless the owner asks; each request covers that occasion only (owner, restated 2026-09-23). Always say how many commits are waiting.
 
 ---
 
@@ -28,8 +29,10 @@
 
 Nothing has moved on the code since 2026-09-15. The last code commit, `6ab0c8d`, **committed the
 organiser (#180) and its documentation without the fixes the stand-in review said it needed** —
-so `meedya watch --organize` is switched on with two known ways to damage a library (§0b,
-findings #1 and #2). The **stage (a) fixes** — for P0 #233 (lost file extensions), #231
+so `meedya watch --organize` was switched on with two known ways to damage a library (§0b,
+findings #1 and #2). **Later on 2026-09-23 the owner chose to switch it off: the safety catch
+`0a439df` makes real organising and `service install` refuse (exit code 3) until the fixes
+land; previews still work.** The **stage (a) fixes** — for P0 #233 (lost file extensions), #231
 (half-downloaded files) and #227 (a security advisory) — **were lost**: they only ever existed
 in a temporary work folder on the owner's Mac and were never pushed, so they must be rebuilt.
 Codex's usage block ended on 2026-09-20, so the owed Codex catch-up review can now run — the
@@ -43,7 +46,7 @@ cannot see it. On 2026-09-23 the owner restated the standing rules; they are now
 | --- | --- |
 | Branch HEAD before this update was `6ab0c8d`, matching GitHub | `git fetch`; `git status -sb` showed no difference from `origin` |
 | `6ab0c8d` (2026-09-15 13:14, author `Salem874`) is the organiser, #180, with its documentation — 14 files, including `watch.rs` (+878 lines), `service_cmd.rs`, `service.rs` and 9 help/documentation pages | `git show --stat 6ab0c8d` |
-| The organiser is **on**: without `--dry-run` it asks once on a terminal (or is pre-confirmed by `--yes`) and then moves files. **There is no "refuse with exit 3" guard**, which the fix plan (§15) required until stage (g) | `crates/mm-cli/src/commands/watch.rs:506-517` |
+| *(Superseded later the same day by `0a439df`, which switches it off.)* The organiser was **on**: without `--dry-run` it asks once on a terminal (or is pre-confirmed by `--yes`) and then moves files. **There is no "refuse with exit 3" guard**, which the fix plan (§15) required until stage (g) | `crates/mm-cli/src/commands/watch.rs:506-517` |
 | It still ignores the configured output folder (`output_dir: Some(root)`), which is finding #13 | `watch.rs:255` |
 | `service install` refuses only on Windows. On macOS it still loads the agent with `RunAtLoad` — finding #4 | `service_cmd.rs:95-107`; `crates/mm-core/src/service.rs:344`, `:392` |
 | The stage (a) commits (`35cc858`, `a37d37a`, and the earlier `b023adf`, `3739c19`) **do not exist** in this clone or on GitHub | `git cat-file -t` fails; `git ls-remote origin` lists no such branch |
@@ -93,7 +96,7 @@ below.**
   macOS compile. **Not fixed, noted:** a Linux service installed from an earlier build restarts
   every 5 seconds, refusing each time — harmless but noisy; the fix is `meedya service
   uninstall`, which the help pages now say. Help pages updated by a Sonnet writer and checked
-  by the orchestrator — committed locally, not pushed. Stage (g) later flips the switch back to
+  by the orchestrator — `6adaae0`, pushed at the owner's request. Stage (g) later flips the switch back to
   `true`.
 - **Decision 2 — settled. Pushing:** *"Previous 'do not push unless asked' still applies as per
   standing rules."* **Commit, but push only when the owner asks; each request covers that
@@ -106,8 +109,9 @@ Older decisions still open are in §8 ("Decisions the owner still needs to make"
 
 ### What to do next, in order
 
-1. ~~Get the owner's answer to decision 1~~ — answered (a); the safety catch is being finished
-   (see "Owner answers" above).
+1. ~~Decision 1~~ — ✅ done: the safety catch is `0a439df`, its documentation `6adaae0`, both
+   on GitHub. Nothing on the branch can move files automatically any more. Still owed for it:
+   a Codex review and a Windows/macOS build.
 2. **Codex catch-up review** (owed since 2026-09-15; Codex is unblocked since 2026-09-20 16:30).
    Scope: every commit from `c68719c` to HEAD — and the organiser `6ab0c8d` first, because
    only Opus (the same model that built it) has looked at it. Loop: review → fix → review until
@@ -118,7 +122,9 @@ Older decisions still open are in §8 ("Decisions the owner still needs to make"
    crash the scan; a stray `.cue` or lone `.mds` must not freeze a library root; narrower `~`
    and Safari rules). Two commits: #231 + #233 in `disc`, `renamer`, `watcher`; then the
    `rustls` lock-file update for #227 with `AWS_LC_SYS_USE_SYSTEM=0` in `.cargo/config.toml`.
-   **Push each one as soon as it passes review** — that is the lesson of the loss.
+   **Commit each one as soon as it passes review, and tell the owner it is waiting to be
+   pushed** — the lesson of the loss is that unpushed work can vanish, but pushing still
+   needs the owner's say-so.
 4. Stages (c)–(g) of §15 for the organiser, then its documentation (stage f).
 5. Then §8 items 4 onward: the issue-sweep comments (never posted), #223, #217 stages 4–9,
    #220 → #221 → #182, the thorough documentation pass, and the pull request into `alpha`.
@@ -930,8 +936,9 @@ it.
 
 - **2026-09-23 (late evening)** (#180) — owner chose the safety catch; built, reviewed by Opus,
   committed and pushed as `0a439df` at the owner's request. Help pages updated to match. Push rule
-  settled: do not push unless asked. Follow-up commit with docs and rule corrections is local
-  only.
+  settled: do not push unless asked. The follow-up commit with docs and rule corrections,
+  `6adaae0`, was pushed at the owner's request; the "do not push unless instructed" rule still
+  stands.
 - **2026-09-23** (#237) — brought up to date for a possible fresh session. New §0 with checked
   facts: the organiser was committed as `6ab0c8d` without the review's fixes and is switched on;
   the stage (a) fixes were lost with the Mac's temporary work folder; Codex is unblocked. The
