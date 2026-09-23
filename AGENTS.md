@@ -139,7 +139,7 @@ link the Rust engine yet (#66). See `.claude/HANDOFF.md` §0 and §2 for what ac
 
 Cargo is not on the default `PATH`. Run `export PATH="$HOME/.cargo/bin:$PATH"` first.
 
-    cargo test --workspace                              # 1,395 passing at 83628d9
+    cargo test --workspace                              # see .claude/HANDOFF.md §0 for the latest count
     cargo clippy --workspace --all-targets -- -D warnings
     cargo deny check
     cd macos && swift build                             # baseline is 1 error line
@@ -159,3 +159,57 @@ GTK4). Treat it as read-only and do not change its public interface.
 - **No new dependencies without asking.** A lock-file change forces a cold rebuild on three
   operating systems, and this branch has never been through CI, so any failure would be
   impossible to attribute.
+
+## Start here when resuming
+
+1. `.claude/HANDOFF.md` §0 — where things stand right now. It records only what has been
+   checked, never what was hoped for.
+2. `.OpenAI/CONTEXT.md` and `.OpenAI/MEMORY.md` — Codex's own short notes on this project.
+3. `.claude/CLAUDE.md` — the full project rules. This file and that one must say the same
+   thing; if you change a rule in one, change it in the other.
+
+## Standing tasks and working rules (owner, 2026-09-23)
+
+These sit alongside every rule above; none was removed. The fuller version is in
+`.claude/CLAUDE.md` under the same heading.
+
+1. **Plain English.** No jargon in anything written for people — not even for developers, who
+   can find it confusing too. If a technical term cannot be avoided, explain it.
+2. **Keep the handoff current as you go.** Update `.claude/HANDOFF.md` while working, not only
+   at the end. A session can be cut off at any moment, and anything that exists only in the
+   chat, in a temporary work folder or in an unpushed commit is then lost. (On 2026-09-23 the
+   fixes for #233, #231 and #227 were found lost for exactly that reason.)
+3. **Get It Right First Time, without wasting credits.** Think hard first; use workflows for
+   larger pieces of work. Deep analysis and planning: Opus agents, **one after another, never
+   in parallel** (Opus 5.5 is cheaper than Fable and at least as good). Building: Sonnet or
+   Haiku, whichever suits; Opus only for genuinely complex changes. When Codex is the one
+   working, use its strongest reasoning setting for planning and a lighter one for simple
+   edits, in the same spirit.
+4. **Check work with a different AI system.** Work built with Claude Code is reviewed by Codex;
+   work built with Codex is reviewed by Claude. The owner's `dev-team-plugins` may be used for
+   any of this, and for suggesting fixes and new features.
+5. **After each finished task:** commit **and push** it to the working branch (today
+   `claude/musicbrainz-api-migration-7jxszn`, later merged into `alpha`); comment on each
+   related GitHub issue individually; update `.claude/` (Claude's context), `.OpenAI/` and
+   this file (Codex's context); update the handoff.
+6. **Standing task — thorough documentation.** Keep every `.md` file, the in-app help and the
+   `.claude/` and `.OpenAI/` notes accurate. If the project offers an API, keep its
+   OpenAPI/Swagger description current, and add a Swagger UI page that also works on shared
+   web hosting without Docker. **Today there is no working API or website** (`mm-server`
+   builds no web routes), so there is nothing to describe yet — never publish a description
+   of routes that do not exist.
+7. **Work efficiently.** Reorder or bundle tasks where that helps; skip nothing.
+8. **Work on your own.** Stop only for a decision that must come from the owner. Gather those
+   questions at the start, ask them simply with the reason, and carry on with everything else
+   while waiting.
+9. **Progress updates** as a table of queued tasks with the status of each.
+10. **Review until clean.** Code is reviewed by Codex, the problems found are fixed, and it is
+    reviewed again, round after round, until a review finds nothing. If you *are* Codex and
+    built the code, a Claude review stands in the other direction.
+11. **No stacked pull requests.** Everything goes on the one working branch; a single pull
+    request into `alpha` is opened later, when the owner says.
+12. **When an AI service is unavailable, fall back — then switch back.** If the main service
+    or one of its helpers is unavailable or out of credit, hand the work to another suitable
+    one, provided no context or progress is lost. Switch back as soon as possible, and have
+    the main service do a full review of everything done while it was away. Record every
+    switch in the handoff. This rule is deliberately not tied to particular products.

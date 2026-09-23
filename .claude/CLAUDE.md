@@ -25,6 +25,15 @@
   — update it after every task, the same way this file's own rules require `.md` files to be
   updated after every code change. The orchestrator/session owner maintains it; do not let it
   go stale.
+- **Update it as you go, not only at the end** (owner, restated 2026-09-23). A session can be
+  cut off at any moment — a usage limit, a lost connection, or the owner restarting to update
+  Claude Code — and anything that lives only in the chat is lost when that happens. Anything
+  that took real effort to find out goes into the handoff as soon as it is known.
+- **Anything that exists only on one machine is at risk.** Temporary work folders
+  (`git worktree`s), scratchpad files and unpushed commits do not survive a new session,
+  especially a cloud one. On 2026-09-23 the stage (a) fixes for #233, #231 and #227 were found
+  to be lost for exactly this reason. Push finished work to the working branch; record anything
+  still in progress in the handoff.
 - **Cargo is not on the default `PATH`** in this environment. Run
   `export PATH="$HOME/.cargo/bin:$PATH"` before any `cargo` command.
 
@@ -89,9 +98,9 @@
 ## Milestone Order
 
 Workspace-wide: **54,121 Rust lines and 1,467 test functions** in `crates/` (working tree,
-2026-09-15). `cargo test --workspace` reports **1,395 passing, 0 failed** at `83628d9`, and 1,402
-on the working tree with the uncommitted work described in `.claude/HANDOFF.md` §0. Older
-figures — 44,183 / 1,392, or 217 / 399 / 444 tests — are stale; do not repeat them.
+2026-09-15). `cargo test --workspace` reports **1,416 passing, 0 failed** at `6ab0c8d`
+(checked 2026-09-23). Older figures — 1,395 / 1,402, 44,183 / 1,392, or 217 / 399 / 444 tests
+— are stale; do not repeat them.
 
 1. M0 — Repository Setup & Scaffolding (Complete)
 2. M1 — Core Engine (Complete)
@@ -152,6 +161,11 @@ defects referenced above and cut the version to `1.4.0-alpha.1` — see `docs/ch
 
 ## Important Context Files
 
+- `.claude/HANDOFF.md` — **Where things stand right now; read first when resuming**
+- `AGENTS.md` — The same rules for Codex and other AI coding tools
+- `.OpenAI/` — Codex's context and memory notes (`CONTEXT.md`, `MEMORY.md`)
+- `.claude/device-wide-rules.md` — Rules the owner wants on every project on their computer,
+  ready to copy into `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`
 - `.claude/ProjectBrief_Chat.claude` — Full project brief from user
 - `Project_Plan.md` — Comprehensive project plan
 - `PROJECT_STATUS.md` — Current progress
@@ -218,7 +232,11 @@ defects referenced above and cut the version to `1.4.0-alpha.1` — see `docs/ch
   `[v1.4.0-alpha.1]` changelog entry, not treated as a release. No tag has been pushed for
   `1.4.0-alpha.1` yet.
 - **Every task** must have a GitHub Issue created BEFORE work begins and closed AFTER verification
-- **Commit but do NOT push** — user pushes manually (exception: pushing a *new feature branch* is OK once the user has explicitly asked for a PR)
+- **Commit and push each finished task to the working branch** (owner, 2026-09-23 — this
+  replaces the older rule "commit but do not push; the user pushes manually"). The working
+  branch is the one that will later be merged into `alpha` — today
+  `claude/musicbrainz-api-migration-7jxszn`. Never push to `main`, `alpha` or `beta` directly.
+  See "Standing tasks and working rules" below.
 
 ## Branch protection on `main` — umbrella PR Gate pattern
 
@@ -296,6 +314,122 @@ clearer, use short sentences, and always explain *why* and not only *what*.
 When reporting on work done, be blunt about what is finished, what is not, what was not
 checked and what went wrong. "I could not test this because there is no database on this
 machine" is worth far more than an implication that something was verified.
+
+Restated again on 2026-09-23, in the owner's words: jargon *"can sometimes be confusing even
+for some technically proficient users/developers"*. So this applies to feedback and
+explanations given to developers too, not only to end users.
+
+## Standing tasks and working rules (owner, 2026-09-23)
+
+The owner set these out on 2026-09-23. They sit alongside every other rule in this file;
+none of the older rules was removed. `AGENTS.md` carries the same list for Codex — if you
+change one, change the other.
+
+### 1. Plain English
+
+See "Standing rule — write in plain English" above.
+
+### 2. Keep the handoff up to date as you go
+
+Update `.claude/HANDOFF.md` while working, not only at the end, so work can be picked up at
+any moment after an interruption. See "Session continuity" at the top of this file.
+
+### 3. Thinking, planning and which AI model does what
+
+The aim is **GIRFT — Get It Right First Time**: top-quality, correct code, without wasting
+usage credits.
+
+- **Think hard before acting.** Use workflows (scripted groups of AI helpers) to plan and to
+  carry out larger pieces of work.
+- **Deep analysis and deep planning: Opus agents, one after another — never in parallel.**
+  The owner's reasoning: Opus 5.5 costs less than Fable and is at least as good at this.
+  (This replaces the earlier habit of trying Fable first for planning.) Running them one at a
+  time also means each can build on the last one's findings.
+- **Building: Sonnet or Haiku**, whichever suits the job — Haiku for simple, mechanical edits;
+  Sonnet for ordinary code. **Use Opus to build only when the change is genuinely complex.**
+- The project's own helper definitions follow this: `.claude/agents/deep-architect.md` uses
+  Opus, `.claude/agents/quick-edits.md` uses Haiku.
+
+### 4. Use plugins, and check work with a different AI system
+
+- The owner's `dev-team-plugins` may be used for any of this work, and for suggesting fixes,
+  tweaks, improvements and new features.
+- **Cross-check with a different AI system.** Work planned and built with Claude Code is
+  reviewed with Codex, and work built with Codex is reviewed with Claude. Two different
+  systems rarely make the same mistake in the same place.
+- Note: these plugins and the Codex command-line tool are installed on the owner's computer.
+  A cloud session may not have them — check, and say so plainly if they are missing.
+
+### 5. After each finished task
+
+1. **Commit and push** it to the working branch (the one that will later be merged into
+   `alpha`), and update its GitHub issue — each issue individually, one comment per task.
+2. Update Claude's memory and context files in `.claude/` (this file, `HANDOFF.md`).
+3. Update Codex's memory and context files in `.OpenAI/` (`CONTEXT.md`, `MEMORY.md`) and
+   `AGENTS.md`.
+4. Update the handoff so a fresh session can pick up exactly where this one stopped.
+
+### 6. Standing task — a thorough documentation update
+
+Keep every document accurate: all `.md` files, the in-app help and guides, and everything in
+`.claude/`. If the project offers an API, keep its OpenAPI/Swagger description (a
+machine-readable list of every web address the server answers and what it returns) up to
+date. If the project has web-based parts and no Swagger UI (a web page for browsing that
+description), add one, set up so it also works on ordinary shared web hosting without Docker.
+
+**Where this stands today:** MeedyaManager has **no working API and no website** — `mm-server`
+never builds a single web route, and there are no `.html` files (see M10 above and
+`.claude/HANDOFF.md` §12d). So there is nothing yet for OpenAPI or Swagger UI to describe.
+This part of the task applies once `mm-server` answers real requests. Do not publish an API
+description for routes that do not exist.
+
+### 7. Work efficiently
+
+Reorder or bundle tasks where that is quicker, as long as nothing is skipped.
+
+### 8. Work on your own; ask about decisions up front
+
+- Carry on without stopping unless a decision or approval genuinely has to come from the
+  owner.
+- When one is needed, say **what** you need and **why**, in the simplest words possible.
+- **Gather all such questions at the start**, not one at a time as they come up, so the owner
+  can answer them together and the work can then run on uninterrupted.
+- While waiting for an answer, carry on with every other queued task that does not depend
+  on it.
+
+### 9. Progress updates
+
+Give frequent progress updates as a **table of the queued tasks, with the status of each**.
+
+### 10. Code review — repeat until clean
+
+All code goes through review with **Codex**. Issues it finds are fixed automatically, then
+Codex reviews again — **round after round until a review finds nothing**. If Codex is
+unavailable, see rule 12, and record in the handoff that the Codex review is still owed.
+
+### 11. No stacked pull requests
+
+Do not open several pull requests. Every change is committed to the one working branch; a
+single pull request from that branch into `alpha` is opened later, when the owner says. Many
+open pull requests at once risk one merge undoing or clashing with another.
+
+### 12. When an AI service is unavailable — fall back, then switch back
+
+This rule is deliberately not tied to particular products.
+
+- If the main AI service for a project (for example Claude Code or Codex), or one of its
+  helpers, becomes unavailable or runs out of usage credits, **hand the work to another
+  suitable one** — provided that can be done without losing context or progress.
+- **Switch back to the main service as often as possible**, and once it is available again,
+  have it do a **full review** of everything done while it was away.
+- This is reasonably safe because every piece of work is also reviewed by a different AI
+  system (rule 4), which should catch differences in how each one works.
+- It makes keeping the handoff up to the minute **essential**: the handoff is the only thing
+  the stand-in service can rely on.
+- Record every switch in the handoff: which service stood in, for what, and what review is
+  owed as a result.
+- The owner also wants this rule on every project on their computer. The wording to copy is
+  in `.claude/device-wide-rules.md`.
 
 ## Always check MeedyaSuite-core before saying a feature is missing
 

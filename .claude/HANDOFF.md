@@ -3,16 +3,117 @@
 > **(C) 2025-2026 MWBM Partners Ltd**
 >
 > **Purpose:** the single place to look to resume work after any interruption.
-> Records *verified* state only — never aspirational state. Update after every task.
+> Records *verified* state only — never aspirational state. Update **as you go**, not only after
+> each task (owner, 2026-09-23).
 
-**Last updated:** 2026-09-15
-**Updated by:** Claude Opus 5, session `07a21012`
-**Working branch:** `claude/musicbrainz-api-migration-7jxszn` → will PR into **`alpha`**
-**Branch HEAD:** latest code commit `599d921` (pushed) — **plus the uncommitted organiser (#180) and its documentation; see §0 and §15**
+**Last updated:** 2026-09-23, about 21:30 UK time
+**Updated by:** Claude Code (cloud session `74f17925`), for issue #237
+**Working branch:** `claude/musicbrainz-api-migration-7jxszn` → one pull request into **`alpha`**, later, when the owner says
+**Branch HEAD:** the #237 documentation commit, on top of `6ab0c8d` (the organiser) — all pushed. **Nothing is uncommitted and nothing is waiting in a side folder.**
 
 ---
 
-## 0. Read this first — where things stand on 2026-09-15
+## ▶ Starting a fresh session? Paste this
+
+> Read `.claude/HANDOFF.md` §0 first, then `.claude/CLAUDE.md` (especially "Standing tasks and
+> working rules") and `AGENTS.md`. We are on branch `claude/musicbrainz-api-migration-7jxszn`.
+> Answer nothing from memory — check the code. Start with the owner decisions in §0, then work
+> down "What to do next" in §0.
+
+---
+
+## 0. Read this first — where things stand on 2026-09-23
+
+### In one paragraph
+
+Nothing has moved on the code since 2026-09-15. The last code commit, `6ab0c8d`, **committed the
+organiser (#180) and its documentation without the fixes the stand-in review said it needed** —
+so `meedya watch --organize` is switched on with two known ways to damage a library (§0b,
+findings #1 and #2). The **stage (a) fixes** — for P0 #233 (lost file extensions), #231
+(half-downloaded files) and #227 (a security advisory) — **were lost**: they only ever existed
+in a temporary work folder on the owner's Mac and were never pushed, so they must be rebuilt.
+Codex's usage block ended on 2026-09-20, so the owed Codex catch-up review can now run — the
+owner mentioned one due at **00:08** (the night of 23–24 Sept); this session did not schedule it and
+cannot see it. On 2026-09-23 the owner restated the standing rules; they are now in
+`.claude/CLAUDE.md` and `AGENTS.md` (issue #237).
+
+### Verified on 2026-09-23 (not inferred)
+
+| Fact | How it was checked |
+| --- | --- |
+| Branch HEAD before this update was `6ab0c8d`, matching GitHub | `git fetch`; `git status -sb` showed no difference from `origin` |
+| `6ab0c8d` (2026-09-15 13:14, author `Salem874`) is the organiser, #180, with its documentation — 14 files, including `watch.rs` (+878 lines), `service_cmd.rs`, `service.rs` and 9 help/documentation pages | `git show --stat 6ab0c8d` |
+| The organiser is **on**: without `--dry-run` it asks once on a terminal (or is pre-confirmed by `--yes`) and then moves files. **There is no "refuse with exit 3" guard**, which the fix plan (§15) required until stage (g) | `crates/mm-cli/src/commands/watch.rs:506-517` |
+| It still ignores the configured output folder (`output_dir: Some(root)`), which is finding #13 | `watch.rs:255` |
+| `service install` refuses only on Windows. On macOS it still loads the agent with `RunAtLoad` — finding #4 | `service_cmd.rs:95-107`; `crates/mm-core/src/service.rs:344`, `:392` |
+| The stage (a) commits (`35cc858`, `a37d37a`, and the earlier `b023adf`, `3739c19`) **do not exist** in this clone or on GitHub | `git cat-file -t` fails; `git ls-remote origin` lists no such branch |
+| No GitHub issue has changed since 2026-09-15 11:19 UTC | issue list, sorted by last update |
+| No scheduled routine exists for this account's cloud sessions | routine list is empty |
+| The Codex command-line tool and the `dev-team-plugins` are **not installed in this cloud container** — they are on the owner's Mac | `which codex` finds nothing; no plugins installed |
+| `cargo test --workspace` at `6ab0c8d`: **1,416 passed, 0 failed** (Rust 1.98.0, Linux) | run once in this cloud session. Only tests were run — not clippy, fmt, doc or deny. `cargo deny` is still expected to fail on #227 |
+
+**Who committed `6ab0c8d`, and why, is not known.** Its author name is the same one used for
+every commit on this branch, and its message style is unlike the earlier Claude commits. It may
+have been made from the owner's editor or by another tool. **This is the first owner question
+below.**
+
+### Owner decisions needed — asked up front
+
+1. **The live organiser.** `watch --organize` can currently (#1) move a `.cue` away from a `.bin`
+   that is still downloading, which destroys the disc image, and (#2) rename the same file over
+   and over (`01 - 01 - 01 - song.wav`). Choose one:
+   - **(a) Recommended:** add back the plan's safety catch — refuse (exit 3) unless `--dry-run`
+     — in a small commit now, then carry on with stages (c)–(g). Nothing is lost; the code stays.
+   - (b) Revert `6ab0c8d` and re-apply it once fixed.
+   - (c) Leave it switched on while stages (c)–(e) are done.
+   Also: **was committing it intentional?**
+2. **The rule change on pushing.** The older rule said "commit, but do not push — the owner
+   pushes". The 2026-09-23 rules say "commit and push each task". **Taken as replacing the older
+   rule**; say if not.
+3. **Swagger/OpenAPI.** MeedyaManager has no working API or website yet (§12d), so there is
+   nothing to describe. **Taken as "do this once `mm-server` answers real requests"**; say if you
+   want a placeholder earlier.
+4. **Rules for every project on your computer.** A cloud session cannot reach your Mac. The text
+   is in `.claude/device-wide-rules.md`, ready to paste into `~/.claude/CLAUDE.md` and
+   `~/.codex/AGENTS.md`. Please do that, or ask a session on your Mac to.
+
+Older decisions still open are in §8 ("Decisions the owner still needs to make").
+
+### What to do next, in order
+
+1. **Get the owner's answer to decision 1**, and act on it first — it is the only thing on the
+   branch that can damage someone's files today.
+2. **Codex catch-up review** (owed since 2026-09-15; Codex is unblocked since 2026-09-20 16:30).
+   Scope: every commit from `c68719c` to HEAD — and the organiser `6ab0c8d` first, because
+   only Opus (the same model that built it) has looked at it. Loop: review → fix → review until
+   clean. Run it with `< /dev/null`. It must run on the owner's Mac or wherever Codex is
+   installed.
+3. **Rebuild stage (a)** from the plan in §15(a), **including the review's fixes** recorded in
+   §15 "Progress" (no byte-position slicing of names, so Japanese/Chinese/Russian names cannot
+   crash the scan; a stray `.cue` or lone `.mds` must not freeze a library root; narrower `~`
+   and Safari rules). Two commits: #231 + #233 in `disc`, `renamer`, `watcher`; then the
+   `rustls` lock-file update for #227 with `AWS_LC_SYS_USE_SYSTEM=0` in `.cargo/config.toml`.
+   **Push each one as soon as it passes review** — that is the lesson of the loss.
+4. Stages (c)–(g) of §15 for the organiser, then its documentation (stage f).
+5. Then §8 items 4 onward: the issue-sweep comments (never posted), #223, #217 stages 4–9,
+   #220 → #221 → #182, the thorough documentation pass, and the pull request into `alpha`.
+
+### Standing rules — where they are
+
+The owner's standing rules of 2026-09-23 (plain English; keep this file current as you go;
+Opus for analysis one at a time, Sonnet/Haiku to build; cross-check with a different AI system;
+after each task commit + push + issue comment + update `.claude/`, `.OpenAI/` and this file;
+review until clean; no stacked pull requests; fall back to another AI service when one is out
+of credit, then switch back and do a full review) are in **`.claude/CLAUDE.md` → "Standing
+tasks and working rules"**, mirrored in `AGENTS.md`. Codex's own notes are in `.OpenAI/`.
+
+---
+
+## 0b. The picture on 2026-09-15 — kept for reference
+
+Everything below in §0b was true on 2026-09-15. **Where it conflicts with §0 above, §0 wins** —
+in particular, "the uncommitted work" is no longer uncommitted (the organiser is `6ab0c8d`), and
+the stage (a) worktree it mentions no longer exists.
 
 ### In one paragraph
 
@@ -434,6 +535,12 @@ change in MeedyaSuite-core — same territory as open issue #162. Tracked on **#
 
 ## 5. Session artefacts
 
+**2026-09-23:** everything below belongs to the previous session on the owner's Mac (`07a21012`).
+The cloud session `74f17925` could not see any of it. **Treat all of it as gone** unless you
+are on that Mac and find it still there. The lost stage (a) worktree is the costly example.
+This session left nothing outside the repository: its only scratch file was a test-run summary,
+and the result is copied into §0.
+
 The session scratchpad is **session-scoped and will not survive into a new session**:
 
 ```text
@@ -480,12 +587,13 @@ The docs audit found **121 specific inaccuracies** across **55 `.md` files**. Hi
 
 ## 7. If you are resuming cold
 
-1. Read **§0** first, then `.claude/CLAUDE.md` for the project rules, and `AGENTS.md`.
-2. Run `git status` and `git log --oneline -5`. **Expect uncommitted work** unless §0 says it has
-   been committed. Do not discard it, and do not commit it without a review.
+1. Read **§0** first, then `.claude/CLAUDE.md` for the project rules (especially "Standing tasks
+   and working rules"), and `AGENTS.md`.
+2. Run `git fetch` then `git status -sb` and `git log --oneline -5`. As of 2026-09-23 there is
+   **no uncommitted work** — if you find some, it is new; find out whose it is before touching it.
 3. Run `export PATH="$HOME/.cargo/bin:$PATH"` before any cargo command.
-4. Check whether the review in §0 came back. If the session was lost before it did, run the
-   review again from the description in §0, using a system that built none of the work.
+4. Ask the owner the decisions in §0 that are still unanswered, all together, then carry on with
+   everything that does not depend on them.
 5. **Never test `meedya watch --organize` or `meedya service install` against real settings.**
    Point `MM_CONFIG_DIR` at an empty scratch folder and pass `--dry-run`. `service install`
    really does register a background service.
@@ -496,6 +604,11 @@ The docs audit found **121 specific inaccuracies** across **55 `.md` files**. Hi
 ---
 
 ## 8. Next actions
+
+> **2026-09-23:** §0 "What to do next" now leads. Items 1–3 below date from 2026-09-15 and
+> are partly overtaken: the release guard, Windows guard and lock are committed; the organiser
+> was committed **without** its fixes (`6ab0c8d`); the #227 update was built and then lost; and
+> Codex is no longer blocked. Items 4 onward still stand as written.
 
 In order:
 
@@ -789,6 +902,14 @@ lost, but the accessibility coverage it represented is genuinely gone and no iss
 it.
 
 ## 11. Change log for this handoff file
+
+- **2026-09-23** (#237) — brought up to date for a possible fresh session. New §0 with checked
+  facts: the organiser was committed as `6ab0c8d` without the review's fixes and is switched on;
+  the stage (a) fixes were lost with the Mac's temporary work folder; Codex is unblocked. The
+  2026-09-15 §0 kept as §0b. Four owner decisions asked up front. The owner's restated standing
+  rules added to `.claude/CLAUDE.md` and `AGENTS.md`; `.OpenAI/` created for Codex's notes;
+  `.claude/device-wide-rules.md` created for the owner to copy onto their Mac; the
+  `deep-architect` helper switched from Fable to Opus to match the new model rule.
 
 - **2026-09-15 (early afternoon)** — stage (a) rebuilt as `35cc858` and `a37d37a`, not yet
   cherry-picked. An Opus re-review is running. Codex is still blocked.
@@ -1339,6 +1460,11 @@ After Codex's review: remove the two refusals.
 - Stopping part-way through one huge folder, and an override for one-off `<Filename>` renames.
 
 ### Progress, 2026-09-15
+
+> **2026-09-23 correction:** the stage (a) commits described below were **never pushed and are
+> lost** — the worktree lived only on the Mac. Stage (a) must be rebuilt, with the review
+> fixes listed below built in from the start. Separately, stages (c)–(g) were overtaken:
+> the organiser was committed as-is in `6ab0c8d`, without the stage (c) safety catch (see §0).
 
 - **(a) and `rustls`: built as two local commits, not yet on the branch.** `b023adf` (stage a) and
   `3739c19` (`rustls` 0.23.37 → 0.23.45, plus `rustls-webpki`, `aws-lc-rs` and `aws-lc-sys`; lock file
