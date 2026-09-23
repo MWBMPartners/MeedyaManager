@@ -77,12 +77,31 @@ below.**
    is in `.claude/device-wide-rules.md`, ready to paste into `~/.claude/CLAUDE.md` and
    `~/.codex/AGENTS.md`. Please do that, or ask a session on your Mac to.
 
+**Owner answers, 2026-09-23 (evening):**
+
+- **Decision 1 — answered (a):** put the safety catch back. **In progress:** a single switch,
+  `ORGANISING_SWITCHED_ON = false` in `crates/mm-cli/src/commands/watch.rs`. With it off,
+  `watch --organize` without `--dry-run` refuses with exit code 3 and moves nothing, even with
+  `--yes`. `service install` on Linux and macOS refuses in the same way (Windows already did).
+  Previews with `--dry-run` still work. A new test was shown failing first (the watcher started)
+  and passing after. Clippy is clean and all 116 command-line tests pass. A hands-on check
+  against an empty settings folder moved nothing and installed nothing. **Waiting on:** an
+  independent Opus review (Codex is not installed in this cloud session, so a Codex review is
+  still owed), and a Sonnet update of the help pages. Then: commit, push, comment on #180.
+  Stage (g) later flips the switch back to `true`.
+- **Decision 2 — answered:** *"commit and push on this occasion"*. So this time, commit and push.
+  **Whether pushing becomes the permanent default is still open.** The 2026-09-23 standing
+  tasks say "commit and push each task"; the older rule said "do not push". Until the owner says
+  otherwise, push when the owner's instructions for the work say to — as the 2026-09-23 standing
+  tasks do — and ask if unsure.
+- Decisions 3 and 4: no answer yet; the assumptions above stand.
+
 Older decisions still open are in §8 ("Decisions the owner still needs to make").
 
 ### What to do next, in order
 
-1. **Get the owner's answer to decision 1**, and act on it first — it is the only thing on the
-   branch that can damage someone's files today.
+1. ~~Get the owner's answer to decision 1~~ — answered (a); the safety catch is being finished
+   (see "Owner answers" above).
 2. **Codex catch-up review** (owed since 2026-09-15; Codex is unblocked since 2026-09-20 16:30).
    Scope: every commit from `c68719c` to HEAD — and the organiser `6ab0c8d` first, because
    only Opus (the same model that built it) has looked at it. Loop: review → fix → review until

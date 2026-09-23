@@ -232,8 +232,11 @@ defects referenced above and cut the version to `1.4.0-alpha.1` — see `docs/ch
   `[v1.4.0-alpha.1]` changelog entry, not treated as a release. No tag has been pushed for
   `1.4.0-alpha.1` yet.
 - **Every task** must have a GitHub Issue created BEFORE work begins and closed AFTER verification
-- **Commit and push each finished task to the working branch** (owner, 2026-09-23 — this
-  replaces the older rule "commit but do not push; the user pushes manually"). The working
+- **Commit and push each finished task to the working branch** (owner's standing tasks,
+  2026-09-23). Asked whether this permanently replaces the older rule "commit but do not push;
+  the user pushes manually", the owner answered *"commit and push on this occasion"*. So:
+  push when the owner's instructions for the work say to (as the 2026-09-23 standing tasks
+  do), and ask if unsure. The working
   branch is the one that will later be merged into `alpha` — today
   `claude/musicbrainz-api-migration-7jxszn`. Never push to `main`, `alpha` or `beta` directly.
   See "Standing tasks and working rules" below.

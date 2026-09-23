@@ -188,7 +188,9 @@ These sit alongside every rule above; none was removed. The fuller version is in
 4. **Check work with a different AI system.** Work built with Claude Code is reviewed by Codex;
    work built with Codex is reviewed by Claude. The owner's `dev-team-plugins` may be used for
    any of this, and for suggesting fixes and new features.
-5. **After each finished task:** commit **and push** it to the working branch (today
+5. **After each finished task:** commit **and push** it (the owner confirmed pushing "on this
+   occasion" on 2026-09-23 — whether it is the permanent default is still to be settled; ask if
+   unsure) to the working branch (today
    `claude/musicbrainz-api-migration-7jxszn`, later merged into `alpha`); comment on each
    related GitHub issue individually; update `.claude/` (Claude's context), `.OpenAI/` and
    this file (Codex's context); update the handoff.
