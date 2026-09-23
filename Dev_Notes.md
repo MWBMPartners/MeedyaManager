@@ -800,12 +800,26 @@ organise new media as it arrives — see [background-service.md](help/background
 the full, user-facing explanation of what it does step by step, the settle window, and why
 conflict handling is forced to `"skip"`. This section is the developer-facing summary (issue #180).
 
+> **Switched off for safety as of 2026-09-23 (issue #180).** Everything below describes how
+> the feature is built and how it will behave again once it is switched back on. Right now,
+> real organising is disabled by a single constant, `ORGANISING_SWITCHED_ON = false` in
+> `crates/mm-cli/src/commands/watch.rs`: `meedya watch --organize` without the global
+> `--dry-run` flag refuses (prints an error, exits `3` / `NOT_IMPLEMENTED`) and moves nothing,
+> even with `--yes`. `meedya service install` on Linux and macOS refuses the same way and
+> installs nothing. `meedya --dry-run watch --organize` and `meedya --dry-run service install`
+> still preview normally, because a preview moves and installs nothing. The reason: the
+> organiser can move a `.cue` cue sheet away from its `.bin` disc image while the `.bin` is
+> still downloading, ruining the disc image, and can rename the same file over and over when a
+> template is built on the file's own name. `service uninstall/start/stop/status` are
+> unaffected — anyone who installed the service from an earlier build should run
+> `meedya service uninstall`.
+
 ### Platform Implementations
 
 | Platform | Mechanism | Unit/Config Location | Status |
 | -------- | --------- | -------------------- | ------ |
-| Linux | systemd user service | `~/.config/systemd/user/meedyamanager.service` | Working |
-| macOS | launchd user agent | `~/Library/LaunchAgents/com.mwbm.meedyamanager.plist` | Working |
+| Linux | systemd user service | `~/.config/systemd/user/meedyamanager.service` | Built, but `install` currently refuses (safety catch, #180) |
+| macOS | launchd user agent | `~/Library/LaunchAgents/com.mwbm.meedyamanager.plist` | Built, but `install` currently refuses (safety catch, #180) |
 | Windows | Windows Service via `sc.exe` | Windows Service Control Manager | **Refused deliberately** — see below |
 
 **Windows is not a smaller version of the same feature — it genuinely does not work, and
@@ -833,7 +847,8 @@ meedya service uninstall  # Remove registration
 
 `install` accepts the global `--dry-run` flag on Linux/macOS (prints what would be registered,
 writes nothing); on Windows it refuses regardless of `--dry-run` — the refusal happens before
-that flag is even checked.
+that flag is even checked. **As of 2026-09-23, `install` without `--dry-run` also refuses on
+Linux/macOS** — see the safety-catch notice above (issue #180).
 
 Both installed services run `meedya watch --organize --yes` — the `--yes` is not optional in
 practice, because `--organize` otherwise asks an attended terminal to confirm once before it

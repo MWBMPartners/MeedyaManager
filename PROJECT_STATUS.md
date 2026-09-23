@@ -116,11 +116,23 @@
 | `meedya config` — show, path, init, export, import, test-mode | Done |
 | `meedya scan` — directory scan + rename preview + execute | Done — see conflict-handling note below |
 | `meedya edit` — metadata write (`--set`, `--remove`, `--cover`, `--remove-cover`, `--dry-run`) | Done — now routes through Test Mode enforcement (#128) |
-| `meedya watch` — foreground watcher with event logging | Done — `--organize` (auto-rename/move as files arrive) is now real too, not just logging (issue #180): forces conflict handling to `"skip"`, waits `--settle-secs` (default 2) before acting on a file, and reuses `scan`'s write lock and disc-image protection |
+| `meedya watch` — foreground watcher with event logging | Done, but real organising is switched off for safety as of 2026-09-23 (issue #180 — see box below). Built: `--organize` forces conflict handling to `"skip"`, waits `--settle-secs` (default 2) before acting on a file, and reuses `scan`'s write lock and disc-image protection. **Currently:** without the global `--dry-run` flag, `watch --organize` refuses and exits `3` instead of moving anything; `--dry-run watch --organize` still previews normally |
 | `meedya lookup` — provider search | **Status: not yet implemented** — prints a factual "not available in this alpha" notice and exits `3` (`NOT_IMPLEMENTED`) (`crates/mm-cli/src/commands/lookup.rs`), unchanged since M3 despite M5 having since landed |
 | `meedya report-bug` — system info + log collection | Done |
 | `meedya serve` / `meedya export` | Added after M3, see M9/M10 below — both now exit `3` instead of fabricating success (#205, #206) |
-| `meedya service` | Added after M3 — **not scaffolding**: `install` genuinely registers a systemd user unit (Linux) or launchd LaunchAgent (macOS) running `meedya watch --organize --yes` (issue #180). Refuses on Windows and explains why (Service Control Manager protocol, LocalSystem account), suggesting Task Scheduler instead |
+| `meedya service` | Added after M3 — **not scaffolding**: `install` was built to genuinely register a systemd user unit (Linux) or launchd LaunchAgent (macOS) running `meedya watch --organize --yes` (issue #180). Refuses on Windows and explains why (Service Control Manager protocol, LocalSystem account), suggesting Task Scheduler instead. **As of 2026-09-23, `install` also refuses on Linux and macOS** — see the box below — until the organiser's data-loss problems are fixed; `service uninstall/start/stop/status` are unaffected |
+
+> **Safety catch: real organising switched off, 2026-09-23 (issue #180).** The organiser could
+> (1) move a `.cue` cue sheet away from its `.bin` disc image while the `.bin` was still
+> downloading, ruining the disc image, and (2) with a template built on the file's own name,
+> rename the same file over and over. Until those are fixed and reviewed, the owner has switched
+> real organising off at a single constant (`ORGANISING_SWITCHED_ON = false` in
+> `crates/mm-cli/src/commands/watch.rs`). The practical effect: `meedya watch --organize`
+> without the global `--dry-run` flag now prints an error and exits `3` (`NOT_IMPLEMENTED`)
+> instead of moving anything, even with `--yes`; `meedya --dry-run watch --organize` still
+> previews as before. `meedya service install` on Linux and macOS now refuses the same way and
+> installs nothing (Windows already refused). Anyone who installed the service from an earlier
+> build should run `meedya service uninstall`.
 
 > **`scan --execute` data-loss risk fixed (#201).** `meedya scan` now delegates to
 > `mm_core::renamer::simulate_rename_with_rules`, which tracks every destination claimed within

@@ -128,33 +128,40 @@ meedya scan ~/Music --dry-run
 ### Start the Folder Watcher
 
 Watch directories for new media files and log what happens. `watch` on its own only **logs**
-file-system events — it does not rename or move anything unless you add `--organize`:
+file-system events — it does not rename or move anything unless you add `--organize`.
+
+> **⚠️ Real organising is switched off in this build (2026-09-23, issue #180).** Moving files
+> automatically as they arrive is built, but switched off until known problems with it are
+> fixed — it could, for example, separate a disc image's cue sheet from the disc image itself.
+> `meedya watch --organize` without the global `--dry-run` flag now prints an error, exits with
+> code `3`, and moves nothing, even if you add `--yes`. **Previews still work as normal** —
+> `meedya watch --organize --dry-run` shows you what it would do without touching any files.
 
 ```bash
 # Log-only — nothing is moved, regardless of --dry-run
 meedya watch
 
-# Actually organise files as they arrive (this is the one that renames/moves)
-meedya watch --organize
-
-# Preview what --organize would do, without moving files
+# Preview what --organize would do, without moving files (this works)
 meedya watch --organize --dry-run
+
+# Actually organise files as they arrive — currently refuses, see the notice above
+meedya watch --organize
 ```
 
-With `--organize`, a new file is not touched the instant it appears — MeedyaManager waits for
-it to go two seconds without any further change first (`--settle-secs`, default `2`), so it
-never organises a file that is still being copied in. An attended terminal is asked to confirm
-once before it starts moving anything; add `--yes` to skip that (this is what the background
-service does, since it has nobody to answer the question).
+Once real organising is switched back on, a new file will not be touched the instant it
+appears — MeedyaManager waits for it to go two seconds without any further change first
+(`--settle-secs`, default `2`), so it never organises a file that is still being copied in. An
+attended terminal will be asked to confirm once before it starts moving anything; `--yes` skips
+that (this is what the background service does, since it has nobody to answer the question).
 
-> **Tip:** Always run with `--organize --dry-run` first to verify your rules produce the
-> expected results before enabling live file operations.
+> **Tip:** Get into the habit of running with `--organize --dry-run` first, to check your rules
+> produce the results you expect, before ever enabling live file operations.
 
 To run this continuously in the background instead of in a terminal you keep open, see
-[background-service.md](background-service.md) — it covers installing it as a proper background
-service on Linux and macOS (Windows is not supported yet, with a Task Scheduler alternative
-given there), the settle window, and why it always uses the safer "skip" behaviour for
-conflicting files rather than whatever your settings say.
+[background-service.md](background-service.md) for how it is meant to work on Linux and macOS
+(Windows is not supported, with a Task Scheduler alternative given there) — the settle window,
+why it always uses the safer "skip" behaviour for conflicting files, and the same switched-off
+notice, because installing the service is switched off for the same reason right now.
 
 ### Launch the GUI
 

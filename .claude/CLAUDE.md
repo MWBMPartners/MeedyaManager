@@ -32,8 +32,9 @@
 - **Anything that exists only on one machine is at risk.** Temporary work folders
   (`git worktree`s), scratchpad files and unpushed commits do not survive a new session,
   especially a cloud one. On 2026-09-23 the stage (a) fixes for #233, #231 and #227 were found
-  to be lost for exactly this reason. Push finished work to the working branch; record anything
-  still in progress in the handoff.
+  to be lost for exactly this reason. Commit finished work (pushing only when the owner asks),
+  record anything still in progress in the handoff, and tell the owner how many commits are
+  waiting to be pushed.
 - **Cargo is not on the default `PATH`** in this environment. Run
   `export PATH="$HOME/.cargo/bin:$PATH"` before any `cargo` command.
 
@@ -232,14 +233,14 @@ defects referenced above and cut the version to `1.4.0-alpha.1` — see `docs/ch
   `[v1.4.0-alpha.1]` changelog entry, not treated as a release. No tag has been pushed for
   `1.4.0-alpha.1` yet.
 - **Every task** must have a GitHub Issue created BEFORE work begins and closed AFTER verification
-- **Commit and push each finished task to the working branch** (owner's standing tasks,
-  2026-09-23). Asked whether this permanently replaces the older rule "commit but do not push;
-  the user pushes manually", the owner answered *"commit and push on this occasion"*. So:
-  push when the owner's instructions for the work say to (as the 2026-09-23 standing tasks
-  do), and ask if unsure. The working
-  branch is the one that will later be merged into `alpha` — today
+- **Commit each finished task, but do NOT push unless the owner asks** — the user pushes
+  manually, or asks for a push on a particular occasion. Settled by the owner, 2026-09-23: *"Previous 'do not push unless asked' still applies as per standing rules"*.
+  A request to push is for that occasion only, not a standing permission. (Exception, as
+  before: pushing a *new feature branch* is OK once the owner has explicitly asked for a PR.)
+  Commits go to the working branch, which will later be merged into `alpha` — today
   `claude/musicbrainz-api-migration-7jxszn`. Never push to `main`, `alpha` or `beta` directly.
-  See "Standing tasks and working rules" below.
+  Because unpushed commits are lost if the machine goes away, **say in every report how many
+  commits are waiting to be pushed**, and record them in the handoff.
 
 ## Branch protection on `main` — umbrella PR Gate pattern
 
@@ -365,8 +366,9 @@ usage credits.
 
 ### 5. After each finished task
 
-1. **Commit and push** it to the working branch (the one that will later be merged into
-   `alpha`), and update its GitHub issue — each issue individually, one comment per task.
+1. **Commit** it to the working branch (the one that will later be merged into `alpha`) —
+   **push only when the owner asks**, on that occasion (see "Git & CI/CD") — and update its
+   GitHub issue, each issue individually, one comment per task.
 2. Update Claude's memory and context files in `.claude/` (this file, `HANDOFF.md`).
 3. Update Codex's memory and context files in `.OpenAI/` (`CONTEXT.md`, `MEMORY.md`) and
    `AGENTS.md`.

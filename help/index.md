@@ -93,7 +93,7 @@ meedya lookup "Rick Astley - Never Gonna Give You Up"
 # Edit tags
 meedya edit ~/Music/song.mp3 --set "Artist=My Artist"
 
-# Manage background service
+# Manage background service (install currently refuses — see note below)
 meedya service install
 meedya service start
 meedya service status
@@ -113,3 +113,10 @@ meedya report-bug
 
 > **Note:** `meedya lookup` is still a stub — it prints a "coming" notice and does not query any
 > provider yet. See [cli-reference.md](cli-reference.md#meedya-lookup) for the current state.
+
+> **Note (2026-09-23, issue #180):** automatic organising is switched off in this build while
+> known problems with it are fixed. `meedya service install` refuses on every platform and
+> installs nothing; `meedya watch --organize` without the global `--dry-run` flag refuses and
+> moves nothing. Preview commands (`--dry-run`) still work. See
+> [background-service.md](background-service.md) and
+> [cli-reference.md](cli-reference.md#meedya-watch) for the details.

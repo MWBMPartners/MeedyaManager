@@ -24,8 +24,10 @@ be avoided, explain it in ordinary words.
 
 Each project keeps a handoff document (for example `.claude/HANDOFF.md`) that records where
 the work really stands. Update it **as you go**, not only at the end, so the work can be
-picked up at any time after an interruption. Record only what has been checked. Push finished
-work: temporary work folders, scratch files and unpushed commits do not survive a new session.
+picked up at any time after an interruption. Record only what has been checked. Temporary work
+folders, scratch files and unpushed commits do not survive a new session, so commit finished
+work and — following each project's own rule on pushing — say plainly what is still waiting
+to be pushed.
 
 ## When an AI service is unavailable — fall back, then switch back
 

@@ -94,6 +94,13 @@ meedya service start
 
 ## Watcher Issues
 
+> **⚠️ `--organize` without `--dry-run` is switched off in this build (2026-09-23, issue
+> #180).** If you are trying to work out why files are not being moved, this is very likely
+> why: `meedya watch --organize` now refuses on purpose (prints an error, exits code `3`, moves
+> nothing) while known problems in the organiser are fixed. `meedya watch --organize --dry-run`
+> still works and shows a preview. See [background-service.md](background-service.md) for the
+> full notice. Everything below this box assumes organising is switched back on.
+
 ### Watcher not detecting new files
 
 **Possible causes:**
@@ -156,13 +163,20 @@ meedya service start
 
 ### "Simulated rename" — no files actually moved
 
-**Cause:** Dry-run mode is active (the default for safety).
+**Cause:** Dry-run mode is active (the default for safety) — or, for `watch --organize`, the
+safety catch described at the top of [Watcher Issues](#watcher-issues) is switched on.
 
-**Solution:** Remove `--dry-run` from the command, or set `dry_run: false` in `settings.json5`:
+**Solution:** For `meedya scan`, remove `--dry-run` (or pass `--execute`) to move files for
+real. For `meedya watch`, note that `watch` on its own never moves files at all — you need
+`--organize` — and as of 2026-09-23 (issue #180), a real (non-`--dry-run`) `--organize` run
+refuses on purpose and moves nothing until known problems with it are fixed:
 
 ```bash
-meedya watch          # live mode (moves files)
-meedya watch --dry-run  # preview only
+meedya scan ~/Music --execute            # scan: moves files for real
+meedya scan ~/Music --dry-run            # scan: preview only
+
+meedya watch --organize --dry-run        # watch: preview only — this works
+meedya watch --organize                  # watch: currently refuses (safety catch, #180)
 ```
 
 ### File is processed but not renamed as expected
@@ -329,6 +343,13 @@ providers: {
 ---
 
 ## Background Service Issues
+
+> **⚠️ `meedya service install` is switched off in this build (2026-09-23, issue #180), on
+> every platform.** It refuses and installs nothing, because the service would run the
+> organiser, and real organising is switched off while known problems with it are fixed. If you
+> are reading this section because you cannot get the service installed at all, that is
+> expected right now — see [background-service.md](background-service.md) for the full notice.
+> The sections below are for a service installed from an earlier build.
 
 ### Service not starting
 

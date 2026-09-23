@@ -24,32 +24,42 @@ There is no public release yet — see [getting-started.md](getting-started.md) 
 
 ### Does it run in the background?
 
-Yes, on **Linux and macOS**. MeedyaManager can run as a system service that starts
-automatically:
+It is built to, on **Linux and macOS**, as a system service that starts automatically — but as
+of 2026-09-23 (issue #180) this is switched off everywhere while known problems with automatic
+organising are fixed, so `meedya service install` currently refuses and installs nothing:
 
 ```bash
-meedya service install    # register with the OS service manager
-meedya service start      # start immediately
+meedya service install    # currently refuses on every platform — see below
+meedya service start      # start immediately (once a service is installed)
 meedya service status     # check if running
 ```
 
-**Not yet on Windows** — `meedya service install` refuses there and explains why, with a Task
-Scheduler alternative. See [background-service.md](background-service.md) for full details.
+**Not available on Windows either way** — `meedya service install` refuses there for a
+separate, permanent reason and explains why, with a Task Scheduler alternative. See
+[background-service.md](background-service.md) for full details, including what "switched
+off" means in practice and why.
 
 ### Will it mess up my files?
 
-By default, `meedya watch` only **logs** file-system events — it does not rename or move
-anything at all unless you pass `--organize`, and `--dry-run` previews what `--organize` would
-do without moving anything for real.
+**As of 2026-09-23 (issue #180), automatic organising cannot run for real at all — it is
+switched off deliberately, precisely to stop it messing up files while known problems with it
+are fixed.** By default, `meedya watch` only **logs** file-system events — it does not rename
+or move anything at all unless you pass `--organize`. With `--organize`, `--dry-run` still
+previews what it would do without moving anything for real; without `--dry-run` it now prints
+an error, exits with code `3`, and moves nothing, even with `--yes`. The two known problems are:
+it could move a disc image's `.cue` sheet away from its `.bin` file while the `.bin` was still
+downloading, ruining the disc image, and with some templates it could rename the same file over
+and over.
 
-With `--organize` on, a file is not acted on the moment it appears: MeedyaManager waits for it
-to sit unchanged for a couple of seconds first (the "settle window", `--settle-secs`, default
-`2`), specifically so a file that is still being copied in is never organised half-written.
-Organising also always behaves as if your conflict-handling setting were `"skip"`, regardless of
-what `settings.json5` actually says — this avoids a known runaway-renaming bug (issue #224) that
-the ordinary "rename" behaviour can hit when the watcher re-checks the same folder repeatedly.
-And if another copy of MeedyaManager is already moving files (a manual `scan --execute`, or the
-desktop app's Execute button), organising waits its turn rather than racing it.
+Once it is switched back on, here is how it is designed to protect your files: a file is not
+acted on the moment it appears — MeedyaManager waits for it to sit unchanged for a couple of
+seconds first (the "settle window", `--settle-secs`, default `2`), specifically so a file that
+is still being copied in is never organised half-written. Organising also always behaves as if
+your conflict-handling setting were `"skip"`, regardless of what `settings.json5` actually
+says — this avoids a known runaway-renaming bug (issue #224) that the ordinary "rename"
+behaviour can hit when the watcher re-checks the same folder repeatedly. And if another copy of
+MeedyaManager is already moving files (a manual `scan --execute`, or the desktop app's Execute
+button), organising waits its turn rather than racing it.
 
 There is still no detection of a file being held open by *another application* (a media player
 with the file open, say) — the settle window only checks whether the file system has reported
@@ -152,13 +162,20 @@ Or in a `.env` file next to `settings.json5`. See [configuration.md](configurati
 
 ## Background Service
 
+> **⚠️ As of 2026-09-23 (issue #180), `meedya service install` refuses on every platform and
+> installs nothing**, while known problems with automatic organising are fixed. The answers
+> below describe how the service is built to work, and will work again once it is switched back
+> on. See [background-service.md](background-service.md) for the full notice.
+
 ### Can it run as a Windows Service?
 
-Yes. MeedyaManager registers as a native Windows Service via `meedya service install`
-(`crates/mm-core/src/service.rs` shells out to `sc` on Windows, `launchctl` on macOS, and
-`systemctl` on Linux — this is real, working code, unlike some of the other subsystems on this
-page). See [background-service.md](background-service.md) for exactly which account/login
-context each platform's service runs under.
+Not yet. On Windows, `meedya service install` refuses and installs nothing, and it did so even
+before the 2026-09-23 switch-off. A real Windows Service has to check in with Windows within
+about thirty seconds of starting, which MeedyaManager cannot do yet, and it would run under a
+different account that cannot see your settings or, possibly, your media folders. Once
+automatic organising is switched back on, the suggested way to run it in the background on
+Windows will be Task Scheduler. See [background-service.md](background-service.md) for the
+details.
 
 ### Can it run as a macOS LaunchAgent?
 

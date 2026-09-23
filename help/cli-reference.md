@@ -58,7 +58,7 @@ so a script can distinguish "nothing was attempted" from "something failed":
 | `0` | `SUCCESS` | Command completed successfully |
 | `1` | `ERROR` | Command failed with an error |
 | `2` | `PARTIAL` | Some items succeeded and some failed (e.g. `scan --execute` left an unresolved conflict, or `edit` wrote some but not all requested tags) |
-| `3` | `NOT_IMPLEMENTED` | Arguments parsed and validated successfully, but the underlying feature is not built yet in this release — `export`, `serve` and `lookup` (see below) |
+| `3` | `NOT_IMPLEMENTED` | Arguments parsed and validated successfully, but the underlying feature is not built yet in this release — `export`, `serve` and `lookup` (see below) — **or is built but currently switched off**: `watch --organize` without the global `--dry-run` flag, and `service install` on any platform (issue #180, 2026-09-23) |
 
 `NOT_IMPLEMENTED` is deliberately distinct from both `ERROR` and `PARTIAL` — it means no work was
 attempted at all, not that work was attempted and failed. A sub-flag that genuinely does
@@ -309,6 +309,15 @@ meedya --json scan ~/Music
 Monitor directories for new or changed media files and log the events. Renaming/organising only
 happens if you pass `--organize`.
 
+> **⚠️ Real organising is switched off in this build (2026-09-23, issue #180).** `--organize`
+> without the global `--dry-run` flag now refuses — it prints an error, exits with code `3`,
+> and moves nothing, even with `--yes`. `meedya --dry-run watch --organize` still previews
+> normally, because a preview moves nothing. This is a deliberate safety catch while known
+> problems are fixed: the organiser could separate a disc image's `.cue` sheet from its `.bin`
+> file while the `.bin` was still downloading, and could rename the same file over and over
+> under some templates. The rest of this section describes how `--organize` works and will work
+> again once it is switched back on.
+
 ```text
 meedya watch [PATHS]... [OPTIONS]
 ```
@@ -326,7 +335,8 @@ meedya watch [PATHS]... [OPTIONS]
 > anything.** This differs from earlier documentation that implied `watch` processes files by
 > default.
 >
-> **`--organize` is fully implemented (issue #180).** It delegates each settled folder to the
+> **`--organize` is fully built (issue #180), but switched off for real runs — see the notice
+> above.** It delegates each settled folder to the
 > same engine as `meedya scan --execute`, so it inherits that command's safety rules (the write
 > lock, the disc-image whole-folder protection, Test Mode hygiene) automatically. Two things are
 > worth knowing before you rely on it: conflict handling is always forced to `"skip"` while
@@ -346,13 +356,14 @@ meedya watch
 # Watch a specific directory and log-only
 meedya watch ~/Downloads/Media
 
-# Watch and actually organise files as they arrive
+# Watch and actually organise files as they arrive (currently refuses — see notice above)
 meedya watch ~/Downloads/Media --organize --yes
 
-# Preview what --organize would do, without moving files
+# Preview what --organize would do, without moving files (this still works)
 meedya watch ~/Downloads/Media --organize --dry-run
 
 # Wait longer than the 2-second default before treating a file as finished arriving
+# (also currently refuses for the same reason, until the safety catch is lifted)
 meedya watch ~/Downloads/Media --organize --yes --settle-secs 10
 
 # Verbose output showing each detected event
@@ -364,7 +375,8 @@ meedya -v watch
 > (a script, a pipe, CI) is treated as already confirmed. With no watch folders resolved (neither
 > arguments nor config), `--organize` now fails exactly like plain `watch` does — exit `1`
 > (`ERROR`) — rather than the `3` (`NOT_IMPLEMENTED`) it used to return before this feature
-> existed.
+> existed. **As of 2026-09-23, `--organize` without `--dry-run` exits `3` (`NOT_IMPLEMENTED`)
+> for a different reason — the safety catch described above — before any of this is reached.**
 
 ---
 
@@ -559,8 +571,17 @@ For Test Mode details, see [test-mode.md](test-mode.md).
 
 ## meedya service
 
-Manage the MeedyaManager background service. This is real, working code
+Manage the MeedyaManager background service. This is real, built code
 (`crates/mm-core/src/service.rs`) — it shells out to `systemctl` (Linux) or `launchctl` (macOS).
+
+> **⚠️ `install` currently refuses on every platform, including Linux and macOS (2026-09-23,
+> issue #180).** It prints an error, exits with code `3`, and installs nothing — this is a
+> safety catch while known problems in the organiser are fixed (the service would otherwise run
+> `meedya watch --organize --yes`, and that has known ways to lose or mis-rename files). Windows
+> already refused for a separate, permanent reason (see below). `meedya --dry-run service
+> install` still previews what it would register, because a preview writes nothing.
+> `uninstall`, `start`, `stop` and `status` are unaffected — if you installed the service from
+> an earlier build, run `meedya service uninstall`.
 
 ```text
 meedya service <SUBCOMMAND>
@@ -593,7 +614,7 @@ has no terminal to answer the confirmation prompt `--organize` would otherwise s
 ### Examples
 
 ```bash
-# Install and start (Linux/macOS)
+# Install and start (Linux/macOS) — currently refuses, see notice above
 meedya service install
 meedya service start
 

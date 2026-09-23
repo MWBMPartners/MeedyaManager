@@ -177,7 +177,8 @@ These sit alongside every rule above; none was removed. The fuller version is in
    can find it confusing too. If a technical term cannot be avoided, explain it.
 2. **Keep the handoff current as you go.** Update `.claude/HANDOFF.md` while working, not only
    at the end. A session can be cut off at any moment, and anything that exists only in the
-   chat, in a temporary work folder or in an unpushed commit is then lost. (On 2026-09-23 the
+   chat, in a temporary work folder or in an unpushed commit is then lost — so always say how many
+   commits are waiting for the owner to push. (On 2026-09-23 the
    fixes for #233, #231 and #227 were found lost for exactly that reason.)
 3. **Get It Right First Time, without wasting credits.** Think hard first; use workflows for
    larger pieces of work. Deep analysis and planning: Opus agents, **one after another, never
@@ -188,9 +189,8 @@ These sit alongside every rule above; none was removed. The fuller version is in
 4. **Check work with a different AI system.** Work built with Claude Code is reviewed by Codex;
    work built with Codex is reviewed by Claude. The owner's `dev-team-plugins` may be used for
    any of this, and for suggesting fixes and new features.
-5. **After each finished task:** commit **and push** it (the owner confirmed pushing "on this
-   occasion" on 2026-09-23 — whether it is the permanent default is still to be settled; ask if
-   unsure) to the working branch (today
+5. **After each finished task:** commit it — **do not push unless the owner asks**, and a
+   request to push covers that occasion only (owner, 2026-09-23) — to the working branch (today
    `claude/musicbrainz-api-migration-7jxszn`, later merged into `alpha`); comment on each
    related GitHub issue individually; update `.claude/` (Claude's context), `.OpenAI/` and
    this file (Codex's context); update the handoff.

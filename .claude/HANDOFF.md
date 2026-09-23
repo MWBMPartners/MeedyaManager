@@ -9,7 +9,7 @@
 **Last updated:** 2026-09-23, about 21:30 UK time
 **Updated by:** Claude Code (cloud session `74f17925`), for issue #237
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → one pull request into **`alpha`**, later, when the owner says
-**Branch HEAD:** the #237 documentation commit, on top of `6ab0c8d` (the organiser) — all pushed. **Nothing is uncommitted and nothing is waiting in a side folder.**
+**Branch HEAD:** on GitHub, `0a439df` (the safety catch). **Locally there is one more commit, not pushed** — the help pages and rule corrections that go with it; the owner pushes (see "Pushing" below). Check with `git status -sb`.
 
 ---
 
@@ -85,15 +85,21 @@ below.**
   `--yes`. `service install` on Linux and macOS refuses in the same way (Windows already did).
   Previews with `--dry-run` still work. A new test was shown failing first (the watcher started)
   and passing after. Clippy is clean and all 116 command-line tests pass. A hands-on check
-  against an empty settings folder moved nothing and installed nothing. **Waiting on:** an
-  independent Opus review (Codex is not installed in this cloud session, so a Codex review is
-  still owed), and a Sonnet update of the help pages. Then: commit, push, comment on #180.
-  Stage (g) later flips the switch back to `true`.
-- **Decision 2 — answered:** *"commit and push on this occasion"*. So this time, commit and push.
-  **Whether pushing becomes the permanent default is still open.** The 2026-09-23 standing
-  tasks say "commit and push each task"; the older rule said "do not push". Until the owner says
-  otherwise, push when the owner's instructions for the work say to — as the 2026-09-23 standing
-  tasks do — and ask if unsure.
+  against an empty settings folder moved nothing and installed nothing. **✅ Done — `0a439df`,
+  pushed at the owner's request.** An independent Opus review found nothing blocking; its medium
+  finding (the Windows message recommended a command that now refuses) and three low ones
+  (`--json` output, the preview wording, the suggested command) are fixed in the commit.
+  **Still owed:** a Codex review (Codex is not installed in the cloud session); no Windows or
+  macOS compile. **Not fixed, noted:** a Linux service installed from an earlier build restarts
+  every 5 seconds, refusing each time — harmless but noisy; the fix is `meedya service
+  uninstall`, which the help pages now say. Help pages updated by a Sonnet writer and checked
+  by the orchestrator — committed locally, not pushed. Stage (g) later flips the switch back to
+  `true`.
+- **Decision 2 — settled. Pushing:** *"Previous 'do not push unless asked' still applies as per
+  standing rules."* **Commit, but push only when the owner asks; each request covers that
+  occasion only.** Always say how many commits are waiting to be pushed. The rule files
+  (`.claude/CLAUDE.md`, `AGENTS.md`, `.OpenAI/MEMORY.md`, `.claude/device-wide-rules.md`) were
+  corrected to say this.
 - Decisions 3 and 4: no answer yet; the assumptions above stand.
 
 Older decisions still open are in §8 ("Decisions the owner still needs to make").
@@ -121,7 +127,7 @@ Older decisions still open are in §8 ("Decisions the owner still needs to make"
 
 The owner's standing rules of 2026-09-23 (plain English; keep this file current as you go;
 Opus for analysis one at a time, Sonnet/Haiku to build; cross-check with a different AI system;
-after each task commit + push + issue comment + update `.claude/`, `.OpenAI/` and this file;
+after each task commit (push only when asked) + issue comment + update `.claude/`, `.OpenAI/` and this file;
 review until clean; no stacked pull requests; fall back to another AI service when one is out
 of credit, then switch back and do a full review) are in **`.claude/CLAUDE.md` → "Standing
 tasks and working rules"**, mirrored in `AGENTS.md`. Codex's own notes are in `.OpenAI/`.
@@ -922,6 +928,10 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-23 (late evening)** (#180) — owner chose the safety catch; built, reviewed by Opus,
+  committed and pushed as `0a439df` at the owner's request. Help pages updated to match. Push rule
+  settled: do not push unless asked. Follow-up commit with docs and rule corrections is local
+  only.
 - **2026-09-23** (#237) — brought up to date for a possible fresh session. New §0 with checked
   facts: the organiser was committed as `6ab0c8d` without the review's fixes and is switched on;
   the stage (a) fixes were lost with the Mac's temporary work folder; Codex is unblocked. The

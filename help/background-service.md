@@ -4,6 +4,29 @@
 
 MeedyaManager can run as a persistent background service that starts automatically and monitors your media folders continuously, even when you're not actively using the application.
 
+> ## ⚠️ Switched off in this build (2026-09-23)
+>
+> The developers found two ways the automatic organiser could damage files — see
+> [why "skip" is forced](#why-skip-is-forced) for one of them, and the short version is: it
+> could separate a disc image from the cue sheet that belongs with it, or rename the same file
+> over and over. Until that is fixed and checked, real organising is switched off, and with it
+> the background service:
+>
+> - **`meedya service install` now refuses on every platform, including Linux and macOS**,
+>   and installs nothing. (It already refused on Windows for a different, permanent reason —
+>   see [Windows](#windows-not-available-yet).)
+> - **`meedya watch --organize` without the global `--dry-run` flag refuses too**, and moves
+>   nothing — even if you pass `--yes`.
+> - **Previews still work.** `meedya --dry-run service install` still prints what it would
+>   register, and `meedya --dry-run watch --organize` still previews what it would move,
+>   because a preview does not touch anything.
+> - **`service uninstall`, `service start`, `service stop` and `service status` are
+>   unaffected.** If you installed the service from an earlier build, run
+>   `meedya service uninstall` to remove it.
+>
+> Everything else on this page describes how the feature works and will work again once it is
+> switched back on.
+
 ---
 
 ## Table of Contents
@@ -140,6 +163,12 @@ lock itself.
 
 ## Installing the Service
 
+> **Currently refused everywhere.** As explained at the top of this page, `meedya service
+> install` is switched off while the organiser's known problems are fixed — see
+> [Switched off in this build](#-switched-off-in-this-build-2026-09-23). It will print an
+> error and exit with code `3`, and nothing will be installed. The description below is how it
+> works once it is switched back on.
+
 ```bash
 meedya service install
 ```
@@ -147,7 +176,7 @@ meedya service install
 This registers MeedyaManager with your operating system's service manager, using the currently
 running `meedya` binary — that path is worked out and written into the service definition at
 install time, so if you move or reinstall `meedya` afterwards, run `service install` again.
-**Available on Linux and macOS only** — see [Windows](#windows-not-available-yet) below for why
+**Built for Linux and macOS only** — see [Windows](#windows-not-available-yet) below for why
 Windows is different, and what to use instead.
 
 To try it first without registering anything for real:
@@ -176,16 +205,17 @@ meedya service install --bin-path /opt/meedya/bin/meedya
 > service has no terminal and nobody to answer that question, so it is told in advance to skip
 > asking.
 
-**Try it by hand first, before installing it as a service.** Run this in a terminal against one
-of your watched folders and watch what it says it would do, with nothing actually moved:
+**Try it by hand first.** Run this in a terminal against one of your watched folders and watch
+what it says it would do, with nothing actually moved:
 
 ```bash
 meedya watch ~/Music --organize --dry-run
 ```
 
-Once you are happy with what it proposes, drop `--dry-run` to let it move files for real, and
-only then install it as a service. This is the same command the service runs, just started by
-hand where you can see it and stop it with `Ctrl+C`.
+Normally you would then drop `--dry-run` to let it move files for real, and install it as a
+service once you are happy. **Right now that next step is switched off** — dropping
+`--dry-run` will refuse and move nothing, and installing the service will refuse too — until
+the organiser's known problems are fixed (see the notice at the top of this page).
 
 ---
 
@@ -387,9 +417,11 @@ so Windows would stop it again almost immediately. It would also run as the Loca
 account, which reads a different settings file from yours and may not be able to reach your
 media folders at all.
 
-What to do instead: use Task Scheduler to run
+Automatic organising itself is also switched off in this build while known problems are
+fixed, so there is nothing to run in the background yet. Once it is switched back on, the way
+to do this will be Task Scheduler, running
     meedya watch --organize --yes
-at logon. That runs as you, reads your settings, and keeps working.
+at logon. That runs as you and reads your settings.
 ```
 
 There are two separate, real problems, not one:
@@ -412,6 +444,10 @@ meedya watch --organize --yes
 
 That runs under your own account — your `settings.json5`, your file permissions — and does not
 need to speak to the Service Control Manager at all, because Task Scheduler is not that.
+
+> **This command is currently switched off too.** As explained at the top of this page, real
+> organising is switched off everywhere until known problems are fixed, so this Task Scheduler
+> task would run and immediately refuse (exit code `3`), moving nothing, until that changes.
 
 Because `service install` refuses outright, `service start`, `service stop`, `service uninstall`
 and `service status` have nothing to act on: there is no MeedyaManager Windows Service to find,

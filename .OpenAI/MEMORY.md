@@ -9,7 +9,8 @@
 
 - **Working branch:** `claude/musicbrainz-api-migration-7jxszn`. It will be merged into `alpha`
   through **one** pull request, opened later when the owner says. Do not open others.
-- Commit **and push** each finished task to that branch (owner, 2026-09-23).
+- Commit each finished task to that branch. **Do not push unless the owner asks**; a request
+  to push covers that occasion only (owner, 2026-09-23).
 - Cargo is not on the default `PATH`: `export PATH="$HOME/.cargo/bin:$PATH"`.
 
 ## What is really finished (do not overstate it)
@@ -22,8 +23,13 @@
 
 ## Open dangers on the branch (2026-09-23)
 
-- **The organiser (`meedya watch --organize`, #180) is switched on with known data-loss bugs.**
-  It was committed as `6ab0c8d` without the fixes a review asked for. See handoff §0.
+- **The organiser (`meedya watch --organize`, #180) had known data-loss bugs and was committed
+  as `6ab0c8d` without the fixes a review asked for.** As of 2026-09-23 the owner has switched
+  it off with a safety catch: `watch --organize` without the global `--dry-run` flag now refuses
+  (prints an error, exits code 3, moves nothing) instead of running for real, and
+  `service install` on Linux/macOS refuses the same way instead of registering a service that
+  would call it. `--dry-run` previews still work. This is controlled by one constant,
+  `ORGANISING_SWITCHED_ON = false`, in `crates/mm-cli/src/commands/watch.rs`. See handoff §0.
 - **P0 #233:** renaming loses the file extension when the new name contains a full stop, with
   default settings. The fix was built once but lost; it must be rebuilt.
 - **P0 #222:** fixed on macOS and Windows, but the Windows fix has never been compiled.
@@ -36,5 +42,6 @@
 - **Classify files by what they mean to a media library.** A disc image (`.iso`, `.cue`/`.bin`,
   and so on) is a record, not an installer. A `.cue` and its `.bin` must stay together.
 - **Anything only on one machine can vanish** — temporary work folders, scratch files, unpushed
-  commits. Push finished work and record unfinished work in the handoff.
+  commits. Commit finished work, record unfinished work in the handoff, and tell the owner what
+  is waiting to be pushed.
 - `grep -c` inside a chain of `&&` commands stops the chain when the count is zero; add `|| true`.

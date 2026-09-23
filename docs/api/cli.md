@@ -23,10 +23,23 @@ Defined in `crates/mm-cli/src/output.rs::ExitCode`:
 `NOT_IMPLEMENTED` is a deliberate, checkable signal that a script can distinguish from a real
 failure. As of this commit, three commands unconditionally return it for their main operation:
 `meedya lookup`, `meedya export` (unless `--show-schema` is passed), and `meedya serve` (unless
-`--show-routes` or `--check-config` is passed). `meedya service install` also returns it, but
-only on Windows — it refuses there and explains why (see the `meedya service` section below);
-on Linux and macOS it actually installs the service. `meedya watch --organize` is fully
-implemented (issue #180) and no longer returns it at all.
+`--show-routes` or `--check-config` is passed).
+
+**As of 2026-09-23 (issue #180), two more cases return it too, as a safety catch rather than
+because the feature is unbuilt:**
+
+- `meedya service install` now returns it on **every** platform. On Windows this is the
+  pre-existing, permanent refusal (see the `meedya service` section below). On Linux and macOS
+  it is new: real organising is switched off while known data-loss problems are fixed, so
+  installing a service that would run it is refused too, and nothing is installed.
+- `meedya watch --organize` **without the global `--dry-run` flag** now returns it as well,
+  for the same reason, and moves nothing — even with `--yes`. `meedya --dry-run watch
+  --organize` is unaffected, because a dry run moves nothing anyway.
+
+Both refusals are controlled by one constant, `ORGANISING_SWITCHED_ON` (currently `false`) in
+`crates/mm-cli/src/commands/watch.rs`. Everything below that describes `watch --organize` and
+`service install` as fully working describes the built behaviour, which is what runs once that
+constant is set back to `true` — not what happens today.
 
 Every per-command exit code below describes a deliberate `Ok(ExitCode::…)` return in that
 command's `run()` function. On top of these, an unexpected failure that a command does not
@@ -42,6 +55,11 @@ text), regardless of `ctx.output`. Only `service status` checks `ctx.output` and
 script that runs `meedya --json service start` and tries to parse stdout as JSON will get plain
 text, not an error and not JSON — verified directly against `crates/mm-cli/src/commands/service_cmd.rs`,
 where `install`, `uninstall`, `start` and `stop` never reference `OutputFormat` at all.
+
+**One exception, since 2026-09-23 (#180):** while organising is switched off, the refusal from
+`service install` on Linux and macOS *does* honour `--json`, printing
+`{"status": "switched_off", "message": "…"}` with exit code `3`. Everything else in `install`
+— including the Windows refusal and the `--dry-run` preview — is still plain text.
 
 ## A note on embedded Rust `Debug` strings
 
@@ -177,7 +195,14 @@ schema. `null` on failure; `error` is `null` on success.
 
 ## `meedya watch`
 
-Fully implemented, including `--organize` (issue #180) — a foreground watcher that, with
+> **⚠️ `--organize` without `--dry-run` is switched off as of 2026-09-23 (issue #180) — see the
+> exit-codes section above.** It refuses immediately, before the watcher starts, prints an
+> error (or, with `--json`, `{"status": "switched_off", "message": "…"}`), and returns
+> `NOT_IMPLEMENTED` (`3`). The description below is the built behaviour,
+> which applies once `ORGANISING_SWITCHED_ON` is set back to `true`; a `--dry-run` run is
+> unaffected and always works as described.
+
+Fully built, including `--organize` (issue #180) — a foreground watcher that, with
 `--organize`, also renames/moves files by delegating each settled folder to `scan::run`
 internally (same engine as `meedya scan --execute`, so it inherits every safety rule that
 command has: the write lock, the disc-image whole-folder protection, Test Mode hygiene).
@@ -189,11 +214,14 @@ command has: the write lock, the disc-image whole-folder protection, Test Mode h
 | `--yes` | off | Skip the one-off confirmation prompt before `--organize` starts moving files. Required in practice for any non-interactive use (a script, a cron job, the background service) — without it, an attended terminal is asked to confirm once at start-up, and a non-interactive stdin is treated as pre-confirmed already. |
 | `--settle-secs <N>` | `2` | How many seconds a file must go untouched before `--organize` will act on it. Exists so a file still being copied in is never organised half-written. |
 
-**Exit code:** `ERROR` if no folders resolve (neither args nor config) or a given path is not a
-directory — this now applies to `--organize` too (previously it returned `NOT_IMPLEMENTED`
-before folders were even looked at); `ERROR` also if an attended terminal declines the
-`--organize` confirmation prompt. Otherwise the process runs until Ctrl+C, then returns
-`SUCCESS`. There is no exit code that reflects organising failures encountered *during* the run
+**Exit code:** as of 2026-09-23, `--organize` without the global `--dry-run` flag returns
+`NOT_IMPLEMENTED` (`3`) immediately — the safety catch above runs before any of the following
+is reached. With `--dry-run`, or without `--organize` at all: `ERROR` if no folders resolve
+(neither args nor config) or a given path is not a directory — this now applies to `--organize`
+too (previously it returned `NOT_IMPLEMENTED` before folders were even looked at); `ERROR` also
+if an attended terminal declines the `--organize` confirmation prompt. Otherwise the process
+runs until Ctrl+C, then returns `SUCCESS`. There is no exit code that reflects organising
+failures encountered *during* the run
 — those are logged to stdout/stderr as they happen (a per-folder failure is reported and that
 folder's files are dropped; a folder blocked by another process holding the write lock is
 retried after another settle window; see `help/background-service.md`), but the watcher keeps
@@ -350,7 +378,15 @@ without `--no-tls`) or if the JWT service itself fails to initialise; `SUCCESS` 
 
 ## `meedya service`
 
-`install` is fully implemented on **Linux and macOS** (issue #180) — it writes and enables/loads
+> **⚠️ `install` is switched off on every platform as of 2026-09-23 (issue #180).** On Linux and
+> macOS this is new: it now returns `NOT_IMPLEMENTED` (`3`) and installs nothing, for the same
+> reason `watch --organize` is switched off — the service it would install runs
+> `meedya watch --organize --yes`, which is exactly the switched-off, real-organising path. The
+> Windows refusal below is separate and unrelated, and was already in place. `--dry-run`
+> previews still work on Linux/macOS, unaffected by this. `uninstall`, `start`, `stop` and
+> `status` are unaffected on any platform.
+
+`install` is fully built for **Linux and macOS** (issue #180) — it writes and enables/loads
 a real systemd user unit or launchd LaunchAgent, running `meedya watch --organize --yes`. On
 **Windows it always returns `NOT_IMPLEMENTED`** and refuses outright, regardless of `--dry-run`:
 a program registered via `sc create` has to answer the Windows Service Control Manager within
@@ -359,10 +395,13 @@ LocalSystem account, reading a different settings file than the one the installe
 `meedya service install` prints this explanation and points at Task Scheduler as the supported
 alternative instead of registering something that would not work.
 
-**Exit code:** `install` — `SUCCESS` on a successful Linux/macOS install (or on
-`--dry-run`, which prints what would be registered and writes nothing); `ERROR` if the current
-executable's path cannot be resolved and no `--bin-path` was given, or if the underlying OS
-command fails; `NOT_IMPLEMENTED` unconditionally on Windows. `uninstall`/`start`/`stop` return
+**Exit code:** `install` — as of 2026-09-23, `NOT_IMPLEMENTED` unconditionally on **every**
+platform without `--dry-run` (Windows for its own pre-existing reason, Linux/macOS for the new
+safety catch above); with `--dry-run` on Linux/macOS, `SUCCESS`, printing what would be
+registered and writing nothing — Windows still returns `NOT_IMPLEMENTED` regardless of
+`--dry-run`. Once the safety catch is lifted, a real (non-dry-run) Linux/macOS install returns:
+`SUCCESS` on a successful install; `ERROR` if the current executable's path cannot be resolved
+and no `--bin-path` was given, or if the underlying OS command fails. `uninstall`/`start`/`stop` return
 `SUCCESS` or `ERROR` from the underlying `mm_core::service` call — on Windows these still shell
 out to `sc.exe`, but since `install` never registers anything there, they have nothing to act
 on. `status` returns `SUCCESS` only when the service is actually `Running` — `Stopped`,

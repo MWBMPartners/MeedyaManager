@@ -181,6 +181,29 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ### Changed
 
+- **2026-09-23 — Automatic organising switched off as a safety catch, pending fixes (issue
+  [#180](https://github.com/MWBMPartners/MeedyaManager/issues/180)).** The organiser described
+  under "Added" above, just a little further up this page, was committed with two known ways it
+  could damage files: it could move a `.cue` cue sheet away from its `.bin` disc image while the
+  `.bin` was still downloading, ruining the disc image, and with a template built from a file's
+  own name, it could rename the same file again and again. The owner decided to switch real
+  organising off everywhere until those are fixed and reviewed, rather than leave it running
+  with the bugs live.
+
+  In practice: `meedya watch --organize` **without** the global `--dry-run` flag now prints an
+  error and exits `3` (`NOT_IMPLEMENTED`) instead of moving any files — even with `--yes`, which
+  is exactly what an installed service passes. `meedya --dry-run watch --organize` is
+  unaffected and still previews normally, because a preview moves nothing. `meedya service
+  install` on Linux and macOS now refuses the same way and installs nothing (it already refused
+  on Windows, for a separate and unrelated reason). `service uninstall`, `start`, `stop` and
+  `status` are unaffected — anyone who installed the service from an earlier build should run
+  `meedya service uninstall`. The whole switch is one constant,
+  `ORGANISING_SWITCHED_ON = false`, in `crates/mm-cli/src/commands/watch.rs`
+  (`crates/mm-cli/src/commands/service_cmd.rs` checks the same constant before installing).
+  With `--json`, both refusals print `{"status": "switched_off", "message": "…"}`. **Upgrading
+  on Linux:** a service installed by an earlier build keeps restarting every few seconds,
+  refusing each time and moving nothing — remove it with `meedya service uninstall`.
+
 - **`.iso` is no longer classified as `MediaGroup::Archive` — it is now `MediaGroup::Disc`.**
   A bit-perfect copy of an optical disc (e.g. an Audio CD) was being grouped with ZIP, MSI, DEB
   and APK, which is wrong: those are software containers by definition, a disc image is not.
