@@ -51,18 +51,39 @@
   - #244: `218431d`;
   - #246: `083ad0f`.
   - One hand-merge was needed: `docs/changelog.md`, where both entries were kept.
-  - A Sonnet builder is adding the three gap fixes on top.
+  - **✅ Gap fixes: `14a00ae`.**
+    - **The combined line alone (`083ad0f`)** passed 1,454 tests with 0 failing; this was its first
+      ever run.
+    - **With the gap fixes:** 1,460 passed, 0 failed, run twice. fmt, clippy, doc and deny are
+      clean, and the four new tests were shown failing first.
+    - **Orchestrator hand check on the real binary**, all with `--json` and parsing cleanly:
+      - an audio-only include filter still seals the rip;
+      - an arriving rip is held back with `missing_files` and a clear message;
+      - a stray `.cue` at the root is held back and named;
+      - an aria2 in-progress file is left alone, while its finished neighbour is renamed;
+      - this morning's accented layouts are still sealed.
   - **Decision taken (reversible):** an incomplete rip is now **always** sealed, with a loud
     "held back" report. This reverses the 15 September exemption for a stray `.cue` at the
     library root. The reasons are the owner's rule "if unsure, do not rename", and that a freeze
     is announced while a split is silent. The organiser must surface held-back folders before
     stage (g).
-- **Codex round 2 is scheduled** (`codex-round2.sh`). It starts at 14:44, after Codex's allowance
+- **Codex round 2 is scheduled, and marked ready at 10:39** (`codex-round2.ready`), via `codex-round2.sh`. It starts at 14:44, after Codex's allowance
   returns at 14:43, **and only after** the orchestrator creates `codex-round2.ready`, having
   checked the gap fixes. It gives up at 21:00.
   - It reviews `review/round2-base` (= `adc6dff`) through `review/round2`, meaning only what is
     about to land. **The organiser is out of scope and needs its own Codex round before stage (g).**
   - Output: `codex-round2.log`, with the final report in `codex-round2-final.md`.
+- **The organiser plan is written** by an Opus planner, and saved in the repository at
+  **`.claude/organiser-fix-plan.md`** (about 92 KB).
+  - **Stages:** c1 → c2 → d1 → d2 → e1 → e2 → e3 → f2 → a Codex organiser review → g. d3 (the
+    service) and f1 (the lock help pages, which close #49) can run in their own worktrees alongside.
+  - Building starts once `review/round2` has passed Codex and landed.
+  - The summary and the five owner decisions are on #180, where each has a recommended answer that
+    gets built in the meantime. Only decision 1, the final yes, blocks stage g.
+  - Two new issues came from the plan:
+    - #249 — `dry_run` in settings, and `MM_DRY_RUN`, are ignored (P1);
+    - #250 — `~` in settings paths is taken literally, so the example file files media into a folder
+      named `~` (P1).
 - **Also filed:** #248. Warning and success messages still go to standard output under `--json`,
   which is the other half of #244.
 - **Pushing:** nothing has been pushed today. Commits waiting: the handoff notes on the working
