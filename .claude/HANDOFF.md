@@ -6,8 +6,8 @@
 > Records *verified* state only — never aspirational state. Update **as you go**, not only after
 > each task (owner, 2026-09-23).
 
-**Last updated:** 2026-09-23, late evening UK time
-**Updated by:** Claude Code (cloud session `74f17925`), for issues #237 and #180
+**Last updated:** 2026-09-25, morning UK time
+**Updated by:** Claude Code (session `07a21012`, on the owner's Mac), for the Codex catch-up review, stage (a) and the issue sweep
 **Working branch:** `claude/musicbrainz-api-migration-7jxszn` → one pull request into **`alpha`**, later, when the owner says
 **Branch HEAD on GitHub:** `6adaae0` (help pages and rule corrections for the safety catch), on top of `0a439df` (the safety catch itself) — both pushed at the owner's request. **Locally:** one further commit that only updates this file, **not pushed** unless the owner asks. Check with `git status -sb`.
 **Pushing:** do **not** push unless the owner asks; each request covers that occasion only (owner, restated 2026-09-23). Always say how many commits are waiting.
@@ -23,7 +23,51 @@
 
 ---
 
-## 0. Read this first — where things stand on 2026-09-23
+## 0. Read this first — where things stand on 2026-09-25
+
+### Update, 2026-09-25 morning — read before the 2026-09-23 notes below
+
+- **The stage (a) fixes were NOT lost.** The 2026-09-23 cloud session could not see this Mac. The
+  two commits still exist here, on the local branch `worktree-agent-ac1c1ad32f50eb48f`, in the
+  worktree `.claude/worktrees/agent-ac1c1ad32f50eb48f`:
+  - `35cc858` — #231 and #233, in `disc`, `renamer` and `watcher`, including the review fixes;
+  - `a37d37a` — rustls for #227, plus `.cargo/config.toml`.
+  - They have been **copied on top of the current branch head** as the local branch
+    `review/catchup` (commits `61f9438` and `be43fb8`), in the worktree
+    `.claude/worktrees/catchup`. The combination applies with no conflicts. The two share no
+    files with anything committed since, and the committed organiser calls none of the functions
+    they change.
+  - **Do not rebuild stage (a).** §0 item 3 below is superseded.
+- **The full checks are running on that combined copy.** Formatting, Clippy, tests twice,
+  documentation and `cargo deny`, with the log in the session scratchpad at `gate-catchup.log`.
+- **The Codex catch-up review has not run yet.**
+  - At 08:24 Codex refused: "usage limit … try again at 9:41 AM". Other projects' sessions had
+    used the allowance overnight.
+  - A script starts the review automatically at 09:42 (`codex-at-0942.sh` in the scratchpad).
+    Its output goes to `codex-catchup.log`, and its final report to `codex-catchup-final.md`.
+  - It covers everything from `c68719c` to the combined copy's head in one pass: the organiser,
+    the lock, the safety catch, the macOS and Windows guards, and stage (a).
+  - **How to run Codex here, learned the hard way:**
+    - it needs `-c model="gpt-6-astra"`;
+    - `codex review --base <branch>` refuses custom instructions, so the review is run as
+      `codex exec -s read-only -C <worktree> -o <report> - < prompt`, with a prompt telling it to
+      review `git diff review/catchup-base..HEAD`. `review/catchup-base` is a local branch at
+      `c68719c`.
+  - If it is refused again, the script retries once after 10 minutes.
+- **The issue sweep refresh is running again.** Three Opus checkers are working in parallel on
+  #1–79, #80–164 and #165–237. Parallel fact-gathering is allowed since 2026-09-21.
+  - They write `sweep-actions-{A,B,C}.json` and `sweep-new-issues-{A,B,C}.json` to the
+    scratchpad, and change nothing on GitHub.
+  - The brief is `sweep-brief.md`.
+  - `post-sweep.py` posts the results after the orchestrator has reviewed them: a dry run first,
+    then `--execute`. It is safe to re-run.
+  - **The session scratchpad was wiped when the Mac was upgraded.** The 2026-09-06 sweep report
+    was recovered from the saved agent transcript
+    (`subagents/agent-a1ce10e7b76f7a681.jsonl`) into `sweep-2026-09-06.md`.
+- **Owner decision 4 below is done.** `~/.claude/CLAUDE.md` carries the device-wide rules
+  ("Last brought into line: 2026-09-24"), and `~/.codex/AGENTS.md` is a link to it.
+- **Nothing is waiting to be pushed** apart from handoff updates. `review/catchup` is local only.
+
 
 ### In one paragraph
 
@@ -108,6 +152,8 @@ below.**
 Older decisions still open are in §8 ("Decisions the owner still needs to make").
 
 ### What to do next, in order
+
+> **2026-09-25:** item 3 is superseded (stage (a) exists; see the update above); item 2 is in progress.
 
 1. ~~Decision 1~~ — ✅ done: the safety catch is `0a439df`, its documentation `6adaae0`, both
    on GitHub. Nothing on the branch can move files automatically any more. Still owed for it:
@@ -934,6 +980,10 @@ it.
 
 ## 11. Change log for this handoff file
 
+- **2026-09-25 (morning)** — the stage (a) commits were found intact on this Mac and combined with
+  the branch head, for review. Codex was refused until 09:41, so the review is scheduled for 09:42.
+  The sweep refresh was relaunched, and the 2026-09-06 report recovered after the scratchpad was
+  wiped.
 - **2026-09-23 (late evening)** (#180) — owner chose the safety catch; built, reviewed by Opus,
   committed and pushed as `0a439df` at the owner's request. Help pages updated to match. Push rule
   settled: do not push unless asked. The follow-up commit with docs and rule corrections,
