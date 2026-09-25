@@ -45,7 +45,20 @@ in the scratchpad as `codex-round2-final.md`.
      same wrong claim.**
   5. **Medium.** `.cargo/config.toml` needs `force = true`.
   6. **Low.** The help claims `--json` is always clean, but #248 is still open.
-- **A Sonnet builder is fixing all six** in one commit on `review/round2`. Then comes Codex round 3.
+- **✅ All six fixed in `3105b17`** on `review/round2`. The builder confirmed each one in the code
+  first. 1,466 passed, 0 failed, run twice; every check is clean. It also found that `aws-lc-sys`
+  checks a per-target `AWS_LC_SYS_USE_SYSTEM_<triple>` first, so those are forced too, for all five
+  shipped targets.
+  - **Orchestrator hand check:** an incomplete rip with motion artwork beside the `.cue` is held
+    back; an aria2 folder download (`Album.aria2`) is left alone, while a finished file beside it
+    is renamed; a finished FLAC album with its indexing `.cue` is still organised.
+- **Codex round 3 was refused at 15:44** ("try again at 7:44 PM"). It is rescheduled by
+  `codex-round3.sh` for **19:45**, and reviews only `review/round3-base` (= `14a00ae`)..`3105b17`.
+  The output goes to `codex-round3.log` and `codex-round3-final.md`.
+- **The combined line `org/line`** (worktree `.claude/worktrees/org-line`) is `3105b17` plus stage
+  d3's four commits, re-applied cleanly: `9336f5f`, `a6ee848`, `ec2714a`, `30b6a6d`. The full checks
+  are running on it (`gate-orgline.log`). Stages c1 and f1 are to be built on top of it, so they do
+  not clash later with d3's test-literal changes in `scan.rs` and `watch.rs`.
 - Stage d3 (`org/d3-service`) is based on `14a00ae`. It must be rebased onto the new
   `review/round2` tip before landing. A conflict is possible in `context.rs` and its tests
   (fix 3).
