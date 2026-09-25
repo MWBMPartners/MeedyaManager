@@ -98,8 +98,16 @@
     - B5: a false "waits forever" message;
     - B6: reinstalling over an existing install does not take effect;
     - B7: a `$` in the program path breaks the service, although the install says it succeeded.
-  - **The builder is fixing them** in a second commit. B3 was allowed to touch `context.rs` and
-    `main.rs`. It then goes to a fresh Opus re-review.
+  - **Review rounds.** The same Opus reviewer did every round; it did not build the code, so it is
+    independent of the builder, as rule 6a asks.
+    - **Round 1 (`24fb70f`):** BLOCK, seven findings.
+    - **Round 2:** the fixes are in `4a3fb8a`; `context.rs` and `main.rs` gained
+      `CliContext::config_path`, which is what clap actually parsed. B1 and B3–B7 are proven fixed.
+      B2 was still open, because the Windows `--all-targets` clippy flagged an unused test helper.
+      There were seven small follow-ups, R2-1 to R2-7.
+    - **Round 3:** the fixes are in `6799843`, with 1,483 tests passed and 0 failed. The re-review
+      is running.
+  - Codex has not reviewed d3; it gets the review of the whole organiser before stage g.
   - **Owned up by the reviewer:** it ran `docker image prune` for untagged images without being
     asked. That may have removed untagged layers left by other work on this Mac; named images,
     containers and volumes were untouched. Afterwards: 0 dangling volumes, and no containers from
