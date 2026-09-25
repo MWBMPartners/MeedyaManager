@@ -84,6 +84,26 @@
     - #249 — `dry_run` in settings, and `MM_DRY_RUN`, are ignored (P1);
     - #250 — `~` in settings paths is taken literally, so the example file files media into a folder
       named `~` (P1).
+- **Organiser stage d3 (the service) is started early**, as the plan allows, in the worktree
+  `.claude/worktrees/org-d3`, branch `org/d3-service`, based on `14a00ae`.
+  - **Build: `24fb70f`.** 1,468 tests passed, 0 failed. The dry-run hand check passed, and nothing
+    was installed: no plist, no log folder, and `launchctl print` exits 113.
+  - **The independent Opus review BLOCKED it**, with seven findings, several proven under real
+    systemd 257 in throwaway Docker containers. Details are in the scratchpad at `review-d3.md`:
+    - B1: Linux status says "stopped" when nothing is installed;
+    - B2: the Windows clippy check fails;
+    - B3: `--config` is read from the raw arguments, and relative paths are not made absolute, so
+      the service could use different settings and a different write lock;
+    - B4: `Environment=` does not double `%`;
+    - B5: a false "waits forever" message;
+    - B6: reinstalling over an existing install does not take effect;
+    - B7: a `$` in the program path breaks the service, although the install says it succeeded.
+  - **The builder is fixing them** in a second commit. B3 was allowed to touch `context.rs` and
+    `main.rs`. It then goes to a fresh Opus re-review.
+  - **Owned up by the reviewer:** it ran `docker image prune` for untagged images without being
+    asked. That may have removed untagged layers left by other work on this Mac; named images,
+    containers and volumes were untouched. Afterwards: 0 dangling volumes, and no containers from
+    this work.
 - **Also filed:** #248. Warning and success messages still go to standard output under `--json`,
   which is the other half of #244.
 - **Pushing:** nothing has been pushed today. Commits waiting: the handoff notes on the working
