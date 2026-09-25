@@ -27,6 +27,30 @@
 
 ### Update, 2026-09-25 morning — read before the 2026-09-23 notes below
 
+**OWNER DECISIONS, 2026-09-25 (about 17:00), answered as questions. These are final; do not reopen them.**
+
+| # | Question | Owner's answer |
+| --- | --- | --- |
+| 1 | Push the working branch? | **Yes, after Codex's round-3 review of today's fixes is clean.** Only the working branch, never `alpha` or `main`. |
+| 2 | #225: should `scan --execute` refuse renames in Test Mode? | **Yes, refuse**, with a clear message pointing to `--dry-run`. Rename undo comes later, on the library database (#220). **New work.** |
+| 3 | An incomplete rip holds its folder back? | **Yes, hold back and say why** (as built today). |
+| 4 | Switching the organiser back on (stage g) | **The owner gives the final yes**, after Codex's whole-organiser review and CI, and allows the push CI needs. |
+| 5 | Files that arrive while the organiser is stopped | **Build automatic catch-up now.** This is a **new organiser stage, to be planned by Opus.** Copied files keep their old dates, so it must not simply trust file dates. |
+| 6 | Hand renames inside a watched folder get undone | **Accept and document**, until #220 exists. |
+| 7 | Switch on before #226 and #235 are fixed? | **No: fix #226 (the Linux app's Execute takes no lock) and #235 (Test Mode commit and revert take no lock) first.** Both become **conditions for stage g**. |
+| 8 | #215: the mirror issues #9–#17 | **Accept the proposal:** fold #9, #10 and #14 into #134, and #11 and #16 into #139; close #12, #13, #15 and #17 as not planned, with pointers; then close #215. |
+| 9 | #19: the Python archive tag | **Create the tag** `v1.5-M6-python-final` on the last Python-era commit. It is pushed along with the branch, under decision 1. |
+| 10 | #230: how the Android app is distributed | **Direct download first**, and register MWBM Partners Ltd as a verified Android developer before 2027. |
+| 11 | #229: Android file access | **Only folders the user picks** (the Storage Access Framework), **against the recommendation**. So the engine must handle `content://` addresses, not only file paths. That shapes #229 and #230. |
+| 12 | The two cue-sheet readers | **Move ours upstream to MeedyaSuite-core under the MIT licence**, replace upstream's, and delete the local copy after the next pin bump. **New work, in MeedyaSuite-core.** |
+
+**A trap found on 2026-09-25: the shared build folder.**
+- Worktrees that build the same crate at the same time into one `CARGO_TARGET_DIR` can make `cargo test` silently run the **other worktree's stale test binary**. It gives exit 0 and a plausible count.
+- The stage f1 builder caught it by searching the compiled binary for its test names.
+- **Every test figure from a build that ran alongside another is suspect.** Stage c1's figure (`bc69741`, 1,499) must be re-run on its own.
+- The `org/line` figure (1,490 at `30b6a6d`) was produced with nothing else building, and **stands**.
+- **From now on, parallel builders get their own `CARGO_TARGET_DIR`.**
+
 **Latest, 2026-09-25 14:50 — Codex round 2 ran and BLOCKED.** It ran 14:44–14:48, gpt-6-astra,
 read-only, reviewing `review/round2-base..review/round2` (`adc6dff`..`14a00ae`). Its report is saved
 in the scratchpad as `codex-round2-final.md`.
