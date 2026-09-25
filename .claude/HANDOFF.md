@@ -27,6 +27,29 @@
 
 ### Update, 2026-09-25 morning — read before the 2026-09-23 notes below
 
+**Latest, 2026-09-25 14:50 — Codex round 2 ran and BLOCKED.** It ran 14:44–14:48, gpt-6-astra,
+read-only, reviewing `review/round2-base..review/round2` (`adc6dff`..`14a00ae`). Its report is saved
+in the scratchpad as `codex-round2-final.md`.
+- **Clean by reading:** #233, #238, the #231 ancestor walk, the #231 held-back policy (it agreed
+  with reversing the exemption), the #242 logic, the #244 log writers, #246, and rustls 0.23.45.
+- **Six findings:**
+  1. **High.** An incomplete rip with audio or video *directly beside* the `.cue` is still split,
+     because the `holds_playable_media` exception runs before the incomplete-set rule
+     (`disc/mod.rs:985`).
+  2. **High.** aria2 multi-file downloads use a control file named after the top-level folder
+     (`Album.aria2`), which is not checked.
+  3. **Medium.** The Test Mode settings static leaks between CLI tests, because `CliContext::build`
+     loads the real settings.
+  4. **Medium.** The changelog claims Test Mode refuses `scan` renames. It does not; it only
+     skips tracked originals, and #225 is still open. **The orchestrator's #242 brief made the
+     same wrong claim.**
+  5. **Medium.** `.cargo/config.toml` needs `force = true`.
+  6. **Low.** The help claims `--json` is always clean, but #248 is still open.
+- **A Sonnet builder is fixing all six** in one commit on `review/round2`. Then comes Codex round 3.
+- Stage d3 (`org/d3-service`) is based on `14a00ae`. It must be rebased onto the new
+  `review/round2` tip before landing. A conflict is possible in `context.rs` and its tests
+  (fix 3).
+
 **Latest, 2026-09-25 around 10:30 — read this first.**
 
 - **Codex round 1 was cut off.**
