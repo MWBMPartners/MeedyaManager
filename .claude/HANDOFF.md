@@ -44,6 +44,15 @@
 | 11 | #229: Android file access | **Only folders the user picks** (the Storage Access Framework), **against the recommendation**. So the engine must handle `content://` addresses, not only file paths. That shapes #229 and #230. |
 | 12 | The two cue-sheet readers | **Move ours upstream to MeedyaSuite-core under the MIT licence**, replace upstream's, and delete the local copy after the next pin bump. **New work, in MeedyaSuite-core.** |
 
+**Two more owner decisions (2026-09-25, about 18:00), on the catch-up plan:**
+- **A.** What is organised when something arrives: **a user setting, defaulting to the whole folder,
+  older files included.** The other choice is "new files only". The organiser must also stop
+  treating its own moves as arrivals (e1).
+- **B.** **Catch replaced and edited files too.** Every recorded file's size and times are checked at
+  each start, about 10–13 s for 150,000 files. This runs in the background after start-up.
+- The catch-up plan, **stage e4** (after e3, before f2), is merged into
+  `.claude/organiser-fix-plan.md`, with these decisions at its top.
+
 **Actions taken on those decisions (2026-09-25, evening):**
 - **#215 is done.** The descriptions of #134 and #139 were widened. #9, #10, #14 → duplicates of
   #134; #11, #16 → duplicates of #139; #12, #13, #15, #17 → not planned, with pointers; #215 is

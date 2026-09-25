@@ -1408,3 +1408,1034 @@ meanwhile.
 - **Finding #18 in full**, and the C# test point. Not organiser code, and not re-checked.
 - **Whether the organiser's per-folder `scan` is fast enough on a very large moved-in folder** (tens of
   thousands of files). Not measured. d2's stop checks keep it stoppable either way.
+
+---
+
+# Stage e4 — automatic catch-up (added 2026-09-25)
+
+## Owner decisions that override parts of the e4 plan below (2026-09-25, final)
+
+1. **What gets organised when something arrives becomes a user setting.**
+   - **The default: the whole folder is organised, including files that were already there.**
+     The other choice is "only the files that arrived".
+   - This applies to the running organiser and to catch-up alike.
+   - Build it as a setting in `settings.json5`, for example
+     `watch.organise_on_arrival: "whole_folder" | "new_files_only"`, with `whole_folder` as the
+     default. Add it to the JSON Schema, the help pages, and `meedya config show`.
+   - Place: in e1, alongside "settled" and "arrival", or in e4. The orchestrator decides at build
+     time.
+   - **Whichever setting is chosen, the organiser must never treat its own moves as arrivals.**
+     Today a file it moves into a folder raises an event there, and that folder is then organised.
+     This was found by the e4 planner, and fixing it is added to e1.
+2. **Catch replaced and edited files too.**
+   - The planner's recommendation was to accept missing them. The owner chose to catch them.
+   - So at each start, catch-up also compares every recorded file's size and modification or
+     change times, not only file names. A file whose details differ is treated as arrived.
+   - This costs roughly 10–13 s per start for about 150,000 files on this Mac, measured, instead
+     of about 0.3 s. **Raise the start budget accordingly.**
+   - Catch-up must also run **in the background after start-up**, so the service starts at once and
+     the file check runs while events are already being watched. That keeps the slow part off the
+     start-up path.
+   - Keep everything else in the plan: the record, the first-run starting point, and the rules
+     that stop anything being lost.
+
+## Found by the e4 planner, to be added to stage e1 (which is not built yet)
+
+1. The organiser's own moves trigger organising in the destination folders; see decision 1 above.
+2. Windows and Linux system folders are not skipped: `$RECYCLE.BIN`, `System Volume Information`
+   and `lost+found`. These are the equivalents of `.Trashes`, which O19 already covers.
+3. d1's `--organize-existing` sweep does not wait for files to settle, so a file still being copied
+   in at start-up could be organised half-written.
+
+## The planner's e4 plan, as written
+
+<!-- (C) 2025-2026 MWBM Partners Ltd -->
+<!-- Planning output for session 07a21012, written 2026-09-25 by an Opus planning agent.
+     <repository> is the MeedyaManager repository root; <session scratchpad> is the session's temp folder. -->
+
+# Organiser fix plan — new stage e4: automatic catch-up
+
+**Written:** 2026-09-25, by the planning agent (Opus 5.5), for the orchestrator of session `07a21012`.
+
+**Changed nothing** in any repository or on GitHub. This is the only file written.
+- The scratch files made for the live checks in §2 were deleted.
+- The three test disk images were detached and deleted.
+
+**Slots into** `.claude/organiser-fix-plan.md`.
+- It uses that plan's rules (§6a) and its hand-check harness (§6b).
+- It is in the same format as the other stages, so §5 can be pasted in as a new section after stage e3.
+
+**Read against:** the local branch `org/c1-rename-loop` at `bc69741`. That is stage c1, built on `org/line`, which already holds stage d3.
+- Stages c2 to e3 are **not built yet**.
+- Where this stage hooks into something they add, it uses the name their plans give. The builder must use whatever name actually landed.
+
+---
+
+## 1. The stage on one page
+
+- **What it does.**
+  - When `meedya watch --organize` starts, or the background service that runs it, it works out which files arrived in the watched folders while it was not running.
+  - It then organises the folders those files arrived in.
+  - It does this through exactly the path the running organiser uses. So every protection the other stages add applies: settling, held-back rips, the rename-loop guards, the Test Mode pause, the write lock and the output-folder checks.
+- **The rule it follows.**
+  - *Catch-up organises a folder only if the running organiser would have organised it, had it been running when the file arrived.*
+  - It never organises a folder merely because the folder exists.
+- **How it tells "arrived while stopped" from "already there".**
+  - It keeps a **record** for each watched folder. The record lists:
+    - every folder beneath the watched folder;
+    - each folder's own two timestamps;
+    - a **fingerprint** of every file name in each folder. A fingerprint is a short number worked out from the name; the same name always gives the same number.
+  - At start, it reads each folder's own details. That is cheap.
+  - It lists the contents only of folders whose details have changed.
+  - A file name that is not in the record has arrived.
+  - **File dates are never trusted.**
+- **The first run ever.** There is no record yet. So it records what is there as the starting point, organises nothing, and says so.
+- **Cost.** Measured on this Mac for 150,000 files in 16,251 folders (§2):
+  - reading every folder's details took about 0.3 seconds;
+  - listing every folder took about 10 to 13 seconds.
+  - So a normal start stays well under 2 seconds.
+  - A first run, or a drive formatted FAT or exFAT, lists every folder. That takes about 10 to 20 seconds on this Mac. It runs in the background in short steps, and Ctrl+C still works.
+- **Where it goes.** After e3 and before f2: `… → e2 → e3 → e4 → f2 → Codex organiser review → g`. The reasons are in §4.
+- **Model.** Opus to build (§5, "Model").
+- **Owner decisions.** Two, each with a recommended answer that gets built meanwhile (§7).
+
+---
+
+## 2. What I checked, and how
+
+- **Read in full:**
+  - `.claude/organiser-fix-plan.md`: stages c1 to g, §6a, §6b and §7;
+  - `.claude/HANDOFF.md` §0, including the owner decisions of 2026-09-25.
+- **Read the code at `org/c1-rename-loop` (`bc69741`):**
+  - `watch.rs`: the whole organiser, including `MoveHistory` and `sweep_roots`;
+  - `scan.rs`: `run_with`, `ScanHooks`, `ScanOutcome` and the lock handling;
+  - `watcher/mod.rs`: the download-in-progress rules, `should_ignore` and `scan_directory_below`;
+  - `state/mod.rs` (where the lock lives), `config/mod.rs` (`app_config_dir`), `test_mode.rs`, and the service subcommands in `service_cmd.rs`.
+- **What that reading established:**
+  - Every organiser file lives in `app_config_dir()`. That is `MM_CONFIG_DIR` if it is set, otherwise the platform's settings folder.
+    - `meedya.lock` is there (`state/mod.rs:481-487`).
+    - e3 puts `organiser.lock` and `organiser-status.json` there too.
+  - `test_mode::is_enabled()` re-reads the Test Mode manifest on every call (`test_mode.rs:428`). So e2's pause lifts as soon as Test Mode is switched off, without a restart.
+  - The workspace setting `unsafe_code = "warn"` (`Cargo.toml:185`) flags low-level code.
+    - `mm-core` already makes one low-level `libc` call, with its own local permission (`service.rs:618`, `geteuid`).
+    - `libc` is already a `mm-core` dependency on macOS and Linux.
+    - So the one "which kind of drive is this?" call this stage needs adds no new dependency.
+- **MeedyaSuite-core, checked first:** the local checkout at `aad49c7` and the pinned `222ca75`.
+  - Nothing there records "what has been seen": no watcher, no scan state, no file index.
+  - The only folder walk is a tagging helper (`meedya-metadata/src/writer.rs:193`).
+  - Nothing in this repository does it either. I checked `state`, `integrity` and `health`.
+- **`notify` 7 cannot replay history.** Its macOS back end always asks the system for "events from now on" (`notify-7.0.0/src/fsevent.rs:274`, `kFSEventStreamEventIdSinceNow`), and does not let a caller change that.
+- **Live checks on this Mac.** All ran in the session scratchpad, and nothing was left behind.
+  1. **APFS, the Mac's own disk format:**
+     - `cp -p` and `ditto` copies keep the original **modified** and **created** dates.
+     - Only the file's "change time" is set to now. That is Unix's `ctime`: when anything about the file's entry last changed.
+     - **Moving** a file sets its change time to now.
+     - **Writing an extended attribute** onto an old file **also** sets its change time to now. An extended attribute is a hidden label, which macOS adds for many reasons.
+     - Adding a file changes its folder's modified time. Writing into a file that is already there does not.
+  2. **Cost, for 150,000 empty files in 16,251 folders.** Measured with a Python script. The computer had just read those folders and still remembered them (a "warm" cache).
+
+     | What was read | Time (two runs) |
+     | --- | --- |
+     | Every folder's contents (names only) | 9.6 s and 13.2 s |
+     | Every folder's contents, plus every file's details | 18.1 s and 15.5 s |
+     | Only each folder's own details | 0.26 s and 0.34 s |
+
+     - **The C program `find`** gave the same pattern on 2,201 folders: 2.8 s. That is about **1.3 ms to list one folder**, against **6 to 9 µs to read one folder's details**. So Python was not the cause.
+     - **An "endpoint security" extension is active** on this Mac: NordVPN's Shield threat protection.
+       - Tools like that inspect every folder a program opens. That is very probably why listing is this slow here. **Not proven.**
+       - Many real Macs run something similar, so the design must not depend on listing being cheap.
+     - **Not measured:** timings straight after a restart (a "cold" cache).
+  3. **FAT32 and exFAT disk images**, mounted with the Mac's own drivers. FAT32 and exFAT are the formats of most USB sticks and camera cards.
+     - Folder times **did** change when a file was added or moved in.
+     - The change time is always a copy of the modified time. Moving a file did **not** change it.
+     - FAT32 times go in **2-second steps**.
+     - File identity numbers stayed the same across a move and an unmount.
+  4. **An HFS+ disk image** (Mac OS Extended, the older Mac format):
+     - folder times are whole seconds;
+     - **two files added within the same second left the folder's times exactly the same.**
+- **The fingerprint test values** in §5 (test 1) were computed with an independent script.
+
+---
+
+## 3. The hard parts, decided
+
+### 3a. How to tell "arrived while stopped" from "already there"
+
+Each candidate is judged on correctness first, then on cost.
+- **"Dangerous"** means it could make an old file look new. That would move a file the owner said to leave alone.
+- **"Safe"** means it could only miss an arrival. A miss is today's behaviour.
+
+| Signal | What it cannot detect, or gets wrong | Direction of its mistakes | Verdict |
+| --- | --- | --- | --- |
+| **A file's modified or created date**, compared with when the organiser stopped | Copies keep both dates (checked with `cp -p` and `ditto`). Downloads can set old dates. A clock change moves the point being compared against | Both | **Rejected.** The owner ruled it out, and the live check confirms why |
+| **A file's change time** (`ctime`), compared with the last check | A hidden label written onto an old file bumps it (checked on APFS); so do permission changes and tag edits. On FAT and exFAT it is only a copy of the modified time, and moving a file does not bump it (checked). Windows' standard library does not offer it. A clock set back makes new files look old; a clock that ran fast and was corrected makes old files look new. On a network drive it comes from the server's clock | **Dangerous** as well as safe | **Rejected** as the signal. Kept only as a second shortcut timestamp on folders (below), where a false "changed" costs just one extra listing |
+| **File identity numbers** (Unix "inode" numbers: the number a disk uses for a file) | Some drivers make them up. Linux's FAT driver hands out a fresh number for an entry it has not cached, so the same file can get a new number at the next mount (from the kernel source; not run here). Numbers are reused after a deletion, so a new file can inherit an old one's number. Network drives may make them up. The Mac's own FAT driver kept them stable in the check, so this is about other systems | **Dangerous** on those drives | **Rejected** for the record. Stage c1 still uses them within one run, where they are safe |
+| **A folder's modified time**, plus its change time on macOS and Linux | Cannot see a file edited in place: that does not touch the folder. HFS+ and FAT times are coarse, so two changes can leave identical times (checked on HFS+); Linux also stamps times coarsely. Other systems writing to a FAT or exFAT drive may not update folder times at all (not checked). A network drive may briefly show old times from its cache | **Safe only.** Used only to *skip listing* a folder; the names make the decision | **Used, as a shortcut only.** Three guards: (1) always list every folder on FAT, exFAT, Windows or an unknown file system; (2) list next time any folder whose times were within 5 seconds of when they were recorded (the "recheck" rule, for coarse clocks); (3) compare times only for being *different*, never earlier or later, so clock changes do not matter |
+| **A record of the file names in each folder** | Cannot see a file **replaced by another of the same name**, or **edited in place**. A folder renamed or moved within the watched folder looks new, so it is organised, as the running organiser would do. If names change form wholesale (a library copied to a drive that stores accented letters differently, or a different drive mounted under the same name), all of them look new; the "looks very different" rule (§3d) catches that. Needs a first run to make a starting point | Safe for replacements and edits. Dangerous only for wholesale name changes, which the guard catches | **Chosen as the deciding signal** |
+| **macOS's own change history** (FSEvents can replay changes since a saved point, even across restarts) | Only macOS. `notify` cannot use it. It needs low-level calls into the operating system (new `unsafe` code, which CI's Linux runs cannot test). It misses changes made to an external drive while it was plugged into another computer. Its history can be lost or reset | Safe | **Rejected for now.** Suggested for later as a speed-up on top of the record (§8) |
+
+**Why names, and not "names plus each file's size and date".**
+- Reading each file's size and date means one detail-read per file, not per folder.
+- In the measurement that was 18 s against 13 s, and it would be far worse on a network drive.
+- What it would add is catching a same-name replacement or an in-place edit. Neither is an arrival.
+
+**So "arrived" means precisely:** *a file name that has appeared in a folder since that folder was last dealt with.*
+
+These count as arrivals:
+- a new file;
+- a file copied or moved in;
+- a file renamed in place;
+- a whole folder moved in or created.
+
+These are **not** arrivals:
+- a file that disappeared;
+- a file edited in place, or replaced under the same name;
+- hidden files and system clutter (§5 step 1);
+- anything still downloading (§5 step 1).
+
+**What happens in the situations the brief names, and a few others:**
+
+| Situation | What catch-up does |
+| --- | --- |
+| **The clock is changed** (either way, or a time-zone change) | Nothing different. Times are only compared for being different, never for order, and names decide. At most, the recheck rule lists a few extra folders |
+| **The library is restored from a backup to the same place, with the same names** | Nothing arrives, because the names match. Folders whose times changed are listed once and updated |
+| **The library is restored under different names, or a different drive is mounted under the same name** | "Looks very different" (§3d): nothing is organised, a new starting point is recorded, and the user is told loudly |
+| **The settings folder, and so the record, is restored from an older backup** | Everything that arrived since that backup looks new, and its folders are organised again. Files already organised do not move again (c1 sees they are in place). Files deliberately left alone since then (for example after `reset-catch-up`) would be organised |
+| **A FAT or exFAT drive** | Every folder is listed at every start. Names decide, so the answer is correct; it is just slower |
+| **A network drive** | Folder times are trusted, as best effort. Files that other computers added are caught at the next start, which the running watcher cannot do at all (#45) |
+| **Files renamed or moved within the watched folder while it was stopped** | The new name is an arrival, so its folder is organised, as the running organiser would have done. A renamed folder is a new folder, and is organised whole |
+| **A file half-copied when the organiser stopped** | Its folder was still queued, so it is marked `owed` (§3b), and it is caught up. It goes through e1's settle check first |
+| **A download still running at start** | Its names count as "still arriving", so it is not an arrival until it finishes |
+| **The Mac was off for a week** | The same as overnight. The cost does not depend on how long it was stopped |
+| **A watched folder is removed from settings, then added back later** | Its record file is kept, so catch-up carries on from where it was |
+| **A watched folder that was inside another watched folder is removed from settings** | Its folders are already known to the outer folder's record by name. They are recorded as a starting point, never organised (§3b, rule I1) |
+
+### 3b. The record
+
+**Where it lives.** In the settings folder (`app_config_dir()`), next to `meedya.lock`, `organiser.lock` and `organiser-status.json`.
+- Its path is `organiser-catchup/<key>.json`: one file per watched folder.
+- `<key>` is the fingerprint (§5 step 2) of the watched folder's whole real path, written as 16 hexadecimal digits (digits 0 to 9 and letters a to f).
+- The file also states that path. A file whose stated path does not match is treated as missing, and is overwritten at the next save.
+
+**Why the settings folder:**
+- nothing is ever written into the user's media folders;
+- a throwaway `MM_CONFIG_DIR` isolates it automatically, for tests and hand checks;
+- the service keeps the same `MM_CONFIG_DIR` as the terminal that installed it (stage d3), so both use one record.
+
+**Why one file per watched folder:** a terminal run given some other folder must never disturb the service's record for the usual folders.
+
+**Format.** JSON, with a schema at `config/schemas/organiser-catchup.schema.json`:
+
+```json
+{
+  "format_version": 1,
+  "root": "/Users/example/Media/Incoming",
+  "written_by": "meedya 1.4.0-alpha.1",
+  "starting_point_at": "2026-09-25T22:14:03+01:00",
+  "saved_at": "2026-09-26T07:58:12+01:00",
+  "name_fingerprint": "fnv1a-64",
+  "folders": {
+    "": {
+      "modified_ns": 1790354516000000000, "changed_ns": 1790354516000000000,
+      "recheck": false, "owed": null,
+      "names": "0cdd348313fb87edaf63dc4c8601ec8c", "subfolders": "…"
+    },
+    "Artist/Album": {
+      "modified_ns": 1790354517123456789, "changed_ns": 1790354517123456789,
+      "recheck": false, "owed": null, "names": "…", "subfolders": ""
+    },
+    "Arrived/New": {
+      "modified_ns": null, "changed_ns": null,
+      "recheck": true, "owed": "subtree", "names": "", "subfolders": ""
+    }
+  }
+}
+```
+
+**What each part means:**
+- **`folders`** is keyed by the path **relative to the watched folder**, with `/` between the parts on every system. `""` is the watched folder itself.
+  - A path that is not valid text (possible on macOS and Linux) is stored as `hex:` followed by its raw bytes in hexadecimal. That way it survives a save and reload exactly.
+  - That matters: a folder name that came back different would look like a new folder, and would be organised.
+- **`modified_ns` and `changed_ns`** are the folder's **own** times, in nanoseconds since 1970.
+  - `changed_ns` is `null` on Windows.
+  - `null` means "unknown: list this folder next time".
+- **`names`** holds the sorted fingerprints of the file names directly in that folder, 16 hex digits each, run together.
+- **`subfolders`** holds the same for the names of its subfolders. That includes subfolders that are skipped or belong to another watched folder. See rule I1 for why.
+- **`owed`** is `null`, `"folder"` or `"subtree"`. It means "work is still owed here: queue it at the next start, whatever else is true".
+- **`recheck: true`** means "list this folder next time, even if its times look unchanged" (§3a, the coarse-clock guard).
+
+**Size, for 150,000 files in about 16,000 folders:**
+- about 170 bytes per folder and 16 bytes per file: roughly **2.7 MB + 2.4 MB ≈ 5 MB** on disk, and about the same in memory;
+- storing the names in full would be about 8 to 9 MB;
+- base64, a denser way of writing bytes as text, would save about 0.6 MB, but needs a new direct dependency. Not worth it now.
+
+**How it stays small:**
+- fingerprints, not names;
+- folders stored relative to the watched folder;
+- nothing stored per file except its fingerprint;
+- written only when something has changed, and at most once a minute (§5 step 4.7).
+
+**A hard limit.** A watched folder with more than 1,000,000 files or 200,000 folders has catch-up switched off, with a message saying why.
+- At that size the record would pass 35 MB, and the check could not meet its budget.
+- The running organiser is unaffected.
+
+**The rules the record must always keep.** The tests and the reviewers check against these.
+
+- **I1. Every folder the organiser knows about has an entry.** Each entry lists its subfolders' names as well as its files.
+  - A folder counts as **new** only if its name is missing from its parent's recorded `subfolders`.
+  - Some folders are named there but have no entry of their own. That happens when a folder used to belong to another watched folder, when recursion was off, or when a skip rule changed. Such a folder is recorded as a starting point and is **never** caught up.
+  - A newly found folder gets an entry **at once**. If it has not been dealt with yet, the entry has times `null` and `owed` set.
+- **I2. An entry's times were always read before its names were listed.** So anything that changes the folder afterwards shows up as different times next time.
+- **I3. An entry's names hold only names that have been dealt with.** A name is dealt with if it was:
+  - present at the starting point; or
+  - present when the folder was organised; or
+  - present when the folder was checked and nothing had arrived.
+
+  The record never holds a name that was still arriving, or a name that appeared after the folder was last dealt with.
+- **I4. A folder with work still owed has `owed` set.** It is queued at every start until it has been dealt with.
+- **I5. Only two things write the record:** a real organiser holding `organiser.lock`, or `service reset-catch-up` holding it. **A preview never does.**
+- **I6. Every save replaces the whole file at once.** A temporary file is written first, then swapped in. So a reader never sees half a file, and a crash leaves the previous version whole.
+
+**Why a crash, a kill or a power cut is safe.**
+- Because of I2 and I3, a record that is out of date only ever holds *older* names.
+- So anything that arrived since that save still shows up as new at the next start.
+- The cost of an out-of-date record is re-organising some folders that were already dealt with. Since stage c1, that moves nothing.
+- **The one gap:** a file that arrived *while the very first starting point was being recorded*, if the organiser then dies within the following minute.
+  - Its name may be recorded without `owed`, so it waits for the next change in its folder.
+  - §5 step 4.7 narrows that window as far as it can go.
+- **A service stop is the same as a kill.**
+  - d2 decided not to handle the service's stop signal. So a service stop (logout or shutdown) ends with no final save.
+  - The last save stands. It is at most a minute old, and by the argument above that is safe.
+
+### 3c. The first run ever
+
+- **What it does.** With no record for a watched folder, it lists every folder beneath it, records the result as the starting point, and queues nothing.
+  - That is "existing files are left alone", exactly as stage d1 promises.
+  - Names still arriving are left out, so they count as arrivals once they have finished.
+  - Some folders are queued by the running organiser meanwhile, because files arrived during the check. They are marked `owed` when the record is saved.
+- **How the user is told:**
+  - the start-up line;
+  - the log;
+  - `meedya service status`;
+  - and d1's start question, which on a first run says the files already there will be recorded and left alone.
+- **A watched folder added later** gets a first run of its own. The other folders' records are untouched.
+- **Under `--dry-run`** nothing is written. The preview says what a real run would record.
+- **Under `--organize-existing`, when the sweep is accepted** (stage d1): the sweep organises everything, so catch-up adds nothing. The record is built as the sweep deals with each folder.
+
+### 3d. Safety
+
+Catch-up only ever **decides which folders to put in the queue**. It never plans or makes a move itself. Everything after that is the running organiser's own path.
+
+| Protection | How catch-up gets it |
+| --- | --- |
+| **Never move a file that is still arriving** | Four layers. (1) Names that look like a download in progress never count as arrivals, and are never recorded. (2) Every caught-up folder goes through e1's settle queue: two identical listings a settle period apart, with no download in progress. (3) c2's hold rules apply when `scan` runs. (4) Moves are planned by `scan` after settling, never from the check's own listing |
+| **Held-back rips (c2)** | Through the per-folder function. A held folder stays `owed`, so it is looked at again at every start until it is complete, and reported each time, as c2 wants |
+| **Rename-loop guards (c1)** | Through the per-folder function. `MoveHistory` is shared with the rest of the run. A file left alone ("would be renamed again", a conflict, a failed move) counts as dealt with, so it is **not** retried at every start |
+| **Settling (e1)** | Every catch-up folder is put in e1's queue. None is ever organised directly |
+| **Test Mode** (e2; also the owner's decision of 2026-09-25 that Test Mode refuses renames) | e2 pauses the organiser before each folder while Test Mode is on. Caught-up folders stay queued and `owed`, so they survive restarts until Test Mode is switched off. If #225 lands, `scan` refuses as well: a second barrier |
+| **The write lock** | Moves go through `scan`, which takes `meedya.lock`. A busy lock uses e3's waits, and the folder stays `owed` |
+| **The output folder (e2)** | e2 checks before starting and before each folder. If the output folder is missing, everything is held and the folders stay `owed` |
+| **Real paths (e2)** | The record is keyed by the real path. Without that, `/tmp/x` and `/private/tmp/x` would get two records, and events would not match |
+| **One organiser at a time (e3)** | `organiser.lock` makes the organiser the record's only writer |
+| **Ctrl+C (d2)** | The check tests the stop flag between folders. A stopped check leaves the folders it has not reached exactly as recorded. The final save happens before "Watcher stopped" |
+| **A folder that looks very different** | If at least 200 files were recorded for a watched folder and more than half of them are no longer there, catch-up **organises nothing** for it. It records what is there now as the new starting point, and says so loudly (log, status, "Needs your attention"). This catches a restored or moved library, a different drive mounted under the same name, and names changing form wholesale |
+
+### 3e. Scale: the budget, and how it is met
+
+**Every start after the first**, on APFS, HFS+, ext4, XFS, Btrfs, ZFS and network drives:
+- it reads each recorded folder's own details once;
+- it lists only the folders whose details changed, which in practice means the folders where something arrived;
+- it reads **no file's details or tags during the check**.
+- **Budget: at most 2 seconds** for 150,000 files in 16,000 folders on this Mac's internal disk, with up to 100 changed folders.
+  - The basis, measured: about 0.3 s of detail reads, plus about 1.3 ms for each changed folder.
+  - The hand check measures the real program (§5, hand check (f)).
+
+**The first run; FAT and exFAT drives; Windows; unknown file systems:**
+- one listing per folder: about 10 to 20 seconds per 16,000 folders on this Mac;
+- once per watched folder for a first run;
+- at every start for those drives, which usually hold far fewer files.
+
+**It never blocks the organiser:**
+- The check runs in steps of at most **250 ms**, one step per pass of the event loop. Between steps, the loop waits for file events and handles them.
+- So when nothing else is happening, the check uses at most about half of the disk's time. Live events keep being queued, and Ctrl+C is honoured within about half a second.
+- **Folders under a watched folder that is still being checked are queued, but not organised, until its check finishes.**
+  - This stops the check and the organiser updating the same entries at the same time.
+  - The settle wait (about a minute by default) is longer than a normal check anyway.
+
+**Tags are read only in folders being organised.** So that cost follows what arrived, never the size of the library.
+
+**What cannot be promised:** speeds straight after a restart, on spinning disks, and on slow networks.
+- The check's work is one small read per folder.
+- How long that takes there was not measured.
+- It is shown in the start-up line and in `service status`, so it can be seen.
+
+### 3f. What the user sees
+
+| Where | What |
+| --- | --- |
+| **The start question** (d1's, on a terminal without `--yes`) | One sentence added: *"Files that arrived since it last ran are organised too; files that were already there before are left alone — add --organize-existing to organise them too."* On a first run: *"This is the first run for <folder>: what is there now will be recorded and left alone."* |
+| **A check that takes more than 1 second** | *"Catch-up: checking <folder>…"*, so a long first run or a slow drive is not silent |
+| **Start-up line, normal** | *"Catch-up: 12 files arrived in 3 folders while MeedyaManager was not running (record saved 22:14 on 25 Sep). They will be organised once nothing in those folders has changed for about a minute. (Checked 16,251 folders in 0.4 s; listed 14.)"* |
+| **Nothing arrived** | *"Catch-up: nothing arrived while MeedyaManager was not running. (Checked 16,251 folders in 0.3 s.)"* |
+| **First run** | *"Catch-up: this is the first run for <folder>, so there is nothing to catch up on. What is there now (150,000 files in 16,251 folders) has been recorded as the starting point and left alone. From now on, files that arrive while MeedyaManager is not running will be organised when it next starts."* |
+| **Looks very different** | *"Catch-up skipped for <folder>: it looks very different from last time — 9,300 of the 15,000 files recorded then are no longer there. This happens after restoring a backup, moving the library, or connecting a different drive under the same name. Nothing will be organised from it. What is there now has been recorded as the new starting point. If some of those files do need organising, preview it first with: meedya scan "<folder>""* |
+| **Record unreadable** | *"Catch-up skipped for <folder>: its record could not be read (<reason>). It has been kept as <file>.unreadable. What is there now has been recorded as the new starting point; nothing was organised from it."* |
+| **Too big** | *"Catch-up is switched off for <folder>: it holds more than 1,000,000 files (or 200,000 folders), too many to check quickly at every start. Files that arrive while MeedyaManager is running are still organised."* |
+| **Under `--dry-run`** | Each line above says what a real run *would* record, and records nothing |
+| **A drive listed in full** | Added to the line: *"(<folder> is on a FAT or exFAT drive, so every folder is listed at each start; this takes longer.)"* Or *"on Windows"*, or *"on a file system MeedyaManager does not recognise"* |
+| **Test Mode on** | e2's "only watching" message, plus: *"…the 12 files that arrived will be organised once Test Mode is switched off."* |
+| **`watch --json`** | One compact line per catch-up result, like c1's other lines: `{"time","event":"catch_up","folder","state","arrived_files","arrived_folders","folders_checked","folders_listed","seconds","message"}`. `state` is one of `checking`, `done`, `starting_point_recorded`, `skipped_looked_different`, `skipped_record_unreadable` or `switched_off_too_big` |
+| **The log** | The same human lines. For the service that is its log file (stage d3), without colour codes (stage e3) |
+| **`organiser-status.json`** (e3) | See the list below this table |
+| **`meedya service status`** | *"Catch-up (files that arrived while MeedyaManager was not running): /…/Incoming — checked 07:58 (16,251 folders in 0.4 s): 12 files had arrived in 3 folders; 1 folder is still waiting (held back)."* Attention items appear under e3's "Needs your attention" |
+
+**What `organiser-status.json` gains:**
+- A `catch_up` list, with one entry per watched folder. Its fields are:
+  - `folder`, `state`, `record_saved_at`, `checked_at`, `check_seconds`;
+  - `folders_checked`, `folders_listed`;
+  - `lists_every_folder`: null, `"first_run"`, `"fat_or_exfat"`, `"windows"` or `"unknown_file_system"`;
+  - `arrived_files`, `arrived_folders`, `folders_waiting`.
+- New "Needs your attention" kinds: `catch_up_skipped`, `catch_up_record_unreadable`, `catch_up_record_not_saved`, `catch_up_switched_off` and `catch_up_folder_unreadable`.
+
+---
+
+## 4. Where it goes, and why
+
+**After e3 and before f2:** `c1 → c2 → d1 → d2 → e1 → e2 → e3 → e4 → f2 → Codex organiser review → g`.
+
+- **Not before e1.** Catch-up needs three things from e1:
+  - its folder-level settle queue, which is how catch-up avoids moving a file still arriving;
+  - its hidden-folder rules;
+  - its handling of folders moved in whole. A caught-up new folder is a subtree, exactly like one moved in while running.
+- **Not before e2.** It needs:
+  - real paths, because the record is keyed by them. Without them, the `/tmp` and `/private/tmp` mismatch (O21) would give two records;
+  - the Test Mode pause;
+  - the output-folder checks.
+- **Not before e3, and not beside it.**
+  - Only e3's `organiser.lock` stops two organisers writing one record at the same time.
+  - Catch-up reports through e3's status file and "Needs your attention", and it uses e3's lock waits.
+  - Building it beside e3 would mean two worktrees editing `watch.rs` and the status file at once. §6c forbids that, for good reason.
+- **Not folded into e1.** e1 is already the plan's one fiddly, Opus-built stage. Catch-up is the second, and deserves its own review.
+- **Before f2**, so f2 documents the finished behaviour once.
+- **Before the Codex review and g**, so both cover it.
+
+---
+
+## 5. Stage e4 — Catch up on files that arrived while the organiser was not running
+
+**Fixes:** O34, a new label.
+- *Files that arrive while the organiser is not running (overnight, while the Mac is off, while the service is stopped or has crashed) are never organised until something else changes in their folder.*
+- This is owner decision 5 of 2026-09-25: build automatic catch-up now.
+- It supersedes §7 decision 3.
+- It gives back what the old start-up sweep promised ("install the service and forget about it"), without sweeping the whole library.
+
+**Model:** **Opus** to build.
+- This is the plan's second genuinely fiddly piece, after e1.
+- Three things decide whether catch-up loses work or, worse, moves files the owner said to leave alone: what counts as "dealt with", when the record is saved, and what a crash leaves behind.
+- **A cheaper split, if the orchestrator prefers:**
+  - steps 1 to 3 (the name rules and the pure `catch_up.rs` module, with their tests) are specified precisely enough for **Sonnet**;
+  - steps 4 to 7 (wiring into the organiser, saving the record, the status and the reset command) must be **Opus**.
+- **Review:** a **fresh** Opus agent reviews it, and the handoff records that the reviewer is the same model.
+- **The Codex organiser review** is given rules I1 to I6 (§3b) and asked to try to break them.
+
+**Needs:** c1, c2, d1, d2, e1, e2 and e3 landed.
+
+**Issue:** file one before work starts, as the project rule requires. For example: *"Organiser: catch up on files that arrived while it was not running (owner decision 5, 2026-09-25)"*, linked from #180.
+
+**Files:**
+- **new** `crates/mm-core/src/catch_up.rs` (and `pub mod catch_up;` in `crates/mm-core/src/lib.rs`)
+- `crates/mm-core/src/watcher/mod.rs` (shared name rules)
+- `crates/mm-cli/src/commands/watch.rs`
+- `crates/mm-cli/src/commands/organiser_status.rs` (from e3)
+- `crates/mm-cli/src/commands/service_cmd.rs`
+- **new** `config/schemas/organiser-catchup.schema.json`
+- `config/schemas/organiser-status.schema.json` (from e3)
+- No `Cargo.toml` change: `libc` is already a `mm-core` dependency on macOS and Linux.
+
+**What to build:**
+
+1. **Shared name rules, in `watcher/mod.rs`. One list each, never two.**
+   - **`pub fn is_arriving_by_name(name: &OsStr, siblings: &HashSet<OsString>, inside_aria2_download: bool) -> bool`**
+     - It covers:
+       - the endings in `DOWNLOAD_IN_PROGRESS_EXTENSIONS`;
+       - a sibling named `<name>.aria2`;
+       - aria2's whole-folder download. The walker works this out from the parent folder's listing, as `scan_directory_below` already does;
+       - rsync's temporary names;
+       - Office's `~$` files.
+     - It answers from the folder listing alone, so the check never reads a file's details.
+     - `is_download_in_progress_impl` must call it for those parts. It keeps its own existence checks only for callers that have no listing.
+   - **`pub fn is_clutter_name(name: &OsStr) -> bool`**
+     - It covers:
+       - any name starting with `.`. That includes `.DS_Store`, and the `._name` files macOS writes on FAT, exFAT and network drives;
+       - `Thumbs.db`, `ehthumbs.db` and `desktop.ini`, in any letter case;
+       - macOS's custom-icon file `Icon\r`;
+       - Test Mode copies (`test_mode::is_test_mode_copy`);
+       - `~$…`;
+       - a trailing `~`.
+     - These appear when somebody merely *looks at* a folder (in Finder or Explorer). So they must never count as arrivals.
+   - **`pub fn is_skipped_folder_name(name: &OsStr) -> bool`**
+     - It covers:
+       - a leading `.`;
+       - a name ending `.download`;
+       - `$RECYCLE.BIN`;
+       - `System Volume Information`;
+       - `lost+found`.
+     - **If d1 and e1 put an equivalent rule in `watch.rs`, move it here and call it from every place.** The sweep, the events and catch-up must share one set of folder rules.
+     - The three new names are the Windows and Linux twins of O19 (`.Trashes`). A drive formatted on Windows keeps deleted files in `$RECYCLE.BIN`.
+
+2. **The record and the check, in the new `crates/mm-core/src/catch_up.rs`.**
+   It is pure: the file system sits behind a small trait (an interface), so tests can count every read.
+
+   - **`trait FolderReader`** has three methods:
+     - `fn details(&mut self, dir: &Path) -> io::Result<FolderDetails>`: the modified time, the change time (macOS and Linux only) and the device number;
+     - `fn list(&mut self, dir: &Path) -> io::Result<Vec<ListedEntry>>`: each entry's name, and whether it is a folder, a file or a link;
+     - `fn trust(&mut self, dir: &Path, device: u64) -> TimeTrust`.
+   - **The real reader:**
+     - uses `symlink_metadata` for details;
+     - uses `read_dir` with `DirEntry::file_type()` for listing. Never `path.is_dir()`: that reads every entry's details and follows links;
+     - never follows a linked folder.
+   - **`pub fn name_fingerprint(name: &OsStr) -> u64`**, using FNV-1a (64-bit), a published and very simple way of making such fingerprints.
+     - On macOS and Linux it works over the name's raw bytes. On Windows it works over the name's UTF-16 units, each taken as two bytes, low byte first.
+     - It needs no dependency.
+     - It gives the same answer on every machine and every Rust version. Rust's built-in hasher does not promise that.
+     - **If this function ever changed, every name would look new.** Test 1 pins it.
+   - **`TimeTrust`** says whether a drive's folder times can be relied on:
+     - **`Trusted`:** `apfs`, `hfs`, ext2/3/4, XFS, Btrfs, ZFS, F2FS and `tmpfs`. Also network drives (`smbfs`, `nfs`, `afpfs`, `cifs`, SMB2), as best effort: their folder times come from the server.
+     - **`ListEveryFolder`:**
+       - `msdos`, `vfat` and `exfat`;
+       - anything reached through FUSE. On Linux that includes `ntfs-3g` and `exfat-fuse`, which cannot be told apart;
+       - anything not recognised;
+       - every folder on Windows.
+     - **Finding the type:** one `libc::statfs` call per device, which asks the operating system what kind of file system a folder is on.
+       - macOS reads `f_fstypename`.
+       - Linux reads `f_type`, checked against `<linux/magic.h>`.
+       - The call sits in one small function with its own `#[allow(unsafe_code)]` and a comment, as `service.rs:618` does.
+     - **A wrong entry in this table can only make catch-up slower, or make it miss arrivals.** It can never make it move a file that did not arrive, because names decide and times only let a listing be skipped. Say so in the code comment.
+   - **`CatchUpRecord`**, using `serde`, in exactly the format of §3b:
+     - `load(root) -> Loaded | Missing | Unreadable(reason) | ForAnotherFolder`;
+     - `save(&record)`, through e3's write-then-swap helper;
+     - `record_path(root)`.
+     - An unknown `format_version` counts as `Unreadable`.
+     - When loading, drop every entry that lies inside a deeper watched folder, because that folder has its own record.
+   - **`Check::new(root, record_snapshot, filters, deeper_roots, recursive, limits)`**, then **`step(&mut reader, budget, clock, stop) -> Working | Finished(CheckResult)`**. It visits a parent before its children. For each folder:
+     1. **Read its details first** (rule I2: always before listing).
+        - If that fails with "not found", drop the entry and every entry beneath it.
+        - For any other error, keep the entry, report it once (`catch_up_folder_unreadable`), and queue nothing.
+     2. **List it only if any of these is true:**
+        - it has no entry;
+        - its times are `null`;
+        - `recheck` is set;
+        - `owed` is set;
+        - either of its times differs from the entry;
+        - its drive is `ListEveryFolder`.
+
+        Otherwise, go straight on to its recorded subfolders.
+     3. **When it is listed, split the entries into four groups:**
+        - **subfolders.** Record all of their names in `subfolders`. Walk only those that pass the skip rules, are not links, and are not deeper watched folders;
+        - **clutter**, which is ignored;
+        - **names still arriving**, which are neither recorded nor arrivals;
+        - **the rest.**
+
+        Then:
+        - **Gained names** are the rest, minus the recorded names.
+        - Only gained names that pass the `watch.include_extensions` and `exclude_extensions` lists count as arrivals. Those lists are applied here, not when recording, so changing them later does not make old names look new.
+        - A folder with gained arrivals becomes a `Folder` item.
+        - A folder that only lost names, or gained only clutter or downloads, is **updated at once**: it has been dealt with, and nothing arrived.
+     4. **A walkable subfolder whose name is not in the parent's recorded `subfolders` is new.**
+        - List it and everything beneath it.
+        - If anything in it is an arrival, the **topmost** new folder becomes a `Subtree` item.
+        - Either way, every new folder gets an entry at once (rule I1). If nothing in it arrived, the entry holds its real times and names. Otherwise it has times `null` and `owed` set.
+     5. **A walkable subfolder named in `subfolders` but with no entry of its own** is recorded as a starting point: it is listed and given entries, and it produces no items (rule I1).
+     6. **Dropping entries.** An entry is dropped, with everything beneath it, when its parent was listed and it is not in that listing. **Nothing is dropped for a folder that was not visited.** A stopped check keeps what it did not see.
+     7. **The recheck rule.** When an entry's times are written, set `recheck: true` if either time is:
+        - less than 5 seconds before the moment the times were read; or
+        - later than that moment.
+
+        This covers HFS+'s whole seconds (checked), FAT's 2-second steps and Linux's coarse timestamps. The wall clock only decides *whether to look again*. It never decides whether something arrived.
+   - **`CheckResult`** holds:
+     - `items`: the folders and subtrees to queue;
+     - the updated and dropped entries;
+     - `arrived_files` and `arrived_folders`;
+     - `recorded_names` and `lost_names`;
+     - `folders_checked`, `folders_listed` and `seconds`;
+     - `lists_every_folder` and `looked_different`;
+     - the folders that could not be read.
+   - **`looked_different`** is true when `recorded_names ≥ 200` and `lost_names × 2 > recorded_names`. Both numbers are constants, and are tested at their edges.
+   - **Limits:** above 1,000,000 files or 200,000 folders, the check stops and returns `TooBig`. Both are constants that tests can lower.
+
+3. **The "dealt with" rule.** Also in `catch_up.rs`, as pure functions that the organiser calls.
+   - **Before a queued folder is organised,** keep its details and its listing.
+     - Use the listing e1 took to decide the folder was ready, if it is available; otherwise take a fresh one.
+     - Details first (rule I2).
+   - **After it is organised,** read its details again, then list it.
+     - **The entry's names become:** the names listed now that were either in the "before" listing, or are destinations this organise wrote into this same folder (a rename in place).
+     - **`owed` is set if any of these is true:**
+       - a name now present is in neither of those groups, and counts as an arrival. It came in while the folder was being organised;
+       - the outcome held the folder back (c2);
+       - the folder was paused: Test Mode, or the output folder missing (e2);
+       - the lock was busy (e3);
+       - the organise was stopped part-way (d2).
+
+       Otherwise `owed` is cleared.
+     - Files **left alone** ("would be renamed again", a conflict, a failed move) still count as dealt with.
+   - **Destinations in other folders.** For each moved file, add its name to the entry of the folder it was moved into, if that folder is inside a watched folder. If that folder has no entry, create one with times `null`.
+     - So the organiser's own output never looks like an arrival at the next start.
+     - The times stay as they were. So that folder is still listed once next time (cheap), and anything else that arrived there is still seen.
+
+4. **Wiring it into `watch.rs`:**
+   1. **Load the records.** First run e2's checks before starting, take e3's `organiser.lock`, and start the watcher. (d1 step 6 already starts the watcher before any walk, so nothing that arrives during the check is missed.) Then load one record per watched folder, by real path, with duplicates removed.
+   2. **The start question.** d1's start question gains the sentence in §3f. Whether this is a first run is known before the question, from whether the record file exists.
+   3. **Run the check.** The event loop runs `Check::step` with a 250 ms budget, once per pass, until every watched folder has been checked.
+      - Events are still received and queued between steps.
+      - **Folders under a watched folder that is still being checked are queued, but not organised,** until its check finishes (§3e).
+   4. **When a watched folder's check finishes,** act on the result:
+      - **`Missing`:** record the starting point (§3c).
+      - **`looked_different`:** record a new starting point, queue nothing, and add a `catch_up_skipped` attention item.
+      - **`Unreadable`:** rename the file to `<name>.unreadable` (replacing any older one), record a new starting point, and add an attention item.
+      - **`TooBig`:** switch catch-up off for that folder, write no record, and add an attention item.
+      - **Otherwise:**
+        - put every item into e1's queue, with "now" as its last-change time. If e1's `record` cannot take a folder directly, add `enqueue(folder, kind, now)` to e1's queue; do not fake a file event;
+        - mark the items `owed` in memory;
+        - apply the updated and dropped entries.
+
+      Report per §3f.
+   5. **After each organised folder,** apply step 3, whatever put it in the queue: a live event or catch-up.
+   6. **`--organize-existing`, when the sweep is accepted and this is not a dry run.**
+      - Do not queue catch-up items: the sweep covers every folder.
+      - Build the record from the sweep's own listing: one walk, not two.
+      - The sweep's folders count as dealt with, through step 3.
+      - If the sweep is declined, or run under `--dry-run`, catch-up runs as normal.
+      - **One walker.** d1's sweep and this check must use the same skip rules and the same reader. If d1 built its own discovery, switch it to this stage's reader; as a minimum, share the rules. Never two sets of rules.
+   7. **Saving. Never under `--dry-run`.**
+      - **When to save:**
+        - when the record has changed, at most once every 60 seconds;
+        - straight after each watched folder's check;
+        - after the event loop ends, before "Watcher stopped".
+      - **Before each save:**
+        - move every event already waiting in the channel into the queue;
+        - then mark as `owed` every folder that is queued, held back, waiting on the lock or paused, creating entries where missing (rule I1).
+      - **A save that fails** (disk full, permissions) keeps the old file, is reported once (`catch_up_record_not_saved`), and is tried again at the next save.
+   8. **Ctrl+C.** The check tests d2's stop flag between folders.
+   9. **Reporting.** The human lines, JSON lines and status fields in §3f.
+
+5. **In `service_cmd.rs`:**
+   - `meedya service status` shows the catch-up block and the new attention kinds.
+   - **A new subcommand, `meedya service reset-catch-up [FOLDERS…]`.** It records what is in the watched folders now as the new starting point, and **moves nothing**. The folders come from settings, or from the command line.
+     - **It takes `organiser.lock`.** If an organiser is running, it refuses with exit code 1: *"An organiser is running (process N, started HH:MM), so the catch-up record cannot be reset now. Stop it first (meedya service stop, or Ctrl+C in its window). Nothing was changed."*
+     - **Under `--dry-run`** it prints what it would record, and writes nothing.
+     - **The switched-off safety catch does not block it,** because it moves nothing.
+     - **Why it exists:**
+       - A user who has just put files into a watched folder by hand, and does not want them organised, needs a way to say "these are not arrivals".
+       - Before stage g no real organiser can run. So this is the only way a hand check can create a record.
+
+6. **Schemas:**
+   - **`config/schemas/organiser-catchup.schema.json`:**
+     - a `description` on every property;
+     - the required fields marked;
+     - `names` and `subfolders` constrained to the pattern `^([0-9a-f]{16})*$`;
+     - the `owed` values listed;
+     - `$comment` notes for maintainers about rules I1 to I6.
+   - **A drift test** modelled on `settings_schema_properties_match_appconfig` (`mm-core/src/config/mod.rs:1805`).
+   - **e3's `organiser-status.schema.json`:** add the `catch_up` fields and the new attention kinds, and extend its drift test.
+
+7. **(Recommended to move into e1, which is not built yet.) The organiser's own moves are not arrivals while it is running, either.** See §6, e1 addition 1. If e1 does not take it, this stage only makes sure catch-up does not repeat the problem (step 3, destinations).
+
+**Decisions, and what was rejected:**
+- **Names decide; times only save work.** The reasons and the evidence are in §3a. Rejected:
+  - file dates (copies keep them; checked);
+  - the change time (hidden labels bump it, checked; it means nothing on FAT or exFAT, checked);
+  - identity numbers (made up on some drives, and reused after a deletion);
+  - names plus each file's size and date (one detail-read per file, and what it adds is not an arrival);
+  - for now, macOS's change history (§8).
+- **List every folder on FAT, exFAT, Windows and unknown file systems.**
+  - The Mac's own drivers did update folder times (checked).
+  - But FAT and exFAT drives are exactly the ones other devices write to while the Mac is off: cameras, Windows computers. Whether those update folder times was not checked.
+  - Rejected: trusting those drives, which would silently miss those arrivals.
+  - Rejected: detecting the file system without the `libc` call, for example by reading the output of `mount`. That is fragile.
+- **The whole folder is organised, as the running organiser does.** This is owner decision A (§7).
+  - Rejected: organising only the new files. One folder would then behave differently depending on whether the organiser happened to be running when the file arrived. It would also need a second path through `scan`.
+- **Removals alone do not trigger catch-up.** Nothing arrived.
+- **Everything goes through e1's queue; nothing is organised directly.** The queue is the only path with the "still arriving" protections.
+- **No second question on a terminal.**
+  - d1 asks a numbered question before its sweep, because the sweep can move the whole library.
+  - Catch-up only does what the running organiser would have done, and the start question already says so.
+  - Nothing moves before the settle wait (about a minute by default), and Ctrl+C during that wait stops everything.
+- **"Looks very different" records a new starting point automatically, and says so loudly.**
+  - Rejected: refusing at every start until somebody acts. In the background nobody may read the refusal, so catch-up would quietly stay off.
+  - The cost: arrivals in that same stretch are not organised. The message says how to organise them by hand.
+- **One file per watched folder, in the settings folder, as JSON with a schema.** Rejected:
+  - one file for all folders: a terminal run given some other folder would disturb the service's record;
+  - a file inside the watched folder: never write into the user's folders;
+  - a database: that is #220's job. The record should move into the library database once it exists.
+- **No switch to turn catch-up off.** Nobody asked for one, and `reset-catch-up` covers "do not organise what is there now".
+- **Previews read the record but never write it.** The reason is the same as in e3: a preview must not change what a real service does.
+
+**Tests to write first.** In brackets: how each fails on the code this stage starts from, which is c1 to e3 landed.
+
+*In `crates/mm-core/src/catch_up.rs`* (all are *compile failures*, because the module is new):
+1. `name_fingerprints_never_change`.
+   - `""` → `cbf29ce484222325`
+   - `"a"` → `af63dc4c8601ec8c`
+   - `"foobar"` → `85944171f73967e8`
+   - `"Björk.flac"`, in UTF-8 → `0cdd348313fb87ed`
+
+   These were computed with an independent script.
+2. `an_unchanged_folder_is_not_listed`: a counting reader shows one detail-read per recorded folder, and **no listing** for folders whose times match.
+3. `a_new_file_name_queues_its_folder` and `a_removed_file_alone_queues_nothing_and_updates_the_entry`.
+4. New and known folders:
+   - `a_new_folder_with_an_arrival_is_queued_as_one_subtree` (the topmost new folder only);
+   - `a_new_folder_holding_only_downloads_is_recorded_without_them`;
+   - `a_known_folder_without_its_own_entry_is_recorded_not_caught_up`. This covers a nested watched folder removed from settings, and recursion switched on.
+5. `an_owed_folder_is_queued_even_when_unchanged`.
+6. `clutter_is_never_an_arrival`: `.DS_Store`, `._song.mp3`, `Thumbs.db`, `DESKTOP.INI`, `Icon\r`, and a `_MeedyaManager` copy.
+7. `names_still_arriving_are_not_recorded_and_count_once_finished`. Cases:
+   - `movie.mkv` beside `movie.mkv.aria2`;
+   - `x.flac.part`;
+   - an aria2 folder download (`Album/` beside `Album.aria2`);
+   - a file inside `x.download/`.
+8. Folders that are never walked:
+   - `skipped_folders_are_never_walked`: `.Trashes`, `x.download`, `$RECYCLE.BIN`, `System Volume Information`, `lost+found`;
+   - `a_linked_folder_is_not_followed` (macOS and Linux only);
+   - `a_deeper_watched_folder_keeps_its_own_record`, including dropping the outer record's entries for it when loading.
+9. `the_include_list_decides_arrivals_but_not_what_is_recorded`.
+   - With `include_extensions: ["flac"]`, a gained `cover.jpg` queues nothing, and a gained `x.flac` does.
+   - Then clear the list: `cover.jpg` must **not** now look new.
+10. `the_first_check_records_a_starting_point_and_queues_nothing`.
+11. `a_folder_that_looks_very_different_is_not_caught_up`. The edges:
+    - 200 recorded, 101 lost → skipped;
+    - 200 recorded, 100 lost → not skipped;
+    - 199 recorded, 199 lost → not skipped.
+12. `the_recheck_rule_catches_changes_within_the_same_second` (the HFS+ case).
+    - Times less than 5 s old set `recheck`, and so do times in the future.
+    - A folder with `recheck` is listed next time, even with identical times.
+13. Drives:
+    - `drives_that_cannot_be_trusted_have_every_folder_listed`, with the trust answer injected;
+    - `file_system_names_are_classified`: a pure table covering `apfs`, `msdos`, `exfat`, the Linux magic numbers and an unknown one.
+    - On macOS only, also check that the test's own temporary folder reads as `apfs`. Skip if it does not.
+14. Stopping and pacing:
+    - `a_stop_request_ends_the_check_between_folders`;
+    - `a_stopped_check_keeps_what_it_did_not_see`;
+    - `each_step_stays_within_its_time_budget`, with an injected clock.
+15. `a_vanished_folder_is_dropped_with_everything_beneath_it` and `a_folder_that_cannot_be_read_is_kept_and_reported`.
+16. Loading and saving:
+    - `the_record_survives_a_round_trip`, including a folder name that is not valid text (macOS and Linux only);
+    - `an_unknown_format_version_is_unreadable`;
+    - `a_record_for_another_folder_is_ignored`;
+    - `an_unreadable_record_is_set_aside`.
+17. `the_record_is_replaced_whole`: no temporary file is left behind, and when the write fails (injected), the old file is intact.
+18. The "dealt with" rule:
+    - `names_are_what_was_there_before_plus_this_runs_own_renames`;
+    - `a_file_that_appeared_while_organising_leaves_the_folder_owed`;
+    - `held_paused_lock_busy_and_stopped_folders_stay_owed`;
+    - `left_alone_files_count_as_dealt_with`.
+19. `a_huge_tree_switches_catch_up_off`, with the limits lowered.
+20. `the_record_matches_its_schema`: the drift test.
+
+*In `crates/mm-core/src/watcher/mod.rs`:*
+
+21. `the_name_rules_agree_with_the_file_rules`: for a table of names and siblings, `is_arriving_by_name` must agree with `is_download_in_progress` on real temporary files. *(A compile failure. It guards against the two drifting apart.)*
+
+*In `crates/mm-cli/src/commands/watch.rs`* (all under `ConfigDirGuard`; no test waits for a real file event):
+
+22. **`a_file_that_arrived_while_stopped_is_organised_at_the_next_start`.**
+    - Template: `<Extension>/<Filename>`.
+    - Write a record for the root with `serde_json::json!` and a few-line local FNV-1a helper. It needs entries `""` and `in`:
+      - `""` lists `in` in its `subfolders`;
+      - `in` has no names, and times of `0`, so it gets listed.
+    - Key the file by the root's real path (`std::fs::canonicalize`), as e2 resolves it.
+    - Put `in/song.wav` on disk.
+    - Start the organiser, and drive the settle queue past "ready" with e1's injected clock, through the same test entry points the d1 and e1 tests use.
+    - Expect `wav/song.wav`.
+    - ***Fails by behaviour*** on the starting code: nothing reads the record, so nothing is organised.
+23. **`the_first_real_start_records_a_starting_point_and_moves_nothing`.**
+    - Files present, no record.
+    - After start-up and settling: nothing has moved, **and** `organiser-catchup/<key>.json` exists.
+    - ***Fails by behaviour*** on the starting code: no record file is written.
+24. `a_preview_never_writes_the_catch_up_record`. *(A guard. It passes on the starting code.)*
+25. `a_held_back_rip_is_offered_again_at_every_start_until_complete`: two starts, with a `.cue` whose `.bin` is missing. The folder is still `owed` after both.
+26. `test_mode_leaves_caught_up_folders_owed`, with `TestModeEnvGuard`.
+27. `left_alone_files_are_not_retried_at_every_start`, with the template `x <Filename>`.
+    - The first start reports "would be renamed again".
+    - The second queues nothing and reports nothing.
+28. `the_organisers_own_moves_are_not_caught_up_next_time`.
+    - Move `in/a.wav` to `wav/a.wav`, and stop before `wav` settles.
+    - Start again: `wav` is listed but not queued.
+29. `a_save_marks_queued_folders_owed_after_taking_waiting_events`.
+30. `folders_under_a_folder_still_being_checked_wait_for_the_check`.
+31. `organize_existing_replaces_catch_up_and_leaves_a_full_record`.
+32. `stopping_during_a_long_check_is_prompt_and_leaves_a_whole_record`.
+    - Use `run_until` with a dry-run context, about 2,000 generated folders, and a stop after 200 ms.
+    - It must return within 5 seconds, and any record file present must still parse.
+
+*In `crates/mm-cli/src/commands/service_cmd.rs`:*
+
+33. The new subcommand. *(Compile failures: it does not exist yet.)*
+    - `reset_catch_up_records_a_starting_point_and_moves_nothing`;
+    - `reset_catch_up_refuses_while_an_organiser_is_running`, holding `organiser.lock` in the test;
+    - `reset_catch_up_under_dry_run_writes_nothing`.
+34. `service_status_shows_catch_up_and_what_needs_attention`, from a hand-written `organiser-status.json` with a `catch_up` block.
+    - ***Fails by behaviour*** on the starting code if e3's reader ignores fields it does not know. Otherwise it is a compile failure.
+    - Say which, in the test's doc comment.
+
+*In e3's status module:*
+
+35. Its schema drift test, extended. *(It fails until the schema has the new fields.)*
+
+**Hand check** (the §6b harness):
+- **Every organiser run uses `--dry-run`.**
+- **The only command run without `--dry-run` is `meedya service reset-catch-up`.**
+  - It moves no file.
+  - It writes only into the throwaway settings folder `$H/config`, just as §6b's harness already writes `settings.json5` there, and e3's hand check writes a status file there.
+  - The script proves both, by comparing the scratch tree and the settings folder before and after.
+- No service is installed.
+
+```bash
+#!/bin/bash
+# Hand check for stage e4 (catch-up). Moves nothing: every organiser run is
+# --dry-run. `service reset-catch-up` moves no file and writes only into the
+# throwaway settings folder $H/config. Everything is inside the scratchpad.
+set -u
+W="/abs/path/to/.claude/worktrees/org-e4"; B="$W/target/debug/meedya"
+S="<session scratchpad>"; H="$S/hand-e4"; rm -rf "$H"; mkdir -p "$H/config" "$H/lib"
+export MM_CONFIG_DIR="$H/config"; HR="$(cd "$H" && pwd -P)"
+cat > "$H/config/settings.json5" <<EOF
+{ rename: { template: "<Extension>/<Filename>" }, watch: { folders: ["$HR/lib"] } }
+EOF
+tree_state() { find "$H/lib" | sort; }                                           # every path under lib
+rec_state()  { find "$H/config" -type f -exec shasum {} + 2>/dev/null | sort; }  # the settings folder
+organise() {  # a dry-run organiser: wait for the catch-up line, then for settling
+  timeout -s INT 90 "$B" --dry-run watch --organize --settle-secs 1 > "$H/out-$1.txt" 2>&1 & P=$!
+  for i in $(seq 1 200); do grep -q "Catch-up" "$H/out-$1.txt" && break; sleep 0.25; done
+  sleep 5; kill -INT "$P"; wait "$P"; echo "exit code: $?"; cat "$H/out-$1.txt"; }
+
+mkdir -p "$H/lib/wav" "$H/lib/old"; printf x > "$H/lib/wav/a.wav"; printf x > "$H/lib/old/b.wav"
+# (a) First start, no record, preview. Expect "first run … a real run would record … (2 files in
+#     3 folders)", no "Would move", and no organiser-catchup folder afterwards.
+organise a; ls "$H/config/organiser-catchup" 2>&1
+# (b) Reset under --dry-run writes nothing.
+R0="$(rec_state)"; "$B" --dry-run service reset-catch-up; [ "$R0" = "$(rec_state)" ] && echo "dry-run wrote nothing"
+# (c) Reset for real. Expect "Recorded a starting point … 2 files in 3 folders. Nothing was moved."
+T0="$(tree_state)"; "$B" service reset-catch-up; echo "exit code: $?"; [ "$T0" = "$(tree_state)" ] && echo "nothing moved"
+# (d) "Arrivals while stopped", plus clutter and a download still in progress.
+mkdir -p "$H/lib/new" "$H/lib/dl"; printf x > "$H/lib/new/c.wav"; printf x > "$H/lib/old/d.wav"
+printf x > "$H/lib/wav/.DS_Store"; printf x > "$H/lib/wav/Thumbs.db"
+printf x > "$H/lib/dl/e.mkv"; printf x > "$H/lib/dl/e.mkv.aria2"
+R1="$(rec_state)"; organise d; [ "$R1" = "$(rec_state)" ] && echo "preview left the record alone"
+# Expect "Catch-up: 2 files arrived in 2 folders", then "Would move" for new/c.wav, old/d.wav and
+# old/b.wav (the whole folder is organised: owner decision A). Nothing for a.wav, .DS_Store,
+# Thumbs.db or e.mkv.
+# (e) Looks very different: 300 files, reset, then swap in 300 differently named ones.
+rm -rf "$H/lib"; mkdir -p "$H/lib/m"; for i in $(seq -w 1 300); do printf x > "$H/lib/m/f$i.wav"; done
+"$B" service reset-catch-up
+mv "$H/lib" "$H/lib.gone"; mkdir -p "$H/lib/n"; for i in $(seq -w 1 300); do printf x > "$H/lib/n/g$i.wav"; done
+organise e   # expect "Catch-up skipped … looks very different … 300 of the 300 files", and no "Would move"
+# (f) Budget: 150,000 empty files in 16,251 folders (about 90 s to make), then time the check.
+rm -rf "$H/lib" "$H/lib.gone"; mkdir -p "$H/lib"
+/usr/bin/python3 - "$H/lib" <<'PY'
+import os, sys
+r = sys.argv[1]
+for a in range(1250):
+    for b in range(12):
+        d = os.path.join(r, f"Artist {a:04d}", f"Album {b:02d}"); os.makedirs(d)
+        for c in range(10): open(os.path.join(d, f"{c+1:02d} - Track.flac"), "w").close()
+PY
+sleep 6; time "$B" service reset-catch-up   # the first-run cost: expect roughly 10–20 s on this Mac
+for a in $(seq 0 9); do printf x > "$H/lib/Artist 000$a/Album 00/99 - New.flac"; done
+organise f   # expect "10 files arrived in 10 folders (Checked 16,251 folders in ≤ 2 s; listed about 10)"
+# (g) Ctrl+C during a long check. With no record, the preview has to list every folder.
+rm -rf "$H/config/organiser-catchup"
+timeout -s INT 120 "$B" --dry-run watch --organize > "$H/out-g.txt" 2>&1 & P=$!
+for i in $(seq 1 80); do grep -q "Catch-up: checking" "$H/out-g.txt" && break; sleep 0.25; done
+sleep 1; kill -INT "$P"; S0=$(date +%s); wait "$P"; echo "exit code: $? after $(( $(date +%s) - S0 )) s"
+cat "$H/out-g.txt"   # expect "Stopping…", then "Watcher stopped", exit code 0, within about a second
+rm -rf "$H"
+```
+
+- **Settling.** After e1, settling takes about two settle periods. So `organise` waits 5 seconds with `--settle-secs 1`.
+- **Waiting.** If the orchestrator runs this in the background, it sets a watchdog on the output file, as §6b says. Step (f) takes a few minutes.
+- **Optional (h), only if the orchestrator is content to mount a disk image.** I did this safely while planning.
+  - Make a 64 MB FAT32 image in the scratchpad: `hdiutil create -size 64m -fs "MS-DOS FAT32"`.
+  - Attach it with `-nobrowse -mountpoint "$H/fat"`, point the settings at `$H/fat/lib`, and run (c) and (d).
+  - The lines should say every folder is listed "because it is on a FAT or exFAT drive".
+  - Detach and delete it afterwards.
+- **Cannot be hand-checked before stage g** (say so in the report):
+  - a real start saving the record by itself;
+  - a real catch-up moving files;
+  - saving when stopping.
+
+  Tests 22, 23, 25 to 29 and 31 cover them.
+
+**Done when:**
+- the gate (§6a) is clean;
+- the tests have been shown failing first, with 22 and 23 (and 34, if it applies) failing by behaviour;
+- the hand check's output is saved, and the budget line from (f) is at or under 2 seconds. If it is over, report the measured figure rather than quietly changing the budget;
+- a review round finds nothing real;
+- the handoff records the number of rounds, and that the reviewer was the same model if Opus built it.
+
+---
+
+## 6. Changes to the rest of the plan
+
+**§1, the plan on one page.** Add a row:
+
+| Stage | What it does, in plain words | Main files | Can run beside |
+| --- | --- | --- | --- |
+| **e4** | Catches up on files that arrived while the organiser was not running, without sweeping the library. The first run records a starting point | new `mm-core/src/catch_up.rs`, `watcher/mod.rs`, `watch.rs`, `organiser_status.rs`, `service_cmd.rs`, new schema | f1 |
+
+Change the order line to: `c1 → c2 → d1 → d2 → e1 → e2 → e3 → e4 → f2 → Codex review of the whole organiser → g`.
+
+**§3a, the defect table.** Add a row:
+
+| # | Defect, in plain words | Where | Holds? | Stage |
+| --- | --- | --- | --- | --- |
+| O34 | Files that arrive while the organiser is not running are never organised until something else changes in their folder | Nothing catches up, once d1 makes the sweep opt-in | Yes (owner decision 5, 2026-09-25) | e4 |
+
+**§6c, dependencies.** Replace the diagram with:
+
+```text
+review/round2 + gap-fix commit + Codex round-2 fixes land on the working branch
+   │
+   ├── f1  (help pages + one test)                  ── side by side with everything below
+   ├── d3  (service.rs, service_cmd.rs)             ── already on org/line
+   │
+   └── c1 ─► c2 ─► d1 ─► d2 ─► e1 ─► e2 ─► e3 ─► e4 ─► f2 ─► Codex organiser review ─► g
+                                     ▲       ▲      │
+                                     │       │      └ needs e1 (the queue), e2 (real paths, Test
+                                     │       │        Mode pause), e3 (organiser.lock, status file)
+                                     └ d3    └ d3
+```
+
+Under it, add: *"e4 changes `watch.rs`, and e3's status file and schema, so it comes strictly after e3. It can run beside f1 only."*
+
+**§7, owner decisions.** Decision 3 is **answered**: the owner chose to build catch-up (decision 5 of 2026-09-25).
+- Replace its text with a pointer to e4.
+- Add the two new decisions from §7 below.
+
+**Stage e1 (not built yet): three recommended additions.** Each is small, and each closes a gap the existing plan leaves open.
+1. **The organiser's own moves should not count as arrivals.**
+   - Today, and as e1 is written, moving `in/a.wav` to `Artist/Album/a.wav` raises an event in `Artist/Album`.
+   - That folder then settles and is organised **in full**, so any older, never-organised files sitting there are organised too.
+   - This happens at c1 today: `organise_settled` groups every settled path by its folder.
+   - It quietly breaks d1's promise that existing files are left alone.
+   - **The fix:** an event whose path is exactly a destination this run has just written (per `MoveHistory`) does not queue its folder. Other events in that folder still do.
+2. **The Windows and Linux twins of O19.** Skip `$RECYCLE.BIN`, `System Volume Information` and `lost+found`, as well as hidden folders, through the shared `is_skipped_folder_name` (e4 step 1).
+3. **The `--organize-existing` sweep should wait for settling too.**
+   - d1's sweep organises each folder straight away. So a file being copied in at start-up can be organised half-written.
+   - Putting the sweep's folders through e1's queue, as e4 does for catch-up, closes this.
+
+If e1 does not take them:
+- e4 does (1) for catch-up only (step 3);
+- e4 does (2) in full (step 1);
+- (3) stays open.
+
+Say so in the handoff.
+
+**Stage e3.** No change to what it builds, but e4 adds fields to its status file and schema.
+- e3's reader must not reject fields it does not know: no `deny_unknown_fields`.
+- e4's new fields get `#[serde(default)]`.
+- Then both old and new status files parse.
+
+**Stage f2 ("Must cover").** Replace *"files that arrived while it was stopped are not organised until something in their folder changes (owner decision 3)"* with the following:
+- catch-up: what it does, what counts as "arrived", and the first run;
+- **what it cannot catch:**
+  - a file replaced under the same name, or edited in place;
+  - arrivals in a watched folder that looks very different;
+- that the **whole folder** is organised (owner decision A);
+- FAT and exFAT drives, Windows and unrecognised file systems list every folder at each start, which is slower;
+- network drives are best effort;
+- `meedya service reset-catch-up`, and when to use it;
+- where the record lives, and that deleting it simply makes the next start a first run;
+- the catch-up block in `service status`, and its attention items;
+- the `catch_up` JSON line, in `docs/api/cli.md`.
+
+f2's check for phrases that must not appear already includes `organised once now` (the old sweep's wording). Keep it.
+
+**Stage g.**
+- **Condition 1** gains e4.
+- **The Codex scope** gains:
+  - `catch_up.rs`;
+  - the watcher's name rules;
+  - the `reset-catch-up` subcommand;
+  - `organiser-catchup.schema.json`;
+  - rules I1 to I6, as things to try to break.
+- **Hand check (1)**, the end-to-end dry-run script, includes `hand-e4.sh`.
+- **Hand check (2)**, the real run confined to the scratchpad (only with the owner's OK), gains a catch-up round:
+  - start, then stop with Ctrl+C;
+  - drop a tagged file into the scratch folder;
+  - start again: expect *"1 file arrived"*, and the file organised;
+  - start once more: expect *"nothing arrived"*.
+- **The `run_until` switch-on test** also checks that a real start writes the catch-up record.
+
+**Issues to file:**
+- the catch-up issue itself (§5, "Issue");
+- e1 addition 1, if e1 does not take it, as an issue of its own: *"Organiser: files already in a destination folder are organised when the organiser moves something into it"*.
+
+---
+
+## 7. Decisions only the owner can take
+
+Nothing in e4 waits for these. The recommended answer is what gets built meanwhile.
+
+**A. When something arrives in a folder, should the whole folder be organised?**
+- The running organiser organises a whole folder when a file in it settles. So older, never-organised files in the same folder are organised too.
+- Catch-up does the same, so the two behave alike.
+- Example: a new track dropped into `Old Album/` also moves the old tracks in `Old Album/` into place.
+- *Recommended: yes. Keep the two alike, and say so plainly in the help pages.*
+  - Organising only the new files would be a bigger change, to the running organiser as well. It belongs with #220's record of each file's history.
+  - Separately, the organiser's own moves into a destination folder should **not** count as an arrival there (§6, e1 addition 1). That is a gap, not a choice.
+
+**B. What counts as "arrived".**
+- Catch-up judges arrivals by **new file names**.
+- A file replaced by another of the same name, or edited in place while the organiser was stopped, is not caught up.
+- Such a file is organised the next time something else in its folder changes, or with `--organize-existing`.
+- *Recommended: accept.* Catching those too would mean reading every file's details at every start. On this Mac that was about 40 times slower than reading only the folders' details, and the changes it would catch are not arrivals.
+
+**Decisions this stage has taken that you might want to reverse** (built as described):
+- **When a watched folder looks very different** (at least 200 files recorded, more than half gone), catch-up organises nothing, records a new starting point and tells you. Arrivals in that same stretch are not organised automatically.
+- **FAT and exFAT drives** (and Windows, and unrecognised drives) have every folder listed at each start. This is slower, but it does not trust folder times that other devices may not keep.
+- **Network drives are trusted** to keep folder times, as best effort.
+- **A new command:** `meedya service reset-catch-up`.
+- **Catch-up is switched off** for a watched folder holding more than 1,000,000 files or 200,000 folders.
+- **No second question on a terminal** before catching up. The start question covers it.
+
+---
+
+## 8. Not now: suggestions
+
+- **Use macOS's own change history (FSEvents) as a speed-up.**
+  - Keep the record as the truth. But on macOS, ask the operating system which folders changed since the last save, and skip reading the rest.
+  - That would turn "one read per folder" into "one read per change".
+  - It needs low-level calls (`fsevent-sys` is already in the lock file, through `notify`), and a fallback whenever the history is incomplete.
+  - It is not needed to meet the budget on the internal disk.
+- **Recognise NTFS on Windows** through `GetVolumeInformationW`, so Windows stops listing every folder. This needs the `fileapi` feature of `winapi`, and testing on Windows.
+- **A final save on the service's stop signal.**
+  - d2 decided against a graceful stop, and catch-up is safe without one.
+  - Adding it would mean fewer folders re-examined after each logout.
+- **Move the record into the library database** once #220 exists.
+- **A compressed record** (gzip, about a third of the size), if records ever grow large. `format_version` allows the change.
+
+---
+
+## 9. What I could not verify
+
+- **Speeds straight after a restart.** Only warm timings were measured, taken straight after the tree was made. A first start after a reboot may be slower. The hand check measures the real program, but also warm.
+- **Why listing a folder costs about 1 ms on this Mac.** Most likely the endpoint-security extension (NordVPN Shield) inspecting every folder opened, but that is not proven. On a Mac without such a tool, listing is probably much cheaper, which only helps.
+- **Whether Windows, cameras and other devices update folder times** when they write to a FAT or exFAT drive. Only the Mac's own drivers were checked, and they do. This is why such drives are always listed in full.
+- **Linux:**
+  - that ext4 and the others update a moved file's change time, and a folder's times, as expected;
+  - that the `statfs` magic numbers are right (check them against `<linux/magic.h>`);
+  - that Linux's FAT driver hands out fresh identity numbers.
+
+  All of this comes from documentation and kernel source; none of it was run. A wrong entry in the file-system table can only make catch-up slower, or make it miss arrivals (§5 step 2).
+- **Network drives.** How SMB and NFS keep and cache folder times was not tested. Catch-up there is best effort.
+- **Whether `std::fs::canonicalize` on macOS returns the on-disk letter case** for a folder typed in a different case.
+  - If it does not, `~/music` and `~/Music` would get two records, and the second would start with a first run.
+  - That is safe: nothing is organised, and one catch-up is lost.
+- **The names of e1's, e2's and e3's functions.** None of those stages is built yet. This plan uses the names their plans give; the builder follows what lands.
+- **That Rust's `DirEntry::file_type()` avoids reading each entry's details on APFS.** It should, because the file system reports the type in the listing. It was not measured from Rust.
+- **Windows as a whole:**
+  - there is no change time;
+  - how Windows names are encoded in the record is untested.
+
+  Nothing Windows-specific can be built or run on this Mac. CI covers it at stage g.
+
