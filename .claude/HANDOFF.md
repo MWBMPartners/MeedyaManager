@@ -38,8 +38,12 @@
     files with anything committed since, and the committed organiser calls none of the functions
     they change.
   - **Do not rebuild stage (a).** §0 item 3 below is superseded.
-- **The full checks are running on that combined copy.** Formatting, Clippy, tests twice,
-  documentation and `cargo deny`, with the log in the session scratchpad at `gate-catchup.log`.
+- **The full checks pass on that combined copy** (`be43fb8`, 2026-09-25 08:21–08:34):
+  - `cargo fmt --check`, `clippy -D warnings` and `cargo doc -D warnings` are clean;
+  - `cargo test --workspace`: **1,436 passed, 0 failed**, run twice;
+  - `cargo deny check`: **advisories ok, bans ok, licenses ok, sources ok**, so #227's advisory
+    is gone once stage (a) lands.
+  - Each exit code was read directly, not through a pipe.
 - **The Codex catch-up review has not run yet.**
   - At 08:24 Codex refused: "usage limit … try again at 9:41 AM". Other projects' sessions had
     used the allowance overnight.
