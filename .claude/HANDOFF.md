@@ -58,7 +58,7 @@
       review `git diff review/catchup-base..HEAD`. `review/catchup-base` is a local branch at
       `c68719c`.
   - If it is refused again, the script retries once after 10 minutes.
-- **The issue sweep refresh is running again.** Three Opus checkers are working in parallel on
+- **The issue sweep refresh ran** (finished by 08:57). Three Opus checkers are working in parallel on
   #1–79, #80–164 and #165–237. Parallel fact-gathering is allowed since 2026-09-21.
   - They write `sweep-actions-{A,B,C}.json` and `sweep-new-issues-{A,B,C}.json` to the
     scratchpad, and change nothing on GitHub.
@@ -68,6 +68,39 @@
   - **The session scratchpad was wiped when the Mac was upgraded.** The 2026-09-06 sweep report
     was recovered from the saved agent transcript
     (`subagents/agent-a1ce10e7b76f7a681.jsonl`) into `sweep-2026-09-06.md`.
+- **A new P0, #238: accented disc images can be torn apart.** `decode_cue_bytes` reads any cue sheet
+  without a byte-order mark as Latin-1. So UTF-8 sheets, which XLD, foobar2000 and CUETools
+  commonly write, turn "Björk" into "BjÃ¶rk", and the `FILE` line matches nothing.
+  - **Tested on the real program** (previews, nothing moved; files in the scratchpad's `cuetest/`):
+    - **at `adc6dff`:** in a rip folder with an audio subfolder, or loose in a music folder, the
+      `.cue` and `.bin` are offered for renaming to `unnamed.cue` / `unnamed.bin`;
+    - **with stage (a):** they are never renamed, but the rip folder is not sealed, so a
+      `Bonus/*.mp3` is renamed out of it;
+    - **plain-letter names:** protected in every layout, on both versions.
+  - **The fix is being built** by a Sonnet agent in the worktree `.claude/worktrees/cuefix`, branch
+    `fix/cue-encoding`, based on `review/catchup`. It reads strict UTF-8 first, then falls back to
+    Latin-1. A single-`FILE` sheet pairs with the same-named `.bin`, `.img` or `.iso` beside it.
+    Tests are shown failing first.
+  - It goes on top of `review/catchup` after Codex's first round, and into Codex's second round.
+  - Codex's first-round prompt was told about it, so that it hunts for similar problems instead.
+  - **Also found:** `meedya scan --json` prints the warning lines into the same output as the
+    JSON, so the JSON is not clean. No issue has been filed for this yet.
+- **The sweep was posted on 2026-09-25** by `post-sweep.py --execute`, covering 224 issues:
+  - 162 comments, 23 reopens, 25 re-closed as "not planned", #18 closed as a duplicate, #136
+    closed as done, and the `python-era` label added to #1 and #4–#8;
+  - body corrections on #45, #121 and #213.
+  - **New issues:**
+    - #239 — `ProviderConfig` is read and never used;
+    - #240 — bump the MeedyaSuite-core pin and use upstream's providers (the #136 follow-up);
+    - #241 — macOS Settings Save wipes `settings.json5` (the twin of #232);
+    - #242 — `MM_TEST_MODE` and the `test_mode` setting do nothing, although the help page says
+      they switch Test Mode on (a safety problem).
+  - **Findings not yet filed**, from the checkers:
+    - `meedya debug --raw` is accepted and then ignored;
+    - the macOS "Check for updates" always says "up to date";
+    - `release.yml` builds Windows on `windows-latest`, but CI is pinned to `windows-2022`;
+    - `MmCore.swift`'s engine-linked branch calls itself, for example `return configPath()`, so
+      it will loop or fail to compile once linked (#66).
 - **Owner decision 4 below is done.** `~/.claude/CLAUDE.md` carries the device-wide rules
   ("Last brought into line: 2026-09-24"), and `~/.codex/AGENTS.md` is a link to it.
 - **Nothing is waiting to be pushed** apart from handoff updates. `review/catchup` is local only.
