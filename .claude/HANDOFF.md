@@ -90,10 +90,15 @@
   - Codex's first-round prompt was told about it, so that it hunts for similar problems instead.
   - **Also found:** `meedya scan --json` prints the warning lines into the same output as the
     JSON, so the JSON is not clean. No issue has been filed for this yet.
-- **The sweep was posted on 2026-09-25** by `post-sweep.py --execute`, covering 224 issues:
+- **✅ The sweep was posted on 2026-09-25, 09:03–09:20, with 0 failures**, by `post-sweep.py --execute`,
+  covering 224 issues. GitHub spot checks match:
   - 162 comments, 23 reopens, 25 re-closed as "not planned", #18 closed as a duplicate, #136
     closed as done, and the `python-era` label added to #1 and #4–#8;
-  - body corrections on #45, #121 and #213.
+  - body corrections on #45, #121 and #213. #213's was first skipped wrongly: the check matched a
+    `---` line that the body already had. It was applied by hand, and the script was fixed.
+  - **#215:** a per-issue proposal was posted for the owner to decide. It folds #9, #10 and #14 into
+    #134, and #11 and #16 into #139. It closes #12, #13, #15 and #17 as not planned, each with a
+    pointer. It also corrects the sweep's own #215 comment, which wrongly said #9 was delivered.
   - **New issues:**
     - #239 — `ProviderConfig` is read and never used;
     - #240 — bump the MeedyaSuite-core pin and use upstream's providers (the #136 follow-up);
@@ -1276,7 +1281,9 @@ no issue tracking it at all.
 ### 14a. The issue sweep — verdicts from the 2026-09-06 report
 
 All 207 issues, checked against the code at `04f8ddf` and against the pinned upstream revision.
-**None of the actions below has been taken yet unless marked ✓.**
+**✅ All the actions below were taken on 2026-09-25**, after a re-check against `adc6dff`. See §0
+for the results. The verdicts here are the 2026-09-06 originals, and a few changed in the
+re-check; the posted comments are the current record.
 
 **Closed correctly — keep closed, and post a comment recording what was verified:**
 #2, #3, #20–#44, #46, #51–#62, #64, #70–#73, #76, #77, #84, #89, #90, #93, #102, #109, #111,
