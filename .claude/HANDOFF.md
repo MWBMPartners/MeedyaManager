@@ -77,8 +77,13 @@
     - **with stage (a):** they are never renamed, but the rip folder is not sealed, so a
       `Bonus/*.mp3` is renamed out of it;
     - **plain-letter names:** protected in every layout, on both versions.
-  - **The fix is being built** by a Sonnet agent in the worktree `.claude/worktrees/cuefix`, branch
-    `fix/cue-encoding`, based on `review/catchup`. It reads strict UTF-8 first, then falls back to
+  - **✅ Fix built: `da358e2`** on the local branch `fix/cue-encoding`, in the worktree
+    `.claude/worktrees/cuefix`, based on `review/catchup`.
+    - **Checks:** 1,443 tests passed, 0 failed, run twice; fmt, clippy, doc and deny are clean.
+    - Four new tests were shown failing first.
+    - **Orchestrator hand check:** every accented layout now matches its plain-letter twin, and the
+      comment on #238 has the table.
+    - **Not yet Codex-reviewed. It reads strict UTF-8 first, then falls back to
     Latin-1. A single-`FILE` sheet pairs with the same-named `.bin`, `.img` or `.iso` beside it.
     Tests are shown failing first.
   - It goes on top of `review/catchup` after Codex's first round, and into Codex's second round.
@@ -95,7 +100,13 @@
     - #241 — macOS Settings Save wipes `settings.json5` (the twin of #232);
     - #242 — `MM_TEST_MODE` and the `test_mode` setting do nothing, although the help page says
       they switch Test Mode on (a safety problem).
-  - **Findings not yet filed**, from the checkers:
+  - **Filed afterwards, each checked in the code first:**
+    - #243 — the macOS bridge's 11 same-named self-calls;
+    - #244 — `--json` output mixed with warnings;
+    - #245 — the fake macOS update check;
+    - #246 — `release.yml` uses `windows-latest`;
+    - #247 — `debug --raw` is ignored.
+  - The original notes on those findings:
     - `meedya debug --raw` is accepted and then ignored;
     - the macOS "Check for updates" always says "up to date";
     - `release.yml` builds Windows on `windows-latest`, but CI is pinned to `windows-2022`;
