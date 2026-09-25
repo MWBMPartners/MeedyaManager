@@ -27,6 +27,49 @@
 
 ### Update, 2026-09-25 morning — read before the 2026-09-23 notes below
 
+**Latest, 2026-09-25 around 10:30 — read this first.**
+
+- **Codex round 1 was cut off.**
+  - It started at 09:43 and ran about 25 steps. Then it hit the usage limit, which is shared with
+    four other projects' sessions that all started at 09:43. There is no final report.
+  - Its notes were recovered from `~/.codex/sessions/2026/09/25/rollout-2026-09-25T09-43-04-*.jsonl`
+    into `codex-attempt1-extract.md` in the scratchpad.
+  - **Confirmed clean:** the organiser's safety catch, and the #233 file-ending fix.
+  - **Confirmed still present, as planned:** the organiser's repeated renaming, its start-up
+    sweep and its ignored output folder; the help page telling users to delete `meedya.lock`;
+    no write lock in Windows, GTK or Test Mode commit and revert (#226, #235).
+  - **Three new gaps in the #231 fix**, each confirmed by the orchestrator in the code and posted
+    on #231:
+    1. The include/exclude filters can hide a rip folder.
+    2. An incomplete rip is not sealed when a subfolder holds media.
+    3. aria2 downloads are not spotted.
+- **All the fixes are now in one line of commits:** `review/round2`, in the worktree
+  `.claude/worktrees/round2`, local only.
+  - stage (a): `61f9438`, `be43fb8`;
+  - #238: `da358e2`;
+  - #242: `31f59ef`;
+  - #244: `218431d`;
+  - #246: `083ad0f`.
+  - One hand-merge was needed: `docs/changelog.md`, where both entries were kept.
+  - A Sonnet builder is adding the three gap fixes on top.
+  - **Decision taken (reversible):** an incomplete rip is now **always** sealed, with a loud
+    "held back" report. This reverses the 15 September exemption for a stray `.cue` at the
+    library root. The reasons are the owner's rule "if unsure, do not rename", and that a freeze
+    is announced while a split is silent. The organiser must surface held-back folders before
+    stage (g).
+- **Codex round 2 is scheduled** (`codex-round2.sh`). It starts at 14:44, after Codex's allowance
+  returns at 14:43, **and only after** the orchestrator creates `codex-round2.ready`, having
+  checked the gap fixes. It gives up at 21:00.
+  - It reviews `review/round2-base` (= `adc6dff`) through `review/round2`, meaning only what is
+    about to land. **The organiser is out of scope and needs its own Codex round before stage (g).**
+  - Output: `codex-round2.log`, with the final report in `codex-round2-final.md`.
+- **Also filed:** #248. Warning and success messages still go to standard output under `--json`,
+  which is the other half of #244.
+- **Pushing:** nothing has been pushed today. Commits waiting: the handoff notes on the working
+  branch, plus everything on `review/round2`, which lands on the working branch only after
+  Codex's review.
+
+
 - **The stage (a) fixes were NOT lost.** The 2026-09-23 cloud session could not see this Mac. The
   two commits still exist here, on the local branch `worktree-agent-ac1c1ad32f50eb48f`, in the
   worktree `.claude/worktrees/agent-ac1c1ad32f50eb48f`:
