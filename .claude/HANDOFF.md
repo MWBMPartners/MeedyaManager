@@ -44,6 +44,27 @@
 | 11 | #229: Android file access | **Only folders the user picks** (the Storage Access Framework), **against the recommendation**. So the engine must handle `content://` addresses, not only file paths. That shapes #229 and #230. |
 | 12 | The two cue-sheet readers | **Move ours upstream to MeedyaSuite-core under the MIT licence**, replace upstream's, and delete the local copy after the next pin bump. **New work, in MeedyaSuite-core.** |
 
+**Actions taken on those decisions (2026-09-25, evening):**
+- **#215 is done.** The descriptions of #134 and #139 were widened. #9, #10, #14 → duplicates of
+  #134; #11, #16 → duplicates of #139; #12, #13, #15, #17 → not planned, with pointers; #215 is
+  closed.
+- **Each decision is recorded on its issue:** #225, #19, #230, #229, #217, #180, #226 and #235.
+- **#19: the tag `v1.5-M6-python-final` was created locally**, annotated, by `Salem874`, on
+  `dc8426f`: the parent of the Rust rewrite `1fa3d6e`, which holds 150 `.py` files and no Rust.
+  **It is not pushed yet;** it goes with the approved branch push.
+  - The issue also asked for a branch, `archive/python-v1.5`. That was **not created**: the owner
+    chose "create the tag", and a branch push was not covered.
+  - **Once the tag is pushed,** correct `.claude/CLAUDE.md` and `AGENTS.md`. Both still say "No
+    Python archive tag exists … do not reintroduce it". Then close #19.
+- **Queued as a result of the decisions:**
+  - #225: `scan --execute` refuses in Test Mode. Build it after stage c1 lands, because both
+    change `scan.rs`.
+  - The organiser catch-up stage: an Opus planner is writing it to `organiser-plan-catchup.md` in
+    the scratchpad.
+  - #226 and #235, before stage g.
+  - The cue reader moving upstream as MIT, in the MeedyaSuite-core repository.
+  - Android `content://` support, before any Android code.
+
 **A trap found on 2026-09-25: the shared build folder.**
 - Worktrees that build the same crate at the same time into one `CARGO_TARGET_DIR` can make `cargo test` silently run the **other worktree's stale test binary**. It gives exit 0 and a plausible count.
 - The stage f1 builder caught it by searching the compiled binary for its test names.
