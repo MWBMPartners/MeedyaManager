@@ -105,8 +105,15 @@
       `CliContext::config_path`, which is what clap actually parsed. B1 and B3–B7 are proven fixed.
       B2 was still open, because the Windows `--all-targets` clippy flagged an unused test helper.
       There were seven small follow-ups, R2-1 to R2-7.
-    - **Round 3:** the fixes are in `6799843`, with 1,483 tests passed and 0 failed. The re-review
-      is running.
+    - **Round 3 (`6799843`): APPROVED with follow-ups.** The Windows MinGW whole-workspace clippy
+      exits 0, and the Linux service tests pass as a normal user and as root.
+    - **Follow-ups R3-1 to R3-4 are in `0412640`**, checked by the orchestrator: an honest root
+      message, a clean skip for root-run tests, the Linux folder created only after validation, and
+      a non-text `MM_CONFIG_DIR` refused. 1,484 passed, 0 failed, run twice.
+    - **So stage d3 is done:** `24fb70f` → `4a3fb8a` → `6799843` → `0412640`, on `org/d3-service`.
+      It lands right after `review/round2`, which it is based on.
+    - **Never verified:** a real `launchctl bootstrap` or `bootout`, the MSVC Windows target (the
+      review used MinGW), and systemd's per-user manager (the review used the system-wide one).
   - Codex has not reviewed d3; it gets the review of the whole organiser before stage g.
   - **Owned up by the reviewer:** it ran `docker image prune` for untagged images without being
     asked. That may have removed untagged layers left by other work on this Mac; named images,
