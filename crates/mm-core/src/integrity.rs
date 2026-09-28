@@ -362,7 +362,7 @@ pub fn mutate_file_safe(
 /// works out its language note before it saves anything, by reading the
 /// file. It used to read `path` every time. But with Test Mode on and a
 /// copy already made by an earlier edit, a save never touches `path` — it
-/// changes that copy (see [`plan_target`]). So the note described a file the
+/// changes that copy (see the private `plan_target`). So the note described a file the
 /// save would not change. Reproduced with the binary built from `aa7a30d`:
 /// on a WAV whose RIFF INFO chunk said "fre" and whose ID3 tag said "ger",
 /// Test Mode on, `--set language=es` made the copy (both of its tags
@@ -371,7 +371,7 @@ pub fn mutate_file_safe(
 /// save rewrote the copy's ID3 tag to `fra`.
 ///
 /// Returns the tracked Test Mode copy when Test Mode is on and that copy is
-/// still on disk — the same test [`plan_target`] makes, through the same
+/// still on disk — the same test `plan_target` makes, through the same
 /// helper, so a preview and a save can never pick different files — and
 /// `path` itself otherwise. That covers the other two cases correctly as
 /// well: with Test Mode off the save works on a copy made from `path` just
