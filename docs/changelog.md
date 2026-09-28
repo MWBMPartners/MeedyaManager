@@ -124,6 +124,34 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ### Added
 
+- **The `language` file tag now follows the shared MWBM-MEDIA-LANG language policy (issue
+  [#251](https://github.com/MWBMPartners/MeedyaManager/issues/251)).** Before this, whatever
+  text was typed for a file's language was written straight into every format the same way, with
+  no check and no attempt to write the right form for each one — an MP3's `TLAN` frame, which can
+  only ever hold an old three-letter code, could end up with a two-letter code it was never
+  designed to hold.
+
+  Reading a language now understands both a short code (`en`, `pt-BR`) and an old three-letter
+  one (`fre`) the same way, whichever format the file uses. Setting a language on the command
+  line (`meedya edit --set language=...`) is refused with a plain, helpful message — an example
+  included — if what was typed is not a real language, rather than the mistake being silently
+  accepted. Writing a language now puts the right form in the right place: MP3 gets the old
+  three-letter code (there being no field in MP3 that can hold anything richer); every other
+  format keeps the full code. Saving a file for an unrelated reason (changing its title, say)
+  never alters a language value nobody asked to change.
+
+  A **genuine surprise** turned up while testing this against real files: the library
+  MeedyaManager uses to read and write tags treats a WAV file the same way as an MP3 for every
+  field it writes — including `language` — never the separate chunk WAV files can also carry for
+  this. That was already true before this change, for every field, not only the language one; it
+  is recorded in the developer notes as something worth knowing, not something this issue set out
+  to fix.
+
+  The full rules are shared with every other Meedya application and kept in
+  `docs/standards/media-language-bcp47-policy.md`; see `Dev_Notes.md`'s "Language Tags & the
+  MWBM-MEDIA-LANG Policy" section for exactly what MeedyaManager does and does not implement of
+  it yet.
+
 - **`meedya watch --organize` and the background service actually work now (issue
   [#180](https://github.com/MWBMPartners/MeedyaManager/issues/180)).** Both used to be stubs:
   `--organize` printed a "not yet implemented" message and exited `3` before even looking at

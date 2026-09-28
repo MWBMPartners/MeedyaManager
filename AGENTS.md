@@ -114,6 +114,17 @@ the exact revision this project was pinned to. That revision was the merge of a 
 Meedya application belongs upstream in MeedyaSuite-core, not copied here. Prefer the upstream
 crate over a local equivalent, and push genuinely shared improvements upstream.
 
+## Languages — mandatory
+
+Any work touching BCP 47 language tags, languages, translations, audio or
+subtitle tracks, lyrics, language order or naming, language preferences, or
+accessibility roles MUST read and follow
+`docs/standards/media-language-bcp47-policy.md` (policy `MWBM-MEDIA-LANG`).
+It is normative and is not repeated here. Its conformance cases must pass.
+The copies are checked against the master in MWBMPartners/MeedyaSuite-core
+by `scripts/media-lang/check_copies.py` in CI; never edit the copies —
+change the master.
+
 ## Verify against the code, never against the documents
 
 This project has a documented history of its own documentation and commit messages overstating

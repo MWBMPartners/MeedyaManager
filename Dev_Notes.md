@@ -16,6 +16,7 @@
 - [GitHub Projects Workflow](#github-projects-workflow)
 - [Managing File Type Definitions](#managing-file-type-definitions-configfiletypesjson5)
 - [Managing Metadata Tag Definitions](#managing-metadata-tag-definitions-configtagsjson5)
+- [Language Tags & the MWBM-MEDIA-LANG Policy](#language-tags--the-mwbm-media-lang-policy)
 - [File Integrity Checking](#file-integrity-checking)
 - [Background Service Mode](#background-service-mode)
 - [Settings Export / Import](#settings-export--import-mmprofile-bundles)
@@ -756,6 +757,74 @@ The `raw_key` is the actual tag key written into the file:
 - APE: APE item with key `MEEDYAMETA_RATING`
 
 Custom tags are also available in rename templates as `<Rating>` once defined.
+
+---
+
+## Language Tags & the MWBM-MEDIA-LANG Policy
+
+**Read this before touching the `language` tag, or anything to do with languages,
+translations, audio/subtitle tracks, lyrics, language order, or accessibility roles.**
+`docs/standards/media-language-bcp47-policy.md` is the normative rulebook, shared with
+every other Meedya application, and it is not repeated here — see the "Languages —
+mandatory" note in `AGENTS.md` / `.claude/CLAUDE.md` / `.OpenAI/CONTEXT.md`.
+
+What MeedyaManager actually does with it today (its "canonical" profile — it edits
+stored metadata, and shows no language menus yet):
+
+- `crates/mm-core/src/metadata/language.rs` is the one place this crate reads or
+  writes a language value. `parse_stored_language` reads a value already sitting in a
+  file (never fails — an unrecognised value becomes `und`, with the original text kept
+  alongside). `parse_language_input` is for a person choosing a language on purpose
+  (the CLI's `--set language=...` today); unlike the reader, it refuses a value it
+  cannot make sense of, with a message that gives a working example.
+- `language_value_for_tag_type` decides what actually gets written for a given tag
+  container, per the policy's TRACK-070: MP3's `TLAN` frame gets the old three-letter
+  ISO 639-2 code (there being no MP3 field that can hold anything richer); every other
+  container this app writes gets the full language tag as typed.
+- A **genuine surprise, found while testing this against a real file rather than
+  assumed from the table**: `lofty` (the tag-reading/writing library this app uses)
+  maps a WAV file's "primary" tag to an embedded ID3v2 chunk, not a RIFF INFO chunk —
+  see `lofty::file::FileType::primary_tag_type()`. So `write_tags` on a `.wav` file
+  writes the same embedded ID3v2 tag an MP3 does for every field, `language` included,
+  never a RIFF INFO chunk — whatever this file (and the metadata module's own doc
+  comment) says about "WAV, RIFF INFO". That is a pre-existing fact about how this
+  crate writes WAV files generally, unrelated to the language work, but the
+  language-specific write path is the first thing to have depended on which container
+  a file is really using, which is what surfaced it. See the comment on
+  `wav_riff_info_round_trip` in `crates/mm-core/tests/metadata_roundtrip.rs`.
+- Saving a file for an unrelated reason (changing the title, say) MUST NOT touch an
+  untouched `language` value, however it reads — `write_tags` only converts it when
+  the caller's map actually contains the `language` key (COMPAT-030). An editor that
+  always resends every currently-shown field on save would defeat this, because it can
+  no longer tell "the person left it alone" from "the person retyped exactly what was
+  already there" — see the doc comment on `write_tags` for the full caution.
+- `config/tags.json5`'s `language` entry documents the MP4 mapping as
+  `----:com.apple.iTunes:LANGUAGE` — a freeform iTunes atom, not a plain four-letter
+  atom — because that is what `lofty` 0.22.4 actually maps `ItemKey::Language` to on
+  MP4 (checked by reading lofty's own mapping table, not guessed).
+- The conformance test, `crates/mm-core/tests/media_language_conformance.rs`, runs
+  every case in the local copy of the policy's own test file
+  (`tests/fixtures/bcp47-language-policy-v1.json`) for the four sections MeedyaManager
+  needs today (`canonicalise`, `legacy_three_letter`, `iso639_2_write`,
+  `canonical_order`), and fails — never quietly passes — on a section name it does not
+  recognise, a needed section that is missing or empty, or a case missing a field.
+- The policy files themselves (the document, its test cases and reference data, and
+  the checker script) are exact copies of the master files in
+  `MWBMPartners/MeedyaSuite-core`, recorded in `docs/standards/MWBM-MEDIA-LANG.lock`.
+  **Never edit a copy** — change the master in MeedyaSuite-core, then run
+  `python3 scripts/media-lang/check_copies.py --update <new commit>`. CI runs the same
+  script with no arguments (the `media-language-policy` job in `ci-rust.yml`) and fails
+  the build if a copy has drifted.
+- `meedya-lang` (the shared Rust code implementing the policy) is a separate workspace
+  dependency from `meedya-core`, pinned to its own commit on MeedyaSuite-core's
+  `feature/bcp47-language-policy` branch — see the comment on its line in the root
+  `Cargo.toml` for why, and issue #253 for re-pinning it to `main` once that branch
+  merges upstream.
+- **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
+  language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
+  `companion` module still matches sidecars by exact name only. Tracked as issue #252,
+  deliberately kept separate because it needs a new field carried all the way through
+  to the Swift and C# UIs.
 
 ---
 

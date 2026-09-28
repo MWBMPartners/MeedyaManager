@@ -93,7 +93,7 @@ There is no `<Publisher>` alias for the record label — use `<Label>` (the exte
 | `<Encoder>` | Encoder tool |
 | `<Copyright>` | Copyright string |
 | `<Publisher>` | Publisher (distinct from `<Label>`) |
-| `<Language>` | Language |
+| `<Language>` | Language, exactly as the file stores it — a code such as "en" or "pt-BR", or an older three-letter code such as "fre" for files tagged before this was standardised |
 | `<Rating>` | Rating |
 | `<Subtitle>` | Subtitle |
 

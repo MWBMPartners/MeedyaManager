@@ -14,6 +14,68 @@
 
 ---
 
+## A separate piece of work, on a separate branch: the language policy (2026-09-28)
+
+**Everything below this note is about a different branch** — the organiser work on
+`claude/musicbrainz-api-migration-7jxszn`, which this note does not touch or supersede.
+
+This note is about **`feature/bcp47-language-policy`**, a branch the owner cut deliberately
+from `claude/musicbrainz-api-migration-7jxszn` at commit `7697b9c` so this work would not
+disturb whatever the organiser work is doing. If you are resuming *that* work, skip straight
+past this note to "0. Read this first" below — nothing here changes it.
+
+**What this branch does:** brings MeedyaManager's `language` file tag in line with the shared
+policy `MWBM-MEDIA-LANG` 1.0.0 (`docs/standards/media-language-bcp47-policy.md`, a copy checked
+against the master in `MWBMPartners/MeedyaSuite-core` — see the "Languages — mandatory" note
+near the top of `AGENTS.md` / `.claude/CLAUDE.md` / `.OpenAI/CONTEXT.md`).
+
+**What actually changed** — see `Dev_Notes.md`'s "Language Tags & the MWBM-MEDIA-LANG Policy"
+section for the full account; in short:
+
+- New `crates/mm-core/src/metadata/language.rs` — reading a language value from a file (never
+  fails; unrecognised becomes `und` with the original text kept), a person setting one on
+  purpose (refuses gibberish with a helpful message), and deciding what to write into which tag
+  container per the policy's TRACK-070.
+- `metadata::write_tags` now special-cases the `language` key: MP3's `TLAN` frame gets the old
+  three-letter ISO 639-2 code, every other container gets the full tag — and an untouched
+  `language` value is never rewritten just because some other field changed (COMPAT-030), because
+  the key is simply absent from the map when nobody asked to change it.
+- `meedya edit --set language=...` on the command line now refuses a value it cannot make sense
+  of, before touching the file, with a message that gives a working example.
+- New workspace dependency `meedya-lang`, pinned to a commit on MeedyaSuite-core's
+  `feature/bcp47-language-policy` branch (see the comment on its line in the root `Cargo.toml`,
+  and issue #253 for re-pinning to `main` once that branch merges upstream).
+- The policy's own document, test cases, reference data and copy-checker script are now copied
+  into this repository at `docs/standards/` / `tests/fixtures/` / `scripts/media-lang/`, recorded
+  in `docs/standards/MWBM-MEDIA-LANG.lock`, and checked in CI by a new `media-language-policy` job
+  in `ci-rust.yml`.
+- New `crates/mm-core/tests/media_language_conformance.rs` runs every case in the policy's own
+  test file for the four sections MeedyaManager needs today, and is written to FAIL — not
+  silently pass — on an unrecognised section name, a needed section missing or empty, or a case
+  missing a required field (checked by hand, deliberately corrupting a temporary copy of the
+  fixture four different ways and confirming each one is caught, then restoring it byte-for-byte).
+- A **genuine, unrelated-to-language surprise found while testing this**: `lofty` (the tag
+  library) treats a WAV file's "primary" tag as an embedded ID3v2 chunk, never a RIFF INFO chunk
+  — true for every field this crate writes, not only `language`. Recorded in `Dev_Notes.md` and
+  on the `wav_riff_info_round_trip` test; not fixed here, as it is unrelated to this policy and a
+  larger, separate piece of work.
+- Issues opened: #251 (umbrella), #252 (reading a sidecar file's language from its name,
+  TEXT-030 — deliberately not built here, it needs a new field carried through to the Swift and
+  C# UIs), #253 (re-pin `meedya-lang` to `main` once MeedyaSuite-core merges the branch it is
+  currently pinned to).
+
+**Not done / not checked:**
+- `swift build` / `dotnet test` were not run — nothing on this branch touches Swift or C# code.
+- No APE-container round-trip test exists (no committed APE audio fixture in this repo); the
+  per-container writing decision for APE is covered by a unit test instead (`language.rs`), not
+  a real-file round trip.
+
+**Commits are on `feature/bcp47-language-policy`, not pushed** — this branch, cut specially for
+this work, has no upstream configured on purpose (see the working notes for this task). Check
+`git log feature/bcp47-language-policy` and `git status -sb` for the exact state.
+
+---
+
 ## ▶ Starting a fresh session? Paste this
 
 > Read `.claude/HANDOFF.md` §0 first, then `.claude/CLAUDE.md` (especially "Standing tasks and
