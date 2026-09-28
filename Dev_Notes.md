@@ -864,6 +864,29 @@ stored metadata, and shows no language menus yet):
   `feature/bcp47-language-policy` branch — see the comment on its line in the root
   `Cargo.toml` for why, and issue #253 for re-pinning it to `main` once that branch
   merges upstream.
+- **Copy-update sweep, 2026-09-28**: moved from core commit `995becb7` to a later
+  reviewed revision on the same branch, `aaaa585aa145`. Checked the actual crate diff
+  (`crates/meedya-lang/src/*.rs` between the two commits in MeedyaSuite-core) against
+  what this repository actually calls (`rg 'meedya_lang::'`), rather than assuming the
+  upstream changelog's summary applied here: `TrackItem`, `PresentationItem`,
+  `SelectableTrack`, `RoleItem`, `TagMatch`, `build_sidecar_name` and `SidecarParts` —
+  the types most of that revision's changes touched — are not used anywhere in this
+  crate, because MeedyaManager only implements Part A / TRACK-070, not Part B or
+  TEXT-030 (see the opening paragraph of this section). Of the two changes that DO
+  reach code here: `LanguageTag`'s equality now comparing `tag` and `kind` only (not
+  `notes`) is a no-op, since nothing in this crate ever compares two `LanguageTag`
+  values with `==`; and `iso639_2_write`/`iso639_2_code` now returning `und` for the
+  two-letter `qb`-`qt` range needed no code change either, because
+  `language_value_for_tag_type` and `describe_conversion` both delegate to the crate
+  function rather than reimplementing any part of TRACK-070's mapping — proven by two
+  new tests, `describe_conversion_reports_a_two_letter_q_code_as_und_on_id3` and
+  `..._as_unregistered_everywhere` in `language.rs`, and by the pre-existing
+  fixture-driven `language_value_for_tag_type_matches_the_policy_fixture_for_id3v2`
+  test picking up the fixture's two new cases for this range automatically. Case count
+  for the four sections MeedyaManager runs went from 126 to 131 (`canonicalise` 49,
+  `legacy_three_letter` 38, `iso639_2_write` 19 → 21, `canonical_order` 20 → 23) — of
+  the full 290 across all thirteen sections the policy defines, most of which
+  MeedyaManager still does not implement (see the opening paragraph of this section).
 - **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
   language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
   `companion` module still matches sidecars by exact name only. Tracked as issue #252,

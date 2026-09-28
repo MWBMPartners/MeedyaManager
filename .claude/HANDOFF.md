@@ -111,6 +111,23 @@ next thing this branch needs, before it goes anywhere near a pull request):
 - `fix(metadata): tell the user what was actually stored, when it differs` — the plain-English
   note described above.
 
+**Copy-update sweep (2026-09-28)**: moved the policy copies and `meedya-lang`'s pin from
+MeedyaSuite-core commit `995becb7` to a later reviewed revision, `aaaa585aa145`, on the same
+`feature/bcp47-language-policy` branch (core has still not merged to `main` — that re-pin,
+issue #253, remains owed and is not touched by this sweep). Two further commits, both
+`Refs #251` and not yet independently reviewed:
+
+- `build(deps): copy-update sweep — move to core aaaa585, re-pin meedya-lang` — the re-pin,
+  `cargo update -p meedya-lang`, the copy refresh via the checker's own `--update` mode, and a
+  full check of what the crate's API changes actually reach in this repository (almost nothing:
+  `TrackItem`/`PresentationItem`/`SelectableTrack`/`RoleItem`/`TagMatch`/`build_sidecar_name`/
+  `SidecarParts` are not used here at all, since MeedyaManager only implements Part A /
+  TRACK-070). Case count for the four sections MeedyaManager runs: 126 → 131.
+- `test(metadata): prove the new qb-qt ISO 639-2 handling reaches our code` — two new tests
+  proving `describe_conversion` correctly reports the crate's new `qb`-`qt` → `und` handling
+  (two-letter subtags that sit alphabetically inside the local-use range but are not local-use
+  codes themselves, which are three letters).
+
 **Not done / not checked:**
 - `swift build` / `dotnet test` were not run — nothing on this branch touches Swift or C# code.
 - No APE-container round-trip test exists (no committed APE audio fixture in this repo); the
@@ -122,9 +139,10 @@ next thing this branch needs, before it goes anywhere near a pull request):
 
 **Push state**: the first batch, up to and including `beb4c15`, is pushed to
 `origin/feature/bcp47-language-policy` (the owner pushed it to hand to an independent reviewer).
-**The three review-fix commits above are local only, not pushed** — per the owner's standing
-instruction for this task, new commits go on top locally and nothing is pushed without being
-asked again. Check `git log feature/bcp47-language-policy` and `git status -sb` for the exact
+**Every commit after `beb4c15` — the three review-fix commits and the two copy-update-sweep
+commits above — is local only, not pushed** — per the owner's standing instruction for this
+task, new commits go on top locally and nothing is pushed without being asked again. Check
+`git log feature/bcp47-language-policy` and `git status -sb` for the exact
 state; `git log origin/feature/bcp47-language-policy..feature/bcp47-language-policy` shows
 exactly which commits are still local-only.
 
