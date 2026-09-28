@@ -570,7 +570,87 @@ pub fn extract_tags(path: &Path) -> MmResult<TagMap> {
         read_tag_into_map(tag, &mut tag_map);
     }
 
+    // TRACK-070 (review item 5 of the second language-policy review round):
+    // the generic loop above treats `language` like any other key, so a
+    // WAV `write_tags` has kept consistent across BOTH its RIFF INFO chunk
+    // and its embedded ID3v2 tag (see `write_tags`'s own doc comment) came
+    // back as TWO values — `["en", "eng"]` — the canonical form from RIFF
+    // INFO and the three-letter form from ID3v2, which are the SAME fact
+    // told twice, not two different answers. `read_language_values` applies
+    // TRACK-070's own priority (a full-tag container's answer is read on
+    // its own; ID3v2's narrower one is only read when there is no full-tag
+    // answer to prefer) and deduplicates by STANDARD form rather than raw
+    // text, so this overwrites whatever the generic loop put there.
+    match read_language_values(&tagged_file) {
+        values if values.is_empty() => {
+            tag_map.remove(TAG_LANGUAGE);
+        }
+        values => {
+            tag_map.insert(TAG_LANGUAGE.to_string(), values);
+        }
+    }
+
     Ok(tag_map)
+}
+
+/// The read-side counterpart to [`language_write_targets`] (the write
+/// side): decides what [`extract_tags`] reports for `TAG_LANGUAGE` when a
+/// file carries the value in more than one tag container at once.
+///
+/// A "full" container (Vorbis comments, the MP4 freeform item, APE, RIFF
+/// INFO) can hold a complete BCP 47 tag; ID3v2's `TLAN` can only ever hold
+/// the old three-letter form (TRACK-070). When a full container has a
+/// value, that is read as the richer, more authoritative answer, and
+/// ID3v2's narrower one is not also read — reading back a WAV that
+/// [`write_tags`] has kept consistent used to give `["en", "eng"]`, two
+/// representations of the identical fact, rather than one. When no full
+/// container has a value, ID3v2's is read on its own.
+///
+/// Within whichever tier is read, values are deduplicated by their
+/// STANDARD form ([`language::standardise_for_comparison`]), not by their
+/// raw text — so `"en"` and `"eng"` collapse into one entry even though
+/// they are different strings, while `"en"` and `"en-GB"` do not, because
+/// they genuinely are different languages/regions. The first raw text seen
+/// for each standard form is kept (editors show raw text — COMPAT-040), so
+/// a value nothing recognises is never silently dropped either: an
+/// unrecognised value's own text is its own "standard form" for this
+/// purpose (`standardise_for_comparison`'s own LANG-003 guarantee).
+fn read_language_values(tagged_file: &lofty::file::TaggedFile) -> Vec<String> {
+    let mut full_raw: Vec<String> = Vec::new();
+    let mut id3_raw: Vec<String> = Vec::new();
+
+    for tag in tagged_file.tags() {
+        let bucket = if tag.tag_type() == TagType::Id3v2 {
+            &mut id3_raw
+        } else {
+            &mut full_raw
+        };
+        for item in tag.get_items(&ItemKey::Language) {
+            if let ItemValue::Text(text) = item.value() {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    bucket.push(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    let chosen = if full_raw.is_empty() {
+        id3_raw
+    } else {
+        full_raw
+    };
+
+    let mut seen_standard_forms: Vec<String> = Vec::new();
+    let mut result: Vec<String> = Vec::new();
+    for raw in chosen {
+        let standard = language::standardise_for_comparison(&raw);
+        if !seen_standard_forms.contains(&standard) {
+            seen_standard_forms.push(standard);
+            result.push(raw);
+        }
+    }
+    result
 }
 
 /// Internal helper: read values from one `Tag` into the tag map.
@@ -822,9 +902,9 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     };
 
     // -- Item 5 groundwork: which OTHER tag containers does this file
-    // already have, besides the primary one? Collected now, while
-    // `tagged_file` is only borrowed immutably, because getting the
-    // primary tag mutably (next line) borrows it exclusively until that
+    // already have a language value in, besides the primary one? Collected
+    // now, while `tagged_file` is only borrowed immutably, because getting
+    // the primary tag mutably (next line) borrows it exclusively until that
     // borrow's last use. A file can genuinely carry more than one tag
     // container at once (a WAV with both a RIFF INFO chunk and an
     // embedded ID3v2 tag, say) — found and reproduced while this rule was
@@ -832,11 +912,19 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     // container, leaving a stale, contradicting value in any other one
     // that already had its own. See the loop after the primary tag is
     // saved, below.
+    //
+    // `language_write_targets` is the single source of truth for this set
+    // — also used by `language::preview_conversion_note` so a caller
+    // previewing `--set language=...` (including on `--dry-run`, before
+    // any write happens) sees a note that describes EXACTLY what this
+    // function is actually about to do, never a guess based on the
+    // primary container alone (review item 4 of the second language-
+    // policy review round: the note used to describe a plan, not what
+    // `write_tags` would really do to a file with more than one
+    // container).
     let primary_type = tagged_file.primary_tag_type();
-    let other_tag_types: Vec<TagType> = tagged_file
-        .tags()
-        .iter()
-        .map(lofty::tag::Tag::tag_type)
+    let other_tag_types: Vec<TagType> = language_write_targets(&tagged_file)
+        .into_iter()
         .filter(|tt| *tt != primary_type)
         .collect();
 
@@ -887,39 +975,96 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     // Persist to disk using default write options (preserves format quirks)
     tag.save_to_path(path, WriteOptions::default())?;
 
-    // -- Item 5: when `language` is genuinely being SET to a new value,
+    // -- Item 5 (and, since the second review round, item 3 too): when
+    // `language` is genuinely being SET to a new value OR cleared outright,
     // keep every OTHER tag container the file already has consistent with
-    // it too — not only the primary one. A file that already carries a
+    // that too — not only the primary one. A file that already carries a
     // language value in more than one container (RIFF INFO's `ILNG`
     // alongside an embedded ID3v2 tag on a WAV file, most concretely) must
-    // not end up with the NEW value in one and a now-stale, contradicting
-    // OLD value left behind in the other. Each container that already had
-    // a language value gets the SAME TRACK-070 treatment the primary one
-    // just did — its own per-format form, not a copy of the primary's —
-    // and each is saved with its own `save_to_path` call, because a single
-    // `Tag` only ever writes its own container's region of the file (this
-    // is also why the primary tag above needed its own separate call).
-    // A container that never had a language value is deliberately left
-    // alone: this fixes a stale value, it does not go looking for new
-    // places to put one.
-    if let Some(LanguageChange::Set(parsed)) = &language_change {
-        for tag_type in other_tag_types {
-            let Some(other_tag) = tagged_file.tag_mut(tag_type) else {
-                continue; // the type was listed a moment ago; still defensive
-            };
-            if other_tag.get_items(&ItemKey::Language).next().is_none() {
-                continue; // never had one — not this fix's job to add one
+    // not end up with the change applied to one and a now-stale,
+    // contradicting OLD value left behind in the other. Each container
+    // that already had a language value gets the SAME treatment the
+    // primary one just did — its own per-format TRACK-070 form when
+    // setting, a plain removal when clearing, never a copy of the
+    // primary's raw bytes — and each is saved with its own `save_to_path`
+    // call, because a single `Tag` only ever writes its own container's
+    // region of the file (this is also why the primary tag above needed
+    // its own separate call). A container that never had a language value
+    // is deliberately left alone: this fixes a stale value, it does not go
+    // looking for new places to put one.
+    //
+    // Clearing was missed in the first round of this fix — found by an
+    // independent review that actually set up a WAV with a language value
+    // in two containers, cleared it, and read both back: `remove_tag`
+    // (the general "delete this key" path) already loops over every
+    // container the file has, so a language clear silently doing less
+    // than an ordinary field's removal was the surprising direction for
+    // the two to have drifted apart in.
+    match &language_change {
+        None => {}
+        Some(LanguageChange::Clear) => {
+            for tag_type in other_tag_types {
+                let Some(other_tag) = tagged_file.tag_mut(tag_type) else {
+                    continue; // the type was listed a moment ago; still defensive
+                };
+                if other_tag.get_items(&ItemKey::Language).next().is_none() {
+                    continue; // never had one — not this fix's job to touch
+                }
+                other_tag.remove_key(&ItemKey::Language);
+                other_tag.save_to_path(path, WriteOptions::default())?;
             }
-            let value = language::language_value_for_tag_type(parsed, tag_type);
-            other_tag.remove_key(&ItemKey::Language);
-            if !value.is_empty() {
-                other_tag.push(TagItem::new(ItemKey::Language, ItemValue::Text(value)));
+        }
+        Some(LanguageChange::Set(parsed)) => {
+            for tag_type in other_tag_types {
+                let Some(other_tag) = tagged_file.tag_mut(tag_type) else {
+                    continue; // the type was listed a moment ago; still defensive
+                };
+                if other_tag.get_items(&ItemKey::Language).next().is_none() {
+                    continue; // never had one — not this fix's job to add one
+                }
+                let value = language::language_value_for_tag_type(parsed, tag_type);
+                other_tag.remove_key(&ItemKey::Language);
+                if !value.is_empty() {
+                    other_tag.push(TagItem::new(ItemKey::Language, ItemValue::Text(value)));
+                }
+                other_tag.save_to_path(path, WriteOptions::default())?;
             }
-            other_tag.save_to_path(path, WriteOptions::default())?;
         }
     }
 
     Ok(())
+}
+
+/// Which tag containers [`write_tags`] will actually put a NEW `language`
+/// value into (or remove one from) for this file: the primary tag type
+/// always — creating a fresh container if the file has none — plus every
+/// OTHER container the file already carries that already has its own
+/// language value. A container that has never had one is never a target
+/// (see `write_tags`'s own "Item 5" doc comment: this keeps existing
+/// values in sync, it does not go looking for new places to put one).
+///
+/// `pub(crate)` rather than private: [`language::preview_conversion_note`]
+/// calls this too, so a caller previewing what `--set language=...` will
+/// do (including on `--dry-run`, before `write_tags` itself ever runs) is
+/// guaranteed to see the same set of containers `write_tags` will actually
+/// touch — there is no second copy of "which containers count" to drift
+/// out of step with this one (review item 4 of the second language-policy
+/// review round found the note computed this from the primary container
+/// alone, which was wrong for any file carrying a language value in more
+/// than one place).
+pub(crate) fn language_write_targets(tagged_file: &lofty::file::TaggedFile) -> Vec<TagType> {
+    let primary_type = tagged_file.primary_tag_type();
+    let mut targets = vec![primary_type];
+    for tag in tagged_file.tags() {
+        let tt = tag.tag_type();
+        if tt != primary_type
+            && !targets.contains(&tt)
+            && tag.get_items(&ItemKey::Language).next().is_some()
+        {
+            targets.push(tt);
+        }
+    }
+    targets
 }
 
 /// What a caller supplied for `language` actually means to do, once
@@ -943,20 +1088,39 @@ enum LanguageChange {
 }
 
 /// What [`extract_tags`] would currently report for `key`, if this file
-/// already has one — built by running the exact same per-item read logic
-/// ([`read_tag_into_map`]) across every tag container the file has, then
-/// joining the way every multi-value write in this crate does
-/// ([`join_multi_value`]). `None` means the file has nothing at all for
-/// this key today (not even an empty value) — genuinely different from "an
-/// empty string", which is what a deliberate clear looks like.
+/// already has one, joined the way every multi-value write in this crate
+/// does ([`join_multi_value`]). `None` means the file has nothing at all
+/// for this key today (not even an empty value) — genuinely different from
+/// "an empty string", which is what a deliberate clear looks like.
 ///
 /// Used by [`write_tags`] to tell "the caller resent an unchanged value"
 /// apart from "the caller is genuinely setting a new one" for `language`
-/// (COMPAT-030). Deliberately re-uses `extract_tags`'s own per-tag helper
-/// rather than a fresh comparison routine, so there is no way for the
-/// "what counts as unchanged" check to drift from what a caller would
-/// actually see if it read the file first.
-fn current_joined_value(tagged_file: &lofty::file::TaggedFile, key: &str) -> Option<String> {
+/// (COMPAT-030) — this is `pub(crate)`, not private, for exactly the same
+/// reason as [`language_write_targets`]: [`language::preview_conversion_note`]
+/// needs to make the identical "unchanged?" judgement `write_tags` itself
+/// will make, so a `--dry-run` preview and the real write can never
+/// disagree about whether anything is actually changing.
+///
+/// For `key == TAG_LANGUAGE` this goes through [`read_language_values`] —
+/// the same TRACK-070-aware, cross-container, standard-form-deduplicated
+/// logic [`extract_tags`] uses — rather than the generic per-tag loop,
+/// which would otherwise disagree with what a caller reading the file via
+/// `extract_tags` actually sees whenever a file carries a language value
+/// in more than one container. Every other key still uses the generic
+/// loop: this crate does not yet special-case reading anything but
+/// `language`, and the only caller today only ever asks about `language`.
+pub(crate) fn current_joined_value(
+    tagged_file: &lofty::file::TaggedFile,
+    key: &str,
+) -> Option<String> {
+    if key == TAG_LANGUAGE {
+        let values = read_language_values(tagged_file);
+        return if values.is_empty() {
+            None
+        } else {
+            Some(join_multi_value(&values))
+        };
+    }
     let mut map: TagMap = HashMap::new();
     for tag in tagged_file.tags() {
         read_tag_into_map(tag, &mut map);
