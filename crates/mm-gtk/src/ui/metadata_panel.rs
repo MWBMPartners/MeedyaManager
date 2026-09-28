@@ -312,7 +312,24 @@ impl MetadataPanel {
                     None => return,
                 };
 
-                // Build TagMap from the current entry widget values
+                // Build TagMap from the current entry widget values.
+                //
+                // This resends EVERY field shown in the editor, changed or not —
+                // including `language`, if the file has one. That matters because
+                // `write_tags` (`mm-core/src/metadata/mod.rs`) used to refuse the
+                // WHOLE save whenever `language` came back unchanged, since it
+                // re-validated the value as if it were freshly typed rather than
+                // recognising it as already-stored (policy rule COMPAT-030; issue
+                // #251 review item 1). A FLAC whose LANGUAGE comment already said
+                // "English" would have its entire save rejected the moment this
+                // button resent "English" unchanged — not just the language field,
+                // every field in the batch, because `write_tags` is all-or-nothing.
+                // `write_tags` now compares the incoming value against what the
+                // file already stores and leaves it alone when the two match, so
+                // this panel needs no special case of its own — it is called out
+                // here only so nobody "simplifies" this button into sending just
+                // the changed fields and unknowingly removes the case that made
+                // the bug reproducible in the first place.
                 let tag_map: TagMap = entry_map_clone
                     .borrow()
                     .iter()

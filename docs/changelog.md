@@ -138,14 +138,29 @@ Format: `## [Version] — YYYY-MM-DD`
   accepted. Writing a language now puts the right form in the right place: MP3 gets the old
   three-letter code (there being no field in MP3 that can hold anything richer); every other
   format keeps the full code. Saving a file for an unrelated reason (changing its title, say)
-  never alters a language value nobody asked to change.
+  never alters a language value nobody asked to change — including a value this tool cannot even
+  parse, which is left exactly as it is rather than being treated as "close enough to replace".
+
+  When what actually gets stored differs from what was typed — an MP3 that can only take the old
+  three-letter form, or a language with no three-letter form at all, recorded as "not known" —
+  `meedya edit` now says so in plain English, at validation time so it shows up even on
+  `--dry-run`, before anything is written. Nothing is said for the ordinary, lossless cases
+  (case-folding, or the routine two-letter-to-three-letter promotion for MP3): only a genuine
+  loss is worth a note.
 
   A **genuine surprise** turned up while testing this against real files: the library
   MeedyaManager uses to read and write tags treats a WAV file the same way as an MP3 for every
-  field it writes — including `language` — never the separate chunk WAV files can also carry for
-  this. That was already true before this change, for every field, not only the language one; it
-  is recorded in the developer notes as something worth knowing, not something this issue set out
-  to fix.
+  field it writes by default — including `language` — rather than the separate `LIST INFO` chunk
+  WAV files can also carry for this. That is a pre-existing fact about how this crate writes WAV
+  files generally, not something this issue caused, but the language-specific write path is the
+  first thing to depend on which container a file is actually using, which is what surfaced it.
+
+  What this issue's own fix does address: **a file with a language value in more than one place
+  at once now never goes stale.** If a WAV file already carries `LIST INFO`'s own language chunk
+  from some other tool, setting the language through MeedyaManager updates both that chunk and
+  the embedded tag MeedyaManager writes by default — each in its own correct form for that
+  container — rather than leaving the old value sitting in the chunk nobody touched. A container
+  that never had a language value to begin with is left alone, not created from nothing.
 
   The full rules are shared with every other Meedya application and kept in
   `docs/standards/media-language-bcp47-policy.md`; see `Dev_Notes.md`'s "Language Tags & the

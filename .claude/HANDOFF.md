@@ -33,15 +33,41 @@ near the top of `AGENTS.md` / `.claude/CLAUDE.md` / `.OpenAI/CONTEXT.md`).
 section for the full account; in short:
 
 - New `crates/mm-core/src/metadata/language.rs` — reading a language value from a file (never
-  fails; unrecognised becomes `und` with the original text kept), a person setting one on
-  purpose (refuses gibberish with a helpful message), and deciding what to write into which tag
-  container per the policy's TRACK-070.
+  fails; unrecognised becomes `und` with the original text kept, and now also carries a
+  `recognised` flag so callers can tell "genuinely unrecognised" apart from "recognised as
+  `und` on purpose"), a person setting one on purpose (refuses gibberish with a helpful message,
+  in plain English with no "BCP 47" jargon in the error text itself), and deciding what to write
+  into which tag container per the policy's TRACK-070.
 - `metadata::write_tags` now special-cases the `language` key: MP3's `TLAN` frame gets the old
   three-letter ISO 639-2 code, every other container gets the full tag — and an untouched
-  `language` value is never rewritten just because some other field changed (COMPAT-030), because
-  the key is simply absent from the map when nobody asked to change it.
-- `meedya edit --set language=...` on the command line now refuses a value it cannot make sense
-  of, before touching the file, with a message that gives a working example.
+  `language` value is never rewritten just because some other field changed (COMPAT-030). This
+  now holds even when the caller resends the field's CURRENT value unchanged (every native UI in
+  this project — macOS, Windows, the GTK app — resends every field on Save, changed or not; a
+  first version of this fix only handled the key being absent, and a FLAC whose `LANGUAGE`
+  comment already said "English" had its whole save refused the moment "English" was resent
+  unchanged, because `write_tags` is all-or-nothing on a bad value). `crates/mm-gtk/src/ui/
+  metadata_panel.rs`'s Save button now carries a comment explaining exactly this, next to the
+  code that rebuilds and resends every field.
+- **A file with a language value sitting in more than one tag container at once never goes
+  stale.** If a WAV already carries a RIFF INFO `ILNG` value from some other tool, setting the
+  language through MeedyaManager updates both that chunk and the embedded ID3v2 tag this crate
+  writes by default, each in its own correct TRACK-070 form — not just the one it happens to
+  treat as "primary". A container that never had a language value is left alone, not created
+  from nothing. See `setting_language_keeps_every_tag_container_consistent` in
+  `crates/mm-core/tests/metadata_roundtrip.rs` and the new `riff_language.wav` fixture.
+- When what gets stored differs from what was typed (a region or script an MP3's `TLAN` frame
+  cannot hold; a language with no three-letter form at all, recorded as "not known"; or the
+  shared policy crate's own notes about the input), `meedya edit --set language=...` now says so
+  in plain English — computed during validation, so it shows up even on `--dry-run`, before
+  anything is written. Silent for the ordinary lossless cases (case-folding, the routine
+  two-to-three-letter promotion), so a note only ever means something was genuinely lost.
+- The rule engine (`<Language>` in a rename template, and a rule's own `language` condition) now
+  standardises both sides of a comparison through `language::standardise_for_comparison` before
+  comparing, so a rule like `language Equals en` matches an MP3 storing `eng` and a FLAC storing
+  `en` alike — before this, the exact same language compared unequal depending only on which
+  container the file used.
+- `meedya edit --set language=...` on the command line refuses a value it cannot make sense of,
+  before touching the file, with a message that gives a working example.
 - New workspace dependency `meedya-lang`, pinned to a commit on MeedyaSuite-core's
   `feature/bcp47-language-policy` branch (see the comment on its line in the root `Cargo.toml`,
   and issue #253 for re-pinning to `main` once that branch merges upstream).
@@ -49,30 +75,58 @@ section for the full account; in short:
   into this repository at `docs/standards/` / `tests/fixtures/` / `scripts/media-lang/`, recorded
   in `docs/standards/MWBM-MEDIA-LANG.lock`, and checked in CI by a new `media-language-policy` job
   in `ci-rust.yml`.
-- New `crates/mm-core/tests/media_language_conformance.rs` runs every case in the policy's own
-  test file for the four sections MeedyaManager needs today, and is written to FAIL — not
-  silently pass — on an unrecognised section name, a needed section missing or empty, or a case
-  missing a required field (checked by hand, deliberately corrupting a temporary copy of the
-  fixture four different ways and confirming each one is caught, then restoring it byte-for-byte).
+- `crates/mm-core/tests/media_language_conformance.rs` runs every case in the policy's own
+  test file for the four sections MeedyaManager needs today, fails — not silently passes — on an
+  unrecognised section name, a needed section missing or empty, or a case missing a required
+  field, and re-canonicalises every `canonicalise` case's own expected answer to check it comes
+  back unchanged (LANG-001's "canonical form is stable" property).
 - A **genuine, unrelated-to-language surprise found while testing this**: `lofty` (the tag
   library) treats a WAV file's "primary" tag as an embedded ID3v2 chunk, never a RIFF INFO chunk
-  — true for every field this crate writes, not only `language`. Recorded in `Dev_Notes.md` and
-  on the `wav_write_tags_uses_embedded_id3v2_not_riff_info` test; not fixed here, as it is unrelated to this policy and a
-  larger, separate piece of work.
+  by default — true for every field this crate writes, not only `language`. Recorded in
+  `Dev_Notes.md` and on the `wav_write_tags_uses_embedded_id3v2_not_riff_info` test; not fixed
+  here, as it is unrelated to this policy and a larger, separate piece of work.
+- **A second genuine surprise, about ID3v2.4's multi-value `TLAN` field**: a null-separated value
+  written straight into a real MP3's `TLAN` frame is split correctly by lofty's own reader
+  immediately afterwards — but saving the file AGAIN for any unrelated reason (title only,
+  `language` never mentioned) loses all but one of the values. This is a general fault in how
+  every multi-value ID3 text field survives an unrelated save, not specific to language and not
+  introduced on this branch. Tracked as issue #254 rather than fixed here, with a test already
+  written and marked `#[ignore = "issue #254"]`:
+  `multi_value_tlan_does_not_survive_an_unrelated_save` in `metadata_roundtrip.rs`.
 - Issues opened: #251 (umbrella), #252 (reading a sidecar file's language from its name,
   TEXT-030 — deliberately not built here, it needs a new field carried through to the Swift and
   C# UIs), #253 (re-pin `meedya-lang` to `main` once MeedyaSuite-core merges the branch it is
-  currently pinned to).
+  currently pinned to), #254 (multi-value ID3 text fields losing data on an unrelated save).
+
+**An independent review of the first batch of commits (`7697b9c..beb4c15`) found problems**,
+fixed in three further commits on top, each carrying `Refs #251` and its own "not yet
+independently reviewed" note (none of the fix commits has been re-reviewed yet — that is the
+next thing this branch needs, before it goes anywhere near a pull request):
+
+- `fix(metadata): act on independent review — COMPAT-030, rules, stability` — the resend-
+  unchanged-value fix described above, the rule-engine standardisation, and the LANG-001
+  stability check in the conformance test.
+- `fix(metadata): keep every tag container consistent when setting language` — the
+  multiple-containers fix described above.
+- `fix(metadata): tell the user what was actually stored, when it differs` — the plain-English
+  note described above.
 
 **Not done / not checked:**
 - `swift build` / `dotnet test` were not run — nothing on this branch touches Swift or C# code.
 - No APE-container round-trip test exists (no committed APE audio fixture in this repo); the
   per-container writing decision for APE is covered by a unit test instead (`language.rs`), not
   a real-file round trip.
+- `crates/mm-gtk` cannot be built or tested on this machine (see the working notes for why), so
+  the comment added to `metadata_panel.rs` above is a documentation-only change, not a change
+  verified against a real build of that crate.
 
-**Commits are on `feature/bcp47-language-policy`, not pushed** — this branch, cut specially for
-this work, has no upstream configured on purpose (see the working notes for this task). Check
-`git log feature/bcp47-language-policy` and `git status -sb` for the exact state.
+**Push state**: the first batch, up to and including `beb4c15`, is pushed to
+`origin/feature/bcp47-language-policy` (the owner pushed it to hand to an independent reviewer).
+**The three review-fix commits above are local only, not pushed** — per the owner's standing
+instruction for this task, new commits go on top locally and nothing is pushed without being
+asked again. Check `git log feature/bcp47-language-policy` and `git status -sb` for the exact
+state; `git log origin/feature/bcp47-language-policy..feature/bcp47-language-policy` shows
+exactly which commits are still local-only.
 
 ---
 
