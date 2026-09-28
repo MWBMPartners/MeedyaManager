@@ -75,9 +75,14 @@
 // `#[ignore = "issue #254"]`) in
 // `crates/mm-core/tests/metadata_roundtrip.rs`.
 
+use std::path::Path;
+
+use lofty::file::TaggedFileExt;
 use lofty::tag::TagType;
 
-use meedya_lang::{Iso639Form, LanguageTag, canonicalise, from_legacy_three_letter, iso639_2_code};
+use meedya_lang::{
+    Iso639Form, LanguageTag, TagNote, canonicalise, from_legacy_three_letter, iso639_2_code,
+};
 
 // ---------------------------------------------------------------------------
 // Reading a language value that is already sitting in a file
@@ -274,9 +279,160 @@ pub fn language_value_for_tag_type(tag: &LanguageTag, tag_type: TagType) -> Stri
     }
 }
 
+// ---------------------------------------------------------------------------
+// Telling a person when what gets stored differs from what they typed
+// ---------------------------------------------------------------------------
+
+/// If writing `input` as `language` into a container of type `tag_type`
+/// would lose or reshape something a person actually typed — TRACK-070's
+/// per-format conversion can genuinely lose information, most concretely
+/// an ID3 file's region and script — this explains what would actually be
+/// stored, and why, in plain words. Returns `None` when `input` cannot be
+/// understood at all (the caller's own refusal message already covers
+/// that case, via [`parse_language_input`]) or when there is nothing worth
+/// telling a person about.
+///
+/// Deliberately NOT triggered merely by `stored != input` as text: turning
+/// `en` into ID3's `eng`, or `EN-gb` into the tidied-up `en-GB`, changes
+/// the letters on screen but loses nothing and would make this fire on
+/// every ordinary edit — noise, not the genuine "your region just vanished"
+/// warning this exists for. A note only appears when there is an actual
+/// REASON to give: ID3 dropping a region/script/variant or having no
+/// three-letter code at all, or one of the crate's own notes about the tag
+/// (an unregistered subtag, one with no single replacement, or one the
+/// registry replaced outright).
+///
+/// Item 6 of the language-policy review: a person setting `language=pt-BR`
+/// on an MP3 sees no error (the value IS a real language) and no obvious
+/// sign that only `por` — the whole region silently gone — was actually
+/// written, unless something tells them so.
+fn describe_conversion(input: &str, tag_type: TagType) -> Option<String> {
+    let parsed = parse_language_input(input).ok()?;
+    let stored = language_value_for_tag_type(&parsed, tag_type);
+
+    let mut reasons: Vec<String> = Vec::new();
+
+    // The structural TRACK-070 reasons only ID3's three-letter-only field
+    // can run into — every other container this crate writes keeps the
+    // canonical tag whole, so nothing is ever lost writing into one of
+    // those (a text difference there, if any, is pure normalisation,
+    // covered by the notes loop below rather than here).
+    if tag_type == TagType::Id3v2 {
+        if stored == "und" {
+            reasons.push(format!(
+                "\"{}\" has no three-letter code at all, so an MP3 can only record it as \
+                 \"und\" (not known)",
+                parsed.language.as_deref().unwrap_or(&parsed.tag)
+            ));
+        } else if parsed.region.is_some() || parsed.script.is_some() || !parsed.variants.is_empty()
+        {
+            reasons.push(
+                "an MP3 can only hold the three-letter language code, not the region, script \
+                 or extra detail you typed"
+                    .to_string(),
+            );
+        }
+    }
+
+    // The crate's own notes about the tag itself — an unregistered subtag,
+    // a deprecated one with no single replacement, or a subtag the
+    // registry replaced outright — explain why the STANDARD form (what
+    // `stored` is built from) is not simply `input` restated. Genuine case
+    // folding or whitespace trimming alone never produces one of these, so
+    // it never reaches this point at all — exactly the "no noise for an
+    // ordinary edit" property this function exists to have.
+    for note in &parsed.notes {
+        match note {
+            TagNote::UnregisteredSubtag { subtag } => reasons.push(format!(
+                "\"{subtag}\" is not on the official list of language subtags, but it is kept \
+                 exactly as typed"
+            )),
+            TagNote::DeprecatedNoReplacement { subtag } => reasons.push(format!(
+                "\"{subtag}\" is an old code with no single replacement, so it is kept exactly \
+                 as typed"
+            )),
+            TagNote::SubtagReplaced { from, to } => {
+                reasons.push(format!(
+                    "\"{from}\" is written as \"{to}\" in the standard form"
+                ));
+            }
+        }
+    }
+
+    if reasons.is_empty() {
+        // Nothing worth reporting — either `stored == input` outright, or
+        // the only difference is ordinary normalisation (case, the plain
+        // 2-to-3-letter ID3 form with no region/script/variant to lose).
+        return None;
+    }
+
+    Some(format!("stored as \"{stored}\" — {}", reasons.join("; ")))
+}
+
+/// The same explanation as this module's private `describe_conversion`, for a file on disk.
+///
+/// Reads the file (never writes to
+/// it) purely to find out which container `write_tags` would actually
+/// write `language` into, so the CLI can show this note at Phase-1
+/// validation time, before any write happens, including on `--dry-run`
+/// (which never calls `write_tags` at all). Returns `None` when the file
+/// cannot even be probed; a caller that goes on to actually write will get
+/// a real, specific error for that from `write_tags` itself.
+pub fn preview_conversion_note(path: &Path, input: &str) -> Option<String> {
+    let tagged_file = super::open_tagged_file(path).ok()?;
+    describe_conversion(input, tagged_file.primary_tag_type())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn describe_conversion_reports_a_lost_region_on_id3() {
+        let note = describe_conversion("pt-BR", TagType::Id3v2).expect("a region is lost");
+        assert!(
+            note.contains("\"por\""),
+            "must show the stored form: {note:?}"
+        );
+        assert!(
+            note.to_lowercase().contains("region"),
+            "must say a region was lost: {note:?}"
+        );
+    }
+
+    #[test]
+    fn describe_conversion_reports_a_language_with_no_639_2_code() {
+        // "yue" (Cantonese) is a genuine subtag with no ISO 639-2 code at
+        // all, so an MP3 can only record it as "und".
+        let note = describe_conversion("yue", TagType::Id3v2).expect("no 639-2 code exists");
+        assert!(note.contains("\"und\""));
+        assert!(note.contains("\"yue\""));
+    }
+
+    #[test]
+    fn describe_conversion_reports_a_registry_replacement() {
+        let note = describe_conversion("iw", TagType::VorbisComments).expect("iw is replaced");
+        assert!(note.contains("\"iw\"") && note.contains("\"he\""));
+    }
+
+    #[test]
+    fn describe_conversion_is_silent_for_ordinary_lossless_conversions() {
+        // The plain two-to-three-letter ID3 form, with no region, script or
+        // variant to lose, is not a loss — nothing is silently dropped.
+        assert_eq!(describe_conversion("en", TagType::Id3v2), None);
+        // Pure case-folding / whitespace tidying on a container that keeps
+        // the canonical tag whole is not a loss either.
+        assert_eq!(describe_conversion("EN-gb", TagType::VorbisComments), None);
+        assert_eq!(describe_conversion("pt-BR", TagType::VorbisComments), None);
+    }
+
+    #[test]
+    fn describe_conversion_returns_none_for_input_it_cannot_parse_at_all() {
+        // Not this function's job — the caller's own refusal (from
+        // parse_language_input) already covers a value that makes no
+        // sense as a language at all.
+        assert_eq!(describe_conversion("not a language", TagType::Id3v2), None);
+    }
 
     #[test]
     fn parse_stored_language_accepts_a_legacy_three_letter_code() {

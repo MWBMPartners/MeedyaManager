@@ -56,17 +56,25 @@ struct EditOutput {
 }
 
 /// Individual edit action for JSON output.
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct EditAction {
     action: String,
     key: Option<String>,
     value: Option<String>,
     success: bool,
     error: Option<String>,
+    /// Set only for a successful `--set language=...` whose stored form
+    /// differs from what was typed (item 6 of the language-policy review)
+    /// — e.g. an MP3 can only hold the three-letter code, so a region can
+    /// be silently lost unless something says so. Omitted entirely from
+    /// JSON when there is nothing to say, so existing consumers see an
+    /// unchanged shape for every other action.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
 }
 
 impl EditAction {
-    /// A successful action.
+    /// A successful action with nothing extra to say about it.
     fn ok(action: &str, key: Option<String>, value: Option<String>) -> Self {
         Self {
             action: action.to_string(),
@@ -74,6 +82,26 @@ impl EditAction {
             value,
             success: true,
             error: None,
+            note: None,
+        }
+    }
+
+    /// A successful action, with a plain-English note attached — used only
+    /// for `language`, when what will actually be stored differs from what
+    /// was typed.
+    fn ok_with_note(
+        action: &str,
+        key: Option<String>,
+        value: Option<String>,
+        note: String,
+    ) -> Self {
+        Self {
+            action: action.to_string(),
+            key,
+            value,
+            success: true,
+            error: None,
+            note: Some(note),
         }
     }
 
@@ -85,6 +113,7 @@ impl EditAction {
             value,
             success: false,
             error: Some(error),
+            note: None,
         }
     }
 }
@@ -172,6 +201,14 @@ struct EditPlan {
     cover: Option<(PathBuf, Vec<u8>, &'static str)>,
     /// Whether `--remove-cover` was requested.
     remove_cover: bool,
+    /// Item 6 of the language-policy review: when a `--set language=...`
+    /// value would be stored differently from what was typed (TRACK-070's
+    /// per-format conversion can lose a region, say), a plain-English
+    /// explanation of what will actually be stored and why. `None` when
+    /// there is nothing to say — no `--set language=...`, or nothing would
+    /// be lost. Computed once in `build_plan` (Phase 1, before any write)
+    /// so it shows up on `--dry-run` too, which never calls `write_tags`.
+    language_note: Option<String>,
 }
 
 /// Validate every requested operation.
@@ -190,6 +227,7 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
     // -- --set: parse `key=value`, then check the key ----------------------
     let mut tags = mm_core::metadata::TagMap::new();
     let mut set_pairs: Vec<(String, String)> = Vec::new();
+    let mut language_note: Option<String> = None;
 
     for set_arg in &args.set {
         let Some((key, value)) = set_arg.split_once('=') else {
@@ -233,6 +271,15 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
                 ));
                 continue;
             }
+            // Item 6 of the language-policy review: the value IS a real
+            // language (the check above just confirmed that), but the
+            // form this file's own tag container can actually hold may
+            // not be the exact text typed — an MP3 can only keep the
+            // three-letter code, so a region such as "-BR" is silently
+            // gone unless this says so. Recomputed on every matching
+            // `--set` in the batch, last-flag-wins, matching `tags`'s own
+            // convention just below.
+            language_note = mm_core::metadata::language::preview_conversion_note(&args.path, value);
         }
 
         // Later `--set` occurrences of the same key win, matching the
@@ -296,6 +343,7 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
             remove_keys,
             cover,
             remove_cover: args.remove_cover,
+            language_note,
         })
     } else {
         Err(failures)
@@ -303,15 +351,32 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
 }
 
 /// Describe a validated plan without performing it — the `--dry-run` path.
+/// Build the `EditAction` for one SUCCESSFUL `--set key=value` pair,
+/// attaching `plan.language_note` (item 6 of the language-policy review)
+/// when `key` is `language` and there is something to say. Shared between
+/// `describe_plan` (`--dry-run`, which never calls `write_tags` at all —
+/// this is the only place that note would ever be shown) and `apply_plan`
+/// (a real write), so the two paths can never show a different answer for
+/// the same batch.
+fn set_action_for(key: &str, value: &str, plan: &EditPlan) -> EditAction {
+    if key == mm_core::metadata::TAG_LANGUAGE {
+        if let Some(note) = &plan.language_note {
+            return EditAction::ok_with_note(
+                "set",
+                Some(key.to_string()),
+                Some(value.to_string()),
+                note.clone(),
+            );
+        }
+    }
+    EditAction::ok("set", Some(key.to_string()), Some(value.to_string()))
+}
+
 fn describe_plan(plan: &EditPlan) -> Vec<EditAction> {
     let mut actions = Vec::new();
 
     for (key, value) in &plan.set_pairs {
-        actions.push(EditAction::ok(
-            "set",
-            Some(key.clone()),
-            Some(value.clone()),
-        ));
+        actions.push(set_action_for(key, value, plan));
     }
     for key in &plan.remove_keys {
         actions.push(EditAction::ok("remove", Some(key.clone()), None));
@@ -365,7 +430,7 @@ fn apply_plan(args: &EditArgs, plan: &EditPlan) -> (Vec<EditAction>, Option<Stri
 
         for (key, value) in &plan.set_pairs {
             actions.push(if result.success {
-                EditAction::ok("set", Some(key.clone()), Some(value.clone()))
+                set_action_for(key, value, plan)
             } else {
                 EditAction::failed(
                     "set",
@@ -838,6 +903,67 @@ mod tests {
                 "language={value:?} should have been accepted"
             );
         }
+    }
+
+    /// Item 6 of the language-policy review: a value that IS a real
+    /// language, but will genuinely be stored differently on this file's
+    /// own container, gets a plain-English note explaining what and why —
+    /// computed at Phase 1 (`build_plan`), so it is there even under
+    /// `--dry-run`, which never calls `write_tags` at all.
+    #[test]
+    fn edit_set_language_notes_a_lost_region_even_on_dry_run() {
+        let _guard = ConfigDirGuard::new();
+
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("track.wav");
+        write_wav_fixture(&p);
+
+        for dry_run in [false, true] {
+            let plan = build_plan(&EditArgs {
+                path: p.clone(),
+                set: vec!["language=pt-BR".to_string()],
+                remove: vec![],
+                cover: None,
+                remove_cover: false,
+                dry_run,
+            })
+            .unwrap_or_else(|_| panic!("pt-BR is a real language, must not fail Phase 1"));
+
+            assert_eq!(
+                plan.language_note.as_deref(),
+                Some(
+                    "stored as \"por\" — an MP3 can only hold the three-letter language code, \
+                     not the region, script or extra detail you typed"
+                ),
+                "dry_run={dry_run}: the note must survive into the plan even without a real write"
+            );
+        }
+    }
+
+    /// The other side of item 6: nothing is lost, so there is nothing to
+    /// say — an ordinary `--set language=en` must not carry a note.
+    #[test]
+    fn edit_set_language_has_no_note_when_nothing_is_lost() {
+        let _guard = ConfigDirGuard::new();
+
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("track.wav");
+        write_wav_fixture(&p);
+
+        // `EditPlan` (via `EditAction`) does not implement `Debug`, so this
+        // is matched by hand rather than `.expect(...)`, which would need it to.
+        let plan = match build_plan(&EditArgs {
+            path: p,
+            set: vec!["language=en".to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: false,
+        }) {
+            Ok(plan) => plan,
+            Err(actions) => panic!("en is a real language, must not fail Phase 1: {actions:?}"),
+        };
+        assert_eq!(plan.language_note, None);
     }
 
     /// The `--remove` side of #206: an unmapped key used to be a silent
