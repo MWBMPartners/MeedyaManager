@@ -276,6 +276,17 @@ pub fn get_metadata(path: String) -> Result<Vec<TagEntry>, MmFfiError> {
 ///   It now returns `MmFfiError::Metadata` naming the key and listing the
 ///   valid ones (issue #206).  Use `mm_core::metadata::known_tag_keys` — or
 ///   simply write back keys obtained from `get_metadata`.
+/// * **`"language"` follows the shared MWBM-MEDIA-LANG policy.**  A value
+///   nothing recognises as a language (a full BCP 47 tag such as `"en-GB"`,
+///   or an old three-letter code such as `"fre"`, are both accepted) is
+///   refused with `MmFfiError::Metadata`, before anything is written — the
+///   same all-or-nothing guarantee an unknown key already has.  What is
+///   actually written differs by file format (an MP3's tag can only ever
+///   hold the old three-letter form; every other format keeps the full
+///   value) — see `mm_core::metadata::language` and
+///   `docs/standards/media-language-bcp47-policy.md`.  A `"language"` key
+///   left OUT of `tags` entirely is never touched, whatever it currently
+///   holds — do not resend a value you read but did not change.
 #[uniffi::export]
 pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiError> {
     let file_path = PathBuf::from(&path);

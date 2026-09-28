@@ -212,6 +212,29 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
             continue;
         }
 
+        // `language` gets one extra check here, on top of the generic
+        // unknown-key check above: policy MWBM-MEDIA-LANG 1.0.0 says a
+        // person setting a language on purpose is refused with a plain
+        // message when the value is not recognised, rather than being
+        // silently accepted and written as `und`. `write_tags` in mm-core
+        // enforces this too (so the FFI and the Linux UI cannot bypass it),
+        // but checking it here as well means the failure is reported
+        // against this exact `--set` pair, in Phase 1, before any file is
+        // opened at all — the same all-or-nothing guarantee an unknown key
+        // already gets. A non-empty value is what fails; an empty one
+        // (`--set language=`) clears the field, the same as any other key.
+        if key == mm_core::metadata::TAG_LANGUAGE && !value.is_empty() {
+            if let Err(e) = mm_core::metadata::language::parse_language_input(value) {
+                failures.push(EditAction::failed(
+                    "set",
+                    Some(key.to_string()),
+                    Some(value.to_string()),
+                    e.to_string(),
+                ));
+                continue;
+            }
+        }
+
         // Later `--set` occurrences of the same key win, matching the
         // last-flag-wins convention users expect from a CLI.
         tags.insert(key.to_string(), vec![value.to_string()]);
@@ -712,6 +735,105 @@ mod tests {
             before,
             "the valid --set must not be applied when a sibling key is invalid"
         );
+    }
+
+    /// Policy MWBM-MEDIA-LANG 1.0.0: a person typing a language MeedyaManager
+    /// cannot make sense of at all is refused with a plain, non-zero-exit
+    /// message, the same way an unknown key already is — never silently
+    /// accepted and written as `und`.
+    #[test]
+    fn edit_set_language_gibberish_reports_error_and_file_unchanged() {
+        let _guard = ConfigDirGuard::new();
+
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("track.wav");
+        write_wav_fixture(&p);
+        let before = std::fs::read(&p).unwrap();
+
+        let args = EditArgs {
+            path: p.clone(),
+            set: vec!["language=not a language".to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: false,
+        };
+        assert_eq!(
+            run(&test_ctx(), &args).unwrap(),
+            ExitCode::PARTIAL,
+            "a language nothing recognises must not report success"
+        );
+        assert_eq!(
+            std::fs::read(&p).unwrap(),
+            before,
+            "a rejected --set must leave the file byte-for-byte identical"
+        );
+    }
+
+    /// The message a refused language gets must actually help — not just say
+    /// no. This is checked separately from the exit-code test above so a
+    /// future change that keeps the exit code right but drops the guidance
+    /// still fails a test.
+    #[test]
+    fn edit_set_language_gibberish_message_gives_an_example() {
+        let _guard = ConfigDirGuard::new();
+
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("track.wav");
+        write_wav_fixture(&p);
+
+        // `EditPlan` (the `Ok` side) does not implement `Debug`, so this is
+        // matched by hand rather than `.expect_err(...)`, which would need it to.
+        let plan_err = match build_plan(&EditArgs {
+            path: p,
+            set: vec!["language=not a language".to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: false,
+        }) {
+            Err(actions) => actions,
+            Ok(_) => panic!("gibberish language must fail Phase 1 validation"),
+        };
+
+        let action = plan_err
+            .iter()
+            .find(|a| a.key.as_deref() == Some("language"))
+            .expect("a 'set' failure for the 'language' key");
+        let message = action.error.as_deref().unwrap_or_default();
+        assert!(
+            message.contains("en"),
+            "the refusal message must show a working example, got: {message:?}"
+        );
+    }
+
+    /// Both accepted shapes LANG-002 defines — a full BCP 47 tag and an old
+    /// three-letter code — must be accepted by `--set language=...`, and an
+    /// EMPTY value must still be allowed (it clears the field, same as any
+    /// other `--set key=` with nothing after the `=`).
+    #[test]
+    fn edit_set_language_accepts_both_shapes_and_a_clearing_empty_value() {
+        let _guard = ConfigDirGuard::new();
+
+        for value in ["en-GB", "fre", ""] {
+            let dir = tempfile::tempdir().unwrap();
+            let p = dir.path().join("track.wav");
+            write_wav_fixture(&p);
+
+            let args = EditArgs {
+                path: p.clone(),
+                set: vec![format!("language={value}")],
+                remove: vec![],
+                cover: None,
+                remove_cover: false,
+                dry_run: false,
+            };
+            assert_eq!(
+                run(&test_ctx(), &args).unwrap(),
+                ExitCode::SUCCESS,
+                "language={value:?} should have been accepted"
+            );
+        }
     }
 
     /// The `--remove` side of #206: an unmapped key used to be a silent

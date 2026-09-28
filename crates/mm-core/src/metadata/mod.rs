@@ -60,6 +60,11 @@
 /// Provides known tag lists for template validation and UI pickers.
 pub mod tag_registry;
 
+/// Language tag handling — policy MWBM-MEDIA-LANG 1.0.0. See
+/// `docs/standards/media-language-bcp47-policy.md` and this module's own
+/// doc comment before touching anything to do with the `language` tag.
+pub mod language;
+
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -69,6 +74,10 @@ use lofty::file::{AudioFile, TaggedFileExt}; // traits: properties(), tags(), et
 use lofty::picture::{MimeType, Picture, PictureType}; // embedded artwork types
 use lofty::probe::Probe; // file format auto-detection
 use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
+
+// The shared implementation of policy MWBM-MEDIA-LANG 1.0.0 — see
+// `language`, this module's own submodule, for how it is used here.
+use meedya_lang::LanguageTag;
 
 use serde::{Deserialize, Serialize};
 
@@ -257,7 +266,13 @@ pub const TAG_CONDUCTOR: &str = "conductor";
 pub const TAG_REMIXER: &str = "remixer";
 /// Primary lyricist
 pub const TAG_LYRICIST: &str = "lyricist";
-/// Language of the lyrics (ISO 639-1, e.g. "en", "fr", "ja")
+/// Language of the lyrics, as a BCP 47 tag (policy MWBM-MEDIA-LANG 1.0.0).
+///
+/// E.g. `"en"`, `"pt-BR"`, `"zh-Hant"`; `"und"` means "not known". See
+/// `metadata::language` for how a value is read, validated and written —
+/// ID3's `TLAN` frame holds the old three-letter form (there being no field
+/// in ID3 that can hold a full tag at all), every other format holds the
+/// tag itself.
 pub const TAG_LANGUAGE: &str = "language";
 /// Emotional mood tag (e.g. "Melancholic", "Upbeat")
 pub const TAG_MOOD: &str = "mood";
@@ -709,8 +724,31 @@ fn get_or_create_primary_tag(tagged_file: &mut lofty::file::TaggedFile) -> &mut 
 /// frame per key.  To write truly separate frames you would call the
 /// lower-level lofty API directly.
 ///
+/// ## `language` is special (policy MWBM-MEDIA-LANG 1.0.0, TRACK-070)
+///
+/// Every other key is written exactly as given. `language` is not: the
+/// value supplied is read with the LANG-002 rules (so both `en-GB` and
+/// `eng` are accepted) and then re-written in whatever form the file's tag
+/// container actually wants (`metadata::language::language_value_for_tag_type`)
+/// — ID3's `TLAN` frame gets the ISO 639-2 terminology three-letter code,
+/// every other container gets the canonical BCP 47 tag itself.
+///
+/// This means **the caller decides whether the language is being changed
+/// at all, simply by whether `language` is a key in `tags`** (COMPAT-030):
+/// leaving it out — the ordinary way to "touch a file for another reason"
+/// — writes nothing to it, so an existing value survives completely
+/// unchanged, whatever it says, even if this crate could not have parsed
+/// it. A caller that always resends every currently-displayed field on
+/// save (a "rebuild the whole tag map from the in-memory model" editor)
+/// would defeat this guarantee, because it can no longer tell "unedited"
+/// from "the person typed exactly what was already there" — see the
+/// caution on `mm-gtk`'s save button in this crate's own notes.
+///
 /// # Errors
-/// Returns an error if the file cannot be opened, read, or saved.
+/// Returns an error if the file cannot be opened, read, or saved, or if
+/// `tags` sets `language` to a value LANG-002 does not recognise at all
+/// (see [`language::parse_language_input`]) — refused up front, before any
+/// key is written, for the same all-or-nothing reason as an unknown key.
 pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     // -- Validate every key BEFORE touching the file (issue #206) ----------
     //
@@ -731,6 +769,27 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
         return Err(unknown_tag_key_error(&unknown));
     }
 
+    // -- Validate a `language` value BEFORE touching the file, too ---------
+    //
+    // Parsed once, here, and reused in the write loop below — never parsed
+    // a second time — so what gets checked is exactly what gets written.
+    // An empty joined value (the field is being cleared, same as any other
+    // key) needs no language at all, so it skips this check entirely.
+    let language_to_write: Option<LanguageTag> =
+        match tags.get(TAG_LANGUAGE) {
+            Some(values) => {
+                let joined = join_multi_value(values);
+                if joined.is_empty() {
+                    None
+                } else {
+                    Some(language::parse_language_input(&joined).map_err(|e| {
+                        MmError::Metadata(format!("cannot set '{TAG_LANGUAGE}': {e}"))
+                    })?)
+                }
+            }
+            None => None,
+        };
+
     // Open and read the existing file so we can preserve its tags
     let mut tagged_file = open_tagged_file(path)?;
 
@@ -744,8 +803,22 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
         let item_key = mm_key_to_item_key(key)
             .expect("validated above: every key in `tags` has an ItemKey mapping");
 
-        // Join multi-value into a single "; "-delimited string
-        let joined = join_multi_value(values);
+        // `language` gets the per-container treatment above; every other
+        // key is joined and written exactly as it always has been.
+        let joined = if key == TAG_LANGUAGE {
+            match &language_to_write {
+                // A recognised, non-empty value: write TRACK-070's form for
+                // whichever container this file actually uses.
+                Some(parsed) => language::language_value_for_tag_type(parsed, tag.tag_type()),
+                // Either the value was empty (clearing the field) or this
+                // key was absent — the match above already ruled out "set
+                // to something we could not parse", so an empty string here
+                // only ever means "clear it", handled the same as any key.
+                None => String::new(),
+            }
+        } else {
+            join_multi_value(values)
+        };
 
         // Remove existing items for this key to avoid duplicates
         tag.remove_key(&item_key);
