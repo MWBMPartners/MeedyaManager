@@ -1295,6 +1295,87 @@ fn an_unrecognised_value_beside_a_code_is_reported_not_guessed_at() {
 }
 
 // ---------------------------------------------------------------------------
+// Rule conditions on `language`, on real files (third review round, items 6-7)
+// ---------------------------------------------------------------------------
+
+/// Evaluate one `language` condition against `tags`, through the public
+/// `evaluate_rule` — the same way a rename rule is checked.
+fn language_rule_matches(
+    tags: &TagMap,
+    path_mode: bool,
+    operator: mm_core::rule_engine::ConditionOp,
+    value: &str,
+) -> bool {
+    let rule = mm_core::rule_engine::Rule {
+        name: "test".to_string(),
+        priority: 0,
+        enabled: true,
+        conditions: vec![mm_core::rule_engine::Condition {
+            field: "language".to_string(),
+            operator,
+            value: value.to_string(),
+        }],
+        condition_mode: mm_core::rule_engine::ConditionMode::All,
+        template: "Matched".to_string(),
+        stop_on_match: false,
+    };
+    let ctx = mm_core::rule_engine::EvalContext::new(tags).with_path_mode(path_mode);
+    mm_core::rule_engine::evaluate_rule(&rule, &ctx)
+        .unwrap_or_else(|e| panic!("{operator:?} {value:?}: {e}"))
+        .is_some()
+}
+
+/// Item 6, on a real MP3 whose `TLAN` frame holds two languages, "eng" and
+/// "fra": `Matches` used to try "eng; fra" — the two run together — so the
+/// unanchored pattern "fra" matched while the file's path was being built
+/// from its FIRST language (English), and an anchored pattern for either
+/// language never matched.
+#[test]
+fn language_matches_on_a_real_file_with_two_languages() {
+    use mm_core::rule_engine::ConditionOp::Matches;
+
+    let (_dir, path) = copy_fixture("silence.mp3");
+    poke_raw_language_value(&path, "eng\u{0}fra");
+    let tags = extract_tags(&path).unwrap();
+    assert_eq!(
+        tags.get(TAG_LANGUAGE).map(Vec::as_slice),
+        Some(["eng".to_string(), "fra".to_string()].as_slice()),
+        "fixture sanity check: two separate values"
+    );
+
+    // Building a path: the first stored language only.
+    assert!(!language_rule_matches(&tags, true, Matches, "fra"));
+    assert!(language_rule_matches(&tags, true, Matches, "^eng$"));
+    // Otherwise: each stored language on its own.
+    assert!(language_rule_matches(&tags, false, Matches, "^fra$"));
+    assert!(!language_rule_matches(&tags, false, Matches, "^eng; fra$"));
+}
+
+/// Item 7, on a real MP3 given "en" (so it stores "eng"): `Contains`,
+/// `StartsWith`, `EndsWith` and `NotContains` are tried against both the
+/// standard form ("en") and the stored text ("eng").
+#[test]
+fn language_text_conditions_on_a_real_file_try_both_forms() {
+    use mm_core::rule_engine::ConditionOp::{Contains, EndsWith, NotContains, StartsWith};
+
+    let (_dir, path) = copy_fixture("silence.mp3");
+    write_tags(&path, &build_tags(&[(TAG_LANGUAGE, "en")])).unwrap();
+    let tags = extract_tags(&path).unwrap();
+    assert_eq!(
+        tags.get(TAG_LANGUAGE).map(Vec::as_slice),
+        Some(["eng".to_string()].as_slice()),
+        "an MP3 stores the three-letter code"
+    );
+
+    assert!(language_rule_matches(&tags, true, Contains, "ng"));
+    assert!(language_rule_matches(&tags, true, EndsWith, "ng"));
+    assert!(language_rule_matches(&tags, true, StartsWith, "eng"));
+    assert!(language_rule_matches(&tags, true, Contains, "en"));
+    assert!(!language_rule_matches(&tags, true, NotContains, "ng"));
+    assert!(language_rule_matches(&tags, true, NotContains, "fr"));
+}
+
+// ---------------------------------------------------------------------------
 // Code the third reviewer could break without any test failing (item 5)
 // ---------------------------------------------------------------------------
 //
