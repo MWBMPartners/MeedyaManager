@@ -529,6 +529,35 @@ fn language_pt_br_round_trips_per_container_track_070() {
     assert_eq!(recovered.tag.tag, "pt");
 }
 
+/// Review item 11 of issue #251's independent review: the test above proves
+/// TRACK-070's "MP3 only gets the three-letter code" rule, but Portuguese's
+/// bibliographic ("por") and terminology ("por") forms are IDENTICAL, so it
+/// cannot prove `write_tags` reaches for the terminology form specifically
+/// rather than the bibliographic one by coincidence. German's two forms
+/// differ ("ger" bibliographic, "deu" terminology per ISO 639-2, and
+/// confirmed against this project's own copy of the policy fixture,
+/// `write-01` in `tests/fixtures/bcp47-language-policy-v1.json`), so a real
+/// MP3 round trip with "de" is the one case that actually distinguishes the
+/// two — this is `language_value_for_tag_type_matches_the_policy_fixture_
+/// for_id3v2` in `media_language_conformance.rs` again, but against a real
+/// file written and read back through lofty, not the function called
+/// directly.
+#[test]
+fn language_de_round_trips_to_the_terminology_form_on_id3v2() {
+    let (_dir, path) = copy_fixture("silence.mp3");
+    let tags = build_tags(&[(TAG_LANGUAGE, "de")]);
+    write_tags(&path, &tags).unwrap_or_else(|e| panic!("write_tags failed: {e}"));
+
+    let read_back = extract_tags(&path).unwrap_or_else(|e| panic!("extract_tags failed: {e}"));
+    assert_eq!(
+        read_back.get(TAG_LANGUAGE).map(Vec::as_slice),
+        Some(["deu".to_string()].as_slice()),
+        "raw stored 'language' after writing \"de\" to an MP3 — got {:?}, expected the \
+         terminology form \"deu\", NOT the bibliographic form \"ger\"",
+        read_back.get(TAG_LANGUAGE)
+    );
+}
+
 /// Writes a language value straight into a file's tag, bypassing
 /// `write_tags`'s own validation entirely — standing in for a value that
 /// arrived some other way (an older build of this app before this policy

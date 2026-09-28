@@ -2024,6 +2024,40 @@ mod tests {
         );
     }
 
+    /// Review item 12 of issue #251's independent review: `mm-ffi`'s
+    /// `write_metadata_rejects_gibberish_language` already proves this
+    /// through the FFI boundary the native UIs actually call, but that
+    /// exercises a whole extra layer (`MmFfiError`, the FFI's own argument
+    /// shape) on top of what actually does the refusing. This test calls
+    /// `write_tags` directly — the one place in this crate that decides
+    /// whether a `language` value is refused at all — so a future change
+    /// that broke the refusal but happened to leave the FFI wrapper's own
+    /// error mapping looking correct would still be caught here.
+    #[test]
+    fn write_tags_rejects_gibberish_language() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("track.wav");
+        write_wav_fixture(&p);
+        let before = std::fs::read(&p).unwrap();
+
+        let mut tags = TagMap::new();
+        tags.insert(TAG_LANGUAGE.to_string(), vec!["not a language".to_string()]);
+
+        let err = write_tags(&p, &tags)
+            .expect_err("a language nothing recognises must not report success");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not a language"),
+            "the error must name the rejected value, got: {msg}"
+        );
+        assert_eq!(
+            std::fs::read(&p).unwrap(),
+            before,
+            "a rejected write must not touch the file — `write_tags` validates the language \
+             value before it ever calls `tag.save_to_path`, so nothing on disk should change"
+        );
+    }
+
     #[test]
     fn remove_tag_rejects_unknown_key() {
         let dir = tempfile::tempdir().unwrap();

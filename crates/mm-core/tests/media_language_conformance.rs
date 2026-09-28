@@ -43,7 +43,9 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde_json::Value;
 
+use lofty::tag::TagType;
 use meedya_lang::{canonicalise, embedded_data_version, from_legacy_three_letter, iso639_2_write};
+use mm_core::metadata::language::language_value_for_tag_type;
 
 // ---------------------------------------------------------------------------
 // Fixture-shape robustness helpers (policy 8.1) — identical in spirit to
@@ -457,6 +459,61 @@ fn every_needed_conformance_case_passes() {
          failed:\n{}",
         failures.len(),
         cases_in_file + stability_checks_in_file,
+        failures.join("\n")
+    );
+}
+
+/// Review item 11 of issue #251's independent review: the conformance test
+/// above calls `meedya_lang::iso639_2_write` directly, which proves the
+/// SHARED crate implements TRACK-070 correctly — it does not prove
+/// MeedyaManager's own `language_value_for_tag_type` (the one and only
+/// function in this crate that decides what actually gets written to an
+/// ID3v2 file) reaches for the terminology form rather than, say, the
+/// bibliographic one by mistake. This test closes that gap by running
+/// every `iso639_2_write` fixture case — chosen deliberately because
+/// several of them (`"de"`, `"zh"`, ...) have DIFFERENT bibliographic and
+/// terminology forms, so a mix-up between the two would be caught, unlike
+/// a case such as `"pt"` where both forms happen to be identical — through
+/// this crate's own function, for `TagType::Id3v2` specifically (the one
+/// tag format TRACK-070 gives a narrower answer for; every other tag type
+/// gets the full canonical tag, which is exercised by the ordinary
+/// round-trip tests in `metadata_roundtrip.rs` instead).
+#[test]
+fn language_value_for_tag_type_matches_the_policy_fixture_for_id3v2() {
+    let raw = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/bcp47-language-policy-v1.json"
+    ))
+    .expect("could not read tests/fixtures/bcp47-language-policy-v1.json");
+    let raw_value: Value =
+        serde_json::from_str(&raw).expect("fixture file is not valid JSON at all");
+    let write_cases: Vec<Iso639WriteCase> =
+        serde_json::from_value(raw_value["iso639_2_write"].clone())
+            .expect("iso639_2_write section did not match the expected shape");
+    assert!(
+        !write_cases.is_empty(),
+        "iso639_2_write section is empty — this test would otherwise pass having checked nothing"
+    );
+
+    let mut failures: Vec<String> = Vec::new();
+    for case in &write_cases {
+        let tag = canonicalise(&case.input);
+        let got = language_value_for_tag_type(&tag, TagType::Id3v2);
+        if got != case.expected.t {
+            failures.push(format!(
+                "{}: language_value_for_tag_type({:?}, Id3v2) = {got:?}, expected the \
+                 terminology form {:?} (bibliographic form was {:?} — a mix-up between the two \
+                 would show up here)",
+                case.id, case.input, case.expected.t, case.expected.b
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {} cases: MeedyaManager's own language_value_for_tag_type disagrees with the \
+         policy fixture for ID3v2:\n{}",
+        failures.len(),
+        write_cases.len(),
         failures.join("\n")
     );
 }
