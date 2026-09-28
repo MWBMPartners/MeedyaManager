@@ -1008,6 +1008,138 @@ fn language_rule_conditions_match_across_every_container_format() {
 }
 
 // ---------------------------------------------------------------------------
+// The "what was stored" note, checked against what real files really store
+// (third independent review round)
+// ---------------------------------------------------------------------------
+
+/// Third review round, item 1 (MUST FIX): an ordinary old three-letter
+/// code — `eng`, `fre`, `ger`, `deu` — was told "... is an old or grouped
+/// form that is no longer used — it is replaced with the current code", and
+/// `und` on an MP3 was told "an ID3 tag has no three-letter code for
+/// \"und\"". Reproduced before the fix with the `meedya` binary built from
+/// `e18fb18`: `meedya edit t.mp3 --set language=eng` printed the
+/// "replaced with \"en\"" note, and an independent reader (mutagen) showed
+/// the MP3's `TLAN` frame holding `eng` — exactly what was typed.
+///
+/// Each case asks for the note first (`preview_conversion_note`, the same
+/// call `meedya edit` makes before writing anything), then really writes the
+/// value and reads back what the container holds, bypassing
+/// `extract_tags`' own logic — so the test proves the note is silent for a
+/// value that is stored as typed, or stored as the same language in the
+/// container's own spelling.
+#[test]
+fn no_note_for_an_ordinary_three_letter_code_on_real_files() {
+    use lofty::tag::TagType;
+    use mm_core::metadata::language::preview_conversion_note;
+
+    // (fixture, container read back, typed, what that container stores)
+    let cases: &[(&str, TagType, &str, &str)] = &[
+        ("silence.mp3", TagType::Id3v2, "eng", "eng"),
+        ("silence.mp3", TagType::Id3v2, "fre", "fra"), // ID3 takes the terminology form
+        ("silence.mp3", TagType::Id3v2, "ger", "deu"), // likewise
+        ("silence.mp3", TagType::Id3v2, "deu", "deu"),
+        ("silence.mp3", TagType::Id3v2, "und", "und"),
+        ("silence.mp3", TagType::Id3v2, "xxx", "und"), // ID3's own "not known" marker
+        ("silence.flac", TagType::VorbisComments, "eng", "en"),
+        ("silence.flac", TagType::VorbisComments, "fre", "fr"),
+        ("silence.flac", TagType::VorbisComments, "ger", "de"),
+        ("silence.flac", TagType::VorbisComments, "deu", "de"),
+        ("silence.flac", TagType::VorbisComments, "und", "und"),
+    ];
+
+    for (fixture, container, typed, expected_stored) in cases {
+        let (_dir, path) = copy_fixture(fixture);
+        assert_eq!(
+            preview_conversion_note(&path, typed),
+            None,
+            "{fixture}: `--set language={typed}` must carry no note"
+        );
+
+        write_tags(&path, &build_tags(&[(TAG_LANGUAGE, typed)]))
+            .unwrap_or_else(|e| panic!("{fixture}/{typed}: write_tags failed: {e}"));
+        assert_eq!(
+            read_raw_language_from_tag_type(&path, *container).as_deref(),
+            Some(*expected_stored),
+            "{fixture}/{typed}: what the {container:?} container really holds"
+        );
+    }
+}
+
+/// The other half of item 1: the notes that were already right must stay
+/// EXACTLY as they were (compared word for word with what the `e18fb18`
+/// binary printed), and each must describe what the file then really
+/// stores.
+#[test]
+fn notes_that_were_already_right_are_unchanged_and_match_what_is_stored() {
+    use lofty::tag::TagType;
+    use mm_core::metadata::language::preview_conversion_note;
+
+    let i_klingon = "\"i-klingon\" is an old or grouped form that is no longer used — it is \
+                     replaced with the current code, \"tlh\"";
+    let sgn_br = "\"sgn-BR\" is an old or grouped form that is no longer used — it is replaced \
+                  with the current code, \"bzs\"";
+    let cases: Vec<(&str, TagType, &str, String, &str)> = vec![
+        (
+            "silence.mp3",
+            TagType::Id3v2,
+            "pt-BR",
+            "an ID3 tag can only hold the three-letter language code, so it will lose the \
+             region you typed — it will be stored there as \"por\""
+                .to_string(),
+            "por",
+        ),
+        (
+            "silence.mp3",
+            TagType::Id3v2,
+            "i-klingon",
+            i_klingon.to_string(),
+            "tlh",
+        ),
+        (
+            "silence.flac",
+            TagType::VorbisComments,
+            "i-klingon",
+            i_klingon.to_string(),
+            "tlh",
+        ),
+        (
+            "silence.mp3",
+            TagType::Id3v2,
+            "sgn-BR",
+            format!(
+                "an ID3 tag has no three-letter code for \"bzs\" at all, so it will be stored \
+                 there as not known; {sgn_br}"
+            ),
+            "und",
+        ),
+        (
+            "silence.flac",
+            TagType::VorbisComments,
+            "sgn-BR",
+            sgn_br.to_string(),
+            "bzs",
+        ),
+    ];
+
+    for (fixture, container, typed, expected_note, expected_stored) in cases {
+        let (_dir, path) = copy_fixture(fixture);
+        assert_eq!(
+            preview_conversion_note(&path, typed).as_deref(),
+            Some(expected_note.as_str()),
+            "{fixture}: the note for `--set language={typed}` must be unchanged"
+        );
+
+        write_tags(&path, &build_tags(&[(TAG_LANGUAGE, typed)]))
+            .unwrap_or_else(|e| panic!("{fixture}/{typed}: write_tags failed: {e}"));
+        assert_eq!(
+            read_raw_language_from_tag_type(&path, container).as_deref(),
+            Some(expected_stored),
+            "{fixture}/{typed}: the note says this is what is stored — check it is"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Cover art round trip — raw and integrity-guarded
 // ---------------------------------------------------------------------------
 

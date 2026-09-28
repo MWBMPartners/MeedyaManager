@@ -345,6 +345,11 @@ pub fn language_value_for_tag_type(tag: &LanguageTag, tag_type: TagType) -> Stri
 /// does.
 fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<String> {
     let parsed = parse_language_input(input).ok()?;
+    // What the person actually typed, with only LANG-001 step 1's four
+    // whitespace characters taken off the ends — the same trimming the
+    // shared crate does before reading anything, so a stray space never
+    // makes "what was stored" look different from "what was typed".
+    let typed = trim_lang_whitespace(input);
 
     let mut reasons: Vec<String> = Vec::new();
 
@@ -355,9 +360,24 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
     // normalisation, covered by the notes below rather than here). Named
     // "an ID3 tag", never "an MP3" (review item 4): the same tag type is
     // reached from a `.wav` file just as often as from a `.mp3` one.
+    //
+    // Third review round, item 1: decided per container. When the ID3
+    // tag will hold exactly what was typed (`eng` typed, `eng` stored;
+    // `und` typed, `und` stored), there is nothing to explain for it at
+    // all, whatever else is true of the value.
     if tag_types.contains(&TagType::Id3v2) {
         let stored = language_value_for_tag_type(&parsed, TagType::Id3v2);
-        if stored == "und" {
+        if stored.eq_ignore_ascii_case(typed) {
+            // Stored exactly as typed (letter case aside) — say nothing.
+        } else if stored == "und" && parsed.language.as_deref() != Some("und") {
+            // "No three-letter code" is only true of a language that is
+            // not itself "not known". Before the third review round this
+            // branch ran for `und` too, so typing `und` — which ID3 holds
+            // perfectly well, as `und` — was reported as "an ID3 tag has
+            // no three-letter code for \"und\"", which is simply false. A
+            // value whose language IS `und` but which carries more (for
+            // example `und-Latn`) falls through to the lost-parts branch
+            // below instead, which names what is really lost.
             // Review item 9: say "not known" — the plain-English fact —
             // rather than showing the raw three-letter code "und" (or, on
             // the READING side, ID3's own "xxx" marker) as if it meant
@@ -404,16 +424,31 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
     // alone never produces one of these, so it never reaches this point at
     // all — exactly the "no noise for an ordinary edit" property this
     // function exists to have.
+    //
+    // Third review round, item 1 ("describe only what really differs"):
+    // the two "kept as typed" notes used to say "it is kept exactly as
+    // typed" whatever the file was. That is true of a tag that holds the
+    // full code (a FLAC's, an M4A's, a WAV's RIFF INFO chunk) and false of
+    // an ID3 tag, which keeps only the three-letter language code — so on
+    // an MP3, `en-JJ` was reported as losing its region AND as keeping it
+    // exactly as typed, in the same sentence. The ending now says which
+    // tags really do keep it, and is left off when none of them does (the
+    // ID3 reason above already says what an ID3 tag stores instead).
+    let keeps_whole = kept_as_typed_ending(tag_types);
     let mut note_reasons: Vec<String> = Vec::new();
     for note in &parsed.notes {
         match note {
             TagNote::UnregisteredSubtag { subtag } => note_reasons.push(format!(
-                "\"{subtag}\" is not on the official list of language subtags, but it is kept \
-                 exactly as typed"
+                "\"{subtag}\" is not on the official list of language subtags{}",
+                keeps_whole
+                    .map(|where_kept| format!(", but it is kept exactly as typed{where_kept}"))
+                    .unwrap_or_default()
             )),
             TagNote::DeprecatedNoReplacement { subtag } => note_reasons.push(format!(
-                "\"{subtag}\" is an old code with no single replacement, so it is kept exactly \
-                 as typed"
+                "\"{subtag}\" is an old code with no single replacement{}",
+                keeps_whole
+                    .map(|where_kept| format!(", so it is kept exactly as typed{where_kept}"))
+                    .unwrap_or_default()
             )),
             TagNote::SubtagReplaced { from, to } => {
                 note_reasons.push(format!(
@@ -430,15 +465,24 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
     // into canonicalising the replacement and returns THAT result, with
     // no record left behind that the input was ever anything else (unlike
     // a single-subtag replacement such as "iw" -> "he", which the
-    // `SubtagReplaced` loop above already reports). Detected here by
-    // comparing the input, case-folded, against the tag `parsed` actually
-    // is — only when nothing above already explains the difference, so a
-    // case already covered (like "iw") is never reported twice.
-    if note_reasons.is_empty() && !parsed.tag.eq_ignore_ascii_case(input.trim()) {
+    // `SubtagReplaced` loop above already reports). Only reported when
+    // nothing above already explains the difference, so a case already
+    // covered (like "iw") is never reported twice.
+    //
+    // Third review round, item 1 (MUST FIX): this used to compare what was
+    // typed against `parsed.tag` — the result of LANG-002's READER — so an
+    // ordinary old three-letter code such as `eng`, `fre`, `ger` or `deu`,
+    // or ID3's own "not known" marker `xxx`, was reported as "an old or
+    // grouped form that is no longer used — it is replaced with the
+    // current code, \"en\"". That is false twice over: those codes are
+    // not retired (LANG-002 exists precisely because they are in everyday
+    // use), and an ID3 tag stores `eng` exactly as typed. See
+    // `is_whole_tag_replacement` for how a genuine replacement is told
+    // apart now.
+    if note_reasons.is_empty() && is_whole_tag_replacement(typed) {
         note_reasons.push(format!(
-            "\"{}\" is an old or grouped form that is no longer used — it is replaced with the \
-             current code, \"{}\"",
-            input.trim(),
+            "\"{typed}\" is an old or grouped form that is no longer used — it is replaced with \
+             the current code, \"{}\"",
             parsed.tag
         ));
     }
@@ -472,6 +516,70 @@ fn join_with_and(items: &[&str]) -> String {
             format!("{} and {last}", rest.join(", "))
         }
     }
+}
+
+/// LANG-001 step 1's trim: only space, tab, line feed and carriage return,
+/// from both ends — the same four characters the shared crate removes
+/// before it reads anything. Deliberately NOT `str::trim`, which also
+/// removes a no-break space and every other Unicode space: the shared
+/// crate treats a value starting with a no-break space as malformed, and
+/// this module must never tidy away something the crate would object to.
+fn trim_lang_whitespace(s: &str) -> &str {
+    s.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r'))
+}
+
+/// Which of `tag_types` keep a language value whole, for the end of a "kept
+/// exactly as typed" note (third review round, item 1).
+///
+/// Returns `None` when no container in the list keeps the full code — only
+/// an ID3 tag, which holds just the three-letter language code — so the
+/// note must not claim anything was kept as typed at all. Returns an empty
+/// ending when every container keeps it, and a short qualifier when some
+/// do and an ID3 tag does not.
+fn kept_as_typed_ending(tag_types: &[TagType]) -> Option<&'static str> {
+    let has_id3 = tag_types.contains(&TagType::Id3v2);
+    let has_full = tag_types.iter().any(|tag_type| *tag_type != TagType::Id3v2);
+    match (has_full, has_id3) {
+        (false, _) => None,
+        (true, false) => Some(""),
+        (true, true) => Some(" in every tag except the ID3 one"),
+    }
+}
+
+/// Whether the shared crate's LANG-001 canonicalisation REPLACES what was
+/// typed with a genuinely different tag — a grandfathered tag with a
+/// preferred replacement (`i-klingon` → `tlh`), a redundant combination
+/// (`sgn-BR` → `bzs`), or a tag whose replaced region turns it into one of
+/// those (`sgn-DD` → `gsg`) — as opposed to tidying its letter case or
+/// putting its extension parts in the standard order.
+///
+/// Why LANG-001 (`canonicalise`) and not LANG-002 (the reader
+/// [`parse_language_input`] uses): LANG-002 also turns an old three-letter
+/// code into the shortest code for the same language (`eng` → `en`,
+/// `ger` → `de`), turns ID3's `xxx` into `und`, and reads a Matroska-style
+/// `fre-CA` as `fr-CA`. None of those is a replacement — they are the same
+/// language, written the older way, in everyday use — and LANG-001 on its
+/// own leaves every one of them alone (it does not know those spellings,
+/// so it has nothing to replace them with). Comparing against LANG-002's
+/// answer was exactly the third review round's MUST FIX: it made `eng`
+/// look replaced.
+///
+/// Compared as a sorted set of lower-cased subtags, so a change of case
+/// (`EN-gb` → `en-GB`) or of extension order (`en-u-ca-gregory-a-bbb` →
+/// `en-a-bbb-u-ca-gregory`) is never mistaken for a replacement. A value
+/// LANG-001 finds malformed cannot have been replaced by anything, so it
+/// answers `false`.
+fn is_whole_tag_replacement(typed: &str) -> bool {
+    let restated = canonicalise(typed);
+    if restated.is_malformed() {
+        return false;
+    }
+    let subtags = |tag: &str| {
+        let mut parts: Vec<String> = tag.split('-').map(str::to_ascii_lowercase).collect();
+        parts.sort_unstable();
+        parts
+    };
+    subtags(&restated.tag) != subtags(typed)
 }
 
 /// The same explanation as this module's private `describe_conversion_for_types`, for a file
@@ -667,6 +775,139 @@ mod tests {
         assert_eq!(
             describe_conversion_for_types("pt-BR", &[TagType::RiffInfo, TagType::VorbisComments]),
             None
+        );
+    }
+
+    // ── Third review round, item 1 (MUST FIX) ───────────────────────────
+    //
+    // Every ordinary old three-letter code used to get "... is an old or
+    // grouped form that is no longer used — it is replaced with the
+    // current code", because the "whole tag replaced" check compared what
+    // was typed against LANG-002's reading of it. Reproduced on real files
+    // with the `meedya` binary built from `e18fb18` before this fix: an
+    // MP3 given `eng` stored `eng` and was told it had been replaced with
+    // `en`. `metadata_roundtrip.rs` repeats these on real MP3 and FLAC
+    // files and reads back what each container really holds.
+
+    /// The container lists the ordinary cases are checked against: an ID3
+    /// tag alone (an MP3), a full container alone (a FLAC), and both at
+    /// once (a WAV carrying a RIFF INFO chunk AND an embedded ID3 tag).
+    const EVERY_TARGET_SHAPE: [&[TagType]; 3] = [
+        &[TagType::Id3v2],
+        &[TagType::VorbisComments],
+        &[TagType::RiffInfo, TagType::Id3v2],
+    ];
+
+    #[test]
+    fn describe_conversion_is_silent_for_every_ordinary_three_letter_code() {
+        // `ger` and `fre` are the bibliographic forms (an ID3 tag stores
+        // the terminology forms `deu` and `fra` instead — the same
+        // language, so still nothing to say); `ENG` checks letter case.
+        for typed in ["eng", "fre", "ger", "deu", "fra", "ENG", " eng "] {
+            for tag_types in EVERY_TARGET_SHAPE {
+                assert_eq!(
+                    describe_conversion_for_types(typed, tag_types),
+                    None,
+                    "{typed:?} on {tag_types:?}: an ordinary three-letter code is not a \
+                     replacement and loses nothing"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn describe_conversion_is_silent_for_id3s_own_not_known_marker() {
+        // `xxx` is ID3's own spelling of "not known"; it is stored as
+        // `und`, which means exactly the same thing.
+        for typed in ["xxx", "XXX"] {
+            for tag_types in EVERY_TARGET_SHAPE {
+                assert_eq!(
+                    describe_conversion_for_types(typed, tag_types),
+                    None,
+                    "{typed:?} on {tag_types:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn describe_conversion_never_says_und_has_no_three_letter_code() {
+        // `und` IS a three-letter code, and an ID3 tag holds it as such.
+        for tag_types in EVERY_TARGET_SHAPE {
+            assert_eq!(
+                describe_conversion_for_types("und", tag_types),
+                None,
+                "und on {tag_types:?}"
+            );
+        }
+        // A value whose language is `und` but which carries more loses
+        // that extra part on an ID3 tag — say THAT, not "no code".
+        let note = describe_conversion_for_types("und-Latn", &[TagType::Id3v2])
+            .expect("the script is lost on an ID3 tag");
+        assert!(note.contains("the script you typed"), "{note}");
+        assert!(note.contains("\"und\""), "{note}");
+        assert!(!note.contains("no three-letter code"), "{note}");
+    }
+
+    #[test]
+    fn describe_conversion_reads_a_matroska_style_code_without_calling_it_replaced() {
+        // `fre-CA` is how old Matroska files give a region: LANG-002 reads
+        // it as `fr-CA`. Nothing is replaced — on a full container nothing
+        // is lost either; on an ID3 tag only the region is.
+        assert_eq!(
+            describe_conversion_for_types("fre-CA", &[TagType::VorbisComments]),
+            None
+        );
+        let note = describe_conversion_for_types("fre-CA", &[TagType::Id3v2])
+            .expect("the region is lost on an ID3 tag");
+        assert!(note.contains("the region you typed"), "{note}");
+        assert!(note.contains("\"fra\""), "{note}");
+        assert!(!note.contains("no longer used"), "{note}");
+    }
+
+    #[test]
+    fn describe_conversion_still_reports_a_region_replacement_that_becomes_a_whole_tag() {
+        // `sgn-DD` → the region `DD` is replaced by `DE`, which makes the
+        // tag the redundant `sgn-DE`, which is replaced whole by `gsg`.
+        // The shared crate's recursion leaves no note behind, so this is
+        // the whole-tag check's job.
+        let note = describe_conversion_for_types("sgn-DD", &[TagType::VorbisComments])
+            .expect("sgn-DD is replaced");
+        assert!(
+            note.contains("\"sgn-DD\"") && note.contains("\"gsg\""),
+            "{note}"
+        );
+    }
+
+    #[test]
+    fn describe_conversion_does_not_call_a_reordering_a_replacement() {
+        // LANG-001 step 6 puts extensions in order of their letter; the
+        // parts are unchanged, so this is not a replacement.
+        assert_eq!(
+            describe_conversion_for_types("en-u-ca-gregory-a-bbb", &[TagType::VorbisComments]),
+            None
+        );
+    }
+
+    #[test]
+    fn a_kept_as_typed_note_only_claims_what_each_container_really_keeps() {
+        // `JJ` is not a registered region. A full container keeps it; an
+        // ID3 tag drops every region. The note must never say both at once.
+        let id3_only = describe_conversion_for_types("en-JJ", &[TagType::Id3v2])
+            .expect("the region is lost on an ID3 tag");
+        assert!(id3_only.contains("not on the official list"), "{id3_only}");
+        assert!(!id3_only.contains("kept exactly as typed"), "{id3_only}");
+
+        let full_only = describe_conversion_for_types("en-JJ", &[TagType::VorbisComments])
+            .expect("an unregistered region is still worth a note");
+        assert!(full_only.contains("kept exactly as typed"), "{full_only}");
+        assert!(!full_only.contains("except the ID3 one"), "{full_only}");
+
+        let both = describe_conversion_for_types("en-JJ", &[TagType::RiffInfo, TagType::Id3v2])
+            .expect("both notes apply");
+        assert!(
+            both.contains("kept exactly as typed in every tag except the ID3 one"),
+            "{both}"
         );
     }
 
