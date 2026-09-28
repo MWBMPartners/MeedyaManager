@@ -237,7 +237,9 @@ fn wav_tags() -> TagMap {
 // The shared round-trip sequence (package brief steps 1-5)
 // ---------------------------------------------------------------------------
 
-/// Run every write path the brief asks for against one fixture/tag-set pair:
+/// Run every write path the brief asks for against one fixture/tag-set pair.
+/// The read-back is checked against `tags` itself — the ordinary case,
+/// where every value written is expected to come back unchanged.
 ///
 /// 1. `write_tags` + `extract_tags` (the raw metadata layer).
 /// 2. `write_tags_safe` with Test Mode OFF (the integrity-guarded standard
@@ -245,6 +247,21 @@ fn wav_tags() -> TagMap {
 /// 3. `write_tags_safe` with Test Mode ON — the original must come out
 ///    byte-identical and the `_MeedyaManager` copy must carry the new tags.
 fn round_trip_all_paths(fixture: &str, tags: &TagMap) {
+    round_trip_all_paths_expecting(fixture, tags, tags);
+}
+
+/// As [`round_trip_all_paths`], but checks the read-back tags against
+/// `expected` rather than `tags` itself.
+///
+/// This split exists for `TAG_LANGUAGE` (policy MWBM-MEDIA-LANG 1.0.0,
+/// TRACK-070): ID3v2's `TLAN` frame has no field that can hold a full BCP
+/// 47 tag at all, only the old three-letter ISO 639-2 code, so a value
+/// written into an MP3 is not always the same value read back out of it —
+/// see `mp3_id3v2_round_trip` below for the concrete case. Every other tag
+/// this crate writes, and `language` on every other container, still
+/// round-trips unchanged, which is why every OTHER call site keeps using
+/// the single-argument [`round_trip_all_paths`].
+fn round_trip_all_paths_expecting(fixture: &str, tags: &TagMap, expected: &TagMap) {
     // Isolate MM_CONFIG_DIR for the whole sequence: even step 1's plain
     // `write_tags` call doesn't touch it, but steps 2-3 (`write_tags_safe`)
     // both consult `test_mode::is_enabled()`, so the guard must already be in
@@ -257,7 +274,7 @@ fn round_trip_all_paths(fixture: &str, tags: &TagMap) {
         write_tags(&path, tags).unwrap_or_else(|e| panic!("{fixture}: write_tags failed: {e}"));
         let read_back =
             extract_tags(&path).unwrap_or_else(|e| panic!("{fixture}: extract_tags failed: {e}"));
-        assert_tags_survived(fixture, tags, &read_back);
+        assert_tags_survived(fixture, expected, &read_back);
     }
 
     // === 2. write_tags_safe, Test Mode OFF =================================
@@ -281,7 +298,7 @@ fn round_trip_all_paths(fixture: &str, tags: &TagMap) {
         let read_back = extract_tags(&path).unwrap_or_else(|e| {
             panic!("{fixture}: file unreadable after write_tags_safe (Test Mode off): {e}")
         });
-        assert_tags_survived(fixture, tags, &read_back);
+        assert_tags_survived(fixture, expected, &read_back);
     }
 
     // === 3. write_tags_safe, Test Mode ON ===================================
@@ -316,7 +333,7 @@ fn round_trip_all_paths(fixture: &str, tags: &TagMap) {
         );
         let copy_tags = extract_tags(&copy_path)
             .unwrap_or_else(|e| panic!("{fixture}: _MeedyaManager copy unreadable: {e}"));
-        assert_tags_survived(fixture, tags, &copy_tags);
+        assert_tags_survived(fixture, expected, &copy_tags);
 
         test_mode::disable()
             .unwrap_or_else(|e| panic!("{fixture}: test_mode::disable failed: {e}"));
@@ -329,7 +346,18 @@ fn round_trip_all_paths(fixture: &str, tags: &TagMap) {
 
 #[test]
 fn mp3_id3v2_round_trip() {
-    round_trip_all_paths("silence.mp3", &base_tags("MP3"));
+    // `base_tags` writes `TAG_LANGUAGE: "en"`, but ID3v2's `TLAN` frame
+    // (policy MWBM-MEDIA-LANG 1.0.0, TRACK-070) has no field able to hold a
+    // BCP 47 tag at all — only the old three-letter ISO 639-2 form. Reading
+    // it back therefore gives "eng", not "en"; see
+    // `language_pt_br_round_trips_per_container_track_070` below for a
+    // language whose three-letter form actually differs by the choice of
+    // bibliographic vs. terminology, which "eng" does not (English is the
+    // same string in both).
+    let tags = base_tags("MP3");
+    let mut expected = tags.clone();
+    expected.insert(TAG_LANGUAGE.to_string(), vec!["eng".to_string()]);
+    round_trip_all_paths_expecting("silence.mp3", &tags, &expected);
 }
 
 #[test]
@@ -344,7 +372,28 @@ fn m4a_ilst_round_trip() {
 
 #[test]
 fn wav_riff_info_round_trip() {
-    round_trip_all_paths("silence.wav", &wav_tags());
+    // A genuine surprise found while building the language-policy work
+    // (TRACK-070's footer: "each project MUST check [tool-specific details]
+    // against the tool it actually runs, with a test"): despite this
+    // test's own name, and despite `wav_tags`'s doc comment above, a fresh
+    // `silence.wav` — one `write_tags` has never touched before — does NOT
+    // get a RIFF INFO tag from `write_tags` at all. Lofty's own
+    // `FileType::primary_tag_type()` table (`lofty::file::file_type`) maps
+    // `FileType::Wav` to `TagType::Id3v2`, the same as MP3, and
+    // `get_or_create_primary_tag` in this crate always asks for exactly
+    // that "primary" type — so it creates an ID3v2 tag embedded inside the
+    // WAV container, not a RIFF `LIST INFO` chunk. `TAG_LANGUAGE: "en"`
+    // therefore comes back as the ID3 terminology three-letter form "eng",
+    // for exactly the reason `mp3_id3v2_round_trip` above does. This is a
+    // pre-existing fact about how this crate writes WAV files generally
+    // (every OTHER tag written here lands in the same embedded ID3v2 tag,
+    // not RIFF INFO), not something this policy work changed — but the
+    // language-specific write path is the first thing to depend on WHICH
+    // container a file is actually using, which is what surfaced it.
+    let tags = wav_tags();
+    let mut expected = tags.clone();
+    expected.insert(TAG_LANGUAGE.to_string(), vec!["eng".to_string()]);
+    round_trip_all_paths_expecting("silence.wav", &tags, &expected);
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +424,134 @@ fn year_tag_does_not_round_trip_on_id3v2_or_mp4() {
              must have gained ID3v2/MP4 support for ItemKey::Year; move \
              TAG_YEAR into base_tags() for this format and delete this test",
             read_back.get(TAG_YEAR)
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Policy MWBM-MEDIA-LANG 1.0.0 — TRACK-070 per-container writing,
+// and COMPAT-030 (an untouched value is never rewritten)
+// ---------------------------------------------------------------------------
+
+/// TRACK-070's own worked example: a region only survives writing in a
+/// container that has a genuine slot for a full BCP 47 tag. ID3's `TLAN`
+/// frame does not — it can only ever hold the old three-letter ISO 639-2
+/// code — so `"pt-BR"` written there loses its region on the way in, by
+/// design, and comes back as `"por"` (Portuguese does not differ between
+/// its bibliographic and terminology forms, so this is also the
+/// terminology form `language_value_for_tag_type` would have written).
+/// Vorbis and the MP4 freeform item both have a genuine free-text slot, so
+/// the canonical tag survives whole there. `silence.wav` is ID3v2 too, for
+/// the reason explained at length on `wav_riff_info_round_trip` above — a
+/// fresh WAV file gets the same embedded ID3v2 tag an MP3 does, not a RIFF
+/// INFO chunk, so it takes the same lossy path as `silence.mp3`. No
+/// `ConfigDirGuard` is needed — this exercises only the raw `write_tags` /
+/// `extract_tags` layer, which never consults Test Mode (same reasoning as
+/// `year_tag_does_not_round_trip_on_id3v2_or_mp4` above).
+#[test]
+fn language_pt_br_round_trips_per_container_track_070() {
+    let cases: &[(&str, &str)] = &[
+        ("silence.mp3", "por"),    // ID3 TLAN: old three-letter form only
+        ("silence.flac", "pt-BR"), // Vorbis LANGUAGE: the canonical tag
+        ("silence.m4a", "pt-BR"),  // MP4 freeform LANGUAGE item: the canonical tag
+        ("silence.wav", "por"),    // Embedded ID3v2 TLAN (see comment above): old three-letter form
+    ];
+
+    for (fixture, expected_raw) in cases {
+        let (_dir, path) = copy_fixture(fixture);
+        let tags = build_tags(&[(TAG_LANGUAGE, "pt-BR")]);
+        write_tags(&path, &tags).unwrap_or_else(|e| panic!("{fixture}: write_tags failed: {e}"));
+
+        let read_back =
+            extract_tags(&path).unwrap_or_else(|e| panic!("{fixture}: extract_tags failed: {e}"));
+        assert_eq!(
+            read_back.get(TAG_LANGUAGE).map(Vec::as_slice),
+            Some([expected_raw.to_string()].as_slice()),
+            "{fixture}: raw stored 'language' after writing \"pt-BR\" — got {:?}, expected {expected_raw:?}",
+            read_back.get(TAG_LANGUAGE)
+        );
+    }
+
+    // And LANG-002's reader turns the lossy ID3 form back into the primary
+    // language it still names, "pt" — the region is genuinely gone, not
+    // silently guessed back, exactly as TRACK-070 warns it would be.
+    let recovered = mm_core::metadata::language::parse_stored_language("por");
+    assert_eq!(recovered.tag.tag, "pt");
+}
+
+/// Writes a language value straight into a file's tag, bypassing
+/// `write_tags`'s own validation entirely — standing in for a value that
+/// arrived some other way (an older build of this app before this policy
+/// existed, another tool such as MusicBrainz Picard, or a hand-edited
+/// file), which is precisely the kind of value COMPAT-030 exists to
+/// protect: `write_tags` must never "fix" it just because the file was
+/// opened for some other reason.
+fn poke_raw_language_value(path: &Path, raw: &str) {
+    use lofty::config::WriteOptions;
+    use lofty::file::TaggedFileExt;
+    use lofty::probe::Probe;
+    use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem};
+
+    let mut tagged_file = Probe::open(path)
+        .unwrap_or_else(|e| panic!("{}: cannot probe: {e}", path.display()))
+        .read()
+        .unwrap_or_else(|e| panic!("{}: cannot read: {e}", path.display()));
+    if tagged_file.primary_tag_mut().is_none() {
+        let tag_type = tagged_file.primary_tag_type();
+        tagged_file.insert_tag(Tag::new(tag_type));
+    }
+    let tag = tagged_file
+        .primary_tag_mut()
+        .expect("primary tag must exist after insert_tag");
+    tag.remove_key(&ItemKey::Language);
+    tag.push(TagItem::new(
+        ItemKey::Language,
+        ItemValue::Text(raw.to_string()),
+    ));
+    tag.save_to_path(path, WriteOptions::default())
+        .unwrap_or_else(|e| panic!("{}: cannot save: {e}", path.display()));
+}
+
+/// COMPAT-030: "Valid existing language data ... MUST be preserved when a
+/// file or record is touched for another reason." This also covers the
+/// harder half of the same rule — a value this crate cannot even PARSE
+/// must not be lost either, as long as nobody asked to change it — because
+/// `write_tags` only ever converts `language` when the caller's map
+/// actually contains that key (see this crate's own doc comment on
+/// `write_tags` for the "rebuilds the whole tag map" caution this test is
+/// meant to guard against).
+#[test]
+fn compat_030_an_untouched_language_value_survives_byte_for_byte() {
+    let cases: &[(&str, &str)] = &[
+        ("silence.mp3", "fre"),  // a real, if non-canonical, legacy value
+        ("silence.flac", "zzz"), // not recognised at all — must survive anyway
+    ];
+
+    for (fixture, raw) in cases {
+        let (_dir, path) = copy_fixture(fixture);
+        poke_raw_language_value(&path, raw);
+
+        // Touch the file for an ENTIRELY DIFFERENT reason. `language` is
+        // deliberately left out of this map — that omission is what
+        // COMPAT-030 relies on.
+        let mut other_field = TagMap::new();
+        other_field.insert(TAG_TITLE.to_string(), vec!["Retitled".to_string()]);
+        write_tags(&path, &other_field)
+            .unwrap_or_else(|e| panic!("{fixture}: write_tags failed: {e}"));
+
+        let read_back =
+            extract_tags(&path).unwrap_or_else(|e| panic!("{fixture}: extract_tags failed: {e}"));
+        assert_eq!(
+            read_back.get(TAG_LANGUAGE).map(Vec::as_slice),
+            Some([raw.to_string()].as_slice()),
+            "{fixture}: an untouched 'language' value must survive a save made for another \
+             reason byte for byte (COMPAT-030) — got {:?}, expected {raw:?} unchanged",
+            read_back.get(TAG_LANGUAGE)
+        );
+        assert_eq!(
+            read_back.get(TAG_TITLE).map(Vec::as_slice),
+            Some(["Retitled".to_string()].as_slice()),
+            "{fixture}: the field that WAS deliberately changed must still have taken effect"
         );
     }
 }
