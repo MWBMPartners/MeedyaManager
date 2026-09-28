@@ -12,6 +12,7 @@ MeedyaManager's rule engine uses a template syntax inspired by [MusicBee's templ
 
 1. [Basic Syntax](#basic-syntax)
 2. [Tag References](#tag-references)
+   - [Language in rules](#language-in-rules)
 3. [Functions](#functions)
 4. [Logical Functions](#logical-functions-6)
 5. [String Functions](#string-functions-8)
@@ -93,7 +94,7 @@ There is no `<Publisher>` alias for the record label — use `<Label>` (the exte
 | `<Encoder>` | Encoder tool |
 | `<Copyright>` | Copyright string |
 | `<Publisher>` | Publisher (distinct from `<Label>`) |
-| `<Language>` | Language, exactly as the file stores it — a code such as "en" or "pt-BR", or an older three-letter code such as "fre" for files tagged before this was standardised |
+| `<Language>` | Language, in its standard short form — "en", "pt-BR" — whichever way the file happens to store it (see [Language in rules](#language-in-rules)) |
 | `<Rating>` | Rating |
 | `<Subtitle>` | Subtitle |
 
@@ -151,6 +152,39 @@ MeedyaManager provides exactly **16 numbered custom tag slots** — `<Custom1>` 
 
 There is no free-form `<Custom:Name>` syntax and no way to add a 17th slot — see
 [Custom Tags](custom-tags.md) for the full picture.
+
+### Language in rules
+
+The same language can be stored in different ways. An MP3's tag can only hold an old
+three-letter code (`eng`, `fre`, `deu`); a FLAC or M4A holds the short standard code (`en`,
+`fr`, `de`), sometimes with more detail (`pt-BR`); and files tagged by other programs may hold
+either kind anywhere. MeedyaManager treats all of these as the same language, so a rule does not
+stop working just because two files store it differently.
+
+- **`<Language>` gives the standard short form.** An MP3 storing `eng` and a FLAC storing `en`
+  both give `en`; `fre` gives `fr`.
+- **Text nothing recognises is shown exactly as it is.** A file whose language says `English`
+  (a word, not a code) gives `English` — never a guess.
+- **A file with more than one language:** when a template builds a file or folder name (which
+  is how MeedyaManager uses templates today), only the first language is used. Where a template
+  is shown as text instead, each different language is listed once (`en; fr`), even if the
+  file stores the same language twice in two spellings.
+
+The same applies to a rule's own `language` conditions (the `rules` list in your settings — see
+[Configuration](configuration.md)):
+
+- **`language Equals en` and `language Equals eng` match exactly the same files** — both sides
+  are put into the standard form before they are compared. The same goes for `NotEquals`.
+- **`Matches`, `Contains`, `StartsWith` and `EndsWith` are tried against both forms** — the
+  standard form, and the text the file actually stores — and match if either one does. So a
+  pattern written for what an MP3 stores (`Matches "^eng$"`) keeps working. **`NotContains` is
+  true only when neither form contains the text.** For a file with more than one language,
+  these use the first stored language when building a name, and each stored language on its
+  own when shown as text — never all of them run together.
+
+Rule conditions in general — every operator, how `condition_mode` combines several
+conditions, and how `priority` and `stop_on_match` work — are not described in these help pages
+yet ([#258](https://github.com/MWBMPartners/MeedyaManager/issues/258)).
 
 ---
 

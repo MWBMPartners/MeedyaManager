@@ -44,8 +44,8 @@ heap-allocated `char *` (owned by the caller) or `const char *` (also caller-own
 | `mm_ffi_config_path` | `const char *mm_ffi_config_path(void)` | Platform path to `settings.json5` |
 | `mm_ffi_config_load` | `const char *mm_ffi_config_load(void)` | The loaded config as a JSON object, or `{"error":...}` |
 | `mm_ffi_scan_directory` | `const char *mm_ffi_scan_directory(const char *directory, const char *template_, bool recursive)` | `[{"source":...,"destination":...,"conflict":bool,"unchanged":bool},...]` |
-| `mm_ffi_get_metadata` | `const char *mm_ffi_get_metadata(const char *path)` | `[{"key":...,"value":...},...]` |
-| `mm_ffi_write_metadata` | `const char *mm_ffi_write_metadata(const char *path, const char *tags_json)` | `{"ok":true}` or `{"error":...}` |
+| `mm_ffi_get_metadata` | `const char *mm_ffi_get_metadata(const char *path)` | `[{"key":...,"value":...},...]`; the `language` entry also carries `"note":"..."` when the file's tags disagree about the language (the key is left out otherwise) |
+| `mm_ffi_write_metadata` | `const char *mm_ffi_write_metadata(const char *path, const char *tags_json)` | `{"ok":true}` or `{"error":...}`; each entry of `tags_json` may carry a `note`, which is ignored (so JSON from `mm_ffi_get_metadata` can be sent straight back) |
 | `mm_ffi_remove_tag` | `const char *mm_ffi_remove_tag(const char *path, const char *tag_key)` | `{"ok":true}` or `{"error":...}` |
 | `mm_ffi_validate_template` | `const char *mm_ffi_validate_template(const char *template_)` | `{"is_valid":bool,"error_message":"","warnings":[]}` |
 | `mm_ffi_apply_template` | `const char *mm_ffi_apply_template(const char *template_, const char *tags_json)` | The computed filename as a JSON string, or `{"error":...}` |

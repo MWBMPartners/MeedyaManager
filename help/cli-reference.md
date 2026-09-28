@@ -82,6 +82,12 @@ meedya debug <PATH> [OPTIONS]
 | `--cover <OUTPUT_PATH>` | Extract embedded cover art and save it to this path |
 | `--json` | Output as JSON (global flag) |
 
+When a file's tags disagree about its language (for example a WAV whose RIFF INFO chunk says
+`fre` while its ID3 tag says `ger`), `meedya debug` shows the language from the tag that can
+hold the full code, and prints a warning under the tags table naming what the other tag says.
+With `--json`, the same warning is in a `language_note` field, which is left out when there is
+nothing to say.
+
 ### Examples
 
 ```bash
@@ -412,6 +418,32 @@ meedya edit <PATH> [OPTIONS]
 > way, with a message that shows a working example. When Test Mode redirects a write, JSON output
 > (`--json`) carries a `written_to` field naming the copy path. See [test-mode.md](test-mode.md)
 > for the full picture.
+
+#### What `meedya edit` tells you about a language
+
+Setting `language` can print a warning (⚠) line under the "✓ Set language = …" line. It appears
+on `--dry-run` too, before anything is written, and in `--json` output as a `note` on that
+action. There are two reasons for one:
+
+- **What is stored differs from what you typed, and something is lost or replaced.** An MP3's
+  tag (and the ID3 tag a WAV can carry) can only hold a three-letter language code, so
+  `--set language=pt-BR` on an MP3 warns that the region is lost and `por` is stored. A code with
+  no three-letter form at all is stored as "not known". An old or grouped code the standards have
+  replaced (`i-klingon` → `tlh`) is named. Nothing is said when nothing is lost: an everyday
+  three-letter code (`eng`, `fre`, `ger`, `deu`), `und`, or a different letter case is stored as
+  the same language without a warning.
+- **The file's tags disagree about the language.** Some files carry the language in two tags at
+  once — a WAV's RIFF INFO chunk and an ID3 tag, or a FLAC with an ID3 tag in front of it — and
+  another program may have put different languages in each. MeedyaManager shows the one from
+  the tag that can hold the full code. If you set the language to the value already shown,
+  nothing is written, and the warning says the other tag disagrees and will be left alone.
+  Setting a different language updates every tag that already holds one (except on a FLAC
+  that starts with an ID3 tag, which cannot be saved yet —
+  [#257](https://github.com/MWBMPartners/MeedyaManager/issues/257)). A deliberate "make every
+  tag agree" option is planned ([#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
+
+If a save fails, the message starts "Could not save the changes to" and names your file — never
+the temporary working copy MeedyaManager edits first, or the Test Mode copy.
 
 ### Examples
 

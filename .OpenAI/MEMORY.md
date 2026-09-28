@@ -12,6 +12,9 @@
 - Commit each finished task to that branch. **Do not push unless the owner asks**; a request
   to push covers that occasion only (owner, 2026-09-23).
 - Cargo is not on the default `PATH`: `export PATH="$HOME/.cargo/bin:$PATH"`.
+- **The language-policy work (#251) is on a separate branch, `feature/bcp47-language-policy`**,
+  cut from the working branch above on purpose. Its own note sits at the top of
+  `.claude/HANDOFF.md`, ahead of §0; it does not change anything in §0.
 
 ## What is really finished (do not overstate it)
 
@@ -45,3 +48,10 @@
   commits. Commit finished work, record unfinished work in the handoff, and tell the owner what
   is waiting to be pushed.
 - `grep -c` inside a chain of `&&` commands stops the chain when the count is zero; add `|| true`.
+- **Test the whole chain, not only each link.** In the language-policy work, one test proved
+  the plan held a note and another proved the printer printed a note it was handed; the step
+  between them could be broken with every test still passing. Break the code on purpose
+  (a "mutation") to find out whether a test really guards it.
+- **A message about what was stored must be checked against the file.** A note that sounded
+  right ("replaced with the current code") was false for everyday input; reading the file back
+  with an independent tool (mutagen) is what showed it.

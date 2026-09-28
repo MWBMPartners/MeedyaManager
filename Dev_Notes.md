@@ -933,6 +933,55 @@ stored metadata, and shows no language menus yet):
   `language` only, because it also needs TRACK-070's per-format conversion; a general fix for
   every field would not need that part, but is a larger piece of work than this one, so it is
   tracked separately rather than folded in here.
+- **Third review round, 2026-09-28** (a fresh Opus agent standing in for Codex, over
+  `3a45ed7..e18fb18`; the lead's decisions on it are final):
+  - **The "what was stored" note was wrong for ordinary three-letter codes.** `eng`, `fre`,
+    `ger`, `deu` and ID3's `xxx` were told they had been "replaced with the current code", and
+    `und` on an ID3 tag was told there was "no three-letter code" for it. The "whole tag
+    replaced" check compared what was typed with the shared crate's READER (LANG-002), which
+    turns everyday old codes into the shortest code for the same language — a reading
+    convention, not a replacement. It now asks LANG-001 alone (`canonicalise`), which leaves
+    those codes alone and only swaps a genuinely retired or grouped tag (`i-klingon` → `tlh`,
+    `sgn-BR` → `bzs`); see `is_whole_tag_replacement` in `language.rs`. The note is also decided
+    per container: nothing is said about an ID3 tag that will hold exactly what was typed, and
+    the "kept exactly as typed" ending now says which tags really keep it.
+  - **Tags that disagree are no longer hidden.** The priority rule stays (TRACK-070: a full tag
+    is read, the three-letter one is not), but when a file's ID3 tag says something different
+    from what is shown — a WAV with RIFF INFO `fre` and ID3 `ger`, say — `meedya debug` warns
+    (and adds `language_note` to `--json`), `get_metadata` fills the new optional
+    `TagEntry.note` on the `language` entry for the apps, and `meedya edit --set language=fre`
+    (a no-change, on purpose — COMPAT-030) says the ID3 tag disagrees and will be left alone.
+    "Disagrees" is judged against what an ID3 tag WOULD hold for the shown value, so `en-GB`
+    beside `eng`, or `yue` beside `und` — exactly what `write_tags` writes — are not reported.
+    A shown value nothing recognises (`English`) only agrees with the same text, so it is
+    reported beside `eng` rather than guessed at (LANG-003, COMPAT-040). The notes quote codes,
+    not language names: no name data exists in this project or in the shared crate.
+    `language_disagreement` in `metadata/mod.rs` finds it; the wording is in `language.rs`.
+    Still to do: a deliberate "make every tag agree" action, and showing `TagEntry.note` in the
+    Swift, C# and GTK screens (#256).
+  - **Rule conditions:** `Contains`, `StartsWith`, `EndsWith` and `NotContains` on `language`
+    now try the stored text as well as the standard form, like `Matches` (a `Not` form is true
+    only when neither matches). All of them take the stored values the same way the standard
+    form is taken — the first one when building a path, each one on its own otherwise — never
+    all the values run together, which is what `Matches` used to try. See
+    `stored_language_forms` in `rule_engine/mod.rs`, and "Language in rules" in
+    `help/rule-syntax.md`.
+  - **Failure messages** from `integrity::mutate_file_safe` now read "Could not save the changes
+    to '<your file>': …" and never name the scratch copy or the Test Mode copy — the scratch
+    copy's path used to reach the screen through errors such as "Cannot read tags from
+    '…meedya_tmp.flac'".
+  - **Tests for every breakage that survived.** The reviewer's mutation run left eight of the
+    second round's new lines breakable with every test still passing (plus one of the five
+    from the round before, see above); each now has a failing test, proven with the reviewer's
+    own mutation definitions.
+  - **Test files whose tags disagree**, built byte by byte by
+    `crates/mm-core/tests/fixtures/make_language_fixtures.py` (standard library only — not
+    `lofty`, which the app uses) and documented in that folder's README.
+  - **Issues opened:** #256 (make every tag agree, and show the note in the apps), #257 (saving
+    a FLAC that starts with an ID3 tag always fails — older than this work), #258 (help pages do
+    not explain rule conditions in general), #259 (a WAV with two `LIST INFO` chunks only has
+    the first changed). #254 widened with the M4A case: a freeform `LANGUAGE` item holding `en`
+    and `fr` reads back as `en` only, and a title-only save drops `fr`.
 - **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
   language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
   `companion` module still matches sidecars by exact name only. Tracked as issue #252,
@@ -966,7 +1015,11 @@ mid-write crashes.
 
 If any step fails, the temp file is deleted **only if this call created it** (a failed edit no
 longer risks deleting a tracked copy holding an earlier successful edit), and the original is
-**untouched**.
+**untouched**. The message returned (and shown by the CLI and the apps) reads "Could not save the
+changes to '<the file you asked to change>': …" and never names the scratch copy or the Test Mode
+copy: any mention of the copy — its full path, or just its file name — in an underlying error is
+replaced by the real file's (third review round of the language-policy work, item 8; before, a
+damaged FLAC gave "mutation failed: … Cannot read tags from 'bad_MeedyaManager.flac'").
 
 **Corruption log**: persistent failures are appended to
 `<config_dir>/corruption.log`, e.g. `~/.config/MeedyaManager/corruption.log` on Linux — the same

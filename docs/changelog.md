@@ -144,6 +144,10 @@ Format: `## [Version] — YYYY-MM-DD`
   replace" — and this holds whether the reason the field is untouched is that it was left out of
   the request entirely, or that the request resent the very same value that is already there,
   which is what every one of MeedyaManager's own editing screens actually does on every save.
+  **One exception, not yet fixed:** a language field holding several values can lose all but
+  one of them on such an unrelated save — an MP3 tag field holding two languages, and an M4A
+  whose language item holds two
+  ([#254](https://github.com/MWBMPartners/MeedyaManager/issues/254), described below).
 
   When what actually gets stored differs from what was typed — an ID3 tag that can only take the
   old three-letter form (dropping a region, script, or any other extra detail), or a language with
@@ -155,7 +159,22 @@ Format: `## [Version] — YYYY-MM-DD`
   for the ordinary, lossless cases (case-folding, or the routine two-letter-to-three-letter
   promotion): only a genuine loss, or a case where the shared policy's own rules quietly rewrote
   what was typed into a different code entirely (an old, no-longer-used code such as
-  `i-klingon` being replaced with its current equivalent, say), is worth a note.
+  `i-klingon` being replaced with its current equivalent, say), is worth a note. (An earlier
+  version of this also warned — wrongly — that everyday three-letter codes such as `eng`, `fre`
+  or `deu` had been "replaced", and told an MP3 given `und` that it had "no three-letter code";
+  neither is true, and neither note appears any more.)
+
+  **When a file's tags disagree about the language, MeedyaManager now says so instead of hiding
+  one of them.** Some files carry the language in two tags at once (a WAV's `LIST INFO` chunk
+  and an ID3 tag inside it, or a FLAC with an ID3 tag in front of it), and two different
+  programs may have put different languages in each. MeedyaManager still shows the one from the
+  tag that can hold the full code, as the shared policy requires, but `meedya debug` now prints a
+  warning naming what the other tag says (and a `language_note` in `--json`), the desktop apps
+  get the same warning through the engine (their screens do not show it yet), and
+  `meedya edit --set language=...` with the value already shown — which changes nothing, on
+  purpose — now says the other tag disagrees and will be left alone, instead of a bare "✓ Set".
+  A deliberate "make every tag agree" option is planned
+  ([#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
 
   A **genuine surprise** turned up while testing this against real files: the library
   MeedyaManager uses to read and write tags treats a WAV file the same way as an MP3 for every
@@ -179,7 +198,15 @@ Format: `## [Version] — YYYY-MM-DD`
   `language Matches "^en"`) keeps matching correctly however the value happens to be spelled in
   the file it is checked against, and a rule's own written-out list of every language present in
   a file no longer shows the same one twice just because it happened to be spelled two different
-  ways across two tag containers.
+  ways across two tag containers. `Contains`, `StartsWith`, `EndsWith` and `NotContains` now work
+  the same way `Matches` does — tried against both the standard form and the text the file
+  stores — and for a file with more than one language they look at the first stored language (or
+  each one on its own), never at all of them run together. See "Language in rules" in
+  `help/rule-syntax.md`.
+
+  When saving a file fails, the message now starts "Could not save the changes to" and names the
+  file you asked to change — never the temporary working copy MeedyaManager edits first, or its
+  Test Mode copy, which used to appear in some of these messages.
 
   **Not fixed here, tracked as its own issue**
   ([#254](https://github.com/MWBMPartners/MeedyaManager/issues/254)): a value split across
@@ -188,7 +215,17 @@ Format: `## [Version] — YYYY-MM-DD`
   unrelated save afterwards loses all but one of those pieces. This is a general limitation of how
   the underlying tag library currently saves that kind of field — it is not specific to language,
   the exact same thing happens to a multi-artist field, say — so it is being tracked and fixed on
-  its own timescale rather than folded into this work.
+  its own timescale rather than folded into this work. An M4A file is affected too: a language
+  item holding two values reads back as only the first, and an unrelated save keeps only that
+  one.
+
+  **Also tracked separately, found while testing this:** a WAV file with two `LIST INFO` chunks
+  only has the first one changed when its language is set or cleared
+  ([#259](https://github.com/MWBMPartners/MeedyaManager/issues/259)); any save to a FLAC file that
+  starts with an ID3 tag fails
+  ([#257](https://github.com/MWBMPartners/MeedyaManager/issues/257), older than this work); and
+  the help pages do not yet explain rule conditions in general
+  ([#258](https://github.com/MWBMPartners/MeedyaManager/issues/258)).
 
   The full rules are shared with every other Meedya application and kept in
   `docs/standards/media-language-bcp47-policy.md`; see `Dev_Notes.md`'s "Language Tags & the

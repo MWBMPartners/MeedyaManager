@@ -148,11 +148,14 @@ issue #253, remains owed and is not touched by this sweep). Two further commits,
   the comment added to `metadata_panel.rs` above is a documentation-only change, not a change
   verified against a real build of that crate.
 
-**A second independent review, of the whole `beb4c15..3a45ed7` range, found problems too** — 2
-MUST FIX, 7 SHOULD FIX, 3 MINOR (issue #255 opened rather than fixed, being a different, larger,
-pre-existing bug this review happened to notice while checking the language fix was complete).
-Six further commits on top of `3a45ed7`, each `Refs #251` and its own "not yet independently
-reviewed" note:
+**A second independent review, of the whole `beb4c15..3a45ed7` range, found problems too**
+(issue #255 opened rather than fixed, being a different, larger, pre-existing bug this review
+happened to notice while checking the language fix was complete). **Corrected by round 4:** this
+used to say "2 MUST FIX, 7 SHOULD FIX, 3 MINOR". The commits that acted on the review name FIVE of
+its items MUST FIX (items 1, 2, 3, 4 and 7); how the rest split into "should" and "minor" is not
+recorded anywhere round 4 could check, so it is left out rather than guessed. **Also corrected:
+SEVEN further commits on top of `3a45ed7`, not six** — the seventh, the docs commit, was missing
+from the list below. Each carries `Refs #251` and its own "not yet independently reviewed" note:
 
 - `fix(metadata): keep every language container in sync on clear, and read the fact once` —
   clearing a language only removed it from the primary tag container (unlike setting one, which
@@ -186,6 +189,10 @@ reviewed" note:
   test: `meedya edit` never attaching the note to the line it prints (`set_action_for`). Closed in
   round 4 by `a_language_note_reaches_the_printed_lines_on_dry_run_and_real_write` in
   `crates/mm-cli/src/commands/edit.rs`.
+- `docs(metadata): correct stale claims, count commits correctly, open #255` (`e18fb18`) — the
+  changelog, this file and `Dev_Notes.md` brought up to date for that round; issue #255 opened.
+  (Missing from this list until round 4 — ironically, in a commit whose subject was counting
+  commits correctly.)
 
 See `Dev_Notes.md`'s "Language Tags & the MWBM-MEDIA-LANG Policy" section, the "Second review
 round" bullet, for the same account in the project's permanent notes rather than this
@@ -202,24 +209,64 @@ instruction for this task, new commits go on top locally and nothing is pushed w
 asked again. Check `git log feature/bcp47-language-policy` and `git status -sb` for the exact
 state; `git log origin/feature/bcp47-language-policy..feature/bcp47-language-policy` shows
 exactly which commits are still local-only, and is the one command that cannot go stale the way a
-hand-counted list in this file can.
+hand-counted list in this file can. **Corrected by round 4: the second round's commits ARE
+pushed** — `origin/feature/bcp47-language-policy` is at `e18fb18` (checked with `git rev-parse`
+on 2026-09-28), so all seven of them are on GitHub. Only round 4's commits are local.
 
 **A third independent review (a fresh Opus agent standing in for Codex) covered `3a45ed7..e18fb18`
-and found problems; round 4 is acting on it — IN PROGRESS, local commits only, nothing pushed.**
-The lead's decisions for this round are final. Done so far (each commit says "not yet
-independently reviewed"):
+and found problems. Round 4 acted on all ten of the lead's decisions (final, not to be reopened)
+in the commits below — LOCAL ONLY, nothing pushed, and none of them independently reviewed yet.**
+`git log --oneline e18fb18..feature/bcp47-language-policy` is the list that cannot go stale:
 
-- Item 1 (MUST FIX) — `e4b730b` `fix(metadata): no "replaced" note for an ordinary three-letter
-  code`: `eng`/`fre`/`ger`/`deu`/`xxx` no longer get "replaced with the current code", `und` on an
-  ID3 tag no longer gets "no three-letter code". Proven on real MP3/FLAC files read back with
-  mutagen.
-- Item 2 — the plan-to-printed-line step of `meedya edit` now has a test (see the correction to
-  the bullet above).
+- `e4b730b` `fix(metadata): no "replaced" note for an ordinary three-letter code` — item 1 (MUST
+  FIX). `eng`/`fre`/`ger`/`deu`/`xxx` no longer get "replaced with the current code", `und` on an
+  ID3 tag no longer gets "no three-letter code"; "kept exactly as typed" now says which tags keep
+  it. Proven on real MP3/FLAC files read back with mutagen.
+- `53e913d` `test(cli): prove the language note reaches the lines meedya edit prints` — item 2,
+  plus the correction of the "closed all five" claim.
+- `285f8de` `feat(metadata): say when a file's tags disagree about the language` — item 3.
+  `meedya debug`, `meedya edit` and `get_metadata` (new optional `TagEntry.note`) now report an
+  ID3 tag that disagrees with the language shown; `write_tags` unchanged (a resend stays a
+  no-change). New stdlib-only fixture generator and three fixtures in
+  `crates/mm-core/tests/fixtures/`. Swift bindings regenerated. Issues #256, #257 opened.
+- `62aeea9` `test(metadata): a failing test for each breakage the third review found` — item 5
+  (N2, N4, N5, N6, N10–N13, each proven CAUGHT with the reviewer's own mutation definitions).
+- `44d5932` `fix(rule_engine): language conditions try both forms, one value at a time` — items
+  6 and 7.
+- `8c98914` `fix(integrity): failure messages name your file, never an internal copy` — item 8.
+  Every failed save now reads "Could not save the changes to '<your file>': …"; the scratch copy
+  and the Test Mode copy are never named. Proven with Test Mode on and off.
+- the docs commit that carries this note — items 4, 9 and 10 (help pages, changelog,
+  `Dev_Notes.md`, this file, `.OpenAI/MEMORY.md`, `docs/api/`); issues #258 and #259 opened,
+  #254 widened with the M4A case, all new issues on the project board and linked from #251.
 
-Still to do in this round: items 3 (tags that disagree are hidden), 4 (help pages), 5 (tests for
-the reviewer's surviving breakages N2, N4, N5, N6, N10–N13), 6–7 (rule `Matches` and friends), 8
-(failure messages name the internal copy), 9 (stale docs), 10 (issues). The reviewer's evidence
-and mutation runner live outside the repository, in the lead's scratch folder.
+**How it was proven.** Each fault was reproduced first with the `meedya` binary built from
+`e18fb18` (the reviewer's) and independent reads with mutagen; each fix then shown on the rebuilt
+binary on the same files. Every one of the reviewer's 24 planted faults (O1–O7, N1–N17) and this
+round's own 17 (R1a–R8c, which include rewritten equivalents of N9 and N14, whose original lines no
+longer exist) was re-run against the final code, in a separate clone: 21 of the reviewer's 22
+that still apply are caught, and all 17 of this round's. The one not caught is O6 — turning off a
+check inside the conformance TEST itself — which no test can catch by its nature: it changes a
+test, not the code under test. N9 and N14 could not be run as written (their lines were replaced
+this round); R1d and R8a are their equivalents, and both are caught.
+
+**Checks on the final tree (2026-09-28):** `cargo fmt --check` 0; `cargo clippy --workspace
+--all-targets -D warnings` 0; `cargo test --workspace` 0 — 1507 passed, 1 ignored (#254), 0
+failed; `cargo doc` with warnings as errors 0; `cargo deny check` 1, only for RUSTSEC-2026-0285
+(already known, `tokio-rustls` through `reqwest`); `check_copies.py` 0 (6 copies match core
+`aaaa585aa145`).
+
+**Not done / not checked in round 4:**
+- The Swift, C# and GTK screens do not show `TagEntry.note` yet (#256); `swift build`,
+  `dotnet test` and the GTK build were not run (nothing here touches their code, but the
+  regenerated Swift bindings are only a committed snapshot — they are excluded from the macOS
+  build).
+- The disagreement note quotes codes (`"ger"`), not names ("German"): there is no language-name
+  data in this project or in the shared crate.
+- Issues from this work still open, not fixed: #252, #253, #254 (widened), #255, #256, #257,
+  #258, #259.
+- **Next:** the owner decides whether to push these commits for a fourth independent review
+  (Codex, or a fresh agent standing in for it) of `e18fb18..HEAD`.
 
 ---
 
