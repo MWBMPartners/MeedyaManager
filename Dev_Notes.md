@@ -797,30 +797,61 @@ stored metadata, and shows no language menus yet):
   language — reading LANG-002 alone, this sounds like something MeedyaManager's own code
   would need to split apart. Testing it against a real MP3 (writing a null-separated
   value straight into a `TLAN` frame, checking the raw file bytes, then reading it back
-  through this app's normal path) showed the null genuinely reaches the file on disk, but
+  through this app's normal path) showed the null genuinely reaches the file on disk, and
   `lofty`'s own ID3v2 reader already splits it into separate values before this app ever
-  sees a raw string — the same multi-value handling every other ID3 text field already
-  gets. `metadata::extract_tags` therefore already returns a plain two-item list, not a
-  string with a null hidden inside it, so nothing extra needed writing; "the first is the
-  primary language" just means taking the first item of that list. See
+  sees a raw string, immediately after that one write — the same multi-value handling
+  every other ID3 text field already gets. See
   `multi_value_tlan_is_split_into_separate_items_by_lofty_itself` in
   `crates/mm-core/tests/metadata_roundtrip.rs`.
+
+  **Corrected after an independent review actually built and ran the case**: that only
+  covers the file being read right after the poke. Save the file AGAIN for any unrelated
+  reason (changing only the title, `language` never mentioned) and one of the two values
+  is gone for good — the same loss happens to a multi-value `artist` field too, so this is
+  a general fault in how every multi-value ID3 field survives a save, not something
+  specific to language, and not something this branch introduced. Tracked as its own
+  issue (#254) rather than fixed here, with a test already written and marked to skip
+  until it is fixed: `multi_value_tlan_does_not_survive_an_unrelated_save` in the same
+  file, `#[ignore = "issue #254"]`.
 - Saving a file for an unrelated reason (changing the title, say) MUST NOT touch an
-  untouched `language` value, however it reads — `write_tags` only converts it when
-  the caller's map actually contains the `language` key (COMPAT-030). An editor that
-  always resends every currently-shown field on save would defeat this, because it can
-  no longer tell "the person left it alone" from "the person retyped exactly what was
-  already there" — see the doc comment on `write_tags` for the full caution.
+  untouched `language` value, however it reads, and — this is the part that changed after
+  the same review actually reproduced it on real files — this has to hold even when the
+  CALLER resends the language field's CURRENT value unchanged, not only when the caller
+  leaves the key out. Every native UI this project has (macOS, Windows, the Linux GTK app)
+  reads the whole tag set into a form and resends every field on Save, changed or not. A
+  FLAC whose `LANGUAGE` comment already said `English` had its WHOLE SAVE REFUSED, not
+  merely its language silently rewritten, because resending `English` hit the same
+  refusal a person typing it fresh would — found and reproduced before this was fixed.
+  `write_tags` now reads what the file already has for `language` first (the same way
+  `extract_tags` would), and skips it completely — no validation, no conversion, not even
+  a re-write with the same bytes — whenever the supplied value is IDENTICAL to what is
+  already there. Only a value that is genuinely different goes through validation and
+  per-container conversion. See the doc comment on `write_tags` for the full account.
 - `config/tags.json5`'s `language` entry documents the MP4 mapping as
   `----:com.apple.iTunes:LANGUAGE` — a freeform iTunes atom, not a plain four-letter
   atom — because that is what `lofty` 0.22.4 actually maps `ItemKey::Language` to on
   MP4 (checked by reading lofty's own mapping table, not guessed).
+- **A third genuine surprise, this one about the RULE ENGINE, not writing tags at
+  all**: once `write_tags` started writing the correct per-format form (an MP3 gets the
+  old three-letter code, everything else the full one), a rename rule such as
+  `language Equals en` stopped matching MP3 files it used to match, because the file
+  now genuinely stores `eng`, not `en` — the exact same language, but different text.
+  `<Language>` in a rename template had the identical problem the other way round:
+  the same fact printed as `eng` on an MP3 and `en` on a FLAC. Both are now fixed the
+  same way: `EvalContext::resolve_metadata_tag` (for `<Language>`) and
+  `evaluate_condition` (for a rule's own configured value) run the `language` field's
+  text through `metadata::language::standardise_for_comparison` before comparing or
+  rendering it, so both sides of a comparison — and a template's output — always use
+  the STANDARD form, whatever the file itself happens to store. A value nothing
+  recognises is compared and shown as its own original text, unchanged, never a guess.
 - The conformance test, `crates/mm-core/tests/media_language_conformance.rs`, runs
   every case in the local copy of the policy's own test file
   (`tests/fixtures/bcp47-language-policy-v1.json`) for the four sections MeedyaManager
   needs today (`canonicalise`, `legacy_three_letter`, `iso639_2_write`,
   `canonical_order`), and fails — never quietly passes — on a section name it does not
-  recognise, a needed section that is missing or empty, or a case missing a field.
+  recognise, a needed section that is missing or empty, or a case missing a field. It
+  also re-canonicalises every `canonicalise` case's own expected answer and checks it
+  comes back unchanged (LANG-001's "canonical form is stable" property).
 - The policy files themselves (the document, its test cases and reference data, and
   the checker script) are exact copies of the master files in
   `MWBMPartners/MeedyaSuite-core`, recorded in `docs/standards/MWBM-MEDIA-LANG.lock`.

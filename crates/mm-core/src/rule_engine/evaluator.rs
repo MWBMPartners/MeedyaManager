@@ -18,7 +18,7 @@ use std::path::Path;
 
 use crate::classify::MediaClassification;
 use crate::error::{MmError, MmResult};
-use crate::metadata::{AudioProperties, TagMap};
+use crate::metadata::{AudioProperties, TAG_LANGUAGE, TagMap, language};
 
 use super::functions;
 use super::parser::{self, Node};
@@ -148,7 +148,30 @@ impl<'a> EvalContext<'a> {
     fn resolve_metadata_tag(&self, key: &str, display_name: &str) -> MmResult<String> {
         match self.tags.get(key) {
             Some(values) if !values.is_empty() => {
-                if self.path_mode {
+                if key == TAG_LANGUAGE {
+                    // Policy MWBM-MEDIA-LANG 1.0.0: `<Language>` renders
+                    // the STANDARD form of the value, not whatever raw
+                    // text a particular file's tag container happens to
+                    // hold. Without this, an MP3 storing the old
+                    // three-letter code `eng` and a FLAC storing the short
+                    // code `en` are the same fact (English) but render as
+                    // different text in a rename template — see
+                    // `language::standardise_for_comparison`'s own doc
+                    // comment for the rule-matching half of the same
+                    // problem, found the same way. A value nothing
+                    // recognises renders as its own original text,
+                    // unchanged, per that function's own LANG-003
+                    // guarantee.
+                    let standardised: Vec<String> = values
+                        .iter()
+                        .map(|v| language::standardise_for_comparison(v))
+                        .collect();
+                    if self.path_mode {
+                        Ok(standardised[0].clone())
+                    } else {
+                        Ok(standardised.join("; "))
+                    }
+                } else if self.path_mode {
                     // Path mode: return only the first value
                     Ok(values[0].clone())
                 } else {

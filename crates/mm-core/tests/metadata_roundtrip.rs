@@ -612,6 +612,44 @@ fn multi_value_tlan_is_split_into_separate_items_by_lofty_itself() {
     assert_eq!(stored.tag.tag, "en");
 }
 
+/// Issue #254 — pre-existing, not caused by this work and not specific to
+/// `language`: a multi-value ID3 field does not survive a LATER, unrelated
+/// save. `multi_value_tlan_is_split_into_separate_items_by_lofty_itself`
+/// above proves the two values are both there immediately after being
+/// written; this test proves that a completely unrelated `write_tags` call
+/// afterwards (title only, `language` not even present in the map) still
+/// silently loses the first of the two values. Marked `#[ignore]` so the
+/// suite stays green until issue #254 is actually fixed — remove the
+/// `#[ignore]` attribute then and this test starts checking the fix.
+#[test]
+#[ignore = "issue #254 — a multi-value ID3 field does not survive an unrelated save"]
+fn multi_value_tlan_does_not_survive_an_unrelated_save() {
+    let (_dir, path) = copy_fixture("silence.mp3");
+    poke_raw_language_value(&path, "eng\u{0}swe");
+    assert_eq!(
+        extract_tags(&path)
+            .unwrap()
+            .get(TAG_LANGUAGE)
+            .map(Vec::as_slice),
+        Some(["eng".to_string(), "swe".to_string()].as_slice()),
+        "sanity check: both values must be there immediately after writing"
+    );
+
+    let mut other_field = TagMap::new();
+    other_field.insert(TAG_TITLE.to_string(), vec!["New Title".to_string()]);
+    write_tags(&path, &other_field)
+        .unwrap_or_else(|e| panic!("silence.mp3: write_tags failed: {e}"));
+
+    assert_eq!(
+        extract_tags(&path)
+            .unwrap()
+            .get(TAG_LANGUAGE)
+            .map(Vec::as_slice),
+        Some(["eng".to_string(), "swe".to_string()].as_slice()),
+        "an unrelated save must not lose either value of a multi-value field it never touched"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Cover art round trip — raw and integrity-guarded
 // ---------------------------------------------------------------------------

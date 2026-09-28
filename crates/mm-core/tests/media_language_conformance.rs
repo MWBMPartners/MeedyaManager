@@ -282,6 +282,26 @@ fn every_needed_conformance_case_passes() {
     let mut counts: HashMap<&'static str, usize> = HashMap::new();
 
     // -- canonicalise (LANG-001, LANG-026) ----------------------------------
+    //
+    // Plus the stability check the policy's own second revision added
+    // (LANG-001: "canonical form is stable... every implementation MUST
+    // have this property, and every test harness checks it on every
+    // `canonicalise` case"): for every case whose expected answer is a
+    // real tag (not malformed), canonicalising that answer AGAIN must
+    // return it completely unchanged. Ported from the master copy of this
+    // test in MeedyaSuite-core (crates/meedya-lang/tests/conformance.rs) —
+    // an earlier version of this file left this out entirely, found by an
+    // independent review that proved the gap by mutation: it patched a
+    // local copy of the `meedya_lang` crate to make canonicalise() NOT a
+    // fixed point (dropping steps 4-5's "repeat until the tag stops
+    // changing"), reran this test unmodified, and it still reported
+    // success. Counted separately from `counts`/`cases_run` (which track
+    // one case per *section* entry, not per per-case sub-check) and
+    // asserted against the file's own count of eligible cases below,
+    // exactly like the section-skip guard already does for the four
+    // sections themselves — so a stability check that silently stopped
+    // running would be caught the same way a skipped section would be.
+    let mut stability_checks_run: usize = 0;
     for (idx, case) in canonicalise_cases.iter().enumerate() {
         require_present(
             &top_level["canonicalise"][idx],
@@ -308,7 +328,29 @@ fn every_needed_conformance_case_passes() {
                 case.id, case.input, got_expected, got_kind, case.expected, case.kind
             ));
         }
+
+        if let Some(expected) = &case.expected {
+            stability_checks_run += 1;
+            let restated = canonicalise(expected);
+            if restated.is_malformed() || &restated.tag != expected {
+                failures.push(format!(
+                    "{} (stability): canonicalise({:?}) = {:?}, expected it back unchanged \
+                     — canonical form must be a fixed point",
+                    case.id,
+                    expected,
+                    if restated.is_malformed() {
+                        None
+                    } else {
+                        Some(&restated.tag)
+                    }
+                ));
+            }
+        }
     }
+    let stability_checks_in_file = canonicalise_cases
+        .iter()
+        .filter(|c| c.expected.is_some())
+        .count();
 
     // -- legacy_three_letter (LANG-002, LANG-003) ---------------------------
     for (idx, case) in legacy_cases.iter().enumerate() {
@@ -393,6 +435,12 @@ fn every_needed_conformance_case_passes() {
         "ran {cases_run} cases but the four needed sections hold {cases_in_file} — a section \
          was skipped"
     );
+    assert_eq!(
+        stability_checks_run, stability_checks_in_file,
+        "ran {stability_checks_run} canonical-form stability checks but the file has \
+         {stability_checks_in_file} canonicalise cases with a non-null expected answer — the \
+         stability check itself was skipped for some cases"
+    );
 
     println!(
         "MWBM-MEDIA-LANG {}: per-section case counts —",
@@ -401,11 +449,14 @@ fn every_needed_conformance_case_passes() {
     for section in NEEDED_SECTIONS {
         println!("  {section}: {}", counts.get(section).copied().unwrap_or(0));
     }
+    println!("  stability checks: {stability_checks_run}");
 
     assert!(
         failures.is_empty(),
-        "{} of {cases_in_file} conformance cases failed:\n{}",
+        "{} of {} conformance cases (including {stability_checks_in_file} stability checks) \
+         failed:\n{}",
         failures.len(),
+        cases_in_file + stability_checks_in_file,
         failures.join("\n")
     );
 }

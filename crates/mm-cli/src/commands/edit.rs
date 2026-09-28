@@ -801,9 +801,13 @@ mod tests {
             .find(|a| a.key.as_deref() == Some("language"))
             .expect("a 'set' failure for the 'language' key");
         let message = action.error.as_deref().unwrap_or_default();
+        // Checked against the exact example text, not the bare letters
+        // "en" — a message that dropped every example would still contain
+        // "en" as a substring of other ordinary words, so that check could
+        // never fail even if the examples were deleted entirely.
         assert!(
-            message.contains("en"),
-            "the refusal message must show a working example, got: {message:?}"
+            message.contains("\"pt-BR\""),
+            "the refusal message must show the working example \"pt-BR\", got: {message:?}"
         );
     }
 

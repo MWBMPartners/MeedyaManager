@@ -733,22 +733,38 @@ fn get_or_create_primary_tag(tagged_file: &mut lofty::file::TaggedFile) -> &mut 
 /// — ID3's `TLAN` frame gets the ISO 639-2 terminology three-letter code,
 /// every other container gets the canonical BCP 47 tag itself.
 ///
-/// This means **the caller decides whether the language is being changed
-/// at all, simply by whether `language` is a key in `tags`** (COMPAT-030):
-/// leaving it out — the ordinary way to "touch a file for another reason"
-/// — writes nothing to it, so an existing value survives completely
-/// unchanged, whatever it says, even if this crate could not have parsed
-/// it. A caller that always resends every currently-displayed field on
-/// save (a "rebuild the whole tag map from the in-memory model" editor)
-/// would defeat this guarantee, because it can no longer tell "unedited"
-/// from "the person typed exactly what was already there" — see the
-/// caution on `mm-gtk`'s save button in this crate's own notes.
+/// This means the caller can leave `language` out of `tags` entirely to
+/// guarantee it is not touched (the ordinary way to "touch a file for
+/// another reason") — but that is not the ONLY way an unchanged value
+/// survives. **A real editor does not usually do that.** Every native UI
+/// this project has (macOS, Windows, the Linux GTK app) reads the whole
+/// tag set into a form and resends every field on Save, changed or not —
+/// found, and reproduced on real files, while this rule was being reviewed
+/// (COMPAT-030 again): a FLAC whose `LANGUAGE` comment already said
+/// `English` (a real value some other tool wrote) had ITS WHOLE SAVE
+/// REFUSED merely because the title changed, since resending `English`
+/// hit the exact same "not a language we recognise" refusal a person
+/// typing it fresh would. So this function does not decide "should
+/// `language` be touched?" purely from whether the key is present — it
+/// FIRST reads what the file already has for `language` (using the same
+/// read logic [`extract_tags`] does, across every tag container the file
+/// carries, joined the same way [`join_multi_value`] joins any multi-value
+/// field) and compares it, as plain text, against the supplied value. When
+/// they are IDENTICAL, `language` is left completely alone — not
+/// re-validated, not re-converted, not even re-written with the same
+/// bytes — exactly as if the key had never been supplied. Only a value
+/// that is genuinely DIFFERENT from what is already there goes through
+/// validation and per-container conversion. This is what makes "resend
+/// everything unchanged" and "leave the key out" behave the same way,
+/// which is the only way COMPAT-030 can hold for a real editor rather than
+/// only for a caller that carefully omits untouched keys.
 ///
 /// # Errors
 /// Returns an error if the file cannot be opened, read, or saved, or if
-/// `tags` sets `language` to a value LANG-002 does not recognise at all
-/// (see [`language::parse_language_input`]) — refused up front, before any
-/// key is written, for the same all-or-nothing reason as an unknown key.
+/// `tags` sets `language` to a genuinely NEW value (different from what
+/// the file already has) that LANG-002 does not recognise at all (see
+/// [`language::parse_language_input`]) — refused before any key is
+/// written, for the same all-or-nothing reason as an unknown key.
 pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     // -- Validate every key BEFORE touching the file (issue #206) ----------
     //
@@ -769,29 +785,41 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
         return Err(unknown_tag_key_error(&unknown));
     }
 
-    // -- Validate a `language` value BEFORE touching the file, too ---------
-    //
-    // Parsed once, here, and reused in the write loop below — never parsed
-    // a second time — so what gets checked is exactly what gets written.
-    // An empty joined value (the field is being cleared, same as any other
-    // key) needs no language at all, so it skips this check entirely.
-    let language_to_write: Option<LanguageTag> =
-        match tags.get(TAG_LANGUAGE) {
-            Some(values) => {
-                let joined = join_multi_value(values);
-                if joined.is_empty() {
-                    None
-                } else {
-                    Some(language::parse_language_input(&joined).map_err(|e| {
-                        MmError::Metadata(format!("cannot set '{TAG_LANGUAGE}': {e}"))
-                    })?)
-                }
-            }
-            None => None,
-        };
-
-    // Open and read the existing file so we can preserve its tags
+    // Open and read the existing file so we can preserve its tags. This is
+    // read-only until `tag.save_to_path` at the very end — nothing on disk
+    // changes if a check below returns an error first, same all-or-nothing
+    // guarantee as the unknown-key check above, just necessarily reached a
+    // little later because the COMPAT-030 comparison just below needs to
+    // see what the file already holds before it can decide anything.
     let mut tagged_file = open_tagged_file(path)?;
+
+    // -- COMPAT-030: is a supplied `language` value actually NEW? ----------
+    //
+    // `None` means "leave `language` alone" — covers both "the key was
+    // absent from `tags`" and "the key was present but identical to what
+    // is already stored". The comparison is against what extract_tags
+    // would report TODAY, not against what this crate would canonicalise
+    // the input to — the whole point is to leave an untouched value
+    // exactly as it is, including one this crate could never have parsed,
+    // not to decide "close enough".
+    let language_change: Option<LanguageChange> = match tags.get(TAG_LANGUAGE) {
+        None => None,
+        Some(values) => {
+            let joined = join_multi_value(values);
+            if current_joined_value(&tagged_file, TAG_LANGUAGE).as_deref() == Some(joined.as_str())
+            {
+                None
+            } else if joined.is_empty() {
+                // A genuine change TO empty (clearing the field): no
+                // language to parse, same as any other key.
+                Some(LanguageChange::Clear)
+            } else {
+                let parsed = language::parse_language_input(&joined)
+                    .map_err(|e| MmError::Metadata(format!("cannot set '{TAG_LANGUAGE}': {e}")))?;
+                Some(LanguageChange::Set(Box::new(parsed)))
+            }
+        }
+    };
 
     // Get (or create) the primary tag for this file format
     let tag = get_or_create_primary_tag(&mut tagged_file);
@@ -800,30 +828,37 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     // Every key is known to map — the validation pass above returned early
     // otherwise — so no key can be dropped on the floor here.
     for (key, values) in tags {
+        if key == TAG_LANGUAGE {
+            // `language_change` already folds together "the key was
+            // absent" and "the key was present but identical" into `None`
+            // — either way, this branch leaves it completely alone: no
+            // remove_key, no re-push, not even with the same bytes. See
+            // this function's own doc comment for why "present but
+            // identical" must behave exactly like "absent", not merely
+            // like "converted to the same canonical form".
+            match &language_change {
+                None => {}
+                Some(LanguageChange::Clear) => {
+                    tag.remove_key(&ItemKey::Language);
+                }
+                Some(LanguageChange::Set(parsed)) => {
+                    let value = language::language_value_for_tag_type(parsed, tag.tag_type());
+                    tag.remove_key(&ItemKey::Language);
+                    if !value.is_empty() {
+                        tag.push(TagItem::new(ItemKey::Language, ItemValue::Text(value)));
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Every other key is joined and written exactly as it always has
+        // been — no COMPAT-030 special-casing needed there today; this
+        // crate does not yet validate or convert any tag but `language`.
         let item_key = mm_key_to_item_key(key)
             .expect("validated above: every key in `tags` has an ItemKey mapping");
-
-        // `language` gets the per-container treatment above; every other
-        // key is joined and written exactly as it always has been.
-        let joined = if key == TAG_LANGUAGE {
-            match &language_to_write {
-                // A recognised, non-empty value: write TRACK-070's form for
-                // whichever container this file actually uses.
-                Some(parsed) => language::language_value_for_tag_type(parsed, tag.tag_type()),
-                // Either the value was empty (clearing the field) or this
-                // key was absent — the match above already ruled out "set
-                // to something we could not parse", so an empty string here
-                // only ever means "clear it", handled the same as any key.
-                None => String::new(),
-            }
-        } else {
-            join_multi_value(values)
-        };
-
-        // Remove existing items for this key to avoid duplicates
+        let joined = join_multi_value(values);
         tag.remove_key(&item_key);
-
-        // Insert the new value (skip if the joined string is empty)
         if !joined.is_empty() {
             let item = TagItem::new(item_key, ItemValue::Text(joined));
             tag.push(item);
@@ -834,6 +869,48 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     tag.save_to_path(path, WriteOptions::default())?;
 
     Ok(())
+}
+
+/// What a caller supplied for `language` actually means to do, once
+/// compared against what the file already has (COMPAT-030) — see
+/// [`write_tags`]'s own doc comment. There is deliberately no variant for
+/// "unchanged"; that case is represented by the absence of this type
+/// (`Option::None`) one level up, precisely so it is handled identically
+/// to "the key was never supplied" rather than as a third case that could
+/// quietly diverge from it.
+enum LanguageChange {
+    /// The supplied value is empty: the field is being cleared outright.
+    Clear,
+    /// The supplied value is non-empty and genuinely different from what
+    /// the file already has, and LANG-002 could make sense of it. Boxed
+    /// because `LanguageTag` is a good deal larger than the `Clear` variant
+    /// (it carries a script, region, every variant and extension subtag,
+    /// and a list of notes) — without this, EVERY `LanguageChange` would
+    /// pay `LanguageTag`'s size even in the `Clear` case, which never uses
+    /// one at all.
+    Set(Box<LanguageTag>),
+}
+
+/// What [`extract_tags`] would currently report for `key`, if this file
+/// already has one — built by running the exact same per-item read logic
+/// ([`read_tag_into_map`]) across every tag container the file has, then
+/// joining the way every multi-value write in this crate does
+/// ([`join_multi_value`]). `None` means the file has nothing at all for
+/// this key today (not even an empty value) — genuinely different from "an
+/// empty string", which is what a deliberate clear looks like.
+///
+/// Used by [`write_tags`] to tell "the caller resent an unchanged value"
+/// apart from "the caller is genuinely setting a new one" for `language`
+/// (COMPAT-030). Deliberately re-uses `extract_tags`'s own per-tag helper
+/// rather than a fresh comparison routine, so there is no way for the
+/// "what counts as unchanged" check to drift from what a caller would
+/// actually see if it read the file first.
+fn current_joined_value(tagged_file: &lofty::file::TaggedFile, key: &str) -> Option<String> {
+    let mut map: TagMap = HashMap::new();
+    for tag in tagged_file.tags() {
+        read_tag_into_map(tag, &mut map);
+    }
+    map.get(key).map(|values| join_multi_value(values))
 }
 
 /// Remove a specific tag field from the file at `path`.

@@ -26,6 +26,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MmError, MmResult};
+use crate::metadata::{TAG_LANGUAGE, language};
 
 // ───────────────────────────────────────────────────────────────────────────
 // Submodules
@@ -142,10 +143,37 @@ pub enum ConditionMode {
 /// Resolves the condition's field from the context (using the tag registry)
 /// and applies the comparison operator.
 fn evaluate_condition(condition: &Condition, ctx: &EvalContext<'_>) -> MmResult<bool> {
-    // Resolve the tag value from the context
+    // Resolve the tag value from the context — already the STANDARD form
+    // for `language` (see `EvalContext::resolve_metadata_tag`).
     let tag_value = ctx.resolve_tag(&condition.field)?;
     let tag_lower = tag_value.to_lowercase();
-    let expected_lower = condition.value.to_lowercase();
+
+    // Policy MWBM-MEDIA-LANG 1.0.0: a rule's own configured value for
+    // `language` is put through the same standardisation the file's value
+    // already went through above, so `language Equals eng` and
+    // `language Equals en` match the identical set of files — a rule
+    // written against whichever form one file happened to use must not
+    // silently stop matching once this crate starts writing the correct
+    // per-format form elsewhere (see `language::standardise_for_comparison`
+    // for the concrete case that was found and reproduced). Only the
+    // plain-value operators are standardised — `Matches`'s `value` is a
+    // regular expression, not a language, and `IsEmpty`/`IsNotEmpty` never
+    // read `value` at all.
+    let expected = if condition.field.eq_ignore_ascii_case(TAG_LANGUAGE)
+        && matches!(
+            condition.operator,
+            ConditionOp::Equals
+                | ConditionOp::NotEquals
+                | ConditionOp::Contains
+                | ConditionOp::NotContains
+                | ConditionOp::StartsWith
+                | ConditionOp::EndsWith
+        ) {
+        language::standardise_for_comparison(&condition.value)
+    } else {
+        condition.value.clone()
+    };
+    let expected_lower = expected.to_lowercase();
 
     // Apply the operator
     match condition.operator {

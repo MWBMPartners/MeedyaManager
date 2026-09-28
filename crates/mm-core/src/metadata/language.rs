@@ -9,14 +9,23 @@
 // here — this file deliberately does not restate the policy's rules, only
 // cites their IDs, so the two documents can never quietly drift apart.
 //
-// MeedyaManager's profile today is "canonical" only (policy section 2):
-// it edits stored metadata, and has no language menus of its own yet (the
-// "presentation" profile would add those). So this module only needs
-// LANG-001 through LANG-003 and TRACK-070 — canonicalising a value,
-// reading an old three-letter code, and writing the right form per tag
-// container. It does not need ordering, matching, or automatic selection;
-// those live entirely inside `meedya_lang` already and MeedyaManager has
-// nothing to call them with yet.
+// Policy section 2 assigns MeedyaManager BOTH the "canonical" and
+// "presentation" profiles (it edits stored metadata AND shows languages in
+// its interfaces) — this module only builds the "canonical" half TODAY,
+// not because MeedyaManager is exempt from "presentation" by the policy's
+// own table, but simply because MeedyaManager has no language MENU or LIST
+// anywhere in its UI yet to build it for (Part B applies to "every list or
+// menu a person chooses a language from" — there is none here). The rule
+// engine's `<Language>` template output and its rule conditions, added
+// below, are closer to "canonical" than "presentation" in spirit (they
+// read and compare a STORED value, not present a menu), so they are built
+// here rather than waiting on a presentation profile that has nothing to
+// attach to yet. So this module needs LANG-001 through LANG-003 and
+// TRACK-070 — canonicalising a value, reading an old three-letter code,
+// and writing the right form per tag container. It does not need
+// ordering, matching, or automatic selection; those live entirely inside
+// `meedya_lang` already and MeedyaManager has nothing to call them with
+// yet.
 //
 // Two different situations, kept apart on purpose:
 //
@@ -37,23 +46,34 @@
 // reader, which is written to accept a value already known to be a BCP 47
 // tag just as happily as an old three-letter code.
 //
-// One LANG-002 case this module does NOT implement, on purpose, because
-// testing it against a real file showed it was already handled: "ID3v2.4
-// TLAN can hold several codes separated by a null character; split them
-// first, the first is the primary." Writing a genuine null-separated TLAN
-// into a real MP3 and reading it back with `lofty` shows the null survives
-// to disk, but `lofty`'s own ID3v2 reader splits it into SEPARATE items —
-// the same multi-value handling every other ID3 text frame already gets —
-// before this crate ever sees a raw string. `metadata::extract_tags`
-// therefore already returns a plain `vec!["eng", "swe"]` for such a file,
-// with no null character anywhere in it, through the generic per-item loop
-// every tag key shares. LANG-002's "the first is the primary language"
-// becomes, for MeedyaManager, simply: take the first element of that
-// vector. See `multi_value_tlan_is_split_into_separate_items_by_lofty_itself`
-// in `crates/mm-core/tests/metadata_roundtrip.rs` for the test that found
-// this (the raw file bytes were inspected directly to confirm the null
-// really does reach disk, ruling out "lofty silently drops it on write" as
-// the explanation).
+// One LANG-002 case this module does NOT implement any splitting code
+// for, but for a narrower reason than first thought — corrected after an
+// independent review actually built and ran the case rather than trusting
+// the claim below at face value: "ID3v2.4 TLAN can hold several codes
+// separated by a null character; split them first, the first is the
+// primary." Writing a genuine null-separated TLAN into a real MP3 and
+// reading it straight back with `lofty` shows the null survives to disk,
+// and `lofty`'s own ID3v2 reader splits it into SEPARATE items — the same
+// multi-value handling every other ID3 text frame already gets — before
+// this crate ever sees a raw string, so `metadata::extract_tags` right
+// after such a write already returns a plain `vec!["eng", "swe"]`, with no
+// null character anywhere in it. So far this still holds, and LANG-002's
+// "the first is the primary language" is still, for that IMMEDIATE case,
+// simply "take the first element of that vector".
+//
+// What does NOT hold — found by the review, reproduced here, and now
+// covered by an ignored regression test rather than silently left wrong —
+// is that this survives a LATER, UNRELATED save. Once `write_tags` is
+// called again for some other field entirely (changing only the title,
+// say), only the SECOND of the two values survives; the first is gone
+// permanently. This is not specific to `language` at all — the exact same
+// loss happens to a multi-value `artist` field — so it is a general fault
+// in how this crate currently round-trips ANY multi-value ID3 field
+// through a save, not a language-policy gap, and it is tracked and fixed
+// on its own timescale as issue #254 rather than folded into this work.
+// See `multi_value_tlan_does_not_survive_an_unrelated_save` (marked
+// `#[ignore = "issue #254"]`) in
+// `crates/mm-core/tests/metadata_roundtrip.rs`.
 
 use lofty::tag::TagType;
 
@@ -75,14 +95,28 @@ use meedya_lang::{Iso639Form, LanguageTag, canonicalise, from_legacy_three_lette
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredLanguage {
     /// What LANG-002's reader made of the value. `und` ("language not
-    /// known") when the value could not be recognised at all — never a
-    /// guess (LANG-003).
+    /// known") both when the value genuinely could not be recognised
+    /// (LANG-003 — never a guess) AND when it was recognised as ID3's own
+    /// `XXX` "not known" marker — see [`recognised`](Self::recognised) for
+    /// how to tell those two situations apart.
     pub tag: LanguageTag,
-    /// The value exactly as read from the file, after only the trimming
-    /// LANG-002 itself does (trailing null padding, and the four
-    /// whitespace characters LANG-001 step 1 names). Never altered further
-    /// — this is what "keep the original text" means in practice.
+    /// The value exactly as it was passed in — the ENTIRE input,
+    /// untouched, not even the four whitespace characters LANG-001 step 1
+    /// would trim. (An earlier version of this doc comment said this field
+    /// was trimmed; it never was. Kept fully untouched, on purpose: this
+    /// is the "original text" COMPAT-040 wants shown to a person, and the
+    /// original is more useful than a partially-processed version of it.)
     pub raw: String,
+    /// `true` when LANG-002's reader could make sense of `raw` at all
+    /// (including ID3's `XXX` marker, which it turns into `und` on
+    /// purpose). `false` means `tag` is `und` only because nothing above
+    /// recognised `raw` — this is the field to check before deciding
+    /// whether to show `tag.tag` or `raw` to a person: showing `tag.tag`
+    /// for a recognised value is fine (`XXX` → "und" is the correct,
+    /// intended standard form), but showing it for an UNRECOGNISED one
+    /// would silently replace a person's own words with a guess-shaped
+    /// placeholder, which is exactly what LANG-003 forbids.
+    pub recognised: bool,
 }
 
 /// Read a raw `language` tag value the way LANG-002 requires.
@@ -93,10 +127,46 @@ pub struct StoredLanguage {
 /// `und` (LANG-003), with `raw` carrying the original text so it is never
 /// silently lost (COMPAT-040) and a person can still fix it.
 pub fn parse_stored_language(raw: &str) -> StoredLanguage {
-    let tag = from_legacy_three_letter(raw).unwrap_or_else(|| canonicalise("und"));
-    StoredLanguage {
-        tag,
-        raw: raw.to_string(),
+    match from_legacy_three_letter(raw) {
+        Some(tag) => StoredLanguage {
+            tag,
+            raw: raw.to_string(),
+            recognised: true,
+        },
+        None => StoredLanguage {
+            tag: canonicalise("und"),
+            raw: raw.to_string(),
+            recognised: false,
+        },
+    }
+}
+
+/// The form a `language` value should be RENDERED or COMPARED in.
+///
+/// Used wherever the value means the same thing regardless of which tag
+/// container a particular file happens to use — the rule engine's
+/// `<Language>` template output, and both sides of a `language` rule
+/// condition, use this. Without it, an
+/// MP3 storing the old three-letter code `eng` and a FLAC storing the
+/// short code `en` are the SAME fact (English) but compare and render as
+/// DIFFERENT text, so a rule written and tested against one format can
+/// silently stop matching files in another the moment this crate starts
+/// writing the correct per-format form (see the `write_tags` doc comment
+/// for TRACK-070) — found, and reproduced with a rule that matched MP3s
+/// before this crate wrote `en` there and stopped matching them once it
+/// correctly started writing `eng`, while this rule was being reviewed.
+///
+/// Returns the standard tag ([`parse_stored_language`]'s `tag.tag`) when
+/// the value is recognised, and the ORIGINAL TEXT UNCHANGED when it is
+/// not — never a guess (LANG-003), and never `und` standing in for
+/// something a person actually typed that this crate simply could not
+/// parse.
+pub fn standardise_for_comparison(raw: &str) -> String {
+    let stored = parse_stored_language(raw);
+    if stored.recognised {
+        stored.tag.tag
+    } else {
+        stored.raw
     }
 }
 
@@ -116,11 +186,17 @@ pub struct LanguageInputError {
 
 impl std::fmt::Display for LanguageInputError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Plain English, no jargon (house rule): "BCP 47" is a standard's
+        // name, not something a person setting a language needs to know —
+        // say what a valid answer looks like instead. Never names a
+        // temporary file or anything internal to how this crate works
+        // (item 13 of the language-policy review): a refusal is about
+        // what the PERSON typed, not about MeedyaManager's own plumbing.
         write!(
             f,
-            "'{}' is not a language MeedyaManager recognises. Use a BCP 47 language tag \
-             such as \"en\", \"pt-BR\" or \"zh-Hant\" (an old three-letter code such as \
-             \"fre\" is accepted too), or \"und\" if the language is genuinely not known.",
+            "'{}' is not a language MeedyaManager recognises. Use a language code such as \
+             \"en\", \"pt-BR\" or \"zh-Hant\" (an older three-letter code such as \"fre\" is \
+             accepted too), or \"und\" if the language is genuinely not known.",
             self.input
         )
     }
@@ -259,8 +335,22 @@ mod tests {
         // language name is ever registered as a subtag).
         let err = parse_language_input("French").unwrap_err();
         assert_eq!(err.input, "French");
-        // The message must give the person a way forward, not just say no.
-        assert!(err.to_string().contains("en"));
+        // The message must give the person a working example, not just say
+        // no. Checked against the exact example text (`"pt-BR"`), not the
+        // bare letters "en" — a message that dropped every example but
+        // still happened to print the word "English" or the input "French"
+        // would wrongly pass a looser check (item 8 of the language-policy
+        // review; proven by deleting the examples and confirming this
+        // assertion is what catches it, not a coincidence of the input).
+        let message = err.to_string();
+        assert!(
+            message.contains("\"pt-BR\""),
+            "refusal message must show the working example \"pt-BR\", got: {message:?}"
+        );
+        assert!(
+            !message.to_lowercase().contains("bcp"),
+            "refusal message must not use the jargon term \"BCP 47\", got: {message:?}"
+        );
     }
 
     #[test]
