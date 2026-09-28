@@ -13,6 +13,10 @@ rust-version.workspace = true
 [dependencies]
 # MeedyaSuite-core — shared metadata and codec infrastructure
 meedya-core = { workspace = true }
+# Shared language-tag logic — policy MWBM-MEDIA-LANG 1.0.0. See the comment
+# on the workspace dependency line in the root Cargo.toml for why this is
+# pinned to a different commit than meedya-core.
+meedya-lang = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

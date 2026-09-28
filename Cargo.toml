@@ -60,6 +60,23 @@ rust-version = "1.85"
 # 596-meedya-fingerprint-and-lyrics, 2026-05-26).
 meedya-core = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = "222ca7590493", features = ["full"] }
 
+# meedya-lang — the shared implementation of policy MWBM-MEDIA-LANG 1.0.0
+# (docs/standards/media-language-bcp47-policy.md; read that file before
+# touching anything to do with languages). Pinned by commit `rev`, on
+# purpose, to a commit that is on MeedyaSuite-core's `feature/bcp47-
+# language-policy` branch, NOT yet on `main` — the crate does not exist on
+# `main` yet, so there is nothing else to pin to. This is a DIFFERENT
+# revision of the SAME repository as `meedya-core` above; Cargo tracks each
+# git dependency by its own (url, rev) pair, so the two do not have to
+# agree, and each is fetched at exactly the commit it names.
+# Once MeedyaSuite-core merges that branch to `main`, re-pin this line to
+# `branch = "main"` (or a `main` commit) in a follow-up change — tracked as
+# MeedyaManager issue #253 — and use `cargo update -p meedya-lang`
+# afterwards, never a hand-edited Cargo.lock. #253 also covers re-running
+# scripts/media-lang/check_copies.py --update at the new commit, in case
+# the policy files themselves changed between the feature branch and main.
+meedya-lang = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = "995becb7575aef6c7ea0e7a5f8bb6d77a3bb4ad6" }
+
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
