@@ -64,7 +64,13 @@ jobs:
           # Path-to-platform mapping (keep in sync with each ci-*.yml `paths:`):
           #   rust    : crates/, Cargo.{toml,lock}, rust-toolchain.toml,
           #             deny.toml, clippy.toml, .cargo/  (anything that
-          #             changes Rust build/lint behaviour)
+          #             changes Rust build/lint behaviour) — plus, since the
+          #             MWBM-MEDIA-LANG policy work, docs/standards/,
+          #             tests/fixtures/ and scripts/media-lang/: the copy
+          #             checker that guards those files runs as a job inside
+          #             ci-rust.yml (it needs nothing GTK/Swift/C#-specific),
+          #             so a PR that only edits a policy copy would otherwise
+          #             never trigger the one job that checks it.
           #   macos   : macos/ or crates/mm-ffi/  (UniFFI Swift bindings)
           #   windows : windows/ or crates/mm-ffi/  (cbindgen C# P/Invoke)
           #   linux   : crates/mm-gtk/, or any crate it depends on directly
@@ -84,7 +90,7 @@ jobs:
             echo "Workflow change detected — forcing full platform sweep."
             RUST=true; MACOS=true; WINDOWS=true; LINUX=true
           else
-            if match '^(crates/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|deny\.toml$|clippy\.toml$|\.cargo/)'; then RUST=true; else RUST=false; fi
+            if match '^(crates/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|deny\.toml$|clippy\.toml$|\.cargo/|docs/standards/|tests/fixtures/|scripts/media-lang/)'; then RUST=true; else RUST=false; fi
             if match '^(macos/|crates/mm-ffi/)';                                                                     then MACOS=true; else MACOS=false; fi
             if match '^(windows/|crates/mm-ffi/)';                                                                   then WINDOWS=true; else WINDOWS=false; fi
             if match '^(crates/mm-gtk/|crates/mm-core/|crates/mm-providers/|crates/mm-export/|crates/mm-server/)';   then LINUX=true; else LINUX=false; fi

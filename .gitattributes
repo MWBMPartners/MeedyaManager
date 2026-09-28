@@ -41,3 +41,19 @@
 *.so binary
 *.a binary
 *.xcframework binary
+
+# MWBM-MEDIA-LANG policy copies must stay byte-for-byte identical to the
+# master files in MWBMPartners/MeedyaSuite-core (the policy document says so
+# itself, in docs/standards/media-language-bcp47-policy.md, section 8.3). The
+# generic rules above would still be free to convert their line endings on a
+# checkout, and the copy checker (scripts/media-lang/check_copies.py) would
+# then report every one of them as "changed" even though nobody touched a
+# single character — so each one is marked "-text" here, overriding those
+# generic rules, to say plainly that git must never rewrite them.
+docs/standards/media-language-bcp47-policy.md -text
+docs/standards/MWBM-MEDIA-LANG.lock -text
+tests/fixtures/bcp47-language-policy-v1.json -text
+tests/fixtures/bcp47-language-policy-v1.schema.json -text
+docs/standards/data/bcp47-language-data-v1.json -text
+docs/standards/data/bcp47-language-data-v1.schema.json -text
+scripts/media-lang/check_copies.py -text

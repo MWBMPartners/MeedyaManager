@@ -22,10 +22,21 @@ on:
       - "deny.toml"
       - "clippy.toml"
       - ".cargo/**"
+      # MWBM-MEDIA-LANG policy copies (kept in sync with pr-gate.yml's own
+      # `rust` detection regex — see the comment there) — checked by the
+      # media-language-policy job below.
+      - "docs/standards/**"
+      - "tests/fixtures/**"
+      - "scripts/media-lang/**"
   # PRs reach this workflow via pr-gate.yml (the umbrella). pr-gate decides
   # whether to call it based on changed paths; do NOT add a pull_request:
   # trigger here or runs will duplicate.
   workflow_call:
+
+# Every job here only reads the checkout and (for media-language-policy)
+# public data on github.com — nothing here ever needs to write anything.
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -168,3 +179,30 @@ jobs:
           fi
 
           echo "All platform versions in sync with Cargo.toml ($CARGO_VER)"
+
+  # ---------------------------------------------------------------------------
+  # Media Language Policy — verify the local copies of MWBM-MEDIA-LANG are
+  # byte-for-byte identical to the master files in MWBMPartners/MeedyaSuite-core
+  # (docs/standards/media-language-bcp47-policy.md, section 8.3). The checker
+  # itself is one of the six files it checks (scripts/media-lang/check_copies.py)
+  # — see the mandatory pointer in AGENTS.md / .claude/CLAUDE.md / .OpenAI/CONTEXT.md
+  # for what this policy covers and why editing a copy here is always wrong
+  # (change the master in MeedyaSuite-core, then run --update).
+  media-language-policy:
+    name: Media Language Policy — copy check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check MWBM-MEDIA-LANG policy copies against the master
+        # GITHUB_TOKEN raises the GitHub API rate limit for the commit
+        # lookup this check makes (github.com/…/compare/…) from 60/hour
+        # (unauthenticated, shared by every runner on this network range)
+        # to several thousand — without it, this step fails intermittently
+        # for a reason that has nothing to do with whether the copies are
+        # actually correct.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/media-lang/check_copies.py
