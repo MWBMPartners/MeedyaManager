@@ -511,6 +511,76 @@ fn apply_plan(args: &EditArgs, plan: &EditPlan) -> (Vec<EditAction>, Option<Stri
 
 // ─── Output rendering ──────────────────────────────────────────────────────
 
+/// One line `render`'s Human branch will print, tagged with which of
+/// `output`'s three status styles it belongs to. Kept separate from the
+/// actual `println!`/`eprintln!` calls inside those `print_*` functions
+/// only so [`build_human_lines`] is a plain, pure function a test can call
+/// directly — see that function's own doc comment for why this exists
+/// (review item 1 of the second language-policy review round).
+#[derive(Debug, PartialEq, Eq)]
+enum HumanLine {
+    Success(String),
+    Warning(String),
+    Error(String),
+}
+
+/// What each action's own description line reads, before success/failure
+/// or a note is folded in.
+fn action_description(action: &EditAction) -> String {
+    match action.action.as_str() {
+        "set" => format!(
+            "Set {} = {}",
+            action.key.as_deref().unwrap_or("?"),
+            action.value.as_deref().unwrap_or("?"),
+        ),
+        "remove" => format!("Remove {}", action.key.as_deref().unwrap_or("?")),
+        "embed_cover" => format!(
+            "Embed cover from {}",
+            action.value.as_deref().unwrap_or("?"),
+        ),
+        "remove_cover" => "Remove cover art".to_string(),
+        _ => action.action.clone(),
+    }
+}
+
+/// Every line `render`'s Human branch will print for `actions`, in order —
+/// everything except the header and the Test Mode "written to" line, which
+/// belong to the whole command rather than to one action.
+///
+/// Pulled out of `render` itself (review item 1 of the second review
+/// round) because the bug that round found — `action.note` (item 6 of the
+/// FIRST round: what actually got stored, when it differs from what was
+/// typed) reaching `EditOutput` for `--json` callers, and then never once
+/// being printed for anyone running `meedya edit` from a terminal without
+/// `--json` — lived entirely inside `render`, one step past where the
+/// existing tests looked (they checked `EditPlan`/`EditAction` directly,
+/// never what `render` actually did with them). A function `render` itself
+/// calls, rather than a second copy of the same logic, is what makes a
+/// test of this actually prove the real output matches — there is no way
+/// for the two to drift apart, because they are the same code.
+fn build_human_lines(actions: &[EditAction]) -> Vec<HumanLine> {
+    let mut lines = Vec::new();
+    for action in actions {
+        let desc = action_description(action);
+        if action.success {
+            lines.push(HumanLine::Success(desc));
+            // The note belongs right under the success line it explains,
+            // whether or not this is `--dry-run` — the whole point of
+            // computing it at Phase-1 validation time is that it is true
+            // before anything is written.
+            if let Some(note) = &action.note {
+                lines.push(HumanLine::Warning(note.clone()));
+            }
+        } else {
+            lines.push(HumanLine::Error(format!(
+                "{desc}: {}",
+                action.error.as_deref().unwrap_or("unknown error"),
+            )));
+        }
+    }
+    lines
+}
+
 /// Render the outcome in whichever format the user asked for.
 fn render(
     ctx: &CliContext,
@@ -535,30 +605,11 @@ fn render(
                 output::print_header("Edit Results");
             }
 
-            for action in &actions {
-                let desc = match action.action.as_str() {
-                    "set" => format!(
-                        "Set {} = {}",
-                        action.key.as_deref().unwrap_or("?"),
-                        action.value.as_deref().unwrap_or("?"),
-                    ),
-                    "remove" => format!("Remove {}", action.key.as_deref().unwrap_or("?")),
-                    "embed_cover" => format!(
-                        "Embed cover from {}",
-                        action.value.as_deref().unwrap_or("?"),
-                    ),
-                    "remove_cover" => "Remove cover art".to_string(),
-                    _ => action.action.clone(),
-                };
-
-                if action.success {
-                    output::print_success(&desc);
-                } else {
-                    output::print_error(&format!(
-                        "{}: {}",
-                        desc,
-                        action.error.as_deref().unwrap_or("unknown error"),
-                    ));
+            for line in build_human_lines(&actions) {
+                match line {
+                    HumanLine::Success(s) => output::print_success(&s),
+                    HumanLine::Warning(s) => output::print_warning(&s),
+                    HumanLine::Error(s) => output::print_error(&s),
                 }
             }
 
@@ -929,13 +980,24 @@ mod tests {
             })
             .unwrap_or_else(|_| panic!("pt-BR is a real language, must not fail Phase 1"));
 
-            assert_eq!(
-                plan.language_note.as_deref(),
-                Some(
-                    "stored as \"por\" — an MP3 can only hold the three-letter language code, \
-                     not the region, script or extra detail you typed"
-                ),
-                "dry_run={dry_run}: the note must survive into the plan even without a real write"
+            let note = plan
+                .language_note
+                .as_deref()
+                .unwrap_or_else(|| panic!("dry_run={dry_run}: expected a note, got None"));
+            // Exact wording changed under review item 4/9 of the second
+            // review round (per-container, named tag format, no bare
+            // "und") — checked structurally rather than byte-for-byte so
+            // this test does not need updating again for the next wording
+            // tweak; `describe_conversion_reports_a_lost_region_on_id3` in
+            // `language.rs` is the test that pins the exact words.
+            assert!(note.contains("\"por\""), "dry_run={dry_run}: {note:?}");
+            assert!(
+                note.contains("an ID3 tag"),
+                "dry_run={dry_run}: must name the tag format, not \"an MP3\": {note:?}"
+            );
+            assert!(
+                note.to_lowercase().contains("region"),
+                "dry_run={dry_run}: must say a region was lost: {note:?}"
             );
         }
     }
@@ -964,6 +1026,61 @@ mod tests {
             Err(actions) => panic!("en is a real language, must not fail Phase 1: {actions:?}"),
         };
         assert_eq!(plan.language_note, None);
+    }
+
+    /// Review item 1 of the second language-policy review round: the
+    /// existing two tests above only ever checked `EditPlan.language_note`
+    /// — the value that reaches `EditOutput` for `--json` callers — never
+    /// what `render`'s Human branch actually prints from it. That branch
+    /// simply never read `action.note` at all, so every person running
+    /// `meedya edit` from a terminal (the overwhelmingly more common case
+    /// than `--json`) never saw the note however real the loss was. This
+    /// test calls `build_human_lines` — the exact function `render` itself
+    /// calls, not a re-implementation of it — with a synthetic action
+    /// carrying a note, and checks the note appears as its own
+    /// [`HumanLine::Warning`] right after the success line, which is
+    /// exactly what the bug meant did not happen.
+    #[test]
+    fn build_human_lines_shows_the_language_note_after_the_success_line() {
+        let actions = vec![EditAction::ok_with_note(
+            "set",
+            Some("language".to_string()),
+            Some("pt-BR".to_string()),
+            "an ID3 tag can only hold the three-letter language code, so it will lose the \
+             region you typed — it will be stored there as \"por\""
+                .to_string(),
+        )];
+
+        let lines = build_human_lines(&actions);
+
+        assert_eq!(
+            lines,
+            vec![
+                HumanLine::Success("Set language = pt-BR".to_string()),
+                HumanLine::Warning(
+                    "an ID3 tag can only hold the three-letter language code, so it will lose \
+                     the region you typed — it will be stored there as \"por\""
+                        .to_string()
+                ),
+            ],
+            "the note must be its own Warning line, immediately after the Success line it \
+             explains"
+        );
+    }
+
+    /// The companion case: an action with no note produces exactly one
+    /// line, not a spurious empty warning.
+    #[test]
+    fn build_human_lines_has_no_extra_line_when_there_is_no_note() {
+        let actions = vec![EditAction::ok(
+            "set",
+            Some("language".to_string()),
+            Some("en".to_string()),
+        )];
+        assert_eq!(
+            build_human_lines(&actions),
+            vec![HumanLine::Success("Set language = en".to_string())]
+        );
     }
 
     /// The `--remove` side of #206: an unmapped key used to be a silent
