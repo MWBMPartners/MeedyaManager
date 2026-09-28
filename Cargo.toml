@@ -69,13 +69,18 @@ meedya-core = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = 
 # revision of the SAME repository as `meedya-core` above; Cargo tracks each
 # git dependency by its own (url, rev) pair, so the two do not have to
 # agree, and each is fetched at exactly the commit it names.
-# Once MeedyaSuite-core merges that branch to `main`, re-pin this line to
-# `branch = "main"` (or a `main` commit) in a follow-up change — tracked as
-# MeedyaManager issue #253 — and use `cargo update -p meedya-lang`
-# afterwards, never a hand-edited Cargo.lock. #253 also covers re-running
+# Re-pinned 2026-09-28 from `995becb7` to `aaaa585a` (a later reviewed
+# revision on the same feature branch — see the copy-update sweep's commit
+# for the API changes this required adapting to). Once MeedyaSuite-core
+# merges that branch to `main`, re-pin this line to `branch = "main"` (or a
+# `main` commit) in a follow-up change — tracked as MeedyaManager issue
+# #253 — and use `cargo update -p meedya-lang` afterwards, never a
+# hand-edited Cargo.lock. #253 also covers re-running
 # scripts/media-lang/check_copies.py --update at the new commit, in case
 # the policy files themselves changed between the feature branch and main.
-meedya-lang = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = "995becb7575aef6c7ea0e7a5f8bb6d77a3bb4ad6" }
+# Core has NOT merged to `main` yet as of this re-pin — that step is still
+# owed later, not settled by this change.
+meedya-lang = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = "aaaa585aa145634c057c0bbdd9bd5fc11c3274a0" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
