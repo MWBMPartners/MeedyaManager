@@ -77,7 +77,6 @@
 
 use std::path::Path;
 
-use lofty::file::TaggedFileExt;
 use lofty::tag::TagType;
 
 use meedya_lang::{
@@ -193,10 +192,21 @@ impl std::fmt::Display for LanguageInputError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Plain English, no jargon (house rule): "BCP 47" is a standard's
         // name, not something a person setting a language needs to know —
-        // say what a valid answer looks like instead. Never names a
-        // temporary file or anything internal to how this crate works
-        // (item 13 of the language-policy review): a refusal is about
-        // what the PERSON typed, not about MeedyaManager's own plumbing.
+        // say what a valid answer looks like instead. This message itself
+        // never names a temporary file or anything internal to how this
+        // crate works (item 13 of the language-policy review): a refusal
+        // is about what the PERSON typed, not about MeedyaManager's own
+        // plumbing.
+        //
+        // That guarantee held here but not end to end (found by the
+        // second review round, item 7): `integrity::mutate_file_safe`
+        // used to wrap THIS message in `"mutation failed on '{target}':
+        // ..."`, where `target` is Test Mode's own `_MeedyaManager` copy
+        // path — so the text this function builds was still clean, but
+        // what an app actually showed on screen was not, by the time it
+        // had passed through the write guard. Fixed in `integrity.rs`,
+        // not here; this comment is corrected so it no longer claims a
+        // guarantee this one function cannot make on its own.
         write!(
             f,
             "'{}' is not a language MeedyaManager recognises. Use a language code such as \
@@ -262,16 +272,31 @@ pub fn parse_language_input(input: &str) -> Result<LanguageTag, LanguageInputErr
 /// A note on `RiffInfo` in particular, found while testing this against a
 /// real WAV file rather than assumed from the policy table: lofty's own
 /// `FileType::primary_tag_type()` maps `FileType::Wav` to `TagType::Id3v2`,
-/// the same as MP3 — a WAV file therefore gets an embedded ID3v2 tag from
-/// `write_tags`, never a `RiffInfo` one, however the file's own metadata
+/// the same as MP3 — a WAV file's PRIMARY tag is therefore always an
+/// embedded ID3v2 one, never `RiffInfo`, however the file's own metadata
 /// module doc comment describes it. This function still handles
-/// `TagType::RiffInfo` correctly (the canonical tag, matching the policy),
-/// for whichever caller does reach it — reading a file some other tool
-/// already gave a genuine RIFF INFO tag, say — but `write_tags` itself
-/// cannot produce that path today. See `wav_write_tags_uses_embedded_id3v2_not_riff_info` in
+/// `TagType::RiffInfo` correctly (the canonical tag, matching the policy).
+///
+/// **Corrected after the second language-policy review round**: this used
+/// to say `write_tags` could never actually reach `RiffInfo` at all, "for
+/// whichever caller does reach it" being read as some hypothetical future
+/// caller. That stopped being true the moment `write_tags` gained its
+/// "Item 5" fix (keeping every tag container a file already has a
+/// language value in consistent, not only the primary one): a WAV that
+/// already carries a genuine `RiffInfo` language value — from some other
+/// tool, or from an earlier write by this very function — has THAT
+/// container updated too, through this exact function, every time
+/// `language` is set. See `setting_language_keeps_every_tag_container_consistent`
+/// in `crates/mm-core/tests/metadata_roundtrip.rs`. What is still true,
+/// and is the actual reason a FRESH WAV never gets a `RiffInfo` tag from
+/// nothing: `write_tags` only ever updates a container that already has a
+/// language value (see `language_write_targets`), and a fresh WAV's
+/// primary — the only container it starts with — is ID3v2, not `RiffInfo`.
+/// See `wav_write_tags_uses_embedded_id3v2_not_riff_info` in
 /// `crates/mm-core/tests/metadata_roundtrip.rs` for the test that found
-/// this, and the note in this crate's write-up of this work for why fixing
-/// that more general (not language-specific) fact is out of scope here.
+/// the underlying primary-tag-type fact, and the note in this crate's
+/// write-up of this work for why fixing that more general (not
+/// language-specific) fact is out of scope here.
 pub fn language_value_for_tag_type(tag: &LanguageTag, tag_type: TagType) -> String {
     match tag_type {
         TagType::Id3v2 => iso639_2_code(tag, Iso639Form::Terminology),
@@ -302,62 +327,123 @@ pub fn language_value_for_tag_type(tag: &LanguageTag, tag_type: TagType) -> Stri
 /// (an unregistered subtag, one with no single replacement, or one the
 /// registry replaced outright).
 ///
-/// Item 6 of the language-policy review: a person setting `language=pt-BR`
-/// on an MP3 sees no error (the value IS a real language) and no obvious
-/// sign that only `por` — the whole region silently gone — was actually
-/// written, unless something tells them so.
-fn describe_conversion(input: &str, tag_type: TagType) -> Option<String> {
+/// Item 6 of the first language-policy review round: a person setting
+/// `language=pt-BR` on an MP3 sees no error (the value IS a real language)
+/// and no obvious sign that only `por` — the whole region silently gone —
+/// was actually written, unless something tells them so.
+///
+/// Redesigned for review item 4 of the SECOND round, which found this
+/// describing a PLAN rather than what [`super::write_tags`] would really
+/// do: it used to take one `tag_type` (the primary container only) and
+/// say "an MP3", even though the exact same ID3v2 tag type can be embedded
+/// inside a WAV file too (see [`language_value_for_tag_type`]'s own doc
+/// comment on that surprise) and a file can genuinely need MORE than one
+/// container updated at once (see `write_tags`'s "Item 5" doc comment).
+/// `tag_types` is now every container [`language_write_targets`] says
+/// `write_tags` will actually touch, so this function's answer can never
+/// name a container the real write does not reach, and never miss one it
+/// does.
+fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<String> {
     let parsed = parse_language_input(input).ok()?;
-    let stored = language_value_for_tag_type(&parsed, tag_type);
 
     let mut reasons: Vec<String> = Vec::new();
 
-    // The structural TRACK-070 reasons only ID3's three-letter-only field
-    // can run into — every other container this crate writes keeps the
-    // canonical tag whole, so nothing is ever lost writing into one of
-    // those (a text difference there, if any, is pure normalisation,
-    // covered by the notes loop below rather than here).
-    if tag_type == TagType::Id3v2 {
+    // The structural TRACK-070 reason only an ID3 tag's three-letter-only
+    // field can run into — every other container this crate writes into
+    // keeps the canonical tag whole, so nothing is ever lost writing into
+    // one of those (a text difference there, if any, is pure
+    // normalisation, covered by the notes below rather than here). Named
+    // "an ID3 tag", never "an MP3" (review item 4): the same tag type is
+    // reached from a `.wav` file just as often as from a `.mp3` one.
+    if tag_types.contains(&TagType::Id3v2) {
+        let stored = language_value_for_tag_type(&parsed, TagType::Id3v2);
         if stored == "und" {
+            // Review item 9: say "not known" — the plain-English fact —
+            // rather than showing the raw three-letter code "und" (or, on
+            // the READING side, ID3's own "xxx" marker) as if it meant
+            // something to a reader who has never heard of either.
             reasons.push(format!(
-                "\"{}\" has no three-letter code at all, so an MP3 can only record it as \
-                 \"und\" (not known)",
+                "an ID3 tag has no three-letter code for \"{}\" at all, so it will be stored \
+                 there as not known",
                 parsed.language.as_deref().unwrap_or(&parsed.tag)
             ));
-        } else if parsed.region.is_some() || parsed.script.is_some() || !parsed.variants.is_empty()
-        {
-            reasons.push(
-                "an MP3 can only hold the three-letter language code, not the region, script \
-                 or extra detail you typed"
-                    .to_string(),
-            );
+        } else {
+            // Review item 9: name exactly which part(s) are lost, rather
+            // than always listing "the region, script or extra detail"
+            // whether or not the input actually had all three.
+            let mut dropped: Vec<&str> = Vec::new();
+            if parsed.region.is_some() {
+                dropped.push("region");
+            }
+            if parsed.script.is_some() {
+                dropped.push("script");
+            }
+            if !parsed.variants.is_empty() {
+                dropped.push("extra detail");
+            }
+            if !parsed.extensions.is_empty() {
+                dropped.push("extension");
+            }
+            if !parsed.private_use.is_empty() {
+                dropped.push("private-use part");
+            }
+            if !dropped.is_empty() {
+                reasons.push(format!(
+                    "an ID3 tag can only hold the three-letter language code, so it will lose \
+                     the {} you typed — it will be stored there as \"{stored}\"",
+                    join_with_and(&dropped)
+                ));
+            }
         }
     }
 
     // The crate's own notes about the tag itself — an unregistered subtag,
     // a deprecated one with no single replacement, or a subtag the
-    // registry replaced outright — explain why the STANDARD form (what
-    // `stored` is built from) is not simply `input` restated. Genuine case
-    // folding or whitespace trimming alone never produces one of these, so
-    // it never reaches this point at all — exactly the "no noise for an
-    // ordinary edit" property this function exists to have.
+    // registry replaced outright — explain why the STANDARD form is not
+    // simply `input` restated. Genuine case folding or whitespace trimming
+    // alone never produces one of these, so it never reaches this point at
+    // all — exactly the "no noise for an ordinary edit" property this
+    // function exists to have.
+    let mut note_reasons: Vec<String> = Vec::new();
     for note in &parsed.notes {
         match note {
-            TagNote::UnregisteredSubtag { subtag } => reasons.push(format!(
+            TagNote::UnregisteredSubtag { subtag } => note_reasons.push(format!(
                 "\"{subtag}\" is not on the official list of language subtags, but it is kept \
                  exactly as typed"
             )),
-            TagNote::DeprecatedNoReplacement { subtag } => reasons.push(format!(
+            TagNote::DeprecatedNoReplacement { subtag } => note_reasons.push(format!(
                 "\"{subtag}\" is an old code with no single replacement, so it is kept exactly \
                  as typed"
             )),
             TagNote::SubtagReplaced { from, to } => {
-                reasons.push(format!(
+                note_reasons.push(format!(
                     "\"{from}\" is written as \"{to}\" in the standard form"
                 ));
             }
         }
     }
+
+    // Review item 9: a WHOLE tag being replaced — a grandfathered tag such
+    // as "i-klingon" becoming "tlh", or a redundant combination such as
+    // "sgn-BR" becoming "bzs" — carries NO note of its own in
+    // `parsed.notes`: the shared crate's `canonicalise` recurses straight
+    // into canonicalising the replacement and returns THAT result, with
+    // no record left behind that the input was ever anything else (unlike
+    // a single-subtag replacement such as "iw" -> "he", which the
+    // `SubtagReplaced` loop above already reports). Detected here by
+    // comparing the input, case-folded, against the tag `parsed` actually
+    // is — only when nothing above already explains the difference, so a
+    // case already covered (like "iw") is never reported twice.
+    if note_reasons.is_empty() && !parsed.tag.eq_ignore_ascii_case(input.trim()) {
+        note_reasons.push(format!(
+            "\"{}\" is an old or grouped form that is no longer used — it is replaced with the \
+             current code, \"{}\"",
+            input.trim(),
+            parsed.tag
+        ));
+    }
+
+    reasons.extend(note_reasons);
 
     if reasons.is_empty() {
         // Nothing worth reporting — either `stored == input` outright, or
@@ -366,21 +452,56 @@ fn describe_conversion(input: &str, tag_type: TagType) -> Option<String> {
         return None;
     }
 
-    Some(format!("stored as \"{stored}\" — {}", reasons.join("; ")))
+    Some(reasons.join("; "))
 }
 
-/// The same explanation as this module's private `describe_conversion`, for a file on disk.
+/// Joins a short list of plain-English part names the way a person would
+/// say them out loud: `"region"`, `"region and script"`, or `"region,
+/// script and extra detail"` — used only to name which specific part(s) of
+/// a language tag an ID3 tag's three-letter-only field cannot hold
+/// (review item 9 of the second language-policy review round: the message
+/// used to say "the region, script or extra detail" regardless of which,
+/// if any, of the three the input actually had).
+fn join_with_and(items: &[&str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [first, second] => format!("{first} and {second}"),
+        _ => {
+            let (last, rest) = items.split_last().expect("checked non-empty above");
+            format!("{} and {last}", rest.join(", "))
+        }
+    }
+}
+
+/// The same explanation as this module's private `describe_conversion_for_types`, for a file
+/// on disk.
 ///
-/// Reads the file (never writes to
-/// it) purely to find out which container `write_tags` would actually
-/// write `language` into, so the CLI can show this note at Phase-1
-/// validation time, before any write happens, including on `--dry-run`
-/// (which never calls `write_tags` at all). Returns `None` when the file
-/// cannot even be probed; a caller that goes on to actually write will get
-/// a real, specific error for that from `write_tags` itself.
+/// Reads the file (never writes to it) purely to find out (a) whether
+/// [`super::write_tags`] would treat `input` as a genuine change at all —
+/// COMPAT-030, the same comparison `write_tags` itself makes, via the
+/// same shared (but not public — hence plain text, not a doc link)
+/// `current_joined_value` — and (b) which containers it would actually
+/// touch if so, via the same shared `language_write_targets`. Both checks
+/// are done at Phase-1 validation time, before any write happens, so the
+/// CLI can show this note even on
+/// `--dry-run` (which never calls `write_tags` at all) — and, since review
+/// item 4 of the second review round, so the note can never say something
+/// `write_tags` would not really do: reusing the exact functions
+/// `write_tags` itself uses is what makes that a guarantee rather than a
+/// hope. Returns `None` when the file cannot even be probed, when `input`
+/// is identical to what is already stored (nothing will change, so there
+/// is nothing to say — review item 4's other finding), or when there is
+/// nothing worth telling a person about. A caller that goes on to actually
+/// write will get a real, specific error for a value nothing recognises at
+/// all, from `write_tags` itself.
 pub fn preview_conversion_note(path: &Path, input: &str) -> Option<String> {
     let tagged_file = super::open_tagged_file(path).ok()?;
-    describe_conversion(input, tagged_file.primary_tag_type())
+    if super::current_joined_value(&tagged_file, super::TAG_LANGUAGE).as_deref() == Some(input) {
+        return None;
+    }
+    let tag_types = super::language_write_targets(&tagged_file);
+    describe_conversion_for_types(input, &tag_types)
 }
 
 #[cfg(test)]
@@ -389,7 +510,8 @@ mod tests {
 
     #[test]
     fn describe_conversion_reports_a_lost_region_on_id3() {
-        let note = describe_conversion("pt-BR", TagType::Id3v2).expect("a region is lost");
+        let note =
+            describe_conversion_for_types("pt-BR", &[TagType::Id3v2]).expect("a region is lost");
         assert!(
             note.contains("\"por\""),
             "must show the stored form: {note:?}"
@@ -398,14 +520,28 @@ mod tests {
             note.to_lowercase().contains("region"),
             "must say a region was lost: {note:?}"
         );
+        assert!(
+            note.contains("an ID3 tag"),
+            "must name the tag format, not assume the file is an MP3: {note:?}"
+        );
     }
 
     #[test]
     fn describe_conversion_reports_a_language_with_no_639_2_code() {
         // "yue" (Cantonese) is a genuine subtag with no ISO 639-2 code at
-        // all, so an MP3 can only record it as "und".
-        let note = describe_conversion("yue", TagType::Id3v2).expect("no 639-2 code exists");
-        assert!(note.contains("\"und\""));
+        // all, so an ID3 tag can only record it as "not known" — review
+        // item 9 of the second review round: say "not known" in plain
+        // English, not the raw three-letter code "und".
+        let note =
+            describe_conversion_for_types("yue", &[TagType::Id3v2]).expect("no 639-2 code exists");
+        assert!(
+            note.to_lowercase().contains("not known"),
+            "must say \"not known\", not the raw code: {note:?}"
+        );
+        assert!(
+            !note.contains("\"und\""),
+            "must not show the raw code: {note:?}"
+        );
         assert!(note.contains("\"yue\""));
     }
 
@@ -417,42 +553,84 @@ mod tests {
     /// handled). This is the same shape as `yue` above (no ISO 639-2 code
     /// at all), but is worth its own test: it is a NEW behaviour from the
     /// crate update, not a pre-existing one, and it is reached through the
-    /// `parse_language_input` -> `describe_conversion` path a person
-    /// actually types into, not just the shared crate's own unit tests.
+    /// `parse_language_input` -> `describe_conversion_for_types` path a
+    /// person actually types into, not just the shared crate's own unit
+    /// tests.
     #[test]
     fn describe_conversion_reports_a_two_letter_q_code_as_und_on_id3() {
-        let note = describe_conversion("qb", TagType::Id3v2).expect("qb has no 639-2 code");
-        assert!(note.contains("\"und\""), "{note}");
+        let note =
+            describe_conversion_for_types("qb", &[TagType::Id3v2]).expect("qb has no 639-2 code");
+        assert!(note.to_lowercase().contains("not known"), "{note}");
         assert!(note.contains("\"qb\""), "{note}");
     }
 
     /// The same input on a container that keeps the canonical tag whole
     /// (no ID3 three-letter restriction) still gets a note — not because
     /// anything was LOST, but because the crate flags "qb" as a subtag
-    /// nothing recognises, and `describe_conversion` surfaces every note
-    /// the crate itself records, not only the ID3-specific ones.
+    /// nothing recognises, and `describe_conversion_for_types` surfaces
+    /// every note the crate itself records, not only the ID3-specific
+    /// ones.
     #[test]
     fn describe_conversion_reports_a_two_letter_q_code_as_unregistered_everywhere() {
-        let note = describe_conversion("qb", TagType::VorbisComments).expect("qb is unregistered");
+        let note = describe_conversion_for_types("qb", &[TagType::VorbisComments])
+            .expect("qb is unregistered");
         assert!(note.contains("\"qb\""), "{note}");
         assert!(note.contains("not on the official list"), "{note}");
     }
 
     #[test]
     fn describe_conversion_reports_a_registry_replacement() {
-        let note = describe_conversion("iw", TagType::VorbisComments).expect("iw is replaced");
+        let note = describe_conversion_for_types("iw", &[TagType::VorbisComments])
+            .expect("iw is replaced");
         assert!(note.contains("\"iw\"") && note.contains("\"he\""));
+    }
+
+    /// Review item 9 of the second review round: replacing a WHOLE tag —
+    /// a grandfathered one with a single-tag preferred replacement, or a
+    /// redundant combination the registry collapses to one tag — carries
+    /// no `TagNote` of its own (unlike a single-subtag replacement such as
+    /// "iw" -> "he", the test above), because the shared crate's
+    /// `canonicalise` recurses straight into the replacement and returns
+    /// it with no memory of the original input. Before this fix, setting
+    /// either of these produced NO note at all — a person typing
+    /// "i-klingon" would see their input silently become "tlh" with
+    /// nothing telling them so.
+    #[test]
+    fn describe_conversion_reports_a_replaced_grandfathered_tag() {
+        let note = describe_conversion_for_types("i-klingon", &[TagType::VorbisComments])
+            .expect("i-klingon is a grandfathered tag with a single-tag replacement");
+        assert!(note.contains("\"i-klingon\""), "{note}");
+        assert!(note.contains("\"tlh\""), "{note}");
+    }
+
+    /// The redundant-tag case: "sgn-BR" (a specific, well-formed sign-
+    /// language-plus-region combination) has a single registered
+    /// replacement, "bzs", and — like the grandfathered case above — the
+    /// crate's own recursion into `canonicalise("bzs")` leaves no note
+    /// behind explaining why the two look nothing alike.
+    #[test]
+    fn describe_conversion_reports_a_replaced_redundant_tag() {
+        let note = describe_conversion_for_types("sgn-BR", &[TagType::VorbisComments])
+            .expect("sgn-BR is a redundant tag with a single-tag replacement");
+        assert!(note.contains("\"sgn-BR\""), "{note}");
+        assert!(note.contains("\"bzs\""), "{note}");
     }
 
     #[test]
     fn describe_conversion_is_silent_for_ordinary_lossless_conversions() {
         // The plain two-to-three-letter ID3 form, with no region, script or
         // variant to lose, is not a loss — nothing is silently dropped.
-        assert_eq!(describe_conversion("en", TagType::Id3v2), None);
+        assert_eq!(describe_conversion_for_types("en", &[TagType::Id3v2]), None);
         // Pure case-folding / whitespace tidying on a container that keeps
         // the canonical tag whole is not a loss either.
-        assert_eq!(describe_conversion("EN-gb", TagType::VorbisComments), None);
-        assert_eq!(describe_conversion("pt-BR", TagType::VorbisComments), None);
+        assert_eq!(
+            describe_conversion_for_types("EN-gb", &[TagType::VorbisComments]),
+            None
+        );
+        assert_eq!(
+            describe_conversion_for_types("pt-BR", &[TagType::VorbisComments]),
+            None
+        );
     }
 
     #[test]
@@ -460,7 +638,36 @@ mod tests {
         // Not this function's job — the caller's own refusal (from
         // parse_language_input) already covers a value that makes no
         // sense as a language at all.
-        assert_eq!(describe_conversion("not a language", TagType::Id3v2), None);
+        assert_eq!(
+            describe_conversion_for_types("not a language", &[TagType::Id3v2]),
+            None
+        );
+    }
+
+    /// Review item 4 of the second review round: a file can need more than
+    /// one container updated at once (a WAV with both a RIFF INFO value
+    /// and an embedded ID3v2 tag already carrying one). The ID3 loss
+    /// reason must still be named specifically for ITS container even
+    /// when another container in the same list keeps the value whole —
+    /// the note is about the ID3 tag, not a claim that the region is lost
+    /// everywhere.
+    #[test]
+    fn describe_conversion_names_the_id3_loss_even_alongside_a_full_container() {
+        let note = describe_conversion_for_types("pt-BR", &[TagType::RiffInfo, TagType::Id3v2])
+            .expect("the ID3 half of this write still loses the region");
+        assert!(note.contains("an ID3 tag"), "{note}");
+        assert!(note.contains("\"por\""), "{note}");
+    }
+
+    /// The companion case: when NEITHER container in the list is an ID3
+    /// tag, nothing is lost structurally — this must stay silent exactly
+    /// as the single-container version does.
+    #[test]
+    fn describe_conversion_is_silent_when_no_target_is_id3() {
+        assert_eq!(
+            describe_conversion_for_types("pt-BR", &[TagType::RiffInfo, TagType::VorbisComments]),
+            None
+        );
     }
 
     #[test]
