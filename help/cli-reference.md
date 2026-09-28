@@ -442,6 +442,11 @@ action. There are two reasons for one:
   [#257](https://github.com/MWBMPartners/MeedyaManager/issues/257)). A deliberate "make every
   tag agree" option is planned ([#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
 
+The warning always describes the file your change is actually saved to. With Test Mode on, once
+an earlier edit has made a Test Mode copy of the file, every later change is saved to that copy —
+so the warning describes the copy, not your original file, which is not changed. (`meedya debug`
+on the original's name still shows the original.)
+
 If a save fails, the message starts "Could not save the changes to" and names your file — never
 the temporary working copy MeedyaManager edits first, or the Test Mode copy.
 

@@ -294,7 +294,16 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
             // disagrees and will be left alone — never a silent "✓ Set".
             // Recomputed on every matching `--set` in the batch,
             // last-flag-wins, matching `tags`'s own convention just below.
-            language_note = mm_core::metadata::language::preview_conversion_note(&args.path, value);
+            //
+            // Read from the file the save will really change, which is not
+            // always `args.path`: with Test Mode on and a copy already made
+            // by an earlier edit, the save goes to that copy, so the note
+            // must describe the copy (fourth review round, item S1 — it
+            // used to read the untouched original, and could say a tag
+            // would be "left alone" that the save then rewrote).
+            let save_starts_from = mm_core::integrity::where_a_save_starts(&args.path);
+            language_note =
+                mm_core::metadata::language::preview_conversion_note(&save_starts_from, value);
         }
 
         // Later `--set` occurrences of the same key win, matching the
@@ -1267,6 +1276,140 @@ mod tests {
         assert_eq!(
             tags.get("language").map(Vec::as_slice),
             Some(&["es".to_string()][..])
+        );
+    }
+
+    /// Plan and apply one `--set` batch the way `run` does, and return the
+    /// plan's language note, the printed actions and where the write landed.
+    fn plan_and_apply(
+        path: &std::path::Path,
+        set: &str,
+    ) -> (Option<String>, Vec<EditAction>, Option<String>) {
+        let args = EditArgs {
+            path: path.to_path_buf(),
+            set: vec![set.to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: false,
+        };
+        let plan = match build_plan(&args) {
+            Ok(plan) => plan,
+            Err(actions) => panic!("`--set {set}` is acceptable: {actions:?}"),
+        };
+        let (actions, written_to) = apply_plan(&args, &plan);
+        assert!(actions.iter().all(|a| a.success), "{set}: {actions:?}");
+        (plan.language_note, actions, written_to)
+    }
+
+    /// Fourth review round, S1: with Test Mode on, the SECOND edit of a file
+    /// is saved to the Test Mode copy the first edit made, not to the file
+    /// named on the command line — so the note must describe that copy.
+    ///
+    /// The reviewer's two steps, on a WAV whose RIFF INFO chunk says "fre"
+    /// and whose ID3 tag says "ger": set "es" (makes the copy, both of its
+    /// tags now Spanish), then set "fre". Reproduced with the binary built
+    /// from `aa7a30d`: the second step printed "this file's ID3 tag says
+    /// \"ger\" ... and will be left alone", read from the untouched
+    /// original, while mutagen then read `fra` from the copy's ID3 tag —
+    /// the tag the note said would keep saying German had just been
+    /// rewritten. The copy agreed with itself (Spanish), so the true answer
+    /// is no note at all.
+    #[test]
+    fn in_test_mode_the_note_describes_the_copy_the_change_is_saved_to() {
+        let _guard = ConfigDirGuard::new();
+        mm_core::test_mode::enable().expect("Test Mode must switch on in the private config");
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("lang_riff_fre_id3_ger.wav", dir.path());
+        let copy = mm_core::test_mode::test_mode_path(&path);
+
+        let (_note, _actions, written_to) = plan_and_apply(&path, "language=es");
+        assert_eq!(
+            written_to.as_deref(),
+            Some(copy.display().to_string().as_str()),
+            "step 1 must make the Test Mode copy"
+        );
+
+        let (note, actions, written_to) = plan_and_apply(&path, "language=fre");
+        assert_eq!(
+            written_to.as_deref(),
+            Some(copy.display().to_string().as_str()),
+            "step 2 must land on the same copy"
+        );
+        assert_eq!(
+            note, None,
+            "the copy's tags both said Spanish, so nothing disagrees and nothing is lost"
+        );
+        assert_eq!(
+            build_human_lines(&actions),
+            vec![HumanLine::Success("Set language = fre".to_string())]
+        );
+
+        // What the copy really holds matches "nothing to say": one French
+        // value shown, and an ID3 tag that agrees with it.
+        let copy_tags = mm_core::metadata::extract_tags(&copy).unwrap();
+        assert_eq!(
+            copy_tags.get("language").map(Vec::as_slice),
+            Some(&["fr".to_string()][..])
+        );
+        assert_eq!(mm_core::metadata::language::disagreement_note(&copy), None);
+
+        // The original was never touched, and still disagrees with itself —
+        // which is exactly what the old note wrongly described.
+        let original_tags = mm_core::metadata::extract_tags(&path).unwrap();
+        assert_eq!(
+            original_tags.get("language").map(Vec::as_slice),
+            Some(&["fre".to_string()][..])
+        );
+        assert!(mm_core::metadata::language::disagreement_note(&path).is_some());
+    }
+
+    /// The other direction of S1: a note the copy calls for, which the
+    /// original would not. The original holds "en-JJ" (a region code nobody
+    /// has registered), so resending "en-JJ" to the ORIGINAL is a no-change
+    /// with nothing to say. But after a first Test Mode edit set "en", the
+    /// change is saved to the copy, which holds "en" — so "en-JJ" is a real
+    /// change there, and the person must be told "JJ" is not on the
+    /// official list (and is kept as typed). Checked with the real binary
+    /// too: before the fix it printed no note at all for this change.
+    #[test]
+    fn in_test_mode_a_note_the_copy_needs_is_not_lost() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("riff_language.wav", dir.path());
+        // Before Test Mode: set "en-JJ" on the original. Its RIFF INFO chunk
+        // keeps it whole; the ID3 tag `write_tags` gives every WAV keeps
+        // "eng".
+        mm_core::metadata::write_tags(&path, &{
+            let mut tags = mm_core::metadata::TagMap::new();
+            tags.insert("language".to_string(), vec!["en-JJ".to_string()]);
+            tags
+        })
+        .unwrap();
+        assert_eq!(
+            mm_core::metadata::language::preview_conversion_note(&path, "en-JJ"),
+            None,
+            "setup: on the original, en-JJ is a resend with nothing to say"
+        );
+
+        mm_core::test_mode::enable().expect("Test Mode must switch on in the private config");
+        let copy = mm_core::test_mode::test_mode_path(&path);
+        let (_note, _actions, _written_to) = plan_and_apply(&path, "language=en");
+        let (note, _actions, _written_to) = plan_and_apply(&path, "language=en-JJ");
+        let note = note.expect("en-JJ is a real change on the copy, which held en");
+        assert!(
+            note.contains("\"JJ\" is not on the official list"),
+            "{note}"
+        );
+        assert!(note.contains("kept exactly as typed"), "{note}");
+
+        // And it was kept exactly as typed, on the copy.
+        assert_eq!(
+            mm_core::metadata::extract_tags(&copy)
+                .unwrap()
+                .get("language")
+                .map(Vec::as_slice),
+            Some(&["en-JJ".to_string()][..])
         );
     }
 

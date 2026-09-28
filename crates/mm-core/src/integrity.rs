@@ -341,6 +341,52 @@ pub fn mutate_file_safe(
     }
 }
 
+/// The file whose tags a guarded save of `path` would start from — and so
+/// the file a PREVIEW of that save must read.
+///
+/// Why this exists (fourth language-policy review, item S1): `meedya edit`
+/// works out its language note before it saves anything, by reading the
+/// file. It used to read `path` every time. But with Test Mode on and a
+/// copy already made by an earlier edit, a save never touches `path` — it
+/// changes that copy (see [`plan_target`]). So the note described a file the
+/// save would not change. Reproduced with the binary built from `aa7a30d`:
+/// on a WAV whose RIFF INFO chunk said "fre" and whose ID3 tag said "ger",
+/// Test Mode on, `--set language=es` made the copy (both of its tags
+/// Spanish); then `--set language=fre` printed "this file's ID3 tag says
+/// \"ger\" ... and will be left alone", read from the original, while the
+/// save rewrote the copy's ID3 tag to `fra`.
+///
+/// Returns the tracked Test Mode copy when Test Mode is on and that copy is
+/// still on disk — the same test [`plan_target`] makes, through the same
+/// helper, so a preview and a save can never pick different files — and
+/// `path` itself otherwise. That covers the other two cases correctly as
+/// well: with Test Mode off the save works on a copy made from `path` just
+/// beforehand, and a first Test Mode edit makes its copy from `path`, so in
+/// both of those the save starts from exactly `path`'s tags.
+///
+/// What this cannot do: promise the file is unchanged by the time the save
+/// runs — another program could change it in between. It answers "where
+/// would a save start, as things stand now", nothing more.
+pub fn where_a_save_starts(path: &Path) -> PathBuf {
+    if test_mode::is_enabled()
+        && let Some(existing) = existing_tracked_copy(path)
+    {
+        return existing;
+    }
+    path.to_path_buf()
+}
+
+/// The Test Mode copy an earlier edit made of `path`, if the manifest names
+/// one and it is still on disk.
+///
+/// `exists()` matters: the manifest can outlive a copy the user deleted by
+/// hand, and editing (or previewing) a path that is not there would fail.
+/// Shared by [`plan_target`] and [`where_a_save_starts`] so the two can never
+/// disagree about which file a save changes.
+fn existing_tracked_copy(path: &Path) -> Option<PathBuf> {
+    test_mode::tracked_copy_for(path).filter(|copy| copy.exists())
+}
+
 /// Decide where a mutation of `path` should land, creating the target file if
 /// it does not already exist.
 ///
@@ -349,11 +395,7 @@ pub fn mutate_file_safe(
 fn plan_target(path: &Path) -> Result<MutationTarget, String> {
     if test_mode::is_enabled() {
         // Already tracked *and* still on disk?  Keep editing that same copy.
-        // `exists()` matters: the manifest can outlive a copy the user
-        // deleted by hand, and editing a path that is not there would fail.
-        if let Some(existing) = test_mode::tracked_copy_for(path)
-            && existing.exists()
-        {
+        if let Some(existing) = existing_tracked_copy(path) {
             debug!(
                 original = %path.display(),
                 copy = %existing.display(),
@@ -899,6 +941,48 @@ mod tests {
             tags.get(crate::metadata::TAG_ARTIST).map(Vec::as_slice),
             Some(&["Second Artist".to_string()][..]),
             "the second edit must be present on the copy"
+        );
+    }
+
+    // ── where_a_save_starts — fourth review round, item S1 ──────────────────
+
+    /// A preview must read the file the save will really change. That is
+    /// the original in every case but one: Test Mode on, with a copy an
+    /// earlier edit made still on disk. A copy the manifest names but that
+    /// has since been deleted does not count — `plan_target` would make a
+    /// fresh one from the original, so the original is where the save
+    /// starts.
+    #[test]
+    fn where_a_save_starts_follows_the_same_choice_as_the_save() {
+        let _guard = ConfigDirGuard::new();
+        let dir = TempDir::new().unwrap();
+        let original = dir.path().join("track.wav");
+        write_wav_fixture(&original);
+        let copy = test_mode::test_mode_path(&original);
+
+        assert_eq!(where_a_save_starts(&original), original, "Test Mode off");
+
+        test_mode::enable().unwrap();
+        assert_eq!(
+            where_a_save_starts(&original),
+            original,
+            "Test Mode on, but no copy made yet: the first save copies the original"
+        );
+
+        let first = write_tags_safe(&original, &one_tag(crate::metadata::TAG_TITLE, "First"));
+        assert!(first.success, "{:?}", first.error);
+        assert_eq!(first.path, copy, "setup: the first save made the copy");
+        assert_eq!(
+            where_a_save_starts(&original),
+            copy,
+            "Test Mode on, copy made: the next save changes the copy"
+        );
+
+        std::fs::remove_file(&copy).unwrap();
+        assert_eq!(
+            where_a_save_starts(&original),
+            original,
+            "a copy deleted by hand is not where the next save starts"
         );
     }
 
