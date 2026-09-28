@@ -921,6 +921,108 @@ mod tests {
         .expect("a recognised legacy language code must be accepted");
     }
 
+    /// Review item 2 of the second language-policy review round: proves
+    /// COMPAT-030's "resend, don't omit" case through the FFI boundary the
+    /// native UIs actually call — `write_tags_rejects_gibberish_language`
+    /// (mm-core) and `resending_an_unchanged_language_value_is_never_
+    /// refused` (the metadata_roundtrip integration test) prove the harder
+    /// cases (a value nothing could parse fresh) one layer down; mm-ffi has
+    /// no direct dependency on `lofty` to poke a raw value in the way those
+    /// two tests do, so this proves the same property for the ordinary
+    /// case every native UI actually hits on every save: resending a value
+    /// this crate itself wrote a moment ago.
+    #[test]
+    fn write_metadata_resends_an_unchanged_language_without_refusal() {
+        let guard = ConfigDirGuard::new("resendlanguage");
+
+        let p = guard.path().join("track.wav");
+        write_wav_fixture(&p);
+
+        write_metadata(
+            p.display().to_string(),
+            vec![TagEntry {
+                key: "language".to_string(),
+                value: "fre".to_string(),
+            }],
+        )
+        .expect("setting a recognised legacy language code must succeed");
+
+        // "fre" is French's BIBLIOGRAPHIC ISO 639-2 form; TRACK-070 always
+        // writes the TERMINOLOGY form into an ID3 tag (this WAV gets an
+        // embedded one — see `wav_write_tags_uses_embedded_id3v2_not_riff_info`
+        // in `metadata_roundtrip.rs`), so what actually lands on disk is
+        // "fra", not "fre" — read back rather than assumed, since resending
+        // the WRONG text would make this test look like it proves the
+        // COMPAT-030 property without actually exercising it.
+        let stored = mm_core::metadata::extract_tags(&p)
+            .unwrap_or_else(|e| panic!("extract_tags failed: {e}"))
+            .get("language")
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(
+            stored,
+            vec!["fra".to_string()],
+            "sanity check: this is what must actually be resent below"
+        );
+
+        // RESENDING the exact value that is already there — key present,
+        // not omitted, which is what every native UI in this project
+        // actually does on every save (see `write_tags`'s own doc
+        // comment) — must not be refused.
+        write_metadata(
+            p.display().to_string(),
+            vec![TagEntry {
+                key: "language".to_string(),
+                value: stored[0].clone(),
+            }],
+        )
+        .expect("resending the unchanged value \"fra\" must not be refused");
+    }
+
+    /// Review item 7 of the second language-policy review round, MUST FIX:
+    /// `integrity::mutate_file_safe` used to build its failure message as
+    /// `"mutation failed on '{target}': {e}"`, where `target` is Test
+    /// Mode's own internal `_MeedyaManager` copy path — leaking that
+    /// plumbing straight into a message the native apps show verbatim.
+    /// Enables Test Mode (unlike `write_metadata_rejects_gibberish_language`
+    /// above, which does not, so it never exercised the diverted-target
+    /// code path this bug lived in) and checks the refusal names the
+    /// rejected VALUE, never a path.
+    #[test]
+    fn write_metadata_refusal_does_not_name_a_file_path() {
+        let guard = ConfigDirGuard::new("refusalnopath");
+
+        let p = guard.path().join("track.wav");
+        write_wav_fixture(&p);
+        mm_core::test_mode::enable().expect("test mode must enable under the isolated config dir");
+
+        let err = write_metadata(
+            p.display().to_string(),
+            vec![TagEntry {
+                key: "language".to_string(),
+                value: "not a language".to_string(),
+            }],
+        )
+        .expect_err("a language nothing recognises must not report success");
+
+        let message = match err {
+            MmFfiError::Metadata(m) => m,
+            other => panic!("expected MmFfiError::Metadata, got: {other:?}"),
+        };
+        assert!(
+            message.contains("not a language"),
+            "must still name the rejected value: {message:?}"
+        );
+        assert!(
+            !message.contains("_MeedyaManager"),
+            "must not name Test Mode's internal copy: {message:?}"
+        );
+        assert!(
+            !message.contains(guard.path().to_string_lossy().as_ref()),
+            "must not name any path on this machine: {message:?}"
+        );
+    }
+
     // ── The write lock — issue #49 ──────────────────────────────────────────
 
     /// **Regression — two copies moving files at once.**

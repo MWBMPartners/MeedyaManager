@@ -238,11 +238,20 @@ pub fn mutate_file_safe(
     // -- Step 3: run the caller's mutation against the target --------------
     if let Err(e) = op(&plan.target) {
         cleanup_if_ours(&plan);
-        return failure(
-            path,
-            sha256_before,
-            format!("mutation failed on '{}': {e}", plan.target.display()),
-        );
+        // Review item 7 of the second language-policy review round: this
+        // used to read `format!("mutation failed on '{}': {e}", plan.target
+        // .display())` — in Test Mode, `plan.target` is the internal
+        // `_MeedyaManager` copy the write was diverted to, not anything
+        // the person asking for the edit chose or knows about, so naming
+        // it here leaked that plumbing straight into a message the apps
+        // show verbatim (a plain validation refusal, e.g. an unrecognised
+        // `language` value, ending with "... on '/path/to/_MeedyaManager
+        // copy'"). `failure()` already logs the REAL path (`path`, the
+        // function's own parameter, not `plan.target`) via `error!()` and
+        // the corruption log, so nothing is lost for anyone debugging this
+        // from the log file — only the copy of the message an app puts on
+        // screen loses information nobody outside this crate should see.
+        return failure(path, sha256_before, format!("mutation failed: {e}"));
     }
 
     // -- Step 4: hash the mutated target -----------------------------------
