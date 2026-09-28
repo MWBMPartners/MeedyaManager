@@ -1139,6 +1139,94 @@ fn notes_that_were_already_right_are_unchanged_and_match_what_is_stored() {
     }
 }
 
+/// Fourth review round, item S2, on real files: an old three-letter code as
+/// the first part of a longer tag (`eng-Latn`) used to be reported on an MP3
+/// as "an ID3 tag has no three-letter code for \"eng\" at all" — false, as
+/// `eng` is the code ID3 uses for English. What really happens (reproduced
+/// with the binary built from `aa7a30d`, and read back with mutagen): the
+/// MP3's ID3 tag stores `und`, "not known", because an old code is only
+/// understood on its own. Each case asks for the note first, exactly as
+/// `meedya edit` does, then writes the value and reads back what the ID3 tag
+/// really holds. The FLAC keeps what was typed, and its note says so too,
+/// with what to type instead.
+#[test]
+fn an_old_code_inside_a_longer_tag_is_explained_on_real_files() {
+    use lofty::tag::TagType;
+    use mm_core::metadata::language::preview_conversion_note;
+
+    // (typed, the old code, what to type instead)
+    let cases: &[(&str, &str, &str)] = &[
+        ("eng-Latn", "eng", "en-Latn"),
+        ("ger-1996", "ger", "de-1996"),
+        ("deu-1996", "deu", "de-1996"),
+        ("eng-x-foo", "eng", "en-x-foo"),
+        ("eng-u-ca-gregory", "eng", "en-u-ca-gregory"),
+        ("fre-Latn-CA", "fre", "fr-Latn-CA"),
+        ("eng-US-x-foo", "eng", "en-US-x-foo"),
+    ];
+
+    for (typed, code, suggestion) in cases {
+        let (_dir, mp3) = copy_fixture("silence.mp3");
+        assert_eq!(
+            preview_conversion_note(&mp3, typed),
+            Some(format!(
+                "\"{code}\" is an old code; inside a longer tag it is not recognised, so an ID3 \
+                 tag will store it as not known — type \"{suggestion}\" instead"
+            )),
+            "silence.mp3: the note for `--set language={typed}`"
+        );
+        write_tags(&mp3, &build_tags(&[(TAG_LANGUAGE, typed)]))
+            .unwrap_or_else(|e| panic!("{typed}: write_tags failed: {e}"));
+        assert_eq!(
+            read_raw_language_from_tag_type(&mp3, TagType::Id3v2).as_deref(),
+            Some("und"),
+            "{typed}: the note says the ID3 tag stores \"not known\" — check it does"
+        );
+
+        let (_dir2, flac) = copy_fixture("silence.flac");
+        assert_eq!(
+            preview_conversion_note(&flac, typed),
+            Some(format!(
+                "\"{code}\" is an old code; inside a longer tag it is not recognised, but it is \
+                 kept exactly as typed — type \"{suggestion}\" instead"
+            )),
+            "silence.flac: the note for `--set language={typed}`"
+        );
+        write_tags(&flac, &build_tags(&[(TAG_LANGUAGE, typed)]))
+            .unwrap_or_else(|e| panic!("{typed}: write_tags failed: {e}"));
+        assert_eq!(
+            read_raw_language_from_tag_type(&flac, TagType::VorbisComments).as_deref(),
+            Some(*typed),
+            "{typed}: the note says a FLAC keeps it exactly as typed — check it does"
+        );
+    }
+}
+
+/// Fourth review round, item S2, the other half: an extended-language part
+/// (`bra` in `sgn-bra`) is lost on an ID3 tag, which stores only `sgn`. The
+/// note used to say only that "bra" is not on the official list.
+#[test]
+fn a_lost_extended_language_part_is_named_on_a_real_mp3() {
+    use lofty::tag::TagType;
+    use mm_core::metadata::language::preview_conversion_note;
+
+    let (_dir, mp3) = copy_fixture("silence.mp3");
+    assert_eq!(
+        preview_conversion_note(&mp3, "sgn-bra").as_deref(),
+        Some(
+            "an ID3 tag can only hold the three-letter language code, so it will lose the \
+             extended-language part you typed — it will be stored there as \"sgn\"; \"bra\" is \
+             not on the official list of language subtags"
+        )
+    );
+    write_tags(&mp3, &build_tags(&[(TAG_LANGUAGE, "sgn-bra")])).unwrap();
+    assert_eq!(
+        read_raw_language_from_tag_type(&mp3, TagType::Id3v2).as_deref(),
+        Some("sgn"),
+        "the note says \"sgn\" is what is stored — check it is"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Tags that disagree about the language (third review round, item 3)
 // ---------------------------------------------------------------------------

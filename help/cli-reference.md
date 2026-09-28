@@ -428,7 +428,10 @@ action. There are two reasons for one:
 - **What is stored differs from what you typed, and something is lost or replaced.** An MP3's
   tag (and the ID3 tag a WAV can carry) can only hold a three-letter language code, so
   `--set language=pt-BR` on an MP3 warns that the region is lost and `por` is stored. A code with
-  no three-letter form at all is stored as "not known". An old or grouped code the standards have
+  no three-letter form at all is stored as "not known". An old three-letter code is understood
+  only on its own: as the first part of a longer code (`eng-Latn`, `ger-1996`) it is not
+  recognised, so an MP3 stores "not known" and the warning says what to type instead
+  (`en-Latn`, `de-1996`). An old or grouped code the standards have
   replaced (`i-klingon` → `tlh`) is named. Nothing is said when nothing is lost: an everyday
   three-letter code (`eng`, `fre`, `ger`, `deu`), `und`, or a different letter case is stored as
   the same language without a warning.

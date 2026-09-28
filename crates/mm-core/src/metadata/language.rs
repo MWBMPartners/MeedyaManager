@@ -350,6 +350,13 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
     // shared crate does before reading anything, so a stray space never
     // makes "what was stored" look different from "what was typed".
     let typed = trim_lang_whitespace(input);
+    // An old three-letter code as the first part of a longer tag
+    // (`eng-Latn`) — fourth review round, item S2. See
+    // `old_code_inside_longer_tag` for what counts, and why.
+    let old_code = old_code_inside_longer_tag(&parsed, typed);
+    // Set once the ID3 reason below has explained that old code, so the
+    // crate's own note about the same subtag does not say it a second time.
+    let mut old_code_explained = false;
 
     let mut reasons: Vec<String> = Vec::new();
 
@@ -369,6 +376,23 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
         let stored = language_value_for_tag_type(&parsed, TagType::Id3v2);
         if stored.eq_ignore_ascii_case(typed) {
             // Stored exactly as typed (letter case aside) — say nothing.
+        } else if let Some(old) = old_code.as_ref().filter(|_| stored == "und") {
+            // Fourth review round, item S2. `eng-Latn` fell into the next
+            // branch and was told "an ID3 tag has no three-letter code for
+            // \"eng\" at all" — false: `eng` IS a three-letter code, the one
+            // an ID3 tag uses for English. What is really going on is that
+            // an old code is only understood ON ITS OWN; as the first part
+            // of a longer tag it is not a language anybody recognises, so
+            // there is nothing to put in the ID3 tag but "not known".
+            // Reproduced with the binary built from `aa7a30d`: mutagen read
+            // `und` from the MP3 after `--set language=eng-Latn`. Say so,
+            // and say what to type instead.
+            reasons.push(format!(
+                "\"{}\" is an old code; inside a longer tag it is not recognised, so an ID3 tag \
+                 will store it as not known — type \"{}\" instead",
+                old.code, old.suggestion
+            ));
+            old_code_explained = true;
         } else if stored == "und" && parsed.language.as_deref() != Some("und") {
             // "No three-letter code" is only true of a language that is
             // not itself "not known". Before the third review round this
@@ -392,6 +416,14 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
             // than always listing "the region, script or extra detail"
             // whether or not the input actually had all three.
             let mut dropped: Vec<&str> = Vec::new();
+            // Fourth review round, item S2: an extended-language part (the
+            // `bra` of `sgn-bra`) was never listed, so typing `sgn-bra` on
+            // an MP3 said nothing about losing it — only that "bra" is not
+            // on the official list — while the ID3 tag stored just `sgn`.
+            // It comes first because it comes first in a tag.
+            if parsed.extlang.is_some() {
+                dropped.push("extended-language part");
+            }
             if parsed.region.is_some() {
                 dropped.push("region");
             }
@@ -438,12 +470,41 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
     let mut note_reasons: Vec<String> = Vec::new();
     for note in &parsed.notes {
         match note {
-            TagNote::UnregisteredSubtag { subtag } => note_reasons.push(format!(
-                "\"{subtag}\" is not on the official list of language subtags{}",
-                keeps_whole
-                    .map(|where_kept| format!(", but it is kept exactly as typed{where_kept}"))
-                    .unwrap_or_default()
-            )),
+            TagNote::UnregisteredSubtag { subtag } => {
+                // Fourth review round, item S2: the old three-letter code at
+                // the start of a longer tag (`eng` in `eng-Latn`) is "not on
+                // the official list" too — true, but it tells nobody what
+                // went wrong or what to type.
+                let old_code_here = old_code
+                    .as_ref()
+                    .filter(|old| old.code.eq_ignore_ascii_case(subtag));
+                match (old_code_here, keeps_whole) {
+                    // The ID3 reason above has already explained it, and no
+                    // other tag keeps anything: nothing left to add.
+                    (Some(_), None) if old_code_explained => {}
+                    // Not explained yet (no ID3 tag is written), and a tag
+                    // keeps it whole: this note is the only place to say it.
+                    (Some(old), Some(where_kept)) if !old_code_explained => {
+                        note_reasons.push(format!(
+                            "\"{}\" is an old code; inside a longer tag it is not recognised, \
+                             but it is kept exactly as typed{where_kept} — type \"{}\" instead",
+                            old.code, old.suggestion
+                        ));
+                    }
+                    // Everything else — including the old code when the ID3
+                    // reason has explained it but another tag keeps it whole —
+                    // gets the note it has always had, which then only adds
+                    // where it is kept.
+                    (_, where_kept) => note_reasons.push(format!(
+                        "\"{subtag}\" is not on the official list of language subtags{}",
+                        where_kept
+                            .map(|where_kept| format!(
+                                ", but it is kept exactly as typed{where_kept}"
+                            ))
+                            .unwrap_or_default()
+                    )),
+                }
+            }
             TagNote::DeprecatedNoReplacement { subtag } => note_reasons.push(format!(
                 "\"{subtag}\" is an old code with no single replacement{}",
                 keeps_whole
@@ -526,6 +587,72 @@ fn join_with_and(items: &[&str]) -> String {
 /// this module must never tidy away something the crate would object to.
 fn trim_lang_whitespace(s: &str) -> &str {
     s.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r'))
+}
+
+/// An old three-letter code typed as the first part of a longer tag, and
+/// what to type instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OldCodeInsideLongerTag {
+    /// The old code, in lower case (`eng`).
+    code: String,
+    /// The same tag with the old code replaced by the current one, in its
+    /// standard form (`en-Latn`).
+    suggestion: String,
+}
+
+/// When `typed` starts with an old three-letter code (`eng`, `ger`, `fre`)
+/// followed by more parts (`eng-Latn`, `ger-1996`, `eng-x-foo`), return the
+/// code and the tag a person meant — fourth review round, item S2.
+///
+/// Why this needs its own message: LANG-002 understands an old code only ON
+/// ITS OWN (`eng` → `en`) or in Matroska's "three letters and a country"
+/// shape (`fre-CA` → `fr-CA`). Anywhere else, the shared crate reads the
+/// value as an ordinary tag whose language part is `eng` — which is not a
+/// language anybody has registered — so an ID3 tag stores it as "not known"
+/// (`und`), and a tag that keeps the full code keeps `eng-Latn`, which
+/// nothing will recognise as English later. The old note blamed ID3 for
+/// having "no three-letter code for \"eng\"", which is false: `eng` is the
+/// very code an ID3 tag uses for English.
+///
+/// Only codes LANG-002 turns into a DIFFERENT current code count. A
+/// three-letter code that is already a language in its own right (`sgn`,
+/// `yue`, `und`, a local-use `qaa`) is a normal first part of a longer tag,
+/// and returns `None`. So does anything the shared crate already turned into
+/// something else (Matroska's `fre-CA` is read as `fr-CA`), because then the
+/// language part is no longer the old code at all.
+///
+/// The suggestion is the current code followed by the rest of what was
+/// typed, put into the standard form (`fre-latn-ca` → `fr-Latn-CA`); if that
+/// is somehow not a well-formed tag, the joined text is offered as it is.
+fn old_code_inside_longer_tag(parsed: &LanguageTag, typed: &str) -> Option<OldCodeInsideLongerTag> {
+    let (first, rest) = typed.split_once('-')?;
+    if first.len() != 3 || !first.chars().all(|c| c.is_ascii_alphabetic()) || rest.is_empty() {
+        return None;
+    }
+    // The shared crate kept it as the tag's language part — it was not
+    // read some other way (as Matroska's shape is).
+    if !parsed
+        .language
+        .as_deref()
+        .is_some_and(|language| language.eq_ignore_ascii_case(first))
+    {
+        return None;
+    }
+    // On its own, LANG-002 reads it as a different, current code.
+    let on_its_own = from_legacy_three_letter(first)?;
+    if on_its_own.tag.eq_ignore_ascii_case(first) {
+        return None;
+    }
+    let joined = format!("{}-{rest}", on_its_own.tag);
+    let restated = canonicalise(&joined);
+    Some(OldCodeInsideLongerTag {
+        code: first.to_ascii_lowercase(),
+        suggestion: if restated.is_malformed() {
+            joined
+        } else {
+            restated.tag
+        },
+    })
 }
 
 /// Which of `tag_types` keep a language value whole, for the end of a "kept
@@ -1018,6 +1145,128 @@ mod tests {
         assert!(
             three.contains("will lose the region, script and extra detail you typed"),
             "{three}"
+        );
+    }
+
+    /// Fourth review round, item S2: every input the reviewer named, and
+    /// what a person should type instead.
+    const OLD_CODE_INSIDE_A_LONGER_TAG: &[(&str, &str, &str)] = &[
+        ("eng-Latn", "eng", "en-Latn"),
+        ("ger-1996", "ger", "de-1996"),
+        ("deu-1996", "deu", "de-1996"),
+        ("eng-x-foo", "eng", "en-x-foo"),
+        ("eng-u-ca-gregory", "eng", "en-u-ca-gregory"),
+        ("fre-Latn-CA", "fre", "fr-Latn-CA"),
+        ("eng-US-x-foo", "eng", "en-US-x-foo"),
+    ];
+
+    /// On an ID3 tag, an old code inside a longer tag used to be reported as
+    /// "an ID3 tag has no three-letter code for \"eng\" at all" — false, as
+    /// `eng` is exactly the code ID3 uses for English. The note must say
+    /// what is really happening, and what to type instead — and say it
+    /// once, not again as "not on the official list".
+    #[test]
+    fn describe_conversion_explains_an_old_code_inside_a_longer_tag_on_id3() {
+        for (typed, code, suggestion) in OLD_CODE_INSIDE_A_LONGER_TAG {
+            let note = describe_conversion_for_types(typed, &[TagType::Id3v2])
+                .unwrap_or_else(|| panic!("{typed}: the ID3 tag stores \"not known\""));
+            assert_eq!(
+                note,
+                format!(
+                    "\"{code}\" is an old code; inside a longer tag it is not recognised, so an \
+                     ID3 tag will store it as not known — type \"{suggestion}\" instead"
+                ),
+                "{typed}"
+            );
+        }
+    }
+
+    /// With no ID3 tag, the old code is kept as typed — true, and the note
+    /// already said so — but the person is now also told why nothing will
+    /// recognise it, and what to type instead. With both kinds of tag, the
+    /// ID3 reason explains it and the other note only adds where it is kept.
+    #[test]
+    fn describe_conversion_explains_an_old_code_inside_a_longer_tag_everywhere() {
+        for (typed, code, suggestion) in OLD_CODE_INSIDE_A_LONGER_TAG {
+            let full_only = describe_conversion_for_types(typed, &[TagType::VorbisComments])
+                .unwrap_or_else(|| panic!("{typed}: worth a note on a full tag too"));
+            assert_eq!(
+                full_only,
+                format!(
+                    "\"{code}\" is an old code; inside a longer tag it is not recognised, but it \
+                     is kept exactly as typed — type \"{suggestion}\" instead"
+                ),
+                "{typed}"
+            );
+
+            let both = describe_conversion_for_types(typed, &[TagType::RiffInfo, TagType::Id3v2])
+                .unwrap_or_else(|| panic!("{typed}: both notes apply"));
+            assert!(
+                both.starts_with(&format!(
+                    "\"{code}\" is an old code; inside a longer tag it is not recognised, so an \
+                     ID3 tag will store it as not known — type \"{suggestion}\" instead; "
+                )),
+                "{typed}: {both}"
+            );
+            assert!(
+                both.ends_with(&format!(
+                    "\"{code}\" is not on the official list of language subtags, but it is kept \
+                     exactly as typed in every tag except the ID3 one"
+                )),
+                "{typed}: {both}"
+            );
+            assert!(!both.contains("no three-letter code"), "{typed}: {both}");
+        }
+    }
+
+    /// The suggestion is offered in the standard form, whatever letter case
+    /// was typed — "type \"en-latn\" instead" would be a second thing for
+    /// the person to fix.
+    #[test]
+    fn describe_conversion_suggests_the_standard_form() {
+        for (typed, suggestion) in [("ENG-latn", "en-Latn"), ("fre-latn-ca", "fr-Latn-CA")] {
+            let note = describe_conversion_for_types(typed, &[TagType::Id3v2])
+                .unwrap_or_else(|| panic!("{typed}: the ID3 tag stores \"not known\""));
+            assert!(
+                note.ends_with(&format!("— type \"{suggestion}\" instead")),
+                "{typed}: {note}"
+            );
+        }
+    }
+
+    /// Not every three-letter first part is an old code. `sgn`, `yue`,
+    /// `und` and `cmn` are languages in their own right, and Matroska's
+    /// `fre-CA` is read as `fr-CA` — none of these may be called "an old
+    /// code".
+    #[test]
+    fn describe_conversion_does_not_call_a_current_code_old() {
+        for typed in [
+            "sgn-bra", "yue-HK", "und-Latn", "cmn-Hans", "fre-CA", "en-Latn",
+        ] {
+            for tag_types in EVERY_TARGET_SHAPE {
+                let note = describe_conversion_for_types(typed, tag_types).unwrap_or_default();
+                assert!(
+                    !note.contains("is an old code;"),
+                    "{typed} on {tag_types:?}: {note}"
+                );
+            }
+        }
+    }
+
+    /// Fourth review round, item S2: an extended-language part (`bra` in
+    /// `sgn-bra`) was never listed among the parts an ID3 tag loses, so the
+    /// note said only that "bra" is not on the official list, while the
+    /// ID3 tag stored just `sgn`.
+    #[test]
+    fn describe_conversion_names_a_lost_extended_language_part() {
+        let note = describe_conversion_for_types("sgn-bra", &[TagType::Id3v2])
+            .expect("an ID3 tag cannot hold an extended-language part");
+        assert!(
+            note.starts_with(
+                "an ID3 tag can only hold the three-letter language code, so it will lose the \
+                 extended-language part you typed — it will be stored there as \"sgn\""
+            ),
+            "{note}"
         );
     }
 
