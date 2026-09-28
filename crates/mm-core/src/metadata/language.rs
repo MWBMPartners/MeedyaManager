@@ -964,6 +964,63 @@ mod tests {
         );
     }
 
+    // ── Third review round, item 5: breakages no test used to catch ─────
+    //
+    // The reviewer removed, one at a time, the lines that name the script,
+    // the extension part and the private-use part in the ID3 "you will
+    // lose ..." note, and broke the "and" in a two-part list — and every
+    // test still passed, because the only lost-part test used `pt-BR`,
+    // which has a region and nothing else. Each test below names the part
+    // it checks, in the exact words a person sees.
+
+    /// Breakage N12: the script was not named.
+    #[test]
+    fn describe_conversion_names_a_lost_script() {
+        let note = describe_conversion_for_types("zh-Hant", &[TagType::Id3v2])
+            .expect("an ID3 tag cannot hold a script");
+        assert!(note.contains("will lose the script you typed"), "{note}");
+        assert!(note.contains("\"zho\""), "{note}");
+    }
+
+    /// Breakage N10: the extension part was not named.
+    #[test]
+    fn describe_conversion_names_a_lost_extension() {
+        let note = describe_conversion_for_types("en-u-ca-gregory", &[TagType::Id3v2])
+            .expect("an ID3 tag cannot hold an extension");
+        assert!(note.contains("will lose the extension you typed"), "{note}");
+        assert!(note.contains("\"eng\""), "{note}");
+    }
+
+    /// Breakage N11: the private-use part was not named.
+    #[test]
+    fn describe_conversion_names_a_lost_private_use_part() {
+        let note = describe_conversion_for_types("en-x-mine", &[TagType::Id3v2])
+            .expect("an ID3 tag cannot hold a private-use part");
+        assert!(
+            note.contains("will lose the private-use part you typed"),
+            "{note}"
+        );
+    }
+
+    /// Breakage N13: two lost parts must read "region and script", not
+    /// "region, script" — and three read "a, b and c".
+    #[test]
+    fn describe_conversion_joins_two_or_more_lost_parts_as_a_person_would() {
+        let two = describe_conversion_for_types("zh-Hant-TW", &[TagType::Id3v2])
+            .expect("region and script are lost");
+        assert!(
+            two.contains("will lose the region and script you typed"),
+            "{two}"
+        );
+
+        let three = describe_conversion_for_types("sl-Latn-IT-rozaj", &[TagType::Id3v2])
+            .expect("region, script and a variant are lost");
+        assert!(
+            three.contains("will lose the region, script and extra detail you typed"),
+            "{three}"
+        );
+    }
+
     #[test]
     fn a_kept_as_typed_note_only_claims_what_each_container_really_keeps() {
         // `JJ` is not a registered region. A full container keeps it; an

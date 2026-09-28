@@ -1295,6 +1295,198 @@ fn an_unrecognised_value_beside_a_code_is_reported_not_guessed_at() {
 }
 
 // ---------------------------------------------------------------------------
+// Code the third reviewer could break without any test failing (item 5)
+// ---------------------------------------------------------------------------
+//
+// The third review round deliberately broke each new piece of code from the
+// second round, one at a time, and ran every test. Eight breakages still
+// passed; the lead asked for a test that fails for each. The unit-level ones
+// (the lost-part names and "and" joining) are in `language.rs`; these need a
+// real file.
+
+/// Breakage N2: reading a file's languages removed repeats by their raw
+/// text instead of their standard form, so a FLAC whose Vorbis comments
+/// hold both "en" and "eng" (the same language, written twice by two
+/// tools) read back as two languages. It must read back as one — the
+/// first text seen is kept, as editors show stored text (COMPAT-040).
+#[test]
+fn one_language_written_two_ways_in_the_same_tag_reads_back_once() {
+    let (_dir, path) = copy_fixture("silence.flac");
+    poke_raw_language_values(&path, &["en", "eng"]);
+    assert_eq!(
+        read_raw_language_values_from_tag_type(&path, lofty::tag::TagType::VorbisComments),
+        vec!["en".to_string(), "eng".to_string()],
+        "fixture sanity check: both comments are really in the file"
+    );
+
+    assert_eq!(
+        extract_tags(&path)
+            .unwrap()
+            .get(TAG_LANGUAGE)
+            .map(Vec::as_slice),
+        Some(["en".to_string()].as_slice()),
+        "\"en\" and \"eng\" are one language, told twice"
+    );
+
+    // Two genuinely different languages are both kept.
+    let (_dir2, path2) = copy_fixture("silence.flac");
+    poke_raw_language_values(&path2, &["en", "fr"]);
+    assert_eq!(
+        extract_tags(&path2)
+            .unwrap()
+            .get(TAG_LANGUAGE)
+            .map(Vec::as_slice),
+        Some(["en".to_string(), "fr".to_string()].as_slice())
+    );
+}
+
+/// Breakage N4: the preview skipped its "is this value already the file's
+/// language?" check, so an unchanged value was described as if it were
+/// being written afresh. An MP3 whose ID3 tag already holds "pt-BR"
+/// (written by another tool — MeedyaManager would store "por") resends
+/// "pt-BR": nothing will be written, so there is no region to lose and
+/// nothing to say.
+#[test]
+fn resending_a_value_already_stored_gets_no_conversion_note() {
+    use mm_core::metadata::language::preview_conversion_note;
+
+    let (_dir, path) = copy_fixture("silence.mp3");
+    poke_raw_language_value(&path, "pt-BR");
+    assert_eq!(
+        preview_conversion_note(&path, "pt-BR"),
+        None,
+        "pt-BR is already there; nothing is converted, so nothing is lost"
+    );
+    // The same value typed on a file that does NOT already hold it does
+    // get the note — so the silence above is the check, not an accident.
+    let (_dir2, fresh) = copy_fixture("silence.mp3");
+    assert!(preview_conversion_note(&fresh, "pt-BR").is_some());
+}
+
+/// Breakage N5: the preview looked only at the file's main tag, not every
+/// tag `write_tags` will really change. A FLAC's main tag is its Vorbis
+/// comments, which keep "pt-BR" whole — but the FLAC below also starts with
+/// an ID3 tag that already holds a language, so `write_tags` changes that
+/// one too, and an ID3 tag can only keep "por". The note must say so.
+#[test]
+fn the_preview_covers_every_tag_that_will_change_not_just_the_main_one() {
+    use mm_core::metadata::language::preview_conversion_note;
+
+    let (_dir, path) = copy_fixture("lang_vorbis_eng_id3_ger.flac");
+    let note = preview_conversion_note(&path, "pt-BR")
+        .expect("the leading ID3 tag loses the region, even though the Vorbis comment keeps it");
+    assert!(note.contains("an ID3 tag"), "{note}");
+    assert!(note.contains("\"por\""), "{note}");
+}
+
+/// Breakage N6: when checking whether a resent language is unchanged,
+/// `write_tags` compared it with EVERY tag's value run together, rather
+/// than with what `extract_tags` shows. The desktop apps read every field,
+/// let a person change one, and send every field back — so on a WAV whose
+/// RIFF INFO chunk holds "English" (a word, not a code) and whose ID3 tag
+/// holds "eng", the shown "English" no longer matched "English; eng", was
+/// treated as a new value, and the WHOLE save was refused because
+/// "English" is not a language code. A title-only change must succeed, and
+/// the language must be left exactly as it was.
+#[test]
+fn a_program_that_writes_back_every_field_can_still_change_only_the_title() {
+    let (_dir, path) = copy_fixture("lang_riff_english_id3_eng.wav");
+
+    // Read everything, change only the title, write everything back —
+    // exactly what every editing screen in this project does on Save.
+    let mut everything = extract_tags(&path).unwrap();
+    assert_eq!(
+        everything.get(TAG_LANGUAGE).map(Vec::as_slice),
+        Some(["English".to_string()].as_slice()),
+        "fixture sanity check: the full tag's text is what is shown"
+    );
+    everything.insert(TAG_TITLE.to_string(), vec!["New".to_string()]);
+    write_tags(&path, &everything)
+        .unwrap_or_else(|e| panic!("writing back unchanged fields must not be refused: {e}"));
+
+    // The new title went into the file's main (ID3) tag. The RIFF INFO
+    // chunk's own "Old" title is still there too, so both come back — that
+    // is issue #255 (any field, not only language, goes stale in the tag
+    // that was not written), not what this test is about.
+    let after = extract_tags(&path).unwrap();
+    assert!(
+        after
+            .get(TAG_TITLE)
+            .is_some_and(|titles| titles.contains(&"New".to_string())),
+        "the title change must have been made: {:?}",
+        after.get(TAG_TITLE)
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+        Some("English"),
+        "the RIFF INFO language must be untouched"
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("eng"),
+        "the ID3 language must be untouched"
+    );
+}
+
+/// Like `poke_raw_language_value`, but puts SEVERAL separate language
+/// items into the file's main tag — for a Vorbis comment, one `LANGUAGE=`
+/// line each, which is how two tools that each added a value leave it.
+fn poke_raw_language_values(path: &Path, values: &[&str]) {
+    use lofty::config::WriteOptions;
+    use lofty::file::TaggedFileExt;
+    use lofty::probe::Probe;
+    use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem};
+
+    let mut tagged_file = Probe::open(path)
+        .unwrap_or_else(|e| panic!("{}: cannot probe: {e}", path.display()))
+        .read()
+        .unwrap_or_else(|e| panic!("{}: cannot read: {e}", path.display()));
+    if tagged_file.primary_tag_mut().is_none() {
+        let tag_type = tagged_file.primary_tag_type();
+        tagged_file.insert_tag(Tag::new(tag_type));
+    }
+    let tag = tagged_file
+        .primary_tag_mut()
+        .expect("primary tag must exist after insert_tag");
+    tag.remove_key(&ItemKey::Language);
+    for value in values {
+        tag.push(TagItem::new(
+            ItemKey::Language,
+            ItemValue::Text((*value).to_string()),
+        ));
+    }
+    tag.save_to_path(path, WriteOptions::default())
+        .unwrap_or_else(|e| panic!("{}: cannot save: {e}", path.display()));
+}
+
+/// Every language value ONE kind of tag holds, in order — the several-value
+/// version of `read_raw_language_from_tag_type`.
+fn read_raw_language_values_from_tag_type(
+    path: &Path,
+    tag_type: lofty::tag::TagType,
+) -> Vec<String> {
+    use lofty::file::TaggedFileExt;
+    use lofty::probe::Probe;
+    use lofty::tag::{ItemKey, ItemValue};
+
+    let tagged_file = Probe::open(path)
+        .unwrap_or_else(|e| panic!("{}: cannot probe: {e}", path.display()))
+        .read()
+        .unwrap_or_else(|e| panic!("{}: cannot read: {e}", path.display()));
+    let mut values = Vec::new();
+    for tag in tagged_file.tags() {
+        if tag.tag_type() == tag_type {
+            for item in tag.get_items(&ItemKey::Language) {
+                if let ItemValue::Text(text) = item.value() {
+                    values.push(text.clone());
+                }
+            }
+        }
+    }
+    values
+}
+
+// ---------------------------------------------------------------------------
 // Cover art round trip — raw and integrity-guarded
 // ---------------------------------------------------------------------------
 
