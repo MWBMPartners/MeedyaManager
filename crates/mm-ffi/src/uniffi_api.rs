@@ -849,8 +849,21 @@ mod tests {
     fn get_metadata_reports_tags_that_disagree_about_the_language() {
         let guard = ConfigDirGuard::new("langnote");
         let path = copy_core_fixture("lang_riff_fre_id3_ger.wav", guard.path());
+        // Fourth review round, item M6 (the reviewer's P10): the file had
+        // no tag but the language, so "only the language entry carries a
+        // note" was checked against an empty list and proved nothing — the
+        // reviewer put a note on EVERY entry and this test still passed.
+        // Give it a title first (the language is not sent, so it is left
+        // exactly as it was — COMPAT-030).
+        let mut title = metadata::TagMap::new();
+        title.insert(metadata::TAG_TITLE.to_string(), vec!["Old".to_string()]);
+        metadata::write_tags(&path, &title).expect("a title can be added");
 
         let entries = get_metadata(path.display().to_string()).expect("the file is readable");
+        assert!(
+            entries.iter().any(|e| e.key == metadata::TAG_TITLE),
+            "the check below needs an entry other than the language: {entries:?}"
+        );
         let language = entries
             .iter()
             .find(|e| e.key == "language")

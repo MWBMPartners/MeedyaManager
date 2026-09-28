@@ -3,9 +3,10 @@
 #
 # MeedyaManager — crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
-# Builds the three "language in more than one tag at once" test files from
+# Builds the five "language in more than one tag at once" test files from
 # the committed `silence.wav`, `silence.flac` and `riff_language.wav`, using
-# nothing but Python's standard library. Run it from anywhere:
+# nothing but Python's standard library. (Three since the third review round;
+# two more added for the fourth.) Run it from anywhere:
 #
 #     python3 crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
@@ -198,6 +199,24 @@ def main() -> None:
             HERE / "silence.wav",
             [("ILNG", "English"), ("INAM", "Old")],
             id3v24_tag([("TLAN", "eng")]),
+        ),
+        # Both tags hold the same word, "English", which is not a language
+        # code. The same text in both is agreement, even though MeedyaManager
+        # cannot say which language it means — so no disagreement may be
+        # reported (added for the fourth review round, item M6).
+        "lang_riff_english_id3_english.wav": wav_with(
+            HERE / "silence.wav",
+            [("ILNG", "English"), ("INAM", "Old")],
+            id3v24_tag([("TLAN", "English")]),
+        ),
+        # RIFF INFO says "en"; the ID3 tag holds "ger" TWICE (two values,
+        # separated by a zero byte, as ID3 version 2.4 allows). The
+        # disagreement must name "ger" once, not "ger" and "ger" (fourth
+        # review round, item M6).
+        "lang_riff_en_id3_ger_twice.wav": wav_with(
+            HERE / "silence.wav",
+            [("ILNG", "en"), ("INAM", "Old")],
+            id3v24_tag([("TLAN", "ger\x00ger")]),
         ),
     }
     for name, data in fixtures.items():

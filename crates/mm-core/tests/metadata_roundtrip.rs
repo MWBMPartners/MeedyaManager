@@ -1382,6 +1382,64 @@ fn an_unrecognised_value_beside_a_code_is_reported_not_guessed_at() {
     );
 }
 
+/// Fourth review round, item M6 (the reviewer's P6): the same word nothing
+/// recognises — "English" — in BOTH tags is agreement, whatever language it
+/// means, so nothing may be reported. The reviewer made every unrecognised
+/// shown value agree with nothing at all, and every test still passed; this
+/// file (built by `make_language_fixtures.py`) is the case that notices.
+#[test]
+fn the_same_unrecognised_word_in_both_tags_is_agreement() {
+    use mm_core::metadata::language::disagreement_note;
+
+    let (_dir, path) = copy_fixture("lang_riff_english_id3_english.wav");
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+        Some("English"),
+        "fixture sanity check"
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("English"),
+        "fixture sanity check"
+    );
+    assert_eq!(
+        extract_tags(&path)
+            .unwrap()
+            .get(TAG_LANGUAGE)
+            .map(Vec::as_slice),
+        Some(["English".to_string()].as_slice())
+    );
+    assert_eq!(
+        disagreement_note(&path),
+        None,
+        "both tags say exactly the same thing"
+    );
+}
+
+/// Fourth review round, item M6 (the reviewer's P5): an ID3 tag holding the
+/// same disagreeing value twice ("ger", "ger" — two values, as ID3 version
+/// 2.4 allows) must be named once. The reviewer removed the "each once"
+/// check, and every test still passed; the note then read "says \"ger\"
+/// and \"ger\", which disagree".
+#[test]
+fn the_same_hidden_value_twice_is_named_once() {
+    use mm_core::metadata::language::disagreement_note;
+
+    let (_dir, path) = copy_fixture("lang_riff_en_id3_ger_twice.wav");
+    assert_eq!(
+        read_raw_language_values_from_tag_type(&path, lofty::tag::TagType::Id3v2),
+        vec!["ger".to_string(), "ger".to_string()],
+        "fixture sanity check: the ID3 tag really holds \"ger\" twice"
+    );
+    assert_eq!(
+        disagreement_note(&path).as_deref(),
+        Some(
+            "this file's ID3 tag says \"ger\", which disagrees with \"en\" — only \"en\" is \
+             shown, because the tag that can hold the full language code is read first"
+        )
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Rule conditions on `language`, on real files (third review round, items 6-7)
 // ---------------------------------------------------------------------------

@@ -25,18 +25,21 @@ MeedyaManager's own writing code keeps every tag in a file in step, so it can
 never make a file whose tags disagree about the language — but real files do
 (two different tools each wrote one tag). The third independent review of the
 language-policy work (issue #251) found MeedyaManager showed one answer and
-hid the other. These three files test that, and are built byte by byte from
+hid the other. These five files test that, and are built byte by byte from
 the files above by `make_language_fixtures.py` in this folder, using only
 Python's standard library — deliberately not `lofty`, the library the app
 itself uses, so a fault in `lofty` cannot hide a fault in the app. Regenerate
-all three with `python3 make_language_fixtures.py`; the output is the same
-every time.
+all five with `python3 make_language_fixtures.py`; the output is the same
+every time (the first three were checked to come out byte for byte the same
+when the last two were added, for the fourth review round).
 
 | File | What is in it | Used for |
 |------|---------------|----------|
 | `lang_riff_fre_id3_ger.wav` | `riff_language.wav` (RIFF INFO `ILNG` = `fre`) plus an embedded ID3v2.4 tag with `TLAN` = `ger` | The tags disagree: `fre` is shown, `ger` must be reported, and resending `fre` must leave the ID3 tag alone |
 | `lang_vorbis_eng_id3_ger.flac` | `silence.flac` with its Vorbis `LANGUAGE` set to `eng`, and an ID3v2.4 tag with `TLAN` = `ger` placed before the FLAC data, as some older tools write them | The same disagreement in a FLAC. MeedyaManager can read this file but cannot yet save one like it (its own issue) |
 | `lang_riff_english_id3_eng.wav` | `silence.wav` with its RIFF INFO replaced by `ILNG` = `English` (a word, not a code) and `INAM` = `Old`, plus an ID3v2.4 tag with `TLAN` = `eng` | A value nothing recognises beside a real code; also a program that reads every field and writes them all back with only the title changed must not be refused |
+| `lang_riff_english_id3_english.wav` | `silence.wav` with `ILNG` = `English` and `INAM` = `Old`, plus an ID3v2.4 tag with `TLAN` = `English` | The same unrecognised word in both tags is agreement: no disagreement may be reported |
+| `lang_riff_en_id3_ger_twice.wav` | `silence.wav` with `ILNG` = `en` and `INAM` = `Old`, plus an ID3v2.4 tag whose `TLAN` holds `ger` twice (two values, separated by a zero byte) | The disagreement must name `ger` once, not twice |
 
 Total size is well under 1 MB (~28 KB as of writing). Do not replace these
 with larger or non-silent audio — the tests only need parseable tag
