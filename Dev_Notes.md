@@ -961,11 +961,14 @@ stored metadata, and shows no language menus yet):
     Swift, C# and GTK screens (#256).
   - **Rule conditions:** `Contains`, `StartsWith`, `EndsWith` and `NotContains` on `language`
     now try the stored text as well as the standard form, like `Matches` (a `Not` form is true
-    only when neither matches). All of them take the stored values the same way the standard
-    form is taken — the first one when building a path, each one on its own otherwise — never
-    all the values run together, which is what `Matches` used to try. See
-    `stored_language_forms` in `rule_engine/mod.rs`, and "Language in rules" in
-    `help/rule-syntax.md`.
+    only when neither matches). When building a path — the only mode rules run in today — the
+    stored side takes the first stored value, just as the standard form does; `Matches` used to
+    try all the values run together (`"eng; fra"`) instead. (**Corrected by the fourth review
+    round:** this used to say the stored side is taken "the same way the standard form is
+    taken" in every mode. Not so in display mode, where the standard form is all the values
+    joined together (`"en; fr"`) while the stored side tries each value on its own. No rule runs
+    in display mode today, so nothing a person sees is affected.) See `stored_language_forms`
+    in `rule_engine/mod.rs`, and "Language in rules" in `help/rule-syntax.md`.
   - **Failure messages** from `integrity::mutate_file_safe` now read "Could not save the changes
     to '<your file>': …" and never name the scratch copy or the Test Mode copy — the scratch
     copy's path used to reach the screen through errors such as "Cannot read tags from

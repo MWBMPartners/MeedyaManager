@@ -180,11 +180,18 @@ fn evaluate_condition(condition: &Condition, ctx: &EvalContext<'_>) -> MmResult<
     // `Contains`, `StartsWith`, `EndsWith` and `NotContains` alike — a rule
     // written against what an MP3 stores (`eng`) must keep matching now
     // that the standard form (`en`) is compared too. Which stored values
-    // mirror the standard-form side exactly (see `stored_language_forms`):
-    // the first one when building a path, each one on its own otherwise —
-    // never all of them run together, which is what `Matches` used to try
-    // (`"eng; fra"`), so an unanchored `Matches "fra"` wrongly matched a
-    // file whose FIRST language is English while building its path.
+    // are tried (see `stored_language_forms`): when building a path — the
+    // only mode rules run in today — the first one, just as the standard
+    // form is the first one; otherwise each one on its own. Never all of
+    // them run together, which is what `Matches` used to try (`"eng;
+    // fra"`), so an unanchored `Matches "fra"` wrongly matched a file whose
+    // FIRST language is English while building its path.
+    //
+    // Corrected by the fourth review round (item M2): this said the stored
+    // side "mirrors the standard-form side exactly" in both modes. Only in
+    // path mode. In display mode the standard form is every value joined
+    // together (`"en; fr"` — see `EvalContext::resolve_metadata_tag`), while
+    // the stored side still tries one value at a time.
     // Empty for every other field, so none of this changes anything else.
     let stored_forms = stored_language_forms(condition, ctx);
     let raw_expected_lower = condition.value.to_lowercase();
@@ -250,12 +257,20 @@ fn evaluate_condition(condition: &Condition, ctx: &EvalContext<'_>) -> MmResult<
 /// The text a file actually stores for `language`, in the shape a rule
 /// condition should compare it in — or nothing, for any other field.
 ///
-/// Mirrors how the standard form is picked for the same condition (see
-/// `EvalContext::resolve_metadata_tag`): when building a path, only the
-/// FIRST stored value counts, just as only the first standard form does;
-/// otherwise each stored value is tried on its own. Never the values run
-/// together into one string — the standard-form side never compares that,
-/// so the stored side must not either (third review round, item 6).
+/// When building a path — the only mode rules run in today (the renamer and
+/// `meedya scan` both build paths) — only the FIRST stored value counts,
+/// just as only the first standard form does (see
+/// `EvalContext::resolve_metadata_tag`). Otherwise, in display mode, each
+/// stored value is tried on its own. The stored values are never run
+/// together into one string, because that is not text any file stores
+/// (third review round, item 6).
+///
+/// Corrected by the fourth review round (item M2): this used to say it
+/// mirrors the standard form in both modes, and that "the standard-form
+/// side never compares" the values run together. In display mode it does:
+/// there the standard form is every value joined with "; " (`"en; fr"`).
+/// So only path mode is a mirror. Nothing runs a rule in display mode
+/// today, so nothing a person sees is affected.
 fn stored_language_forms(condition: &Condition, ctx: &EvalContext<'_>) -> Vec<String> {
     if !condition.field.eq_ignore_ascii_case(TAG_LANGUAGE) {
         return Vec::new();
@@ -774,6 +789,35 @@ mod tests {
     /// The stored-text side is for `language` only: another field's
     /// `Contains` must not start matching because the FILE's language
     /// happens to contain the text.
+    /// Fourth review round, item M3: the help page now warns that text
+    /// conditions compare language CODES, so they match languages a person
+    /// did not mean, and recommends `Equals`. This pins every example it
+    /// gives, so the page cannot drift from what the engine does:
+    /// `Contains "en"` matches Bengali stored as `ben`; `StartsWith "fr"`
+    /// matches Western Frisian stored as `fry`; `Contains "ger"` looks for
+    /// `de` and matches Makonde, `kde`. `Equals` matches none of them.
+    #[test]
+    fn language_text_conditions_compare_codes_as_the_help_page_warns() {
+        for (stored, operator, value) in [
+            ("ben", ConditionOp::Contains, "en"),
+            ("fry", ConditionOp::StartsWith, "fr"),
+            ("kde", ConditionOp::Contains, "ger"),
+        ] {
+            assert!(
+                evaluate_on(&[stored], true, &language_condition(operator, value)),
+                "{operator:?} {value:?} matches a file storing {stored:?}"
+            );
+            assert!(
+                !evaluate_on(
+                    &[stored],
+                    true,
+                    &language_condition(ConditionOp::Equals, value)
+                ),
+                "Equals {value:?} must not match a file storing {stored:?}"
+            );
+        }
+    }
+
     #[test]
     fn contains_is_unaffected_for_a_non_language_field() {
         let tags = make_tags(&[("genre", "Rock"), ("language", "eng")]);

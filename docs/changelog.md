@@ -200,9 +200,10 @@ Format: `## [Version] — YYYY-MM-DD`
   a file no longer shows the same one twice just because it happened to be spelled two different
   ways across two tag containers. `Contains`, `StartsWith`, `EndsWith` and `NotContains` now work
   the same way `Matches` does — tried against both the standard form and the text the file
-  stores — and for a file with more than one language they look at the first stored language (or
-  each one on its own), never at all of them run together. See "Language in rules" in
-  `help/rule-syntax.md`.
+  stores — and for a file with more than one language, rules (which only ever run while building
+  a file or folder name) look at the first language only. These text conditions compare language
+  codes, not names, so `Contains "en"` also matches Bengali stored as `ben`; use `Equals` to ask
+  "is this file in this language?". See "Language in rules" in `help/rule-syntax.md`.
 
   When saving a file fails, the message now starts "Could not save the changes to" and names the
   file you asked to change — never the temporary working copy MeedyaManager edits first, or its

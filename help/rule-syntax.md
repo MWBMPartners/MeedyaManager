@@ -178,9 +178,18 @@ The same applies to a rule's own `language` conditions (the `rules` list in your
 - **`Matches`, `Contains`, `StartsWith` and `EndsWith` are tried against both forms** — the
   standard form, and the text the file actually stores — and match if either one does. So a
   pattern written for what an MP3 stores (`Matches "^eng$"`) keeps working. **`NotContains` is
-  true only when neither form contains the text.** For a file with more than one language,
-  these use the first stored language when building a name, and each stored language on its
-  own when shown as text — never all of them run together.
+  true only when neither form contains the text.**
+- **These text conditions compare language codes, not language names**, so they can match a
+  language you did not mean. `Contains "en"` also matches Bengali on a file that stores it as
+  `ben` (every MP3 does); `StartsWith "fr"` also matches Western Frisian stored as `fry`; and
+  `Contains "ger"` looks for `de` — the standard form of `ger` — so it also matches Makonde,
+  whose code is `kde`. **To ask "is this file in this language?", use `Equals`** (or
+  `NotEquals`), which compares the whole code.
+- **A file with more than one language:** rules only ever run while building a file or folder
+  name, and there every condition — the standard form and the stored text alike — looks at the
+  first language only. (If a condition were checked where a template is shown as text instead,
+  which nothing does today, the standard form would be all the languages joined together, such
+  as `en; fr`, while the stored text would still be tried one language at a time.)
 
 Rule conditions in general — every operator, how `condition_mode` combines several
 conditions, and how `priority` and `stop_on_match` work — are not described in these help pages
