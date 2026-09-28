@@ -821,6 +821,25 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
         }
     };
 
+    // -- Item 5 groundwork: which OTHER tag containers does this file
+    // already have, besides the primary one? Collected now, while
+    // `tagged_file` is only borrowed immutably, because getting the
+    // primary tag mutably (next line) borrows it exclusively until that
+    // borrow's last use. A file can genuinely carry more than one tag
+    // container at once (a WAV with both a RIFF INFO chunk and an
+    // embedded ID3v2 tag, say) — found and reproduced while this rule was
+    // being reviewed: setting `language` only ever touched the primary
+    // container, leaving a stale, contradicting value in any other one
+    // that already had its own. See the loop after the primary tag is
+    // saved, below.
+    let primary_type = tagged_file.primary_tag_type();
+    let other_tag_types: Vec<TagType> = tagged_file
+        .tags()
+        .iter()
+        .map(lofty::tag::Tag::tag_type)
+        .filter(|tt| *tt != primary_type)
+        .collect();
+
     // Get (or create) the primary tag for this file format
     let tag = get_or_create_primary_tag(&mut tagged_file);
 
@@ -867,6 +886,38 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
 
     // Persist to disk using default write options (preserves format quirks)
     tag.save_to_path(path, WriteOptions::default())?;
+
+    // -- Item 5: when `language` is genuinely being SET to a new value,
+    // keep every OTHER tag container the file already has consistent with
+    // it too — not only the primary one. A file that already carries a
+    // language value in more than one container (RIFF INFO's `ILNG`
+    // alongside an embedded ID3v2 tag on a WAV file, most concretely) must
+    // not end up with the NEW value in one and a now-stale, contradicting
+    // OLD value left behind in the other. Each container that already had
+    // a language value gets the SAME TRACK-070 treatment the primary one
+    // just did — its own per-format form, not a copy of the primary's —
+    // and each is saved with its own `save_to_path` call, because a single
+    // `Tag` only ever writes its own container's region of the file (this
+    // is also why the primary tag above needed its own separate call).
+    // A container that never had a language value is deliberately left
+    // alone: this fixes a stale value, it does not go looking for new
+    // places to put one.
+    if let Some(LanguageChange::Set(parsed)) = &language_change {
+        for tag_type in other_tag_types {
+            let Some(other_tag) = tagged_file.tag_mut(tag_type) else {
+                continue; // the type was listed a moment ago; still defensive
+            };
+            if other_tag.get_items(&ItemKey::Language).next().is_none() {
+                continue; // never had one — not this fix's job to add one
+            }
+            let value = language::language_value_for_tag_type(parsed, tag_type);
+            other_tag.remove_key(&ItemKey::Language);
+            if !value.is_empty() {
+                other_tag.push(TagItem::new(ItemKey::Language, ItemValue::Text(value)));
+            }
+            other_tag.save_to_path(path, WriteOptions::default())?;
+        }
+    }
 
     Ok(())
 }

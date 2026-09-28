@@ -57,7 +57,7 @@ section for the full account; in short:
 - A **genuine, unrelated-to-language surprise found while testing this**: `lofty` (the tag
   library) treats a WAV file's "primary" tag as an embedded ID3v2 chunk, never a RIFF INFO chunk
   — true for every field this crate writes, not only `language`. Recorded in `Dev_Notes.md` and
-  on the `wav_riff_info_round_trip` test; not fixed here, as it is unrelated to this policy and a
+  on the `wav_write_tags_uses_embedded_id3v2_not_riff_info` test; not fixed here, as it is unrelated to this policy and a
   larger, separate piece of work.
 - Issues opened: #251 (umbrella), #252 (reading a sidecar file's language from its name,
   TEXT-030 — deliberately not built here, it needs a new field carried through to the Swift and

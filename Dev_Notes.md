@@ -791,7 +791,7 @@ stored metadata, and shows no language menus yet):
   crate writes WAV files generally, unrelated to the language work, but the
   language-specific write path is the first thing to have depended on which container
   a file is really using, which is what surfaced it. See the comment on
-  `wav_riff_info_round_trip` in `crates/mm-core/tests/metadata_roundtrip.rs`.
+  `wav_write_tags_uses_embedded_id3v2_not_riff_info` in `crates/mm-core/tests/metadata_roundtrip.rs`.
 - **A second genuine surprise**: the policy says ID3v2.4's `TLAN` field can hold several
   three-letter codes separated by a null character, with the first being the primary
   language — reading LANG-002 alone, this sounds like something MeedyaManager's own code

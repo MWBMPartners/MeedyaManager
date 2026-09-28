@@ -371,7 +371,7 @@ fn m4a_ilst_round_trip() {
 }
 
 #[test]
-fn wav_riff_info_round_trip() {
+fn wav_write_tags_uses_embedded_id3v2_not_riff_info() {
     // A genuine surprise found while building the language-policy work
     // (TRACK-070's footer: "each project MUST check [tool-specific details]
     // against the tool it actually runs, with a test"): despite this
@@ -394,6 +394,56 @@ fn wav_riff_info_round_trip() {
     let mut expected = tags.clone();
     expected.insert(TAG_LANGUAGE.to_string(), vec!["eng".to_string()]);
     round_trip_all_paths_expecting("silence.wav", &tags, &expected);
+}
+
+/// Item 5 of the language-policy review: a file can carry a language value
+/// in MORE THAN ONE tag container at once — `riff_language.wav` (a real
+/// `ffmpeg`-made file, `-metadata language=fre`, see `tests/fixtures/
+/// README.md`) has RIFF INFO's own `ILNG=fre` from the moment it is
+/// created, and (per the test above) `write_tags` puts a NEW `language`
+/// value into an embedded ID3v2 tag, never RIFF INFO. Before this fix,
+/// setting `language=en` therefore left the file with a NEW, correct `en`
+/// in the ID3v2 tag it had just created AND a STALE, now-contradicting
+/// `fre` still sitting in RIFF INFO — reading the file back genuinely gave
+/// `["fre", "eng"]`, two different answers for the same field. `write_tags`
+/// now keeps every container that ALREADY has a language value consistent
+/// with a genuinely new one, each in its own correct per-format form.
+#[test]
+fn setting_language_keeps_every_tag_container_consistent() {
+    let (_dir, path) = copy_fixture("riff_language.wav");
+
+    // Sanity check on the fixture itself: RIFF INFO's ILNG really is there
+    // before anything touches it, and — per the test above — the primary
+    // (ID3v2) tag does not have a language value of its own yet.
+    let before = extract_tags(&path).unwrap();
+    assert_eq!(
+        before.get(TAG_LANGUAGE).map(Vec::as_slice),
+        Some(["fre".to_string()].as_slice()),
+        "fixture sanity check: riff_language.wav must start with only RIFF INFO's ILNG=fre"
+    );
+
+    let mut tags = TagMap::new();
+    tags.insert(TAG_LANGUAGE.to_string(), vec!["en".to_string()]);
+    write_tags(&path, &tags).unwrap_or_else(|e| panic!("write_tags failed: {e}"));
+
+    let after = extract_tags(&path)
+        .unwrap_or_else(|e| panic!("extract_tags failed after setting language: {e}"));
+    // Both containers now exist and BOTH carry the SAME fact ("English"),
+    // each in its own correct TRACK-070 form: RIFF INFO gets the canonical
+    // tag itself ("en"), the newly created ID3v2 tag gets the terminology
+    // three-letter code ("eng") — no stale "fre" left anywhere.
+    let mut values = after
+        .get(TAG_LANGUAGE)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .to_vec();
+    values.sort();
+    assert_eq!(
+        values,
+        vec!["en".to_string(), "eng".to_string()],
+        "every tag container carrying a language value must agree, each in its own correct \
+         per-format form — a leftover \"fre\" here would mean a stale value was left behind"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -442,7 +492,7 @@ fn year_tag_does_not_round_trip_on_id3v2_or_mp4() {
 /// terminology form `language_value_for_tag_type` would have written).
 /// Vorbis and the MP4 freeform item both have a genuine free-text slot, so
 /// the canonical tag survives whole there. `silence.wav` is ID3v2 too, for
-/// the reason explained at length on `wav_riff_info_round_trip` above — a
+/// the reason explained at length on `wav_write_tags_uses_embedded_id3v2_not_riff_info` above — a
 /// fresh WAV file gets the same embedded ID3v2 tag an MP3 does, not a RIFF
 /// INFO chunk, so it takes the same lossy path as `silence.mp3`. No
 /// `ConfigDirGuard` is needed — this exercises only the raw `write_tags` /

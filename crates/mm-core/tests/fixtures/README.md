@@ -16,6 +16,7 @@ directory.
 | `silence.flac`  | FLAC, Vorbis comments              | `ffmpeg -y -f lavfi -i anullsrc=r=8000:cl=mono -t 0.2 -c:a flac silence.flac` |
 | `silence.m4a`   | MP4/M4A, iTunes atoms (`AAC-LC`)  | `ffmpeg -y -f lavfi -i anullsrc=r=8000:cl=mono -t 0.2 -c:a aac -b:a 32k silence.m4a` |
 | `silence.wav`   | WAV, RIFF INFO                     | `ffmpeg -y -f lavfi -i anullsrc=r=8000:cl=mono -t 0.2 -c:a pcm_s16le silence.wav` |
+| `riff_language.wav` | WAV, a genuine RIFF INFO `ILNG` chunk carrying `fre` — used for the "keep every tag container consistent" test (`write_tags`, TRACK-070, item 5 of the language-policy review). `write_tags` on a `.wav` puts a brand new `language` value into an embedded ID3v2 tag (see the note on `wav_write_tags_uses_embedded_id3v2_not_riff_info` below) rather than RIFF INFO, so this fixture is the only way to test a file that has RIFF INFO's own `ILNG` from the start. | `ffmpeg -y -f lavfi -i anullsrc=r=8000:cl=mono -t 0.2 -c:a pcm_s16le -metadata language=fre riff_language.wav` |
 | `cover.png`     | 8x8 solid-blue PNG (cover art test) | `ffmpeg -y -f lavfi -i color=c=blue:s=8x8 -frames:v 1 -update 1 cover.png` |
 
 Total size is well under 1 MB (~28 KB as of writing). Do not replace these

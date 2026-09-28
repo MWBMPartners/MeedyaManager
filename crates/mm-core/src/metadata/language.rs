@@ -263,7 +263,7 @@ pub fn parse_language_input(input: &str) -> Result<LanguageTag, LanguageInputErr
 /// `TagType::RiffInfo` correctly (the canonical tag, matching the policy),
 /// for whichever caller does reach it — reading a file some other tool
 /// already gave a genuine RIFF INFO tag, say — but `write_tags` itself
-/// cannot produce that path today. See `wav_riff_info_round_trip` in
+/// cannot produce that path today. See `wav_write_tags_uses_embedded_id3v2_not_riff_info` in
 /// `crates/mm-core/tests/metadata_roundtrip.rs` for the test that found
 /// this, and the note in this crate's write-up of this work for why fixing
 /// that more general (not language-specific) fact is out of scope here.
