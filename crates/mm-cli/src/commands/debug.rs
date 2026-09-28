@@ -40,6 +40,14 @@ struct DebugOutput {
     classification: ClassificationInfo,
     /// All extracted metadata tags
     tags: std::collections::HashMap<String, Vec<String>>,
+    /// Set only when the file's tags disagree about the language: the
+    /// language shown in `tags` comes from the tag that can hold the full
+    /// code, and the file's ID3 tag says something different (third review
+    /// round of the language-policy work, item 3). Omitted from the JSON
+    /// when there is nothing to say, so existing consumers see an
+    /// unchanged document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    language_note: Option<String>,
     /// Audio properties (if available)
     audio_properties: Option<AudioPropsInfo>,
     /// Cover art info (if embedded)
@@ -102,7 +110,7 @@ pub fn run(ctx: &CliContext, args: &DebugArgs) -> anyhow::Result<i32> {
         .unwrap_or_else(|_| mm_core::classify::MediaClassification::unknown());
 
     // ── 2. Extract metadata tags ────────────────────────────────────────
-    let tags = mm_core::metadata::extract_tags(&args.path).unwrap_or_default();
+    let (tags, language_note) = read_tags(&args.path);
 
     // ── 3. Extract audio properties ─────────────────────────────────────
     let audio_props = mm_core::metadata::extract_audio_properties(&args.path).ok();
@@ -142,6 +150,7 @@ pub fn run(ctx: &CliContext, args: &DebugArgs) -> anyhow::Result<i32> {
             &args.path,
             &classification,
             &tags,
+            language_note.as_deref(),
             &audio_props,
             &cover_art,
             &companions,
@@ -150,6 +159,7 @@ pub fn run(ctx: &CliContext, args: &DebugArgs) -> anyhow::Result<i32> {
             &args.path,
             &classification,
             &tags,
+            language_note.as_deref(),
             &audio_props,
             &cover_art,
             &companions,
@@ -160,6 +170,22 @@ pub fn run(ctx: &CliContext, args: &DebugArgs) -> anyhow::Result<i32> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Read the file's tags, and the note that goes with the language when the
+/// file's tags disagree about it.
+///
+/// `tags` shows ONE answer for the language even when the file's tags hold
+/// two different ones: a tag that can hold the full language code is read
+/// in preference to the ID3 tag's three-letter one (TRACK-070). The note says
+/// when the ID3 tag holds something different, so that answer is never
+/// silently hidden (third review round of the language-policy work, item
+/// 3). A separate function, rather than two lines inside `run`, only so a
+/// test can check both halves come back together.
+fn read_tags(path: &std::path::Path) -> (mm_core::metadata::TagMap, Option<String>) {
+    let tags = mm_core::metadata::extract_tags(path).unwrap_or_default();
+    let language_note = mm_core::metadata::language::disagreement_note(path);
+    (tags, language_note)
+}
+
 // ─── JSON renderer ──────────────────────────────────────────────────────────
 
 /// Render all debug info as a single JSON object.
@@ -167,12 +193,35 @@ fn render_json(
     path: &std::path::Path,
     classification: &mm_core::classify::MediaClassification,
     tags: &mm_core::metadata::TagMap,
+    language_note: Option<&str>,
     audio_props: &Option<mm_core::metadata::AudioProperties>,
     cover_art: &Option<mm_core::metadata::CoverArt>,
     companions: &[mm_core::companion::CompanionFile],
 ) {
-    // Build the JSON output structure
-    let output = DebugOutput {
+    output::print_json(&build_debug_output(
+        path,
+        classification,
+        tags,
+        language_note,
+        audio_props,
+        cover_art,
+        companions,
+    ));
+}
+
+/// The JSON document `render_json` prints, built without printing it — a
+/// plain function a test can call and inspect (the printing itself cannot
+/// be captured from inside a test).
+fn build_debug_output(
+    path: &std::path::Path,
+    classification: &mm_core::classify::MediaClassification,
+    tags: &mm_core::metadata::TagMap,
+    language_note: Option<&str>,
+    audio_props: &Option<mm_core::metadata::AudioProperties>,
+    cover_art: &Option<mm_core::metadata::CoverArt>,
+    companions: &[mm_core::companion::CompanionFile],
+) -> DebugOutput {
+    DebugOutput {
         file: path.display().to_string(),
         classification: ClassificationInfo {
             group: format!("{:?}", classification.group),
@@ -181,6 +230,7 @@ fn render_json(
             quality: format!("{:?}", classification.quality),
         },
         tags: tags.clone(),
+        language_note: language_note.map(str::to_string),
         audio_properties: audio_props.as_ref().map(|p| AudioPropsInfo {
             duration_secs: p.duration_secs,
             bitrate_kbps: p.bitrate_kbps,
@@ -199,9 +249,7 @@ fn render_json(
                 companion_type: format!("{:?}", c.companion_type),
             })
             .collect(),
-    };
-
-    output::print_json(&output);
+    }
 }
 
 // ─── Human renderer ─────────────────────────────────────────────────────────
@@ -212,6 +260,7 @@ fn render_human(
     path: &std::path::Path,
     classification: &mm_core::classify::MediaClassification,
     tags: &mm_core::metadata::TagMap,
+    language_note: Option<&str>,
     audio_props: &Option<mm_core::metadata::AudioProperties>,
     cover_art: &Option<mm_core::metadata::CoverArt>,
     companions: &[mm_core::companion::CompanionFile],
@@ -241,6 +290,10 @@ fn render_human(
             .map(|(key, values)| vec![(*key).clone(), mm_core::metadata::join_multi_value(values)])
             .collect();
         output::print_table(&["Tag", "Value"], &rows);
+    }
+    // Right under the table, next to the language it explains.
+    if let Some(note) = language_note {
+        output::print_warning(note);
     }
 
     // ── Audio Properties ────────────────────────────────────────────────
@@ -376,6 +429,62 @@ mod tests {
         // Should succeed but print a warning about no cover art
         let code = run(&ctx, &args).unwrap();
         assert_eq!(code, ExitCode::SUCCESS);
+    }
+
+    /// Third review round of the language-policy work, item 3: a WAV whose
+    /// RIFF INFO chunk says "fre" and whose ID3 tag says "ger" used to be
+    /// shown as plain "fre", with the German nowhere to be seen. The note
+    /// must come back with the tags, and must reach the JSON document.
+    #[test]
+    fn tags_that_disagree_about_the_language_are_reported_not_hidden() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("lang_riff_fre_id3_ger.wav", dir.path());
+
+        let (tags, note) = read_tags(&path);
+        assert_eq!(
+            tags.get("language").map(Vec::as_slice),
+            Some(&["fre".to_string()][..]),
+            "the tag holding the full code is still the one shown (TRACK-070)"
+        );
+        let note = note.expect("the ID3 tag's \"ger\" must not be silently hidden");
+        assert!(note.contains("ID3 tag says \"ger\""), "{note}");
+        assert!(note.contains("\"fre\""), "{note}");
+
+        let classification = mm_core::classify::MediaClassification::unknown();
+        let json = serde_json::to_value(build_debug_output(
+            &path,
+            &classification,
+            &tags,
+            Some(&note),
+            &None,
+            &None,
+            &[],
+        ))
+        .unwrap();
+        assert_eq!(json["language_note"], serde_json::Value::String(note));
+    }
+
+    /// The other side: a file whose tags agree carries no note, and the
+    /// JSON document keeps exactly the shape it always had.
+    #[test]
+    fn tags_that_agree_carry_no_language_note() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("riff_language.wav", dir.path());
+        let (tags, note) = read_tags(&path);
+        assert_eq!(note, None);
+
+        let classification = mm_core::classify::MediaClassification::unknown();
+        let json = serde_json::to_value(build_debug_output(
+            &path,
+            &classification,
+            &tags,
+            None,
+            &None,
+            &None,
+            &[],
+        ))
+        .unwrap();
+        assert!(json.get("language_note").is_none(), "{json}");
     }
 
     /// DebugArgs can be constructed programmatically for testing

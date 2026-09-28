@@ -1140,6 +1140,161 @@ fn notes_that_were_already_right_are_unchanged_and_match_what_is_stored() {
 }
 
 // ---------------------------------------------------------------------------
+// Tags that disagree about the language (third review round, item 3)
+// ---------------------------------------------------------------------------
+
+/// A WAV whose RIFF INFO chunk says "fre" and whose embedded ID3 tag says
+/// "ger" (built byte by byte by `fixtures/make_language_fixtures.py`, not by
+/// MeedyaManager, which would never write tags that disagree). Before this
+/// round the German was invisible: `extract_tags` showed "fre", and
+/// resending "fre" printed a plain "✓ Set" while the ID3 tag went on saying
+/// German. The priority is kept (TRACK-070: the full tag is read, the
+/// three-letter one is not); what changes is that the disagreement is said.
+#[test]
+fn a_disagreement_between_tags_is_reported_and_left_alone_by_a_resend() {
+    use mm_core::metadata::language::{disagreement_note, preview_conversion_note};
+
+    let (_dir, path) = copy_fixture("lang_riff_fre_id3_ger.wav");
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+        Some("fre"),
+        "fixture sanity check"
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("ger"),
+        "fixture sanity check"
+    );
+
+    // Still ONE value shown — the priority rule is unchanged.
+    assert_eq!(
+        extract_tags(&path)
+            .unwrap()
+            .get(TAG_LANGUAGE)
+            .map(Vec::as_slice),
+        Some(["fre".to_string()].as_slice())
+    );
+
+    // Someone LOOKING at the file is told.
+    assert_eq!(
+        disagreement_note(&path).as_deref(),
+        Some(
+            "this file's ID3 tag says \"ger\", which disagrees with \"fre\" — only \"fre\" is \
+             shown, because the tag that can hold the full language code is read first"
+        )
+    );
+
+    // Someone resending "fre" is told the ID3 tag is left alone...
+    assert_eq!(
+        preview_conversion_note(&path, "fre").as_deref(),
+        Some(
+            "this file's ID3 tag says \"ger\", which disagrees with \"fre\" and will be left \
+             alone, because \"fre\" is already the file's language"
+        )
+    );
+
+    // ...and it really is: the resend is still a no-change (COMPAT-030 —
+    // every editing screen resends every field, so this must not change).
+    write_tags(&path, &build_tags(&[(TAG_LANGUAGE, "fre")]))
+        .unwrap_or_else(|e| panic!("resending the shown value must not fail: {e}"));
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("ger"),
+        "a resend must leave the disagreeing ID3 tag exactly as it was"
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+        Some("fre")
+    );
+}
+
+/// The same disagreement in a FLAC that starts with an ID3 tag (Vorbis
+/// comment "eng", leading ID3 tag "ger"). MeedyaManager can READ this file;
+/// it cannot yet SAVE it (a separate, older fault, tracked as its own
+/// issue), so only reading is checked here.
+#[test]
+fn a_flac_whose_leading_id3_tag_disagrees_is_reported() {
+    use mm_core::metadata::language::disagreement_note;
+
+    let (_dir, path) = copy_fixture("lang_vorbis_eng_id3_ger.flac");
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("ger"),
+        "fixture sanity check: lofty must see the leading ID3 tag at all"
+    );
+    assert_eq!(
+        extract_tags(&path)
+            .unwrap()
+            .get(TAG_LANGUAGE)
+            .map(Vec::as_slice),
+        Some(["eng".to_string()].as_slice())
+    );
+    let note = disagreement_note(&path).expect("the ID3 tag's \"ger\" must not be hidden");
+    assert!(
+        note.starts_with("this file's ID3 tag says \"ger\", which disagrees with \"eng\""),
+        "{note}"
+    );
+}
+
+/// No false alarms: files whose tags say the same thing in each tag's own
+/// spelling — exactly what `write_tags` itself produces — must carry no
+/// note. `en-GB` beside `eng` (an ID3 tag cannot hold a region) and `yue`
+/// beside `und` (there is no three-letter code for Cantonese) are the cases
+/// a plain "different standard form" comparison would wrongly report.
+#[test]
+fn tags_that_agree_in_their_own_spellings_carry_no_note() {
+    use mm_core::metadata::language::disagreement_note;
+
+    for (value, riff, id3) in [
+        ("en", "en", "eng"),
+        ("fr", "fr", "fra"),
+        ("en-GB", "en-GB", "eng"),
+        ("yue", "yue", "und"),
+    ] {
+        let (_dir, path) = copy_fixture("riff_language.wav");
+        write_tags(&path, &build_tags(&[(TAG_LANGUAGE, value)]))
+            .unwrap_or_else(|e| panic!("{value}: write_tags failed: {e}"));
+        assert_eq!(
+            read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+            Some(riff),
+            "{value}: setup"
+        );
+        assert_eq!(
+            read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+            Some(id3),
+            "{value}: setup"
+        );
+        assert_eq!(
+            disagreement_note(&path),
+            None,
+            "{value}: the two tags agree, so there is nothing to report"
+        );
+    }
+
+    // The fixture that disagrees, with the RIFF chunk's "fre" and an ID3
+    // tag spelling French the other way ("fra"), agrees too.
+    let (_dir, path) = copy_fixture("lang_riff_fre_id3_ger.wav");
+    write_tags(&path, &build_tags(&[(TAG_LANGUAGE, "fr")])).unwrap();
+    assert_eq!(disagreement_note(&path), None, "after setting fr");
+}
+
+/// A value nothing recognises beside a real code: "English" (a word, not a
+/// code) in the RIFF chunk and "eng" in the ID3 tag. They may well mean the
+/// same thing, but MeedyaManager cannot know that without guessing
+/// (LANG-003), so it is reported for a person to check (COMPAT-040).
+#[test]
+fn an_unrecognised_value_beside_a_code_is_reported_not_guessed_at() {
+    use mm_core::metadata::language::disagreement_note;
+
+    let (_dir, path) = copy_fixture("lang_riff_english_id3_eng.wav");
+    let note = disagreement_note(&path).expect("the two do not provably agree");
+    assert!(
+        note.starts_with("this file's ID3 tag says \"eng\", which disagrees with \"English\""),
+        "{note}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Cover art round trip — raw and integrity-guarded
 // ---------------------------------------------------------------------------
 

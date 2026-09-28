@@ -63,12 +63,14 @@ struct EditAction {
     value: Option<String>,
     success: bool,
     error: Option<String>,
-    /// Set only for a successful `--set language=...` whose stored form
-    /// differs from what was typed (item 6 of the language-policy review)
-    /// — e.g. an MP3 can only hold the three-letter code, so a region can
-    /// be silently lost unless something says so. Omitted entirely from
-    /// JSON when there is nothing to say, so existing consumers see an
-    /// unchanged shape for every other action.
+    /// Set only for a successful `--set language=...` that a person needs
+    /// to be told something about: its stored form differs from what was
+    /// typed (item 6 of the language-policy review — e.g. an ID3 tag can
+    /// only hold the three-letter code, so a region can be silently lost
+    /// unless something says so), or the file's tags disagree about the
+    /// language and one of them will be left as it is (third review round,
+    /// item 3). Omitted entirely from JSON when there is nothing to say, so
+    /// existing consumers see an unchanged shape for every other action.
     #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
 }
@@ -204,9 +206,12 @@ struct EditPlan {
     /// Item 6 of the language-policy review: when a `--set language=...`
     /// value would be stored differently from what was typed (TRACK-070's
     /// per-format conversion can lose a region, say), a plain-English
-    /// explanation of what will actually be stored and why. `None` when
-    /// there is nothing to say — no `--set language=...`, or nothing would
-    /// be lost. Computed once in `build_plan` (Phase 1, before any write)
+    /// explanation of what will actually be stored and why — or, since the
+    /// third review round (item 3), when the value is already the file's
+    /// language but one of the file's tags disagrees with it and will be
+    /// left alone. `None` when there is nothing to say — no
+    /// `--set language=...`, a clearing `--set language=`, or nothing worth
+    /// saying. Computed once in `build_plan` (Phase 1, before any write)
     /// so it shows up on `--dry-run` too, which never calls `write_tags`.
     language_note: Option<String>,
 }
@@ -261,7 +266,14 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
         // opened at all — the same all-or-nothing guarantee an unknown key
         // already gets. A non-empty value is what fails; an empty one
         // (`--set language=`) clears the field, the same as any other key.
-        if key == mm_core::metadata::TAG_LANGUAGE && !value.is_empty() {
+        if key == mm_core::metadata::TAG_LANGUAGE && value.is_empty() {
+            // A clearing `--set language=` later in the same batch wins
+            // (last-flag-wins, below), so a note computed for an earlier
+            // `--set language=...` no longer describes what will happen —
+            // found while working on the third review round; before, the
+            // earlier value's note was printed next to the clear.
+            language_note = None;
+        } else if key == mm_core::metadata::TAG_LANGUAGE {
             if let Err(e) = mm_core::metadata::language::parse_language_input(value) {
                 failures.push(EditAction::failed(
                     "set",
@@ -274,11 +286,14 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
             // Item 6 of the language-policy review: the value IS a real
             // language (the check above just confirmed that), but the
             // form this file's own tag container can actually hold may
-            // not be the exact text typed — an MP3 can only keep the
-            // three-letter code, so a region such as "-BR" is silently
-            // gone unless this says so. Recomputed on every matching
-            // `--set` in the batch, last-flag-wins, matching `tags`'s own
-            // convention just below.
+            // not be the exact text typed — an ID3 tag (an MP3's, or one
+            // embedded in a WAV) can only keep the three-letter code, so a
+            // region such as "-BR" is silently gone unless this says so.
+            // Since the third review round (item 3) this also says when
+            // the value is already the file's language but one of its tags
+            // disagrees and will be left alone — never a silent "✓ Set".
+            // Recomputed on every matching `--set` in the batch,
+            // last-flag-wins, matching `tags`'s own convention just below.
             language_note = mm_core::metadata::language::preview_conversion_note(&args.path, value);
         }
 
@@ -1129,6 +1144,153 @@ mod tests {
             tags.get("language").map(Vec::as_slice),
             Some(&["por".to_string()][..])
         );
+    }
+
+    /// Third review round, item 3: on a WAV whose RIFF INFO chunk says
+    /// "fre" and whose ID3 tag says "ger", "fre" is what the file shows
+    /// (a tag holding the full code is read first — TRACK-070). Sending
+    /// "fre" is therefore a no-change (COMPAT-030 — and it must stay one,
+    /// because every editing screen resends every field on save), so the
+    /// ID3 tag goes on saying German. Before this round `meedya edit`
+    /// printed a bare "✓ Set language = fre" — reproduced with the binary
+    /// built from e18fb18. It must say the ID3 tag disagrees and is left
+    /// alone, on `--dry-run` and on a real write alike.
+    #[test]
+    fn resending_the_shown_language_when_the_tags_disagree_is_never_a_silent_set() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("lang_riff_fre_id3_ger.wav", dir.path());
+
+        let args = EditArgs {
+            path: path.clone(),
+            set: vec!["language=fre".to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: false,
+        };
+        let plan = match build_plan(&args) {
+            Ok(plan) => plan,
+            Err(actions) => panic!("fre is a real language: {actions:?}"),
+        };
+        let expected_note = "this file's ID3 tag says \"ger\", which disagrees with \"fre\" and \
+                             will be left alone, because \"fre\" is already the file's language";
+
+        let (applied, _written_to) = apply_plan(&args, &plan);
+        for (which, actions) in [("dry run", describe_plan(&plan)), ("real write", applied)] {
+            assert_eq!(
+                build_human_lines(&actions),
+                vec![
+                    HumanLine::Success("Set language = fre".to_string()),
+                    HumanLine::Warning(expected_note.to_string()),
+                ],
+                "{which}: a person must be told the ID3 tag still says something else"
+            );
+        }
+
+        // "Left alone" really means left alone: the file still shows "fre"
+        // and its ID3 tag still disagrees.
+        let tags = mm_core::metadata::extract_tags(&path).unwrap();
+        assert_eq!(
+            tags.get("language").map(Vec::as_slice),
+            Some(&["fre".to_string()][..])
+        );
+        assert!(
+            mm_core::metadata::language::disagreement_note(&path).is_some(),
+            "a resend must not quietly rewrite the ID3 tag (COMPAT-030)"
+        );
+    }
+
+    /// The same disagreement in a FLAC that starts with an ID3 tag (Vorbis
+    /// "eng", ID3 "ger"). MeedyaManager can read such a file but cannot yet
+    /// SAVE one (a separate, older fault with its own issue), so only the
+    /// `--dry-run` preview is checked here.
+    #[test]
+    fn a_flac_whose_leading_id3_tag_disagrees_gets_the_note_on_dry_run() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path =
+            crate::test_support::copy_core_fixture("lang_vorbis_eng_id3_ger.flac", dir.path());
+
+        let plan = match build_plan(&EditArgs {
+            path,
+            set: vec!["language=eng".to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: true,
+        }) {
+            Ok(plan) => plan,
+            Err(actions) => panic!("eng is a real language: {actions:?}"),
+        };
+        let lines = build_human_lines(&describe_plan(&plan));
+        assert_eq!(
+            lines,
+            vec![
+                HumanLine::Success("Set language = eng".to_string()),
+                HumanLine::Warning(
+                    "this file's ID3 tag says \"ger\", which disagrees with \"eng\" and will be \
+                     left alone, because \"eng\" is already the file's language"
+                        .to_string()
+                ),
+            ]
+        );
+    }
+
+    /// Setting a genuinely NEW language on that WAV updates every tag that
+    /// already holds one (the first review round's fix), so the tags agree
+    /// afterwards and there is nothing to warn about, before or after.
+    #[test]
+    fn setting_a_new_language_brings_disagreeing_tags_into_line_without_a_note() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("lang_riff_fre_id3_ger.wav", dir.path());
+
+        let args = EditArgs {
+            path: path.clone(),
+            set: vec!["language=es".to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: false,
+        };
+        let plan = match build_plan(&args) {
+            Ok(plan) => plan,
+            Err(actions) => panic!("es is a real language: {actions:?}"),
+        };
+        assert_eq!(plan.language_note, None);
+
+        let (applied, _written_to) = apply_plan(&args, &plan);
+        assert!(applied.iter().all(|a| a.success), "{applied:?}");
+        assert_eq!(mm_core::metadata::language::disagreement_note(&path), None);
+        let tags = mm_core::metadata::extract_tags(&path).unwrap();
+        assert_eq!(
+            tags.get("language").map(Vec::as_slice),
+            Some(&["es".to_string()][..])
+        );
+    }
+
+    /// Found while working on item 3: a clearing `--set language=` later in
+    /// the same batch wins, so a note computed for an earlier value must
+    /// not be printed next to the clear.
+    #[test]
+    fn a_later_clearing_set_drops_an_earlier_language_note() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("silence.mp3", dir.path());
+
+        let plan = match build_plan(&EditArgs {
+            path,
+            set: vec!["language=pt-BR".to_string(), "language=".to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: true,
+        }) {
+            Ok(plan) => plan,
+            Err(actions) => panic!("both values are acceptable: {actions:?}"),
+        };
+        assert_eq!(plan.language_note, None);
     }
 
     /// The companion case: an action with no note produces exactly one

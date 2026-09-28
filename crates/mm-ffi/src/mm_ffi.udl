@@ -140,6 +140,10 @@ dictionary TagEntry {
     string key;
     /// Tag value (always a string; numeric tags are string-encoded)
     string value;
+    /// Something to tell a person about this value (set by get_metadata on
+    /// the "language" entry when the file's tags disagree); ignored by
+    /// write_metadata. Optional, defaulting to null.
+    string? note = null;
 };
 
 /// The result of simulating a single file rename

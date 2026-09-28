@@ -129,6 +129,7 @@ mod tests {
         let entry = TagEntry {
             key: "artist".into(),
             value: "Pink Floyd".into(),
+            note: None,
         };
         assert_eq!(entry.key, "artist");
         assert_eq!(entry.value, "Pink Floyd");
@@ -140,6 +141,7 @@ mod tests {
         let entry = TagEntry {
             key: "title".into(),
             value: "The Wall".into(),
+            note: None,
         };
         let cloned = entry.clone();
         assert_eq!(entry, cloned);

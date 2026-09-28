@@ -599,12 +599,22 @@ pub fn extract_tags(path: &Path) -> MmResult<TagMap> {
 ///
 /// A "full" container (Vorbis comments, the MP4 freeform item, APE, RIFF
 /// INFO) can hold a complete BCP 47 tag; ID3v2's `TLAN` can only ever hold
-/// the old three-letter form (TRACK-070). When a full container has a
-/// value, that is read as the richer, more authoritative answer, and
-/// ID3v2's narrower one is not also read — reading back a WAV that
-/// [`write_tags`] has kept consistent used to give `["en", "eng"]`, two
-/// representations of the identical fact, rather than one. When no full
-/// container has a value, ID3v2's is read on its own.
+/// the old three-letter form. TRACK-070 says the three-letter field "MUST
+/// NOT be read back when the full tag is present", so when a full
+/// container has a value, that is read as the answer and ID3v2's narrower
+/// one is not also read — reading back a WAV that [`write_tags`] has kept
+/// consistent used to give `["en", "eng"]`, two representations of the
+/// identical fact, rather than one. When no full container has a value,
+/// ID3v2's is read on its own. (This comment used to cite COMPAT-040 for
+/// that priority; the rule is TRACK-070's — corrected after the third
+/// review round.)
+///
+/// What this cannot do on its own: say when the ID3v2 value it skips means
+/// something DIFFERENT from what it shows (a WAV whose RIFF INFO chunk says
+/// `fre` and whose ID3 tag says `ger`). That is [`language_disagreement`]'s
+/// job — kept separate so this function's answer, which `write_tags`
+/// compares a resent value against (COMPAT-030), stays exactly what
+/// [`extract_tags`] shows.
 ///
 /// Within whichever tier is read, values are deduplicated by their
 /// STANDARD form ([`language::standardise_for_comparison`]), not by their
@@ -616,24 +626,7 @@ pub fn extract_tags(path: &Path) -> MmResult<TagMap> {
 /// unrecognised value's own text is its own "standard form" for this
 /// purpose (`standardise_for_comparison`'s own LANG-003 guarantee).
 fn read_language_values(tagged_file: &lofty::file::TaggedFile) -> Vec<String> {
-    let mut full_raw: Vec<String> = Vec::new();
-    let mut id3_raw: Vec<String> = Vec::new();
-
-    for tag in tagged_file.tags() {
-        let bucket = if tag.tag_type() == TagType::Id3v2 {
-            &mut id3_raw
-        } else {
-            &mut full_raw
-        };
-        for item in tag.get_items(&ItemKey::Language) {
-            if let ItemValue::Text(text) = item.value() {
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    bucket.push(trimmed.to_string());
-                }
-            }
-        }
-    }
+    let (full_raw, id3_raw) = raw_language_values_by_tier(tagged_file);
 
     let chosen = if full_raw.is_empty() {
         id3_raw
@@ -651,6 +644,113 @@ fn read_language_values(tagged_file: &lofty::file::TaggedFile) -> Vec<String> {
         }
     }
     result
+}
+
+/// Every `language` value in `tagged_file`, as stored (whitespace trimmed,
+/// empty values skipped), split into the two groups TRACK-070 treats
+/// differently: first every tag that can hold a full language code (Vorbis
+/// comments, the MP4 freeform item, APE, RIFF INFO), then the ID3v2 tag,
+/// which only ever holds the three-letter form. File order within each.
+fn raw_language_values_by_tier(
+    tagged_file: &lofty::file::TaggedFile,
+) -> (Vec<String>, Vec<String>) {
+    let mut full: Vec<String> = Vec::new();
+    let mut id3: Vec<String> = Vec::new();
+
+    for tag in tagged_file.tags() {
+        let bucket = if tag.tag_type() == TagType::Id3v2 {
+            &mut id3
+        } else {
+            &mut full
+        };
+        for item in tag.get_items(&ItemKey::Language) {
+            if let ItemValue::Text(text) = item.value() {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    bucket.push(trimmed.to_string());
+                }
+            }
+        }
+    }
+    (full, id3)
+}
+
+/// When a file's tags disagree about the language: what is shown, and what
+/// is hidden that says something different.
+///
+/// Third review round, item 3: [`read_language_values`] reads a tag that can
+/// hold the full language code in preference to the ID3 tag's three-letter
+/// one (TRACK-070), and that priority is right — but it meant a WAV whose
+/// RIFF INFO chunk says `fre` while its ID3 tag says `ger` was shown as
+/// plain `fre`, and the German was invisible everywhere. Worse, `meedya edit
+/// --set language=fre` on that file reported "✓ Set" and changed nothing
+/// (resending the value that is already shown is, correctly, a no-change —
+/// COMPAT-030 — so the ID3 tag kept saying German). COMPAT-040 says doubt
+/// like this SHOULD be reported for a person to fix, so this finds it and
+/// the notes in [`language`] say it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LanguageDisagreement {
+    /// The values [`extract_tags`] shows, exactly as stored.
+    pub(crate) shown: Vec<String>,
+    /// Each value the file's ID3 tag holds that does not say the same as
+    /// any shown value, exactly as stored, in file order, each once.
+    pub(crate) hidden_id3: Vec<String>,
+}
+
+/// Find a disagreement in `tagged_file`, or `None` when its tags agree (or
+/// when nothing is hidden at all — only one kind of tag holds a language).
+///
+/// "Agrees" means what TRACK-070 would have written: a shown value `fre`
+/// agrees with an ID3 value `fra` or `fre` (both French), and a shown
+/// `en-GB` or `yue` agrees with an ID3 `eng` or `und` — those are exactly
+/// what `write_tags` itself puts in an ID3 tag for them, because the ID3 tag
+/// cannot hold a region, and has no three-letter code for Cantonese. So the
+/// comparison is between the STANDARD form of the hidden ID3 value and the
+/// standard form of what an ID3 tag would hold for each shown value. Without
+/// that, every file `write_tags` has correctly kept in step (`en-GB` in the
+/// RIFF chunk, `eng` in the ID3 tag) would be reported as disagreeing.
+///
+/// A shown value nothing recognises (`English`) has no "what an ID3 tag
+/// would hold"; it agrees only with an ID3 value that is the same text. So
+/// `English` beside an ID3 `eng` IS reported: the two may well mean the
+/// same, but MeedyaManager cannot know that without guessing (LANG-003),
+/// and COMPAT-040 asks for doubt to be reported, not settled by a guess.
+pub(crate) fn language_disagreement(
+    tagged_file: &lofty::file::TaggedFile,
+) -> Option<LanguageDisagreement> {
+    let (full_raw, id3_raw) = raw_language_values_by_tier(tagged_file);
+    if full_raw.is_empty() || id3_raw.is_empty() {
+        return None; // nothing is hidden, so nothing can disagree
+    }
+
+    let shown = read_language_values(tagged_file);
+    let what_id3_would_hold: Vec<String> = shown
+        .iter()
+        .map(|value| {
+            let stored = language::parse_stored_language(value);
+            if stored.recognised {
+                let id3_form = language::language_value_for_tag_type(&stored.tag, TagType::Id3v2);
+                language::standardise_for_comparison(&id3_form)
+            } else {
+                stored.raw
+            }
+        })
+        .collect();
+
+    let mut hidden_id3: Vec<String> = Vec::new();
+    for value in id3_raw {
+        if !what_id3_would_hold.contains(&language::standardise_for_comparison(&value))
+            && !hidden_id3.contains(&value)
+        {
+            hidden_id3.push(value);
+        }
+    }
+
+    if hidden_id3.is_empty() {
+        None
+    } else {
+        Some(LanguageDisagreement { shown, hidden_id3 })
+    }
 }
 
 /// Internal helper: read values from one `Tag` into the tag map.

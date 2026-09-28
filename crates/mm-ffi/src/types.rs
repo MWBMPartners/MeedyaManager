@@ -31,6 +31,24 @@ pub struct TagEntry {
     pub key: String,
     /// Tag value encoded as a UTF-8 string (numeric tags are string-encoded)
     pub value: String,
+    /// Something a person should be told about this value, in plain
+    /// English, for an app to show beside it — or `None` (almost always).
+    ///
+    /// Filled in by `get_metadata` for the `language` entry only, when the
+    /// file's tags disagree about the language: the value shown comes from
+    /// the tag that can hold the full language code, and the file's ID3 tag
+    /// says something different (third review round of the language-policy
+    /// work, item 3 — before, the other answer was hidden from the apps
+    /// entirely). Ignored by `write_metadata`: it is a report about the
+    /// file, never something to write into it.
+    ///
+    /// Optional in every direction, so nothing that already builds or reads
+    /// a `TagEntry` has to change: UniFFI gives the Swift initialiser a
+    /// default of `nil`; the C API leaves the field out of the JSON when it
+    /// is empty, and accepts JSON that does not mention it.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

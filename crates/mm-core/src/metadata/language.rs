@@ -597,19 +597,94 @@ fn is_whole_tag_replacement(typed: &str) -> bool {
 /// item 4 of the second review round, so the note can never say something
 /// `write_tags` would not really do: reusing the exact functions
 /// `write_tags` itself uses is what makes that a guarantee rather than a
-/// hope. Returns `None` when the file cannot even be probed, when `input`
-/// is identical to what is already stored (nothing will change, so there
-/// is nothing to say — review item 4's other finding), or when there is
-/// nothing worth telling a person about. A caller that goes on to actually
-/// write will get a real, specific error for a value nothing recognises at
-/// all, from `write_tags` itself.
+/// hope. Returns `None` when the file cannot even be probed, or when there
+/// is nothing worth telling a person about. A caller that goes on to
+/// actually write will get a real, specific error for a value nothing
+/// recognises at all, from `write_tags` itself.
+///
+/// When `input` is identical to what is already shown, nothing will change
+/// (review item 4 of the second round), so there is no conversion to
+/// describe — but since the third review round (item 3) that is not always
+/// "nothing to say": if the file's tags DISAGREE about the language (a WAV
+/// whose RIFF INFO chunk says `fre` and whose ID3 tag says `ger`), resending
+/// `fre` leaves the ID3 tag saying German, and a bare "✓ Set" would hide
+/// that. The note then says the ID3 tag disagrees and will be left alone.
+/// `write_tags` itself is NOT changed to "fix" the ID3 tag on a resend:
+/// every editing screen resends every field on every save (COMPAT-030), so
+/// a resend must stay a no-change. A deliberate "make every tag agree"
+/// action is tracked as its own issue.
 pub fn preview_conversion_note(path: &Path, input: &str) -> Option<String> {
     let tagged_file = super::open_tagged_file(path).ok()?;
     if super::current_joined_value(&tagged_file, super::TAG_LANGUAGE).as_deref() == Some(input) {
-        return None;
+        return super::language_disagreement(&tagged_file)
+            .map(|found| describe_disagreement(&found, DisagreementContext::LeftAloneByAnEdit));
     }
     let tag_types = super::language_write_targets(&tagged_file);
     describe_conversion_for_types(input, &tag_types)
+}
+
+/// A plain-English note, for someone LOOKING at a file, when its tags
+/// disagree about the language — `None` when they agree, when only one kind
+/// of tag holds a language, or when the file cannot be read.
+///
+/// Third review round, item 3: `meedya debug` and the desktop apps (through
+/// `get_metadata`) show the language a tag holding the full code gives, in
+/// preference to the ID3 tag's (TRACK-070). This says so when the ID3 tag
+/// holds something different, so it is never silently hidden. It is a
+/// report only (COMPAT-040): it changes nothing, and it does not say which
+/// of the two is right — MeedyaManager cannot know that.
+pub fn disagreement_note(path: &Path) -> Option<String> {
+    let tagged_file = super::open_tagged_file(path).ok()?;
+    super::language_disagreement(&tagged_file)
+        .map(|found| describe_disagreement(&found, DisagreementContext::Reading))
+}
+
+/// Which situation a disagreement note is written for — the facts are the
+/// same, but what a person needs to be told about them is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DisagreementContext {
+    /// Someone is looking at the file (`meedya debug`, an app's tag list).
+    Reading,
+    /// An edit resent the value already shown, so nothing is written and
+    /// the disagreeing ID3 tag stays as it is.
+    LeftAloneByAnEdit,
+}
+
+/// Word a [`super::LanguageDisagreement`] for a person. Values are quoted
+/// exactly as stored. There is no language-name data anywhere in this
+/// project or the shared crate, so the note shows the codes themselves
+/// (`"ger"`), not names ("German") — a name would have to be guessed.
+///
+/// It deliberately gives no "to fix this, do X" advice. The obvious advice
+/// — "set a different language and both tags are updated" — is true for a
+/// WAV, but not for a FLAC that starts with an ID3 tag, which MeedyaManager
+/// cannot save at all yet (a separate, older fault with its own issue).
+fn describe_disagreement(
+    found: &super::LanguageDisagreement,
+    context: DisagreementContext,
+) -> String {
+    let quote = |values: &[String]| {
+        let quoted: Vec<String> = values.iter().map(|v| format!("\"{v}\"")).collect();
+        let parts: Vec<&str> = quoted.iter().map(String::as_str).collect();
+        join_with_and(&parts)
+    };
+    let hidden = quote(&found.hidden_id3);
+    let shown = quote(&found.shown);
+    let verb = if found.hidden_id3.len() == 1 {
+        "disagrees"
+    } else {
+        "disagree"
+    };
+    match context {
+        DisagreementContext::Reading => format!(
+            "this file's ID3 tag says {hidden}, which {verb} with {shown} — only {shown} is \
+             shown, because the tag that can hold the full language code is read first"
+        ),
+        DisagreementContext::LeftAloneByAnEdit => format!(
+            "this file's ID3 tag says {hidden}, which {verb} with {shown} and will be left \
+             alone, because {shown} is already the file's language"
+        ),
+    }
 }
 
 #[cfg(test)]

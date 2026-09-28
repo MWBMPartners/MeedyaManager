@@ -1307,6 +1307,24 @@ public struct TagEntry: Equatable, Hashable {
      * Tag value encoded as a UTF-8 string (numeric tags are string-encoded)
      */
     public var value: String
+    /**
+     * Something a person should be told about this value, in plain
+     * English, for an app to show beside it — or `None` (almost always).
+     *
+     * Filled in by `get_metadata` for the `language` entry only, when the
+     * file's tags disagree about the language: the value shown comes from
+     * the tag that can hold the full language code, and the file's ID3 tag
+     * says something different (third review round of the language-policy
+     * work, item 3 — before, the other answer was hidden from the apps
+     * entirely). Ignored by `write_metadata`: it is a report about the
+     * file, never something to write into it.
+     *
+     * Optional in every direction, so nothing that already builds or reads
+     * a `TagEntry` has to change: UniFFI gives the Swift initialiser a
+     * default of `nil`; the C API leaves the field out of the JSON when it
+     * is empty, and accepts JSON that does not mention it.
+     */
+    public var note: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1316,9 +1334,27 @@ public struct TagEntry: Equatable, Hashable {
          */key: String, 
         /**
          * Tag value encoded as a UTF-8 string (numeric tags are string-encoded)
-         */value: String) {
+         */value: String, 
+        /**
+         * Something a person should be told about this value, in plain
+         * English, for an app to show beside it — or `None` (almost always).
+         *
+         * Filled in by `get_metadata` for the `language` entry only, when the
+         * file's tags disagree about the language: the value shown comes from
+         * the tag that can hold the full language code, and the file's ID3 tag
+         * says something different (third review round of the language-policy
+         * work, item 3 — before, the other answer was hidden from the apps
+         * entirely). Ignored by `write_metadata`: it is a report about the
+         * file, never something to write into it.
+         *
+         * Optional in every direction, so nothing that already builds or reads
+         * a `TagEntry` has to change: UniFFI gives the Swift initialiser a
+         * default of `nil`; the C API leaves the field out of the JSON when it
+         * is empty, and accepts JSON that does not mention it.
+         */note: String? = nil) {
         self.key = key
         self.value = value
+        self.note = note
     }
 
     
@@ -1338,13 +1374,15 @@ public struct FfiConverterTypeTagEntry: FfiConverterRustBuffer {
         return
             try TagEntry(
                 key: FfiConverterString.read(from: &buf), 
-                value: FfiConverterString.read(from: &buf)
+                value: FfiConverterString.read(from: &buf), 
+                note: FfiConverterOptionString.read(from: &buf)
         )
     }
 
     public static func write(_ value: TagEntry, into buf: inout [UInt8]) {
         FfiConverterString.write(value.key, into: &buf)
         FfiConverterString.write(value.value, into: &buf)
+        FfiConverterOptionString.write(value.note, into: &buf)
     }
 }
 
@@ -1691,6 +1729,30 @@ public func FfiConverterTypeMmFfiError_lower(_ value: MmFfiError) -> RustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
+    typealias SwiftType = String?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterString.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -1818,8 +1880,8 @@ public func configPath() -> String  {
  *
  * Returns the count of files successfully renamed.
  *
- * Routed through [`renamer::execute_rename`] rather than calling
- * `std::fs::rename` directly (issue #201 reached the CLI, mm-core and
+ * Routed through [`renamer::execute_rename`] rather than moving the file
+ * directly via the standard library (issue #201 reached the CLI, mm-core and
  * mm-gtk but missed this FFI path). That gives the FFI surface the same
  * safety net every other caller gets: a re-check of the destination
  * immediately before the move (a preview's `conflict` flag can go stale
@@ -1853,6 +1915,11 @@ public func getAudioProperties(path: String)throws  -> AudioPropertiesFfi  {
  *
  * Returns a list of `TagEntry` pairs sorted by key for stable UI display.
  * Multi-value tags (e.g. multiple artists) are joined with "; ".
+ *
+ * The `language` entry's `note` is set when the file's tags disagree about
+ * the language (see `TagEntry::note`) — for the app to show beside the
+ * value, so the other answer is not hidden. Every other entry's `note` is
+ * `None`.
  */
 public func getMetadata(path: String)throws  -> [TagEntry]  {
     return try  FfiConverterSequenceTypeTagEntry.lift(try rustCallWithError(FfiConverterTypeMmFfiError_lift) {
@@ -2025,6 +2092,26 @@ public func validateTemplate(template: String) -> ValidationResult  {
  * It now returns `MmFfiError::Metadata` naming the key and listing the
  * valid ones (issue #206).  Use `mm_core::metadata::known_tag_keys` — or
  * simply write back keys obtained from `get_metadata`.
+ * * **`"language"` follows the shared MWBM-MEDIA-LANG policy.**  A value
+ * nothing recognises as a language (a full BCP 47 tag such as `"en-GB"`,
+ * or an old three-letter code such as `"fre"`, are both accepted) is
+ * refused with `MmFfiError::Metadata`, before anything is written — the
+ * same all-or-nothing guarantee an unknown key already has.  What is
+ * actually written differs by tag format (an ID3 tag — an MP3's, or one
+ * embedded in a WAV — can only ever hold the old three-letter form;
+ * every other format keeps the full value) — see
+ * `mm_core::metadata::language` and
+ * `docs/standards/media-language-bcp47-policy.md`.  A `"language"` value
+ * is never touched unless it genuinely changes: leaving the key out, and
+ * resending exactly the value `get_metadata` returned, are treated the
+ * same way (nothing is checked, converted or rewritten), so an app that
+ * resends every field on save is safe even when the stored value is not
+ * one MeedyaManager would accept if typed fresh (COMPAT-030).  (This
+ * comment used to tell apps NOT to resend an unchanged value; that
+ * advice predates the fix that made resending safe, and was corrected
+ * after the third review round of the language-policy work.)  A
+ * `TagEntry`'s
+ * `note` is ignored here — it is a report about the file, not data.
  */
 public func writeMetadata(path: String, tags: [TagEntry])throws   {try rustCallWithError(FfiConverterTypeMmFfiError_lift) {
     uniffi_mm_ffi_fn_func_write_metadata(
@@ -2061,13 +2148,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_mm_ffi_checksum_func_config_path() != 23785) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_mm_ffi_checksum_func_execute_renames() != 49570) {
+    if (uniffi_mm_ffi_checksum_func_execute_renames() != 2375) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_mm_ffi_checksum_func_get_audio_properties() != 62838) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_mm_ffi_checksum_func_get_metadata() != 39179) {
+    if (uniffi_mm_ffi_checksum_func_get_metadata() != 23961) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_mm_ffi_checksum_func_list_known_tags() != 12920) {
@@ -2103,7 +2190,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_mm_ffi_checksum_func_validate_template() != 30304) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_mm_ffi_checksum_func_write_metadata() != 2628) {
+    if (uniffi_mm_ffi_checksum_func_write_metadata() != 13181) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_mm_ffi_checksum_method_scanprogresscallback_on_progress() != 6441) {

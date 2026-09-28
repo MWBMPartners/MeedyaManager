@@ -237,6 +237,11 @@ pub fn execute_renames(previews: Vec<RenamePreviewFfi>) -> Result<u32, MmFfiErro
 ///
 /// Returns a list of `TagEntry` pairs sorted by key for stable UI display.
 /// Multi-value tags (e.g. multiple artists) are joined with "; ".
+///
+/// The `language` entry's `note` is set when the file's tags disagree about
+/// the language (see `TagEntry::note`) — for the app to show beside the
+/// value, so the other answer is not hidden. Every other entry's `note` is
+/// `None`.
 #[uniffi::export]
 pub fn get_metadata(path: String) -> Result<Vec<TagEntry>, MmFfiError> {
     let file_path = PathBuf::from(&path);
@@ -244,10 +249,22 @@ pub fn get_metadata(path: String) -> Result<Vec<TagEntry>, MmFfiError> {
     // Extract the multi-value TagMap from the file
     let tag_map = metadata::extract_tags(&file_path).map_err(MmFfiError::from)?;
 
+    // Third review round of the language-policy work, item 3: `tag_map`
+    // shows ONE language even when the file's tags hold two different ones
+    // (a tag that can hold the full code is read first — TRACK-070). This
+    // reads the file a second time, only to find that out; it cannot fail
+    // the call, because it is a report, not the data.
+    let language_note = metadata::language::disagreement_note(&file_path);
+
     // Flatten: join Vec<String> values with "; " and build sorted TagEntry list
     let mut entries: Vec<TagEntry> = tag_map
         .into_iter()
         .map(|(key, values)| TagEntry {
+            note: if key == metadata::TAG_LANGUAGE {
+                language_note.clone()
+            } else {
+                None
+            },
             key,
             // Join multi-values with the canonical MeedyaManager delimiter
             value: values.join("; "),
@@ -281,12 +298,21 @@ pub fn get_metadata(path: String) -> Result<Vec<TagEntry>, MmFfiError> {
 ///   or an old three-letter code such as `"fre"`, are both accepted) is
 ///   refused with `MmFfiError::Metadata`, before anything is written — the
 ///   same all-or-nothing guarantee an unknown key already has.  What is
-///   actually written differs by file format (an MP3's tag can only ever
-///   hold the old three-letter form; every other format keeps the full
-///   value) — see `mm_core::metadata::language` and
-///   `docs/standards/media-language-bcp47-policy.md`.  A `"language"` key
-///   left OUT of `tags` entirely is never touched, whatever it currently
-///   holds — do not resend a value you read but did not change.
+///   actually written differs by tag format (an ID3 tag — an MP3's, or one
+///   embedded in a WAV — can only ever hold the old three-letter form;
+///   every other format keeps the full value) — see
+///   `mm_core::metadata::language` and
+///   `docs/standards/media-language-bcp47-policy.md`.  A `"language"` value
+///   is never touched unless it genuinely changes: leaving the key out, and
+///   resending exactly the value `get_metadata` returned, are treated the
+///   same way (nothing is checked, converted or rewritten), so an app that
+///   resends every field on save is safe even when the stored value is not
+///   one MeedyaManager would accept if typed fresh (COMPAT-030).  (This
+///   comment used to tell apps NOT to resend an unchanged value; that
+///   advice predates the fix that made resending safe, and was corrected
+///   after the third review round of the language-policy work.)  A
+///   `TagEntry`'s
+///   `note` is ignored here — it is a report about the file, not data.
 #[uniffi::export]
 pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiError> {
     let file_path = PathBuf::from(&path);
@@ -802,6 +828,80 @@ mod tests {
         std::fs::write(path, &bytes).expect("WAV fixture must be writable");
     }
 
+    /// Copy one of mm-core's committed test media files into `dir` (see
+    /// `crates/mm-core/tests/fixtures/README.md`) and return the copy.
+    fn copy_core_fixture(name: &str, dir: &Path) -> PathBuf {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../mm-core/tests/fixtures")
+            .join(name);
+        let copy = dir.join(name);
+        std::fs::copy(&source, &copy)
+            .unwrap_or_else(|e| panic!("cannot copy test file {}: {e}", source.display()));
+        copy
+    }
+
+    /// Third review round of the language-policy work, item 3: a WAV whose
+    /// RIFF INFO chunk says "fre" and whose ID3 tag says "ger" came back
+    /// from `get_metadata` as plain "fre" — the apps had no way to know the
+    /// German existed. The `language` entry now carries a note the app can
+    /// show; no other entry does; and the C API's JSON carries it too.
+    #[test]
+    fn get_metadata_reports_tags_that_disagree_about_the_language() {
+        let guard = ConfigDirGuard::new("langnote");
+        let path = copy_core_fixture("lang_riff_fre_id3_ger.wav", guard.path());
+
+        let entries = get_metadata(path.display().to_string()).expect("the file is readable");
+        let language = entries
+            .iter()
+            .find(|e| e.key == "language")
+            .expect("a language entry");
+        assert_eq!(language.value, "fre");
+        let note = language
+            .note
+            .as_deref()
+            .expect("the ID3 tag's \"ger\" must not be hidden from the apps");
+        assert!(note.contains("ID3 tag says \"ger\""), "{note}");
+        assert!(
+            entries
+                .iter()
+                .filter(|e| e.key != "language")
+                .all(|e| e.note.is_none()),
+            "only the language entry carries a note: {entries:?}"
+        );
+
+        // The Windows app reads the C API's JSON. The note must be in it.
+        let json = serde_json::to_value(&entries).unwrap();
+        let language_json = json
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["key"] == "language")
+            .unwrap();
+        assert_eq!(
+            language_json["note"],
+            serde_json::Value::String(note.to_string())
+        );
+    }
+
+    /// The other side: tags that agree give no note, and the JSON keeps the
+    /// exact shape it always had (no `note` key at all), so nothing that
+    /// already reads it sees a change. JSON without a `note` — what the
+    /// Windows app sends to `write_metadata` — must still be accepted.
+    #[test]
+    fn get_metadata_has_no_note_when_the_tags_agree_and_old_json_still_parses() {
+        let guard = ConfigDirGuard::new("langnonote");
+        let path = copy_core_fixture("riff_language.wav", guard.path());
+
+        let entries = get_metadata(path.display().to_string()).expect("the file is readable");
+        assert!(entries.iter().all(|e| e.note.is_none()), "{entries:?}");
+        let json = serde_json::to_string(&entries).unwrap();
+        assert!(!json.contains("\"note\""), "{json}");
+
+        let parsed: Vec<TagEntry> =
+            serde_json::from_str(r#"[{"key":"title","value":"X"}]"#).unwrap();
+        assert_eq!(parsed[0].note, None);
+    }
+
     /// The FFI write path must obey Test Mode exactly as the CLI does — the
     /// native UIs call straight into it, so an unguarded write here would let
     /// macOS/Windows clobber originals the user asked us not to touch.
@@ -820,6 +920,7 @@ mod tests {
             vec![TagEntry {
                 key: "title".to_string(),
                 value: "Diverted".to_string(),
+                note: None,
             }],
         )
         .expect("write_metadata should succeed in Test Mode");
@@ -856,6 +957,7 @@ mod tests {
             vec![TagEntry {
                 key: "bogus_key".to_string(),
                 value: "1".to_string(),
+                note: None,
             }],
         )
         .expect_err("an unmapped key must not report success");
@@ -886,6 +988,7 @@ mod tests {
             vec![TagEntry {
                 key: "language".to_string(),
                 value: "not a language".to_string(),
+                note: None,
             }],
         )
         .expect_err("a language nothing recognises must not report success");
@@ -916,6 +1019,7 @@ mod tests {
             vec![TagEntry {
                 key: "language".to_string(),
                 value: "fre".to_string(),
+                note: None,
             }],
         )
         .expect("a recognised legacy language code must be accepted");
@@ -943,6 +1047,7 @@ mod tests {
             vec![TagEntry {
                 key: "language".to_string(),
                 value: "fre".to_string(),
+                note: None,
             }],
         )
         .expect("setting a recognised legacy language code must succeed");
@@ -974,6 +1079,7 @@ mod tests {
             vec![TagEntry {
                 key: "language".to_string(),
                 value: stored[0].clone(),
+                note: None,
             }],
         )
         .expect("resending the unchanged value \"fra\" must not be refused");
@@ -1001,6 +1107,7 @@ mod tests {
             vec![TagEntry {
                 key: "language".to_string(),
                 value: "not a language".to_string(),
+                note: None,
             }],
         )
         .expect_err("a language nothing recognises must not report success");
