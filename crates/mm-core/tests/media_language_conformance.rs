@@ -7,9 +7,21 @@
 // copy of this test, `crates/meedya-lang/tests/conformance.rs` in
 // MeedyaSuite-core (read it before changing this file).
 //
-// MeedyaManager's profile (policy section 2) is "canonical" only today: it
-// edits stored metadata, and has no language menus yet (that would be the
-// "presentation" profile, once one exists). So of the thirteen sections
+// Policy section 2 assigns MeedyaManager BOTH the "canonical" and
+// "presentation" profiles — it edits stored metadata AND, through the rule
+// engine's `<Language>` output and rule conditions, compares and shows a
+// STORED value (see `crates/mm-core/src/metadata/language.rs`'s own module
+// doc for the exact reasoning). Only "canonical" is built out here TODAY,
+// not because MeedyaManager is exempt from "presentation" by the policy's
+// own table, but because it has no language MENU or LIST anywhere in its
+// UI yet to build "presentation" profile tests for. Corrected after the
+// second language-policy review round: this comment used to read
+// "MeedyaManager's profile (policy section 2) is 'canonical' only today",
+// which stated the ASSIGNMENT itself as narrower than section 2 actually
+// makes it, rather than describing what is BUILT so far — the same
+// distinction `crates/mm-core/src/metadata/language.rs`'s own module doc
+// already draws carefully; this file's header just had not caught up to
+// it. So of the thirteen sections
 // the policy's own table (8.1) lists, this test runs the four the
 // "canonical" profile needs for the parts of it MeedyaManager actually
 // implements: `canonicalise` (LANG-001, LANG-026), `legacy_three_letter`

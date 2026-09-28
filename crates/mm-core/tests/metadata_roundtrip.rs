@@ -426,23 +426,163 @@ fn setting_language_keeps_every_tag_container_consistent() {
     tags.insert(TAG_LANGUAGE.to_string(), vec!["en".to_string()]);
     write_tags(&path, &tags).unwrap_or_else(|e| panic!("write_tags failed: {e}"));
 
+    // -- Physical check: BOTH underlying containers are actually kept in
+    // sync, each in its own correct TRACK-070 form — read directly,
+    // bypassing `extract_tags`' own cross-container merge logic entirely,
+    // so this half of the test cannot be fooled by a bug in the very code
+    // the second half below is checking.
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+        Some("en"),
+        "RIFF INFO must carry the canonical tag — no stale \"fre\" left behind"
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("eng"),
+        "the newly created ID3v2 tag must carry the terminology three-letter code"
+    );
+
+    // -- What `extract_tags` itself reports: review item 5 of the SECOND
+    // review round found this reporting BOTH representations —
+    // `["en", "eng"]` — as if they were two different facts, rather than
+    // the SAME fact told twice in two containers. TRACK-070's own
+    // priority (a full-tag container's answer is read on its own; ID3's
+    // narrower one is only read when there is no full-tag answer to
+    // prefer — see `read_language_values` in `metadata/mod.rs`) means
+    // only RIFF INFO's answer is reported here.
     let after = extract_tags(&path)
         .unwrap_or_else(|e| panic!("extract_tags failed after setting language: {e}"));
-    // Both containers now exist and BOTH carry the SAME fact ("English"),
-    // each in its own correct TRACK-070 form: RIFF INFO gets the canonical
-    // tag itself ("en"), the newly created ID3v2 tag gets the terminology
-    // three-letter code ("eng") — no stale "fre" left anywhere.
-    let mut values = after
-        .get(TAG_LANGUAGE)
-        .map(Vec::as_slice)
-        .unwrap_or_default()
-        .to_vec();
-    values.sort();
     assert_eq!(
-        values,
-        vec!["en".to_string(), "eng".to_string()],
-        "every tag container carrying a language value must agree, each in its own correct \
-         per-format form — a leftover \"fre\" here would mean a stale value was left behind"
+        after.get(TAG_LANGUAGE).map(Vec::as_slice),
+        Some(["en".to_string()].as_slice()),
+        "extract_tags must report the fact ONCE, not the same language told twice in two forms"
+    );
+}
+
+/// Reads whatever `language` value ONE specific tag container holds,
+/// bypassing every bit of `extract_tags`' own cross-container merge and
+/// priority logic — used only to prove, independently of that logic, what
+/// is ACTUALLY sitting in each of a file's containers on disk.
+fn read_raw_language_from_tag_type(path: &Path, tag_type: lofty::tag::TagType) -> Option<String> {
+    use lofty::file::TaggedFileExt;
+    use lofty::probe::Probe;
+    use lofty::tag::{ItemKey, ItemValue};
+
+    let tagged_file = Probe::open(path)
+        .unwrap_or_else(|e| panic!("{}: cannot probe: {e}", path.display()))
+        .read()
+        .unwrap_or_else(|e| panic!("{}: cannot read: {e}", path.display()));
+    for tag in tagged_file.tags() {
+        if tag.tag_type() == tag_type {
+            for item in tag.get_items(&ItemKey::Language) {
+                if let ItemValue::Text(text) = item.value() {
+                    return Some(text.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Review item 5 of the second review round, the other half: setting
+/// language on a file where TWO different languages were already sitting
+/// in two different containers must still leave exactly the RIFF INFO
+/// answer as `extract_tags`' report — this is not specific to the
+/// "starts with one value" case above, which could in principle have been
+/// coincidence.
+#[test]
+fn setting_language_replaces_both_containers_even_when_they_already_disagreed() {
+    let (_dir, path) = copy_fixture("riff_language.wav");
+    // Give the (freshly created) ID3v2 tag a DIFFERENT stored language
+    // than RIFF INFO's own "fre", by writing "de" through this crate's own
+    // per-format-correct path first.
+    let mut first = TagMap::new();
+    first.insert(TAG_LANGUAGE.to_string(), vec!["de".to_string()]);
+    write_tags(&path, &first).unwrap_or_else(|e| panic!("first write_tags failed: {e}"));
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+        Some("de"),
+        "sanity check: the first write must have reached RIFF INFO"
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("deu"),
+        "sanity check: the first write must have reached the new ID3v2 tag too"
+    );
+
+    // Now set a SECOND, different language.
+    let mut second = TagMap::new();
+    second.insert(TAG_LANGUAGE.to_string(), vec!["pt-BR".to_string()]);
+    write_tags(&path, &second).unwrap_or_else(|e| panic!("second write_tags failed: {e}"));
+
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+        Some("pt-BR"),
+        "RIFF INFO must carry the NEW canonical tag, not the first write's \"de\""
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("por"),
+        "the ID3v2 tag must carry the NEW terminology code — a region-dropping conversion, but \
+         of the NEW value, not a leftover of the old one"
+    );
+
+    let after = extract_tags(&path).unwrap_or_else(|e| panic!("extract_tags failed: {e}"));
+    assert_eq!(
+        after.get(TAG_LANGUAGE).map(Vec::as_slice),
+        Some(["pt-BR".to_string()].as_slice()),
+        "extract_tags must report the one, current fact — not the old language, and not both \
+         forms of the new one"
+    );
+}
+
+/// Review item 3 of the second review round, MUST FIX: `write_tags`'
+/// `LanguageChange::Clear` branch only ever removed `language` from the
+/// PRIMARY tag — `remove_tag` (the general "delete this key" command) has
+/// always looped over every container the file has, so a language CLEAR
+/// silently doing less than an ordinary field's removal was the
+/// surprising direction for the two to have drifted apart in.
+#[test]
+fn clearing_language_removes_it_from_every_container() {
+    let (_dir, path) = copy_fixture("riff_language.wav");
+
+    // Give the (freshly created) ID3v2 tag its own language value too, so
+    // there are genuinely two containers to clear.
+    let mut set = TagMap::new();
+    set.insert(TAG_LANGUAGE.to_string(), vec!["en".to_string()]);
+    write_tags(&path, &set).unwrap_or_else(|e| panic!("setup write_tags failed: {e}"));
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
+        Some("en"),
+        "sanity check: RIFF INFO must carry a value before it can be cleared"
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2).as_deref(),
+        Some("eng"),
+        "sanity check: the ID3v2 tag must carry a value before it can be cleared"
+    );
+
+    // Clear it — an empty value is how `write_tags` spells "remove this".
+    let mut clear = TagMap::new();
+    clear.insert(TAG_LANGUAGE.to_string(), vec![String::new()]);
+    write_tags(&path, &clear).unwrap_or_else(|e| panic!("clearing write_tags failed: {e}"));
+
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo),
+        None,
+        "RIFF INFO must no longer carry a language value after clearing"
+    );
+    assert_eq!(
+        read_raw_language_from_tag_type(&path, lofty::tag::TagType::Id3v2),
+        None,
+        "the ID3v2 tag must no longer carry a language value after clearing"
+    );
+
+    let after = extract_tags(&path).unwrap_or_else(|e| panic!("extract_tags failed: {e}"));
+    assert_eq!(
+        after.get(TAG_LANGUAGE),
+        None,
+        "extract_tags must report no language at all once every container has been cleared"
     );
 }
 
@@ -635,6 +775,74 @@ fn compat_030_an_untouched_language_value_survives_byte_for_byte() {
     }
 }
 
+/// Review item 2 of the second language-policy review round, MUST FIX: the
+/// test above (and every other COMPAT-030 test in this file until now)
+/// proves "the caller LEFT `language` OUT of the map" is a no-op — but
+/// `language` being left out takes a completely different code path
+/// through `write_tags` (`tags.get(TAG_LANGUAGE)` is `None`, so
+/// `language_change` is `None` immediately, never even reaching the
+/// identical-value comparison at all) than "the caller RESENT the exact
+/// value that is already there", which is what every native UI this
+/// project has actually does on every save (see `write_tags`'s own doc
+/// comment). An independent review's own mutation testing found that
+/// disabling that comparison outright still passed every existing test in
+/// this file, because none of them exercised it. This test does, with the
+/// four cases the review specified — two on a FULL container (FLAC) that
+/// could never have produced them itself, one on ID3 with a value TRACK-070
+/// says ID3 should never hold in the first place, and one nothing
+/// recognises at all — because a resend must leave ANY already-stored
+/// value alone, not only one this crate would have chosen to write.
+#[test]
+fn resending_an_unchanged_language_value_is_never_refused() {
+    let cases: &[(&str, &str)] = &[
+        // A plain English WORD, not a language code at all — exactly the
+        // FLAC-says-"English" case that motivated COMPAT-030 in the first
+        // place (see `write_tags`'s own doc comment). Confirmed refused if
+        // typed fresh: `parse_language_input("English")` is `Err`.
+        ("silence.flac", "English"),
+        // The OLD three-letter form, sitting in a container that could
+        // hold the full tag instead — FLAC's Vorbis comment. `write_tags`
+        // itself would never put "eng" there (it writes the canonical tag
+        // to a full container), but nothing stops another tool, or an
+        // older build, from having done so.
+        ("silence.flac", "eng"),
+        // A full BCP-47 tag with a region, sitting in ID3 — the one
+        // container TRACK-070 says can only ever hold the bare
+        // three-letter code. `write_tags` would never put "pt-BR" there
+        // either, but a resent value must be left exactly as it already
+        // is, never "corrected" towards what this crate would have chosen.
+        ("silence.mp3", "pt-BR"),
+        // Nothing recognises this at all — confirmed refused if typed
+        // fresh, the same as "English" above, by a different route
+        // (`from_legacy_three_letter("zzz")` is `None` even though
+        // `canonicalise("zzz")` alone parses it as an obscure ordinary
+        // tag; LANG-002's three-letter-specific step is stricter).
+        ("silence.flac", "zzz"),
+    ];
+
+    for (fixture, raw) in cases {
+        let (_dir, path) = copy_fixture(fixture);
+        poke_raw_language_value(&path, raw);
+        let before = std::fs::read(&path).unwrap_or_else(|e| panic!("{fixture}: read failed: {e}"));
+
+        // RESEND the exact value that is already there, with the key
+        // present — never omitted — which is the shape the identical-value
+        // comparison itself exists to handle.
+        let mut tags = TagMap::new();
+        tags.insert(TAG_LANGUAGE.to_string(), vec![(*raw).to_string()]);
+        write_tags(&path, &tags).unwrap_or_else(|e| {
+            panic!("{fixture}: resending the unchanged value {raw:?} must not be refused: {e}")
+        });
+
+        let after = std::fs::read(&path).unwrap_or_else(|e| panic!("{fixture}: read failed: {e}"));
+        assert_eq!(
+            before, after,
+            "{fixture}: resending {raw:?} unchanged must not touch the file at all, not even \
+             re-write it with the same bytes (COMPAT-030)"
+        );
+    }
+}
+
 /// LANG-002: "If the field holds several values (ID3v2.4 separates them
 /// with a null character), split them first and read each on its own; the
 /// first is the primary language."
@@ -727,6 +935,76 @@ fn multi_value_tlan_does_not_survive_an_unrelated_save() {
         Some(["eng".to_string(), "swe".to_string()].as_slice()),
         "an unrelated save must not lose either value of a multi-value field it never touched"
     );
+}
+
+// ---------------------------------------------------------------------------
+// The rule engine, against REAL files of every format (review item 2 of the
+// second language-policy review round)
+// ---------------------------------------------------------------------------
+
+/// Review item 2, MUST FIX: an independent review's own mutation testing
+/// found that disabling either half of the rule engine's language
+/// standardisation (the FILE value in `evaluator.rs`, the RULE's own
+/// configured value in `rule_engine/mod.rs`) still passed every test in
+/// this crate — because there was no test anywhere that actually wrote a
+/// language into a REAL file of each format and evaluated a real rule
+/// against it. `rule_engine/mod.rs` and `evaluator.rs` each gained their
+/// own fast, synthetic-`TagMap` unit tests for the underlying logic; this
+/// integration test proves the same property end to end, through
+/// `write_tags` and `extract_tags`, on all four formats this crate writes
+/// `language` into.
+#[test]
+fn language_rule_conditions_match_across_every_container_format() {
+    let fixtures: &[&str] = &["silence.mp3", "silence.flac", "silence.m4a", "silence.wav"];
+
+    for fixture in fixtures {
+        let (_dir, path) = copy_fixture(fixture);
+        let mut tags = TagMap::new();
+        tags.insert(TAG_LANGUAGE.to_string(), vec!["en".to_string()]);
+        write_tags(&path, &tags).unwrap_or_else(|e| panic!("{fixture}: write_tags failed: {e}"));
+
+        let read_back =
+            extract_tags(&path).unwrap_or_else(|e| panic!("{fixture}: extract_tags failed: {e}"));
+        let ctx = mm_core::rule_engine::EvalContext::new(&read_back);
+
+        // A rule written against EITHER form must match every format,
+        // including the ones (MP3, and WAV's embedded ID3v2 — see
+        // `wav_write_tags_uses_embedded_id3v2_not_riff_info` above) that
+        // actually store the three-letter "eng", not the short "en".
+        for rule_value in ["en", "eng"] {
+            let rule = mm_core::rule_engine::Rule {
+                name: "test".to_string(),
+                priority: 0,
+                enabled: true,
+                conditions: vec![mm_core::rule_engine::Condition {
+                    field: "language".to_string(),
+                    operator: mm_core::rule_engine::ConditionOp::Equals,
+                    value: rule_value.to_string(),
+                }],
+                condition_mode: mm_core::rule_engine::ConditionMode::All,
+                template: "Matched".to_string(),
+                stop_on_match: false,
+            };
+            let result = mm_core::rule_engine::evaluate_rule(&rule, &ctx)
+                .unwrap_or_else(|e| panic!("{fixture}/{rule_value}: evaluate_rule failed: {e}"));
+            assert_eq!(
+                result.as_deref(),
+                Some("Matched"),
+                "{fixture}: a rule for \"language Equals {rule_value}\" must match this file, \
+                 whatever form it actually stores \"en\" in"
+            );
+        }
+
+        // `<Language>` in a template must render the STANDARD form for
+        // every one of these files — "en" — not whichever raw text that
+        // format's own container happens to hold.
+        let rendered = mm_core::rule_engine::evaluate_template("<Language>", &ctx)
+            .unwrap_or_else(|e| panic!("{fixture}: evaluate_template failed: {e}"));
+        assert_eq!(
+            rendered, "en",
+            "{fixture}: <Language> must render the standard form regardless of container"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
