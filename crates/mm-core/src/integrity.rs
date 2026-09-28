@@ -267,8 +267,18 @@ pub fn mutate_file_safe(
         // naming 'bad.meedya_tmp.flac' with it off. Every message now
         // starts with plain words and names the person's own file, with
         // the copy's path (and its bare file name) replaced by it.
+        //
+        // Fourth review round, item M1: that replacement put the blame on
+        // the person's own file even when the fault was in a Test Mode copy
+        // an EARLIER edit made — a damaged copy gave "Cannot read tags from
+        // '<your file>'" while the file itself was fine. The message now
+        // says "in its Test Mode copy" in exactly that case.
         let reason = name_the_real_file(&e.to_string(), &plan.target, path);
-        return failure(path, sha256_before, could_not_save(path, &reason));
+        return failure(
+            path,
+            sha256_before,
+            could_not_save_working_on(path, &plan, &reason),
+        );
     }
 
     // -- Step 4: hash the mutated target -----------------------------------
@@ -281,7 +291,11 @@ pub fn mutate_file_safe(
                 &plan.target,
                 path,
             );
-            return failure(path, sha256_before, could_not_save(path, &reason));
+            return failure(
+                path,
+                sha256_before,
+                could_not_save_working_on(path, &plan, &reason),
+            );
         }
     };
 
@@ -512,6 +526,32 @@ fn could_not_save(path: &Path, reason: &str) -> String {
         "Could not save the changes to '{}': {reason}",
         path.display()
     )
+}
+
+/// [`could_not_save`], for a failure while working on `plan`'s target — and
+/// saying "in its Test Mode copy" when that target is a Test Mode copy an
+/// EARLIER edit made.
+///
+/// Fourth review round, item M1. The reason text names the person's own
+/// file wherever the error named the copy (see [`name_the_real_file`]), so
+/// a damaged Test Mode copy gave "Cannot read tags from '<your file>'" —
+/// blaming a file that was perfectly fine. Reproduced with the binary built
+/// from `aa7a30d`: a FLAC edited once in Test Mode, its copy then damaged,
+/// and the next edit's message named only the original. The message still
+/// names the person's file (they never chose the copy's name), but now says
+/// the trouble is in its Test Mode copy.
+///
+/// A copy made by THIS save is a fresh copy of the original, so a fault
+/// there is a fault in the original, and the ordinary wording is right.
+fn could_not_save_working_on(path: &Path, plan: &MutationTarget, reason: &str) -> String {
+    if plan.is_test_mode_copy && !plan.created_here {
+        format!(
+            "Could not save the changes to '{}' in its Test Mode copy: {reason}",
+            path.display()
+        )
+    } else {
+        could_not_save(path, reason)
+    }
 }
 
 /// `message` with every mention of `working_copy` — its full path, and
@@ -1027,9 +1067,22 @@ mod tests {
     /// Assert `message` is a plain failure message about `real`, and names
     /// no copy MeedyaManager made for itself.
     fn assert_names_only_the_real_file(message: &str, real: &Path, context: &str) {
+        assert_plain_failure_about(message, real, "", context);
+    }
+
+    /// The same, for a failure inside a Test Mode copy an EARLIER edit made:
+    /// the message must still name only the real file, and must say the
+    /// trouble is in its Test Mode copy (fourth review round, item M1).
+    fn assert_blames_the_test_mode_copy(message: &str, real: &Path, context: &str) {
+        assert_plain_failure_about(message, real, " in its Test Mode copy", context);
+    }
+
+    /// Shared by the two above: plain words, the real file, `where_` (the
+    /// part after the file's name), and no copy named anywhere.
+    fn assert_plain_failure_about(message: &str, real: &Path, where_: &str, context: &str) {
         assert!(
             message.starts_with(&format!(
-                "Could not save the changes to '{}': ",
+                "Could not save the changes to '{}'{where_}: ",
                 real.display()
             )),
             "{context}: must start with plain words and the real file: {message:?}"
@@ -1103,7 +1156,13 @@ mod tests {
             });
             let message = result.error.expect("a failure carries a message");
             let context = format!("test_mode_on={test_mode_on}");
-            assert_names_only_the_real_file(&message, &original, &context);
+            if test_mode_on {
+                // The second edit works on the copy the first one made, so
+                // the trouble is in that copy (fourth review round, M1).
+                assert_blames_the_test_mode_copy(&message, &original, &context);
+            } else {
+                assert_names_only_the_real_file(&message, &original, &context);
+            }
             assert!(
                 message.contains("deliberate failure in track.wav"),
                 "{context}: the bare file name must be the real one: {message:?}"
@@ -1113,6 +1172,213 @@ mod tests {
                 "{context}: {message:?}"
             );
         }
+    }
+
+    // ── Fourth review round, items S3 and M1: the other failure paths ───────
+    //
+    // The third round's tests reached only the failure of the save ITSELF
+    // (step 3). The reviewer broke the wording of every other failure — an
+    // unreadable original (step 1), a copy that cannot be made (step 2, with
+    // Test Mode off and on), and the final swap (step 5) — and every test
+    // still passed. Each is now reached on a real file.
+    //
+    // The first two need file permissions to bite, so they are Unix-only,
+    // and each checks the permission really does stop it first: an account
+    // that ignores permissions (root, in some containers) would otherwise
+    // pass them without testing anything, so there they print why they were
+    // skipped instead. The third is Unix-only too, because it has only been
+    // run on macOS and Linux-style systems, not on Windows.
+
+    /// Puts a file's or folder's permissions back when the test ends, even
+    /// if it ends by panicking — otherwise the temporary folder could not
+    /// be cleaned up.
+    #[cfg(unix)]
+    struct PermissionsPutBack {
+        path: PathBuf,
+        mode: u32,
+    }
+
+    #[cfg(unix)]
+    impl PermissionsPutBack {
+        fn set(path: &Path, temporary: u32, afterwards: u32) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(temporary)).unwrap();
+            Self {
+                path: path.to_path_buf(),
+                mode: afterwards,
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for PermissionsPutBack {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ =
+                std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(self.mode));
+        }
+    }
+
+    /// Step 2 fails: the folder is read-only, so neither the working copy
+    /// (Test Mode off) nor the Test Mode copy (on) can be made beside the
+    /// file. The message must name only the real file, in plain words, and
+    /// nothing may be left behind. Reproduced with the binary built from
+    /// `aa7a30d`, which already said this correctly — but nothing tested it.
+    #[cfg(unix)]
+    #[test]
+    fn a_save_in_a_read_only_folder_names_only_the_real_file() {
+        for test_mode_on in [false, true] {
+            let _guard = ConfigDirGuard::new();
+            if test_mode_on {
+                test_mode::enable().expect("test mode must enable under the isolated dir");
+            }
+            let dir = TempDir::new().unwrap();
+            let folder = dir.path().join("read-only");
+            std::fs::create_dir(&folder).unwrap();
+            let original = folder.join("track.wav");
+            write_wav_fixture(&original);
+            let before = std::fs::read(&original).unwrap();
+
+            let _put_back = PermissionsPutBack::set(&folder, 0o555, 0o755);
+            if std::fs::File::create(folder.join("probe")).is_ok() {
+                eprintln!("skipped: this account can write to a read-only folder");
+                return;
+            }
+
+            let result = write_tags_safe(&original, &one_tag("title", "X"));
+            let context = format!("test_mode_on={test_mode_on}");
+            assert!(!result.success, "{context}");
+            let message = result.error.expect("a failure carries a message");
+            assert_names_only_the_real_file(&message, &original, &context);
+            let plain_reason = if test_mode_on {
+                "a Test Mode copy of it could not be made: "
+            } else {
+                "a working copy of it could not be made beside it: "
+            };
+            assert!(message.contains(plain_reason), "{context}: {message:?}");
+            assert_eq!(std::fs::read(&original).unwrap(), before, "{context}");
+            assert_eq!(
+                std::fs::read_dir(&folder).unwrap().count(),
+                1,
+                "{context}: nothing may be left beside the file"
+            );
+        }
+    }
+
+    /// Step 1 fails: the file itself cannot be read. Same checks.
+    #[cfg(unix)]
+    #[test]
+    fn a_save_of_an_unreadable_file_names_only_the_real_file() {
+        for test_mode_on in [false, true] {
+            let _guard = ConfigDirGuard::new();
+            if test_mode_on {
+                test_mode::enable().expect("test mode must enable under the isolated dir");
+            }
+            let dir = TempDir::new().unwrap();
+            let original = dir.path().join("track.wav");
+            write_wav_fixture(&original);
+
+            let _put_back = PermissionsPutBack::set(&original, 0o000, 0o644);
+            if std::fs::File::open(&original).is_ok() {
+                eprintln!("skipped: this account can read an unreadable file");
+                return;
+            }
+
+            let result = write_tags_safe(&original, &one_tag("title", "X"));
+            let context = format!("test_mode_on={test_mode_on}");
+            assert!(!result.success, "{context}");
+            let message = result.error.expect("a failure carries a message");
+            assert_names_only_the_real_file(&message, &original, &context);
+            assert!(
+                message.contains("': it could not be read: "),
+                "{context}: {message:?}"
+            );
+            assert_eq!(
+                std::fs::read_dir(dir.path()).unwrap().count(),
+                1,
+                "{context}: nothing may be made when the file cannot even be read"
+            );
+        }
+    }
+
+    /// Step 5 fails (Test Mode off): the saved working copy cannot be put in
+    /// the file's place. The change is made to the working copy as usual;
+    /// then, before the swap, the file is replaced by a folder of the same
+    /// name, which no file can be moved over. The message must name only
+    /// the real file, and the working copy must be removed.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_swap_names_only_the_real_file() {
+        let _guard = ConfigDirGuard::new();
+        let dir = TempDir::new().unwrap();
+        let original = dir.path().join("track.wav");
+        write_wav_fixture(&original);
+
+        let result = mutate_file_safe(&original, |target| {
+            write_tags(target, &one_tag("title", "X"))?;
+            std::fs::remove_file(&original).map_err(MmError::Io)?;
+            std::fs::create_dir(&original).map_err(MmError::Io)?;
+            std::fs::write(original.join("in the way"), b"x").map_err(MmError::Io)?;
+            Ok(())
+        });
+
+        assert!(!result.success);
+        let message = result.error.expect("a failure carries a message");
+        assert_names_only_the_real_file(&message, &original, "the swap");
+        assert!(
+            message.contains("': the updated file could not be put in its place: "),
+            "{message:?}"
+        );
+        assert!(
+            !temp_path(&original).exists(),
+            "the working copy must be removed when the swap fails"
+        );
+    }
+
+    /// Fourth review round, item M1: a Test Mode copy an earlier edit made
+    /// is damaged (here, overwritten with a few bytes). The next edit works
+    /// on that copy and fails — and the message used to blame the person's
+    /// own file ("Cannot read tags from '<your file>'"), which was fine.
+    /// Reproduced with the binary built from `aa7a30d` on a FLAC. It must
+    /// say the trouble is in its Test Mode copy, still name only the real
+    /// file, and keep the copy (it may hold earlier edits).
+    #[test]
+    fn a_damaged_test_mode_copy_is_named_as_where_the_trouble_is() {
+        let _guard = ConfigDirGuard::new();
+        test_mode::enable().expect("test mode must enable under the isolated dir");
+        let dir = TempDir::new().unwrap();
+        let original = dir.path().join("track.wav");
+        write_wav_fixture(&original);
+        let original_bytes = std::fs::read(&original).unwrap();
+
+        assert!(write_tags_safe(&original, &one_tag("title", "First")).success);
+        let copy = test_mode::test_mode_path(&original);
+        std::fs::write(&copy, b"damaged!").unwrap();
+
+        let result = write_tags_safe(&original, &one_tag("title", "Second"));
+        assert!(!result.success);
+        let message = result.error.expect("a failure carries a message");
+        assert_blames_the_test_mode_copy(&message, &original, "a damaged copy");
+        assert_eq!(
+            std::fs::read(&copy).unwrap(),
+            b"damaged!",
+            "the copy is kept exactly as it was"
+        );
+        assert_eq!(
+            std::fs::read(&original).unwrap(),
+            original_bytes,
+            "the original is untouched"
+        );
+
+        // The FIRST edit of a damaged file works on a copy made from the
+        // original a moment before, so there the original IS at fault, and
+        // the message must not point at a Test Mode copy.
+        let damaged = dir.path().join("damaged.wav");
+        std::fs::write(&damaged, b"damaged!").unwrap();
+        let first = write_tags_safe(&damaged, &one_tag("title", "X"));
+        let message = first.error.expect("a failure carries a message");
+        assert_names_only_the_real_file(&message, &damaged, "a damaged original");
+        assert!(!message.contains("Test Mode copy"), "{message:?}");
     }
 
     #[test]

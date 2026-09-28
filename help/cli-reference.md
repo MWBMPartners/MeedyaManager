@@ -451,7 +451,9 @@ so the warning describes the copy, not your original file, which is not changed.
 on the original's name still shows the original.)
 
 If a save fails, the message starts "Could not save the changes to" and names your file — never
-the temporary working copy MeedyaManager edits first, or the Test Mode copy.
+the temporary working copy MeedyaManager edits first, or the Test Mode copy. When the trouble is
+in a Test Mode copy an earlier edit made, rather than in your file (the copy was damaged, say),
+the message says so: "Could not save the changes to '…' in its Test Mode copy: …".
 
 ### Examples
 
