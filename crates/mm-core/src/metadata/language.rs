@@ -409,6 +409,35 @@ mod tests {
         assert!(note.contains("\"yue\""));
     }
 
+    /// Copy-update sweep to core `aaaa585`: two-letter subtags in the `qb`
+    /// to `qt` range sit alphabetically between the genuine three-letter
+    /// local-use codes `qaa` and `qtz`, but are not local-use codes
+    /// themselves — the crate now writes `und` for them and notes the
+    /// subtag as unregistered (previously this range was not specifically
+    /// handled). This is the same shape as `yue` above (no ISO 639-2 code
+    /// at all), but is worth its own test: it is a NEW behaviour from the
+    /// crate update, not a pre-existing one, and it is reached through the
+    /// `parse_language_input` -> `describe_conversion` path a person
+    /// actually types into, not just the shared crate's own unit tests.
+    #[test]
+    fn describe_conversion_reports_a_two_letter_q_code_as_und_on_id3() {
+        let note = describe_conversion("qb", TagType::Id3v2).expect("qb has no 639-2 code");
+        assert!(note.contains("\"und\""), "{note}");
+        assert!(note.contains("\"qb\""), "{note}");
+    }
+
+    /// The same input on a container that keeps the canonical tag whole
+    /// (no ID3 three-letter restriction) still gets a note — not because
+    /// anything was LOST, but because the crate flags "qb" as a subtag
+    /// nothing recognises, and `describe_conversion` surfaces every note
+    /// the crate itself records, not only the ID3-specific ones.
+    #[test]
+    fn describe_conversion_reports_a_two_letter_q_code_as_unregistered_everywhere() {
+        let note = describe_conversion("qb", TagType::VorbisComments).expect("qb is unregistered");
+        assert!(note.contains("\"qb\""), "{note}");
+        assert!(note.contains("not on the official list"), "{note}");
+    }
+
     #[test]
     fn describe_conversion_reports_a_registry_replacement() {
         let note = describe_conversion("iw", TagType::VorbisComments).expect("iw is replaced");
