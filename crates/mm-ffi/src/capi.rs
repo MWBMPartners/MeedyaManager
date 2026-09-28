@@ -138,7 +138,12 @@ pub unsafe extern "C" fn mm_ffi_scan_directory(
 
 /// Read all metadata tags from a file and return them as a JSON array.
 ///
-/// On success: `[{"key":"title","value":"Track Name"},...]`
+/// On success: `[{"key":"title","value":"Track Name"},...]`. The `language`
+/// entry may also carry `"note":"<plain-English text>"` when the file's tags
+/// disagree about the language (for example a WAV whose RIFF INFO chunk says
+/// `fre` and whose ID3 tag says `ger`) — text for the app to show beside the
+/// value. The `note` key is left out entirely when there is nothing to say,
+/// and never appears on any other entry.
 /// On failure: `{"error":"<message>"}`
 /// Caller must free with `mm_ffi_free_string`.
 ///
@@ -162,6 +167,9 @@ pub unsafe extern "C" fn mm_ffi_get_metadata(path: *const c_char) -> *const c_ch
 }
 
 /// Write metadata tags to a file from a JSON array of `{key, value}` objects.
+///
+/// Each object may also carry a `note` (as `mm_ffi_get_metadata` returns
+/// them); it is ignored, so that JSON can be sent straight back.
 ///
 /// On success: `{"ok":true}`
 /// On failure: `{"error":"<message>"}`
