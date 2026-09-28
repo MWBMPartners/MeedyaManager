@@ -38,8 +38,9 @@ section for the full account; in short:
   `und` on purpose"), a person setting one on purpose (refuses gibberish with a helpful message,
   in plain English with no "BCP 47" jargon in the error text itself), and deciding what to write
   into which tag container per the policy's TRACK-070.
-- `metadata::write_tags` now special-cases the `language` key: MP3's `TLAN` frame gets the old
-  three-letter ISO 639-2 code, every other container gets the full tag — and an untouched
+- `metadata::write_tags` now special-cases the `language` key: an ID3 tag's `TLAN` frame (the
+  kind an MP3 carries, and a WAV can also carry embedded inside it) gets the old three-letter
+  ISO 639-2 code, every other container gets the full tag — and an untouched
   `language` value is never rewritten just because some other field changed (COMPAT-030). This
   now holds even when the caller resends the field's CURRENT value unchanged (every native UI in
   this project — macOS, Windows, the GTK app — resends every field on Save, changed or not; a
@@ -55,8 +56,9 @@ section for the full account; in short:
   treat as "primary". A container that never had a language value is left alone, not created
   from nothing. See `setting_language_keeps_every_tag_container_consistent` in
   `crates/mm-core/tests/metadata_roundtrip.rs` and the new `riff_language.wav` fixture.
-- When what gets stored differs from what was typed (a region or script an MP3's `TLAN` frame
-  cannot hold; a language with no three-letter form at all, recorded as "not known"; or the
+- When what gets stored differs from what was typed (a region, script or other detail an ID3
+  tag's `TLAN` frame cannot hold; a language with no three-letter form at all, recorded as "not
+  known"; or the
   shared policy crate's own notes about the input), `meedya edit --set language=...` now says so
   in plain English — computed during validation, so it shows up even on `--dry-run`, before
   anything is written. Silent for the ordinary lossless cases (case-folding, the routine
@@ -99,9 +101,13 @@ section for the full account; in short:
   currently pinned to), #254 (multi-value ID3 text fields losing data on an unrelated save).
 
 **An independent review of the first batch of commits (`7697b9c..beb4c15`) found problems**,
-fixed in three further commits on top, each carrying `Refs #251` and its own "not yet
-independently reviewed" note (none of the fix commits has been re-reviewed yet — that is the
-next thing this branch needs, before it goes anywhere near a pull request):
+fixed in four further commits on top, each carrying `Refs #251` and its own "not yet
+independently reviewed" note. **Corrected after the SECOND review round: this used to say
+"three further commits" and the bullet list below left one of them out entirely** — an
+undercount found only because the second review round covered the whole `beb4c15..3a45ed7`
+range and named every commit in it, which is exactly the kind of drift a hand-counted list in a
+handoff file is prone to; `git log --oneline beb4c15..HEAD` is the one thing that cannot
+undercount.
 
 - `fix(metadata): act on independent review — COMPAT-030, rules, stability` — the resend-
   unchanged-value fix described above, the rule-engine standardisation, and the LANG-001
@@ -110,6 +116,11 @@ next thing this branch needs, before it goes anywhere near a pull request):
   multiple-containers fix described above.
 - `fix(metadata): tell the user what was actually stored, when it differs` — the plain-English
   note described above.
+- `test(metadata): prove TRACK-070 and the refusal at MeedyaManager's own layer` — the missing
+  commit: two tests running the policy's own `iso639_2_write` fixture cases through
+  MeedyaManager's own `language_value_for_tag_type` (directly, and via a real MP3 round trip with
+  "de", chosen because German's bibliographic and terminology forms differ), and a mm-core-level
+  test of `write_tags`'s refusal (mirroring the pre-existing mm-ffi-level one).
 
 **Copy-update sweep (2026-09-28)**: moved the policy copies and `meedya-lang`'s pin from
 MeedyaSuite-core commit `995becb7` to a later reviewed revision, `aaaa585aa145`, on the same
@@ -137,14 +148,57 @@ issue #253, remains owed and is not touched by this sweep). Two further commits,
   the comment added to `metadata_panel.rs` above is a documentation-only change, not a change
   verified against a real build of that crate.
 
-**Push state**: the first batch, up to and including `beb4c15`, is pushed to
-`origin/feature/bcp47-language-policy` (the owner pushed it to hand to an independent reviewer).
-**Every commit after `beb4c15` — the three review-fix commits and the two copy-update-sweep
-commits above — is local only, not pushed** — per the owner's standing instruction for this
-task, new commits go on top locally and nothing is pushed without being asked again. Check
-`git log feature/bcp47-language-policy` and `git status -sb` for the exact
+**A second independent review, of the whole `beb4c15..3a45ed7` range, found problems too** — 2
+MUST FIX, 7 SHOULD FIX, 3 MINOR (issue #255 opened rather than fixed, being a different, larger,
+pre-existing bug this review happened to notice while checking the language fix was complete).
+Six further commits on top of `3a45ed7`, each `Refs #251` and its own "not yet independently
+reviewed" note:
+
+- `fix(metadata): keep every language container in sync on clear, and read the fact once` —
+  clearing a language only removed it from the primary tag container (unlike setting one, which
+  the first round already fixed for every container); and a file with a language value in two
+  containers read back as the same fact told twice (`["en", "eng"]`) instead of once. Both fixed
+  in `metadata/mod.rs`; new `language_write_targets` is now the one place that decides which
+  containers `write_tags` treats as already having a value.
+- `fix(metadata): base the "what was stored" note on what write_tags does` — the note (first
+  round's item 6) described a plan based on the primary container alone, so it could miss a
+  container `write_tags` also touches, or claim a loss that would not really happen; renamed to
+  `describe_conversion_for_types` and given the real per-container list. Wording: "und" is now
+  always "not known"; the lost-detail message names exactly which part(s) are lost; a WHOLE tag
+  being replaced (grandfathered/redundant tags — "i-klingon" -> "tlh", "sgn-BR" -> "bzs" — which
+  carry no note of their own from the shared crate) now gets one too.
+- `fix(rule_engine): match a pattern against both forms; don't repeat a value` — a `Matches`
+  pattern written against a file's raw stored text stopped matching once standardisation was
+  introduced; it now matches either form. A multi-value `<Language>` render could show one fact
+  twice in display mode; deduplicated after standardising.
+- `fix(cli): show the language note in ordinary output, not just --json` — the note reached
+  `--json` output and nowhere else; `render`'s Human branch never read it. Fixed by extracting a
+  pure `build_human_lines` function `render` itself calls, which is also what made this testable.
+- `fix(ffi): don't leak the write target's path in a refusal message` — Test Mode's internal
+  `_MeedyaManager` copy path was ending up inside the message a native app shows on screen for an
+  ordinary validation refusal. Fixed in `integrity::mutate_file_safe`.
+- `test(metadata): real-file proof for every fix in this round, and a fixed header` — the
+  reviewer's own mutation testing found FIVE places where deliberately breaking a first-round fix
+  still passed every test in the crate; new tests close every one (mutation table in that
+  commit's own message), plus a real-file, all-four-formats integration test for the rule engine,
+  plus a corrected conformance-test header comment.
+
+See `Dev_Notes.md`'s "Language Tags & the MWBM-MEDIA-LANG Policy" section, the "Second review
+round" bullet, for the same account in the project's permanent notes rather than this
+point-in-time handoff.
+
+**Push state, corrected after the second review round (this HANDOFF entry previously said the
+eight commits below were "local only, not pushed" — true when that sentence was written, false
+by the time the second review actually ran, because the owner pushes each batch to hand it to an
+independent reviewer)**: `origin/feature/bcp47-language-policy` is at `3a45ed7` — every one of the
+eight commits from `8dd96e4` through `3a45ed7` (the first review round's five fix/test/docs
+commits, then the copy-update sweep's three) is pushed. Whatever commits address the SECOND
+review round sit on top of `3a45ed7`, LOCAL ONLY, not pushed — per the owner's standing
+instruction for this task, new commits go on top locally and nothing is pushed without being
+asked again. Check `git log feature/bcp47-language-policy` and `git status -sb` for the exact
 state; `git log origin/feature/bcp47-language-policy..feature/bcp47-language-policy` shows
-exactly which commits are still local-only.
+exactly which commits are still local-only, and is the one command that cannot go stale the way a
+hand-counted list in this file can.
 
 ---
 

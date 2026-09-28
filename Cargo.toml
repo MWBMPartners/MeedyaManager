@@ -69,9 +69,9 @@ meedya-core = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = 
 # revision of the SAME repository as `meedya-core` above; Cargo tracks each
 # git dependency by its own (url, rev) pair, so the two do not have to
 # agree, and each is fetched at exactly the commit it names.
-# Re-pinned 2026-09-28 from `995becb7` to `aaaa585a` (a later reviewed
-# revision on the same feature branch — see the copy-update sweep's commit
-# for the API changes this required adapting to). Once MeedyaSuite-core
+# Re-pinned 2026-09-28 from `995becb7` to `aaaa585a`, a later commit on
+# the same feature branch — see the copy-update sweep's own commit for
+# the API changes this required adapting to. Once MeedyaSuite-core
 # merges that branch to `main`, re-pin this line to `branch = "main"` (or a
 # `main` commit) in a follow-up change — tracked as MeedyaManager issue
 # #253 — and use `cargo update -p meedya-lang` afterwards, never a

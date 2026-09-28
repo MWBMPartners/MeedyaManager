@@ -135,18 +135,27 @@ Format: `## [Version] — YYYY-MM-DD`
   one (`fre`) the same way, whichever format the file uses. Setting a language on the command
   line (`meedya edit --set language=...`) is refused with a plain, helpful message — an example
   included — if what was typed is not a real language, rather than the mistake being silently
-  accepted. Writing a language now puts the right form in the right place: MP3 gets the old
-  three-letter code (there being no field in MP3 that can hold anything richer); every other
-  format keeps the full code. Saving a file for an unrelated reason (changing its title, say)
-  never alters a language value nobody asked to change — including a value this tool cannot even
-  parse, which is left exactly as it is rather than being treated as "close enough to replace".
+  accepted. Writing a language now puts the right form in the right place: an ID3 tag — the kind
+  MP3s carry, and which a WAV file can also carry embedded inside it, see below — gets the old
+  three-letter code (there being no field in that kind of tag that can hold anything richer);
+  every other tag format keeps the full code. Saving a file for an unrelated reason (changing its
+  title, say) never alters a language value nobody asked to change — including a value this tool
+  cannot even parse, which is left exactly as it is rather than being treated as "close enough to
+  replace" — and this holds whether the reason the field is untouched is that it was left out of
+  the request entirely, or that the request resent the very same value that is already there,
+  which is what every one of MeedyaManager's own editing screens actually does on every save.
 
-  When what actually gets stored differs from what was typed — an MP3 that can only take the old
-  three-letter form, or a language with no three-letter form at all, recorded as "not known" —
-  `meedya edit` now says so in plain English, at validation time so it shows up even on
-  `--dry-run`, before anything is written. Nothing is said for the ordinary, lossless cases
-  (case-folding, or the routine two-letter-to-three-letter promotion for MP3): only a genuine
-  loss is worth a note.
+  When what actually gets stored differs from what was typed — an ID3 tag that can only take the
+  old three-letter form (dropping a region, script, or any other extra detail), or a language with
+  no three-letter form at all, recorded as "not known" — `meedya edit` now says so in plain
+  English, both in the `--json` output and, since a following fix, in the ordinary text a person
+  actually sees running the command from a terminal too. It shows up at validation time so it
+  appears even on `--dry-run`, before anything is written, and names exactly which part of what
+  was typed will not survive rather than a generic list of every part that could. Nothing is said
+  for the ordinary, lossless cases (case-folding, or the routine two-letter-to-three-letter
+  promotion): only a genuine loss, or a case where the shared policy's own rules quietly rewrote
+  what was typed into a different code entirely (an old, no-longer-used code such as
+  `i-klingon` being replaced with its current equivalent, say), is worth a note.
 
   A **genuine surprise** turned up while testing this against real files: the library
   MeedyaManager uses to read and write tags treats a WAV file the same way as an MP3 for every
@@ -155,12 +164,31 @@ Format: `## [Version] — YYYY-MM-DD`
   files generally, not something this issue caused, but the language-specific write path is the
   first thing to depend on which container a file is actually using, which is what surfaced it.
 
-  What this issue's own fix does address: **a file with a language value in more than one place
-  at once now never goes stale.** If a WAV file already carries `LIST INFO`'s own language chunk
-  from some other tool, setting the language through MeedyaManager updates both that chunk and
-  the embedded tag MeedyaManager writes by default — each in its own correct form for that
-  container — rather than leaving the old value sitting in the chunk nobody touched. A container
-  that never had a language value to begin with is left alone, not created from nothing.
+  **A file with a language value in more than one place at once never goes stale, in either
+  direction.** If a WAV file already carries `LIST INFO`'s own language chunk from some other
+  tool, setting a new language through MeedyaManager updates both that chunk and the embedded tag
+  MeedyaManager writes by default, each in its own correct form for that container, rather than
+  leaving the old value sitting in the chunk nobody touched — and clearing a language removes it
+  from every one of those places too, not only the one MeedyaManager itself would normally write
+  to first. A container that never had a language value to begin with is left alone in both
+  cases, not created from nothing. Reading such a file back reports the fact once, in whichever
+  form the richer of the two containers holds it, rather than the same language twice over in two
+  different spellings.
+
+  A rename rule written against a file's language (`language Equals en`, or a pattern such as
+  `language Matches "^en"`) keeps matching correctly however the value happens to be spelled in
+  the file it is checked against, and a rule's own written-out list of every language present in
+  a file no longer shows the same one twice just because it happened to be spelled two different
+  ways across two tag containers.
+
+  **Not fixed here, tracked as its own issue**
+  ([#254](https://github.com/MWBMPartners/MeedyaManager/issues/254)): a value split across
+  several separate pieces inside a single MP3 tag field (the old-style way of recording more than
+  one language in one field) survives being read back straight away, but a second, completely
+  unrelated save afterwards loses all but one of those pieces. This is a general limitation of how
+  the underlying tag library currently saves that kind of field — it is not specific to language,
+  the exact same thing happens to a multi-artist field, say — so it is being tracked and fixed on
+  its own timescale rather than folded into this work.
 
   The full rules are shared with every other Meedya application and kept in
   `docs/standards/media-language-bcp47-policy.md`; see `Dev_Notes.md`'s "Language Tags & the

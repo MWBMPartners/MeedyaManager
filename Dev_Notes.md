@@ -778,19 +778,26 @@ stored metadata, and shows no language menus yet):
   (the CLI's `--set language=...` today); unlike the reader, it refuses a value it
   cannot make sense of, with a message that gives a working example.
 - `language_value_for_tag_type` decides what actually gets written for a given tag
-  container, per the policy's TRACK-070: MP3's `TLAN` frame gets the old three-letter
-  ISO 639-2 code (there being no MP3 field that can hold anything richer); every other
-  container this app writes gets the full language tag as typed.
+  container, per the policy's TRACK-070: an ID3v2 tag's `TLAN` frame — the kind an MP3
+  carries, and a WAV can also carry one embedded inside it, see below — gets the old
+  three-letter ISO 639-2 code (there being no field in that kind of tag that can hold
+  anything richer); every other container this app writes gets the full language tag
+  as typed.
 - A **genuine surprise, found while testing this against a real file rather than
   assumed from the table**: `lofty` (the tag-reading/writing library this app uses)
   maps a WAV file's "primary" tag to an embedded ID3v2 chunk, not a RIFF INFO chunk —
-  see `lofty::file::FileType::primary_tag_type()`. So `write_tags` on a `.wav` file
-  writes the same embedded ID3v2 tag an MP3 does for every field, `language` included,
-  never a RIFF INFO chunk — whatever this file (and the metadata module's own doc
-  comment) says about "WAV, RIFF INFO". That is a pre-existing fact about how this
-  crate writes WAV files generally, unrelated to the language work, but the
-  language-specific write path is the first thing to have depended on which container
-  a file is really using, which is what surfaced it. See the comment on
+  see `lofty::file::FileType::primary_tag_type()`. So a FRESH `.wav` file — one with no
+  tags of its own yet — gets the same embedded ID3v2 tag an MP3 does for every field,
+  `language` included, never a RIFF INFO chunk, whatever this file (and the metadata
+  module's own doc comment) says about "WAV, RIFF INFO". That is a pre-existing fact
+  about how this crate writes WAV files generally, unrelated to the language work, but
+  the language-specific write path is the first thing to have depended on which
+  container a file is really using, which is what surfaced it. **Corrected after the
+  second review round**: a WAV that already HAS a genuine RIFF INFO language value —
+  from some other tool, or from an earlier write by this crate itself — DOES get that
+  container written to as well (see the "keep every container consistent" fix a few
+  bullets down); the fact above is only about a container that never had a value to
+  begin with, which `write_tags` never creates from nothing. See the comment on
   `wav_write_tags_uses_embedded_id3v2_not_riff_info` in `crates/mm-core/tests/metadata_roundtrip.rs`.
 - **A second genuine surprise**: the policy says ID3v2.4's `TLAN` field can hold several
   three-letter codes separated by a null character, with the first being the primary
@@ -887,6 +894,38 @@ stored metadata, and shows no language menus yet):
   `legacy_three_letter` 38, `iso639_2_write` 19 → 21, `canonical_order` 20 → 23) — of
   the full 290 across all thirteen sections the policy defines, most of which
   MeedyaManager still does not implement (see the opening paragraph of this section).
+- **Second review round, 2026-09-28**: a further independent review of everything above (the
+  first round's fixes plus the copy-update sweep) found and fixed: the "what was stored" note
+  never actually appeared in the ordinary text `meedya edit` prints (it reached `--json` output
+  only — `build_human_lines` in `crates/mm-cli/src/commands/edit.rs` now prints it); clearing a
+  language only removed it from the primary tag container, not every one that already had a
+  value, unlike setting a new one; a WAV with a language value in two containers read back as
+  TWO values (`["en", "eng"]`) instead of one fact told once (`read_language_values` in
+  `metadata/mod.rs` now gives a full-tag container priority over ID3's narrower one, and
+  deduplicates by standard form); the "what was stored" note described a plan based on the
+  file's primary container alone rather than what `write_tags` would really do to every
+  container it touches, and named "an MP3" for a restriction that belongs to ID3 tags generally;
+  a rename rule's `Matches` pattern condition stopped matching a file's raw stored text once
+  standardisation was introduced, because it only tried the standardised form (it now tries
+  both); and the FFI's refusal message for a bad language value used to name Test Mode's internal
+  copy file, not just the problem with the value (`integrity::mutate_file_safe`'s failure message
+  no longer includes the write target's path). Also: none of the review round 1 fixes had a
+  test that actually exercised them — the reviewer's own mutation testing found five separate
+  places where deliberately breaking the fix still passed every test in the crate — closed by new
+  tests in `metadata_roundtrip.rs`, `rule_engine/mod.rs`, `rule_engine/evaluator.rs`,
+  `metadata/mod.rs` and `mm-ffi`'s `uniffi_api.rs`, each proven against the actual mutation it
+  exists to catch (see the corresponding commit for the mutation table).
+- **Not fixed here, tracked as its own issue**
+  ([#255](https://github.com/MWBMPartners/MeedyaManager/issues/255)): the SAME kind of staleness
+  the read-side fix above closes for `language` specifically exists for every other field too —
+  `write_tags`'s generic per-key loop only ever updates the file's primary tag container, so a
+  WAV that already has (say) a title in both a RIFF INFO chunk and an embedded ID3v2 tag ends up
+  with the new title in one and the old one still sitting in the other, and reading it back gives
+  `"T; New Title"` instead of just the new title. Confirmed by reading `write_tags`'s generic loop
+  before filing, not assumed. `language`'s own fix (`language_write_targets`) is scoped to
+  `language` only, because it also needs TRACK-070's per-format conversion; a general fix for
+  every field would not need that part, but is a larger piece of work than this one, so it is
+  tracked separately rather than folded in here.
 - **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
   language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
   `companion` module still matches sidecars by exact name only. Tracked as issue #252,
