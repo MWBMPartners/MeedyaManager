@@ -55,3 +55,14 @@
 - **A message about what was stored must be checked against the file.** A note that sounded
   right ("replaced with the current code") was false for everyday input; reading the file back
   with an independent tool (mutagen) is what showed it.
+- **A preview must read the file the save will change.** With Test Mode on and a copy already
+  made, a save changes the copy, not the file named on the command line; a note worked out from
+  the original was wrong about the copy. `integrity::where_a_save_starts` answers "which file";
+  use it for anything that previews a save.
+- **The per-commit checks do not build the documentation.** In the language work a public doc
+  comment linking to a private function passed fmt, clippy and every test, and was caught only
+  by `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` in the full check list. Run
+  that before calling a round finished.
+- **A handoff should not say what is on GitHub.** Push-status lines in the language note went
+  stale more than once; git (`git status -sb`) is the record. The note keeps only a table of
+  finished reviews and which commits each covered.

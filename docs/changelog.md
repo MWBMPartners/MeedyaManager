@@ -162,7 +162,13 @@ Format: `## [Version] — YYYY-MM-DD`
   `i-klingon` being replaced with its current equivalent, say), is worth a note. (An earlier
   version of this also warned — wrongly — that everyday three-letter codes such as `eng`, `fre`
   or `deu` had been "replaced", and told an MP3 given `und` that it had "no three-letter code";
-  neither is true, and neither note appears any more.)
+  neither is true, and neither note appears any more.) An old three-letter code is understood only
+  on its own: typed as the first part of a longer code (`eng-Latn`, `ger-1996`) it is not
+  recognised, so an MP3 stores "not known" — the note says so, and what to type instead
+  (`en-Latn`, `de-1996`), where it used to claim, wrongly, that there was "no three-letter code
+  for \"eng\"". An extended-language part (the `bra` in `sgn-bra`) is now named when an MP3 loses
+  it. With Test Mode on, once an earlier edit has made a Test Mode copy, the note describes that
+  copy — the file the change is actually saved to — rather than the untouched original.
 
   **When a file's tags disagree about the language, MeedyaManager now says so instead of hiding
   one of them.** Some files carry the language in two tags at once (a WAV's `LIST INFO` chunk
@@ -207,7 +213,9 @@ Format: `## [Version] — YYYY-MM-DD`
 
   When saving a file fails, the message now starts "Could not save the changes to" and names the
   file you asked to change — never the temporary working copy MeedyaManager edits first, or its
-  Test Mode copy, which used to appear in some of these messages.
+  Test Mode copy, which used to appear in some of these messages. When the trouble is in a Test
+  Mode copy an earlier edit made (the copy was damaged, say), the message says "… in its Test Mode
+  copy" instead of seeming to blame your own file.
 
   **Not fixed here, tracked as its own issue**
   ([#254](https://github.com/MWBMPartners/MeedyaManager/issues/254)): a value split across
@@ -224,9 +232,11 @@ Format: `## [Version] — YYYY-MM-DD`
   only has the first one changed when its language is set or cleared
   ([#259](https://github.com/MWBMPartners/MeedyaManager/issues/259)); any save to a FLAC file that
   starts with an ID3 tag fails
-  ([#257](https://github.com/MWBMPartners/MeedyaManager/issues/257), older than this work); and
+  ([#257](https://github.com/MWBMPartners/MeedyaManager/issues/257), older than this work);
   the help pages do not yet explain rule conditions in general
-  ([#258](https://github.com/MWBMPartners/MeedyaManager/issues/258)).
+  ([#258](https://github.com/MWBMPartners/MeedyaManager/issues/258)); and on macOS, trying to save
+  a locked file fails, as it should, but leaves a locked copy beside it that cannot be deleted
+  without unlocking it first ([#260](https://github.com/MWBMPartners/MeedyaManager/issues/260)).
 
   The full rules are shared with every other Meedya application and kept in
   `docs/standards/media-language-bcp47-policy.md`; see `Dev_Notes.md`'s "Language Tags & the

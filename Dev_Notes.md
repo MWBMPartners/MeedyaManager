@@ -985,6 +985,39 @@ stored metadata, and shows no language menus yet):
     not explain rule conditions in general), #259 (a WAV with two `LIST INFO` chunks only has
     the first changed). #254 widened with the M4A case: a freeform `LANGUAGE` item holding `en`
     and `fr` reads back as `en` only, and a title-only save drops `fr`.
+- **Fourth review round, 2026-09-28** (a fresh Opus agent standing in for Codex, over
+  `e18fb18..aa7a30d`; the lead's ten decisions on it are final):
+  - **Test Mode: the note describes the file the change is saved to.** With Test Mode on and a
+    copy already made by an earlier edit, `meedya edit` read the untouched original to work out
+    its note, so it could say an ID3 tag "will be left alone" that the save then rewrote on the
+    copy. It now reads the copy (`integrity::where_a_save_starts`).
+  - **An old three-letter code inside a longer tag** (`eng-Latn`, `ger-1996`, `fre-Latn-CA`, …)
+    is understood by LANG-002 only on its own, so an ID3 tag stores `und`. The note used to say
+    there was "no three-letter code for \"eng\"" — false. It now says the old code is not
+    recognised inside a longer tag and what to type instead (`en-Latn`), built from the current
+    code plus the rest, in standard form (`old_code_inside_longer_tag` in `language.rs`). A code
+    that is a language in its own right (`sgn`, `yue`, `und`, `cmn`) is never called old. An
+    extended-language part (`bra` in `sgn-bra`) is now named among the parts an ID3 tag loses.
+  - **Failure messages:** "… in its Test Mode copy" when the fault is in a copy an earlier edit
+    made; tests for the failure paths nothing reached before (see "File Integrity Checking"
+    below).
+  - **Rule conditions, corrected wording:** only path mode — the one rules run in today —
+    compares one value on both sides; in display mode the standard form is every value joined
+    (`"en; fr"`). The help now also warns that text conditions compare codes, so `Contains "en"`
+    matches Bengali stored as `ben`, `StartsWith "fr"` matches Western Frisian stored as `fry`,
+    and `Contains "ger"` (which looks for `de`) matches Makonde, `kde` — use `Equals` for "is this
+    language". A rule-engine test pins those three examples.
+  - **Tests for four more untested branches** (the reviewer's P5, P6, P7, P10), including the
+    first test in `crates/mm-cli/tests/`, which runs the real `meedya` program to prove
+    `meedya debug` prints the warning line. Two new test files from `make_language_fixtures.py`.
+  - **The C API's comments** (and so the generated `include/mm_ffi.h`) mention the optional
+    `note` key.
+  - **Issue opened:** #260 (a locked file on macOS leaves an undeletable locked copy behind).
+  - **Mutation testing:** every planted fault from the four reviews and this round was re-run
+    against the final code. All nine of the fourth reviewer's faults the lead's decisions
+    covered are now caught; three of that reviewer's others (P4, P8, P9 — not covered by the
+    decisions) still are not; the third reviewer's O6 cannot be caught by its nature (it breaks
+    a test, not the code); everything else that can run is caught.
 - **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
   language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
   `companion` module still matches sidecars by exact name only. Tracked as issue #252,
@@ -1022,7 +1055,20 @@ longer risks deleting a tracked copy holding an earlier successful edit), and th
 changes to '<the file you asked to change>': …" and never names the scratch copy or the Test Mode
 copy: any mention of the copy — its full path, or just its file name — in an underlying error is
 replaced by the real file's (third review round of the language-policy work, item 8; before, a
-damaged FLAC gave "mutation failed: … Cannot read tags from 'bad_MeedyaManager.flac'").
+damaged FLAC gave "mutation failed: … Cannot read tags from 'bad_MeedyaManager.flac'"). When
+the save was working on a Test Mode copy an EARLIER edit made, and that is where it failed, the
+message reads "Could not save the changes to '<your file>' in its Test Mode copy: …" — otherwise
+a damaged copy was blamed on a perfectly good original (fourth review round, item M1). These
+failure paths each have a test in `integrity.rs`: an unreadable file, a folder where no copy can
+be made (Test Mode off and on), the save itself (including on a damaged Test Mode copy), and the
+final swap. One has none: re-checking the saved result (step 4) failing, which cannot easily be
+caused on purpose. A known gap, not fixed:
+on macOS a locked file (`uchg`) leaves a locked copy behind that cannot be deleted (#260).
+
+`integrity::where_a_save_starts(path)` answers "which file would a save of this path change?" —
+the tracked Test Mode copy when Test Mode is on and one exists, otherwise the file itself — using
+the same helper as the save, so anything that previews a save (today, `meedya edit`'s language
+note) reads the right file (fourth review round, item S1).
 
 **Corruption log**: persistent failures are appended to
 `<config_dir>/corruption.log`, e.g. `~/.config/MeedyaManager/corruption.log` on Linux — the same

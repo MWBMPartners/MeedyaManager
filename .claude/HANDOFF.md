@@ -100,173 +100,121 @@ section for the full account; in short:
   C# UIs), #253 (re-pin `meedya-lang` to `main` once MeedyaSuite-core merges the branch it is
   currently pinned to), #254 (multi-value ID3 text fields losing data on an unrelated save).
 
-**An independent review of the first batch of commits (`7697b9c..beb4c15`) found problems**,
-fixed in four further commits on top, each carrying `Refs #251` and its own "not yet
-independently reviewed" note. **Corrected after the SECOND review round: this used to say
-"three further commits" and the bullet list below left one of them out entirely** — an
-undercount found only because the second review round covered the whole `beb4c15..3a45ed7`
-range and named every commit in it, which is exactly the kind of drift a hand-counted list in a
-handoff file is prone to; `git log --oneline beb4c15..HEAD` is the one thing that cannot
-undercount.
+### Review history — finished reviews only
 
-- `fix(metadata): act on independent review — COMPAT-030, rules, stability` — the resend-
-  unchanged-value fix described above, the rule-engine standardisation, and the LANG-001
-  stability check in the conformance test.
-- `fix(metadata): keep every tag container consistent when setting language` — the
-  multiple-containers fix described above.
-- `fix(metadata): tell the user what was actually stored, when it differs` — the plain-English
-  note described above.
-- `test(metadata): prove TRACK-070 and the refusal at MeedyaManager's own layer` — the missing
-  commit: two tests running the policy's own `iso639_2_write` fixture cases through
-  MeedyaManager's own `language_value_for_tag_type` (directly, and via a real MP3 round trip with
-  "de", chosen because German's bibliographic and terminology forms differ), and a mm-core-level
-  test of `write_tags`'s refusal (mirroring the pre-existing mm-ffi-level one).
+Every review so far was independent of the builder. Git is the record of what is on the branch
+(`git log --oneline 7697b9c..feature/bcp47-language-policy`); this table only says which
+finished review covered which commits. Ranges and counts checked with `git log` on 2026-09-28.
+Nothing here says what is or is not on GitHub: ask git (`git status -sb`), not this file.
 
-**Copy-update sweep (2026-09-28)**: moved the policy copies and `meedya-lang`'s pin from
-MeedyaSuite-core commit `995becb7` to a later reviewed revision, `aaaa585aa145`, on the same
-`feature/bcp47-language-policy` branch (core has still not merged to `main` — that re-pin,
-issue #253, remains owed and is not touched by this sweep). Two further commits, both
-`Refs #251` and not yet independently reviewed:
+| Review | Commits it covered | How many | Reviewer |
+| --- | --- | --- | --- |
+| 1st | `7697b9c..beb4c15` | 6 | a fresh Opus agent standing in for Codex |
+| 2nd | `beb4c15..3a45ed7` | 8 | independent — who ran it is not recorded in this repository |
+| 3rd | `3a45ed7..e18fb18` | 7 | a fresh Opus agent standing in for Codex |
+| 4th | `e18fb18..aa7a30d` | 7 | a fresh Opus agent standing in for Codex |
 
-- `build(deps): copy-update sweep — move to core aaaa585, re-pin meedya-lang` — the re-pin,
-  `cargo update -p meedya-lang`, the copy refresh via the checker's own `--update` mode, and a
-  full check of what the crate's API changes actually reach in this repository (almost nothing:
-  `TrackItem`/`PresentationItem`/`SelectableTrack`/`RoleItem`/`TagMatch`/`build_sidecar_name`/
-  `SidecarParts` are not used here at all, since MeedyaManager only implements Part A /
-  TRACK-070). Case count for the four sections MeedyaManager runs: 126 → 131.
-- `test(metadata): prove the new qb-qt ISO 639-2 handling reaches our code` — two new tests
-  proving `describe_conversion` correctly reports the crate's new `qb`-`qt` → `und` handling
-  (two-letter subtags that sit alphabetically inside the local-use range but are not local-use
-  codes themselves, which are three letters).
+Commits after `aa7a30d` are not yet reviewed.
+
+### What each round of fixes did
+
+Each commit carries `Refs #251` and says in its own message that it was not yet reviewed when
+made. The commits and their messages are the full account; this is the short version.
+
+**After the 1st review** (`8dd96e4`, `04b3dee`, `81964dd`, `d8254e6`, `2de3375`): a resent,
+unchanged language is never refused or rewritten (COMPAT-030); rule comparisons use the standard
+form; the conformance test checks LANG-001's stability; every tag that already holds a language
+is kept in step; the "what was stored" note; TRACK-070 and the refusal proven at MeedyaManager's
+own layer; notes and GTK panel comment brought up to date.
+
+**Copy-update sweep** (`fb25404`, `09198ea`, `3a45ed7`): the policy copies and the `meedya-lang`
+pin moved from MeedyaSuite-core `995becb7` to `aaaa585aa145` on core's
+`feature/bcp47-language-policy` branch (core has not merged to `main`; the re-pin to `main` is
+#253). What the crate's changes reach here was checked (almost nothing — MeedyaManager only
+implements Part A / TRACK-070). Case count for the four sections MeedyaManager runs: 126 → 131.
+
+**After the 2nd review** (`e9e617d`, `d1b340d`, `75fed0f`, `23ec966`, `67fa8c4`, `9d0d2c4`,
+`e18fb18`): clearing a language clears every tag; the fact is read once; the note is based on what
+`write_tags` really does; `Matches` tries both forms; `<Language>` never repeats a value; the note
+reaches ordinary output, not only `--json`; a Test Mode copy's path no longer leaks into an FFI
+refusal; real-file tests for each fix. #255 opened.
+
+**After the 3rd review** (`e4b730b`, `53e913d`, `285f8de`, `62aeea9`, `44d5932`, `8c98914`,
+`aa7a30d`): no "replaced" note for an ordinary three-letter code; the note proven to reach the
+printed lines; a file's tags disagreeing about the language is reported (`meedya debug`,
+`meedya edit`, and `get_metadata`'s new optional `TagEntry.note`); tests for every surviving
+fault; all five text conditions try both forms, one value at a time; failure messages name the
+person's own file, never an internal copy. #256–#259 opened; #254 widened.
+
+**After the 4th review — round 5** (commits after `aa7a30d`, none reviewed yet). The lead's ten
+decisions, final:
+
+- `08511f1` (S1) — with Test Mode on and a copy already made, `meedya edit`'s language note now
+  describes that copy, which is what the change is saved to (new
+  `integrity::where_a_save_starts`, sharing one helper with the save itself). It used to read the
+  untouched original: on the reviewer's WAV (RIFF `fre`, ID3 `ger`), set `es` then `fre` said the
+  ID3 tag "will be left alone" while the save rewrote the copy's ID3 tag to `fra`.
+- `ec352ea` (S2) — an old three-letter code as the first part of a longer tag (`eng-Latn`,
+  `ger-1996`, `deu-1996`, `eng-x-foo`, `eng-u-ca-gregory`, `fre-Latn-CA`, `eng-US-x-foo`) is
+  explained truly: "\"eng\" is an old code; inside a longer tag it is not recognised, so an ID3
+  tag will store it as not known — type \"en-Latn\" instead" (it used to say there was "no
+  three-letter code for \"eng\""). An extended-language part (`sgn-bra`) is named among the lost
+  parts.
+- `eb0313f` (S3, M1) — tests for the failure paths nothing reached: a read-only folder (Test Mode
+  off and on), an unreadable file, and the final swap failing. A failure inside a Test Mode copy
+  an earlier edit made now says "… in its Test Mode copy" instead of seeming to blame the
+  person's own file.
+- `06185f4` (M6) — tests for four branches the reviewer could break unnoticed (P5, P6, P7, P10),
+  including `crates/mm-cli/tests/debug_language_warning.rs`, which runs the real `meedya` program;
+  two new test files built by `make_language_fixtures.py`.
+- `62c3619` (M2, M3) — the display-mode wording corrected in code comments, help, `Dev_Notes.md`
+  and the changelog (only path mode, the one rules run in, compares one value on both sides);
+  `help/rule-syntax.md` warns that text conditions compare codes (`Contains "en"` also matches
+  Bengali stored as `ben`) and recommends `Equals`.
+- `939a1a8` (M5) — the C API comments and the generated `include/mm_ffi.h` mention the optional
+  `note` key.
+- `a1fa6be` — a fault in `08511f1`, found by the full check list: the new public function's
+  documentation linked to a private one, so `cargo doc` with warnings as errors failed. Fixed.
+- the docs commit that carries this note (M4 and the notes): this section rewritten as a review
+  history with no push-status claims; changelog, `Dev_Notes.md`, `.OpenAI/MEMORY.md`.
+- Issue #260 opened (item 10): saving a locked file on macOS leaves a locked copy behind
+  (`x.meedya_tmp.mp3`, or `x_MeedyaManager.mp3` in Test Mode) that cannot be deleted. Not fixed
+  here, on purpose. On the project board, linked from #251.
+
+**How round 5 was proven.** Each fault was reproduced first with the `meedya` binary built from
+`aa7a30d` on real files read back with mutagen, then shown fixed with the rebuilt binary on the
+same files. Mutation testing (the reviewer's `mutrun.py`, re-pointed at this clone, one planted
+fault at a time, running the mm-core, mm-cli and mm-ffi tests): every planted fault from the four reviews and this round, re-run against the final code.
+The nine the fourth reviewer found NOT CAUGHT that the lead's decisions covered — P5, P6, P7,
+P10, P14, P15, P16, P17, P20 — are all CAUGHT now. Of that reviewer's 25, three are still not
+caught: P4, P8 and P9, which the decisions did not cover. Of the third reviewer's 24, O6 is not
+caught (it breaks a check inside a TEST, not the code), and N9 and N14 cannot run as written
+(their lines were replaced in round 4; the equivalents N9b and N14b are CAUGHT); the other 21
+are CAUGHT. Round 4's own 17 are all CAUGHT (R1b's text no longer matches, because the S2 branch
+now sits inside it; a rewritten equivalent is CAUGHT). Round 5's own 10 (S1a–S2f, M1a, M1b) are
+all CAUGHT. The mutation table for round 5 and the logs are kept outside the repository.
+
+**Checks on the final code (2026-09-28):** `cargo fmt --all -- --check` 0; `cargo clippy --workspace --all-targets -- -D warnings` 0;
+`cargo test --workspace` 0 — 1526 passed, 1 ignored (#254), 0 failed; `RUSTDOCFLAGS="-D
+warnings" cargo doc --workspace --no-deps` first 101 — a public doc comment in `08511f1` linked
+to a private function; fixed in `a1fa6be`, then 0; `cargo deny check` 1, only for the known
+RUSTSEC-2026-0285 (`tokio-rustls` through `reqwest`); `check_copies.py` 0 (6 copies match core
+`aaaa585aa145`). The suite ran on `939a1a8`; `a1fa6be` changes two comment lines only.
 
 **Not done / not checked:**
-- `swift build` / `dotnet test` were not run — nothing on this branch touches Swift or C# code.
-- No APE-container round-trip test exists (no committed APE audio fixture in this repo); the
-  per-container writing decision for APE is covered by a unit test instead (`language.rs`), not
-  a real-file round trip.
-- `crates/mm-gtk` cannot be built or tested on this machine (see the working notes for why), so
-  the comment added to `metadata_panel.rs` above is a documentation-only change, not a change
-  verified against a real build of that crate.
-
-**A second independent review, of the whole `beb4c15..3a45ed7` range, found problems too**
-(issue #255 opened rather than fixed, being a different, larger, pre-existing bug this review
-happened to notice while checking the language fix was complete). **Corrected by round 4:** this
-used to say "2 MUST FIX, 7 SHOULD FIX, 3 MINOR". The commits that acted on the review name FIVE of
-its items MUST FIX (items 1, 2, 3, 4 and 7); how the rest split into "should" and "minor" is not
-recorded anywhere round 4 could check, so it is left out rather than guessed. **Also corrected:
-SEVEN further commits on top of `3a45ed7`, not six** — the seventh, the docs commit, was missing
-from the list below. Each carries `Refs #251` and its own "not yet independently reviewed" note:
-
-- `fix(metadata): keep every language container in sync on clear, and read the fact once` —
-  clearing a language only removed it from the primary tag container (unlike setting one, which
-  the first round already fixed for every container); and a file with a language value in two
-  containers read back as the same fact told twice (`["en", "eng"]`) instead of once. Both fixed
-  in `metadata/mod.rs`; new `language_write_targets` is now the one place that decides which
-  containers `write_tags` treats as already having a value.
-- `fix(metadata): base the "what was stored" note on what write_tags does` — the note (first
-  round's item 6) described a plan based on the primary container alone, so it could miss a
-  container `write_tags` also touches, or claim a loss that would not really happen; renamed to
-  `describe_conversion_for_types` and given the real per-container list. Wording: "und" is now
-  always "not known"; the lost-detail message names exactly which part(s) are lost; a WHOLE tag
-  being replaced (grandfathered/redundant tags — "i-klingon" -> "tlh", "sgn-BR" -> "bzs" — which
-  carry no note of their own from the shared crate) now gets one too.
-- `fix(rule_engine): match a pattern against both forms; don't repeat a value` — a `Matches`
-  pattern written against a file's raw stored text stopped matching once standardisation was
-  introduced; it now matches either form. A multi-value `<Language>` render could show one fact
-  twice in display mode; deduplicated after standardising.
-- `fix(cli): show the language note in ordinary output, not just --json` — the note reached
-  `--json` output and nowhere else; `render`'s Human branch never read it. Fixed by extracting a
-  pure `build_human_lines` function `render` itself calls, which is also what made this testable.
-- `fix(ffi): don't leak the write target's path in a refusal message` — Test Mode's internal
-  `_MeedyaManager` copy path was ending up inside the message a native app shows on screen for an
-  ordinary validation refusal. Fixed in `integrity::mutate_file_safe`.
-- `test(metadata): real-file proof for every fix in this round, and a fixed header` — the
-  reviewer's own mutation testing found FIVE places where deliberately breaking a first-round fix
-  still passed every test in the crate; new tests close every one (mutation table in that
-  commit's own message), plus a real-file, all-four-formats integration test for the rule engine,
-  plus a corrected conformance-test header comment. **Corrected by round 4: "close every one" was
-  wrong — four of the five.** The third reviewer broke them all again and one still passed every
-  test: `meedya edit` never attaching the note to the line it prints (`set_action_for`). Closed in
-  round 4 by `a_language_note_reaches_the_printed_lines_on_dry_run_and_real_write` in
-  `crates/mm-cli/src/commands/edit.rs`.
-- `docs(metadata): correct stale claims, count commits correctly, open #255` (`e18fb18`) — the
-  changelog, this file and `Dev_Notes.md` brought up to date for that round; issue #255 opened.
-  (Missing from this list until round 4 — ironically, in a commit whose subject was counting
-  commits correctly.)
-
-See `Dev_Notes.md`'s "Language Tags & the MWBM-MEDIA-LANG Policy" section, the "Second review
-round" bullet, for the same account in the project's permanent notes rather than this
-point-in-time handoff.
-
-**Push state, corrected after the second review round (this HANDOFF entry previously said the
-eight commits below were "local only, not pushed" — true when that sentence was written, false
-by the time the second review actually ran, because the owner pushes each batch to hand it to an
-independent reviewer)**: `origin/feature/bcp47-language-policy` is at `3a45ed7` — every one of the
-eight commits from `8dd96e4` through `3a45ed7` (the first review round's five fix/test/docs
-commits, then the copy-update sweep's three) is pushed. Whatever commits address the SECOND
-review round sit on top of `3a45ed7`, LOCAL ONLY, not pushed — per the owner's standing
-instruction for this task, new commits go on top locally and nothing is pushed without being
-asked again. Check `git log feature/bcp47-language-policy` and `git status -sb` for the exact
-state; `git log origin/feature/bcp47-language-policy..feature/bcp47-language-policy` shows
-exactly which commits are still local-only, and is the one command that cannot go stale the way a
-hand-counted list in this file can. **Corrected by round 4: the second round's commits ARE
-pushed** — `origin/feature/bcp47-language-policy` is at `e18fb18` (checked with `git rev-parse`
-on 2026-09-28), so all seven of them are on GitHub. Only round 4's commits are local.
-
-**A third independent review (a fresh Opus agent standing in for Codex) covered `3a45ed7..e18fb18`
-and found problems. Round 4 acted on all ten of the lead's decisions (final, not to be reopened)
-in the commits below — LOCAL ONLY, nothing pushed, and none of them independently reviewed yet.**
-`git log --oneline e18fb18..feature/bcp47-language-policy` is the list that cannot go stale:
-
-- `e4b730b` `fix(metadata): no "replaced" note for an ordinary three-letter code` — item 1 (MUST
-  FIX). `eng`/`fre`/`ger`/`deu`/`xxx` no longer get "replaced with the current code", `und` on an
-  ID3 tag no longer gets "no three-letter code"; "kept exactly as typed" now says which tags keep
-  it. Proven on real MP3/FLAC files read back with mutagen.
-- `53e913d` `test(cli): prove the language note reaches the lines meedya edit prints` — item 2,
-  plus the correction of the "closed all five" claim.
-- `285f8de` `feat(metadata): say when a file's tags disagree about the language` — item 3.
-  `meedya debug`, `meedya edit` and `get_metadata` (new optional `TagEntry.note`) now report an
-  ID3 tag that disagrees with the language shown; `write_tags` unchanged (a resend stays a
-  no-change). New stdlib-only fixture generator and three fixtures in
-  `crates/mm-core/tests/fixtures/`. Swift bindings regenerated. Issues #256, #257 opened.
-- `62aeea9` `test(metadata): a failing test for each breakage the third review found` — item 5
-  (N2, N4, N5, N6, N10–N13, each proven CAUGHT with the reviewer's own mutation definitions).
-- `44d5932` `fix(rule_engine): language conditions try both forms, one value at a time` — items
-  6 and 7.
-- `8c98914` `fix(integrity): failure messages name your file, never an internal copy` — item 8.
-  Every failed save now reads "Could not save the changes to '<your file>': …"; the scratch copy
-  and the Test Mode copy are never named. Proven with Test Mode on and off.
-- the docs commit that carries this note — items 4, 9 and 10 (help pages, changelog,
-  `Dev_Notes.md`, this file, `.OpenAI/MEMORY.md`, `docs/api/`); issues #258 and #259 opened,
-  #254 widened with the M4A case, all new issues on the project board and linked from #251.
-
-**How it was proven.** Each fault was reproduced first with the `meedya` binary built from
-`e18fb18` (the reviewer's) and independent reads with mutagen; each fix then shown on the rebuilt
-binary on the same files. Every one of the reviewer's 24 planted faults (O1–O7, N1–N17) and this
-round's own 17 (R1a–R8c, which include rewritten equivalents of N9 and N14, whose original lines no
-longer exist) was re-run against the final code, in a separate clone: 21 of the reviewer's 22
-that still apply are caught, and all 17 of this round's. The one not caught is O6 — turning off a
-check inside the conformance TEST itself — which no test can catch by its nature: it changes a
-test, not the code under test. N9 and N14 could not be run as written (their lines were replaced
-this round); R1d and R8a are their equivalents, and both are caught.
-
-**Checks on the final tree (2026-09-28):** `cargo fmt --check` 0; `cargo clippy --workspace
---all-targets -D warnings` 0; `cargo test --workspace` 0 — 1507 passed, 1 ignored (#254), 0
-failed; `cargo doc` with warnings as errors 0; `cargo deny check` 1, only for RUSTSEC-2026-0285
-(already known, `tokio-rustls` through `reqwest`); `check_copies.py` 0 (6 copies match core
-`aaaa585aa145`).
-
-**Not done / not checked in round 4:**
-- The Swift, C# and GTK screens do not show `TagEntry.note` yet (#256); `swift build`,
-  `dotnet test` and the GTK build were not run (nothing here touches their code, but the
-  regenerated Swift bindings are only a committed snapshot — they are excluded from the macOS
-  build).
-- The disagreement note quotes codes (`"ger"`), not names ("German"): there is no language-name
-  data in this project or in the shared crate.
-- Issues from this work still open, not fixed: #252, #253, #254 (widened), #255, #256, #257,
-  #258, #259.
-- **Next:** the owner decides whether to push these commits for a fourth independent review
-  (Codex, or a fresh agent standing in for it) of `e18fb18..HEAD`.
+- The Swift, C# and GTK screens still do not show `TagEntry.note` (#256); `swift build`,
+  `dotnet test` and the GTK build were not run — nothing here touches their code.
+- The failure-path tests that need file permissions, and the swap test, are Unix-only; they have
+  been run on macOS only. A permission test prints why it skipped, rather than failing, on an
+  account that ignores permissions (root in some containers).
+- The disagreement note quotes codes (`"ger"`), not names: there is no language-name data here or
+  in the shared crate.
+- No APE-container round-trip test exists (no committed APE audio fixture); APE is covered by a
+  unit test only.
+- Issues from this work still open, not fixed: #252, #253, #254, #255, #256, #257, #258, #259,
+  #260.
+- **Next:** a fifth independent review (Codex, or a fresh agent standing in for it) of the
+  commits after `aa7a30d`.
 
 ---
 
