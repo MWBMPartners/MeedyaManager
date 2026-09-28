@@ -1093,9 +1093,16 @@ mod tests {
     /// Enables Test Mode (unlike `write_metadata_rejects_gibberish_language`
     /// above, which does not, so it never exercised the diverted-target
     /// code path this bug lived in) and checks the refusal names the
-    /// rejected VALUE, never a path.
+    /// rejected VALUE, never a copy.
+    ///
+    /// Corrected after the third review round (item 8, a decision of the
+    /// lead's): this used to require the message to name NO path at all.
+    /// The fault was naming the INTERNAL copy; the lead decided every
+    /// failure should instead say "Could not save the changes to '<the
+    /// file you chose>'", so the person's own file is now named on purpose
+    /// and this checks for exactly that.
     #[test]
-    fn write_metadata_refusal_does_not_name_a_file_path() {
+    fn write_metadata_refusal_names_the_real_file_never_a_copy() {
         let guard = ConfigDirGuard::new("refusalnopath");
 
         let p = guard.path().join("track.wav");
@@ -1125,8 +1132,15 @@ mod tests {
             "must not name Test Mode's internal copy: {message:?}"
         );
         assert!(
-            !message.contains(guard.path().to_string_lossy().as_ref()),
-            "must not name any path on this machine: {message:?}"
+            message.starts_with(&format!(
+                "Could not save the changes to '{}': ",
+                p.display()
+            )),
+            "must start with plain words and the file the app asked to change: {message:?}"
+        );
+        assert!(
+            !message.contains("meedya_tmp") && !message.contains("mutation failed"),
+            "must not name the scratch copy or use internal jargon: {message:?}"
         );
     }
 

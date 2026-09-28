@@ -225,14 +225,18 @@ pub fn mutate_file_safe(
     let sha256_before = match file_sha256(path) {
         Ok(h) => h,
         Err(e) => {
-            return failure(path, String::new(), format!("pre-write hash failed: {e}"));
+            return failure(
+                path,
+                String::new(),
+                could_not_save(path, &format!("it could not be read: {e}")),
+            );
         }
     };
 
     // -- Step 2: choose (and if necessary create) the target ---------------
     let plan = match plan_target(path) {
         Ok(plan) => plan,
-        Err(message) => return failure(path, sha256_before, message),
+        Err(reason) => return failure(path, sha256_before, could_not_save(path, &reason)),
     };
 
     // -- Step 3: run the caller's mutation against the target --------------
@@ -251,7 +255,20 @@ pub fn mutate_file_safe(
         // the corruption log, so nothing is lost for anyone debugging this
         // from the log file — only the copy of the message an app puts on
         // screen loses information nobody outside this crate should see.
-        return failure(path, sha256_before, format!("mutation failed: {e}"));
+        //
+        // Third review round, item 8: that fixed only the WRAPPER. The
+        // error `op` itself returns can name the copy too — a file lofty
+        // cannot read gives "Cannot read tags from '<the copy>'", because
+        // `op` was handed the copy — and "mutation failed" is this crate's
+        // own jargon, shown to people as is. Reproduced with the `meedya`
+        // binary built from e18fb18 on a damaged FLAC: "✗ Set title = X:
+        // mutation failed: Metadata error: Cannot read tags from
+        // 'bad_MeedyaManager.flac' ..." with Test Mode on, and the same
+        // naming 'bad.meedya_tmp.flac' with it off. Every message now
+        // starts with plain words and names the person's own file, with
+        // the copy's path (and its bare file name) replaced by it.
+        let reason = name_the_real_file(&e.to_string(), &plan.target, path);
+        return failure(path, sha256_before, could_not_save(path, &reason));
     }
 
     // -- Step 4: hash the mutated target -----------------------------------
@@ -259,7 +276,12 @@ pub fn mutate_file_safe(
         Ok(h) => h,
         Err(e) => {
             cleanup_if_ours(&plan);
-            return failure(path, sha256_before, format!("post-write hash failed: {e}"));
+            let reason = name_the_real_file(
+                &format!("the saved result could not be checked: {e}"),
+                &plan.target,
+                path,
+            );
+            return failure(path, sha256_before, could_not_save(path, &reason));
         }
     };
 
@@ -288,7 +310,12 @@ pub fn mutate_file_safe(
         // the old file or the new one — never a half-written file.
         if let Err(e) = std::fs::rename(&plan.target, path) {
             cleanup_if_ours(&plan);
-            return failure(path, sha256_before, format!("atomic rename failed: {e}"));
+            let reason = name_the_real_file(
+                &format!("the updated file could not be put in its place: {e}"),
+                &plan.target,
+                path,
+            );
+            return failure(path, sha256_before, could_not_save(path, &reason));
         }
 
         info!(
@@ -344,11 +371,12 @@ fn plan_target(path: &Path) -> Result<MutationTarget, String> {
         // First edit of this file in this Test Mode session: seed the copy
         // from the pristine original.
         let copy_path = test_mode::test_mode_path(path);
+        // The message never names the copy — see `could_not_save` (third
+        // review round, item 8). The log records it, via `failure`'s own
+        // entry for the real path.
         std::fs::copy(path, &copy_path).map_err(|e| {
-            format!(
-                "test mode: cannot create copy '{}': {e}",
-                copy_path.display()
-            )
+            debug!(copy = %copy_path.display(), %e, "test mode: cannot create copy");
+            format!("a Test Mode copy of it could not be made: {e}")
         })?;
         return Ok(MutationTarget {
             target: copy_path,
@@ -360,8 +388,10 @@ fn plan_target(path: &Path) -> Result<MutationTarget, String> {
     // Standard path: a scratch file beside the original, so the final
     // `rename(2)` stays within one filesystem and is therefore atomic.
     let tmp_path = temp_path(path);
-    std::fs::copy(path, &tmp_path)
-        .map_err(|e| format!("cannot create temp file '{}': {e}", tmp_path.display()))?;
+    std::fs::copy(path, &tmp_path).map_err(|e| {
+        debug!(scratch = %tmp_path.display(), %e, "integrity: cannot create scratch copy");
+        format!("a working copy of it could not be made beside it: {e}")
+    })?;
     Ok(MutationTarget {
         target: tmp_path,
         created_here: true,
@@ -377,10 +407,15 @@ fn cleanup_if_ours(plan: &MutationTarget) {
     if plan.created_here {
         cleanup_tmp(&plan.target);
     } else {
+        // A log line, not a message returned to the caller: it is ABOUT the
+        // Test Mode copy, so it names it (the person is told where that
+        // copy is anyway, by "written to ..." after each successful edit).
+        // Worded plainly since the third review round (item 8), which
+        // retired "mutation failed" from everything a person can see.
         warn!(
             target = %plan.target.display(),
-            "integrity: mutation failed on a pre-existing tracked copy — \
-             keeping it, it holds earlier edits"
+            "integrity: the save failed; the Test Mode copy is kept, because it \
+             holds earlier edits"
         );
     }
 }
@@ -424,6 +459,44 @@ fn temp_path(path: &Path) -> PathBuf {
     let mut tmp = path.to_path_buf();
     tmp.set_file_name(filename);
     tmp
+}
+
+/// The start every failure message shares: plain words, and the file the
+/// person asked to change (third review round, item 8 — it used to start
+/// with this crate's own jargon, "mutation failed", and some messages named
+/// the scratch or Test Mode copy instead).
+fn could_not_save(path: &Path, reason: &str) -> String {
+    format!(
+        "Could not save the changes to '{}': {reason}",
+        path.display()
+    )
+}
+
+/// `message` with every mention of `working_copy` — its full path, and
+/// then its bare file name — replaced by the real file's.
+///
+/// The copy is a detail of how this crate saves safely; a person never chose
+/// it and may not know it exists, so it must not appear in what they read.
+/// The full path goes first, so the bare-name pass only catches what is
+/// left (a message that names the file without its folder). Both names are
+/// distinctive (`track.meedya_tmp.mp3`, `track_MeedyaManager.mp3`), so the
+/// replacement cannot hit anything else in an ordinary message.
+///
+/// What this cannot do: recognise the copy's path written some other way
+/// (a relative path, or one with its folders shortened). None of the
+/// messages this crate or `lofty` produce do that today.
+fn name_the_real_file(message: &str, working_copy: &Path, real: &Path) -> String {
+    let mut out = message.replace(
+        &working_copy.display().to_string(),
+        &real.display().to_string(),
+    );
+    if let (Some(copy_name), Some(real_name)) = (working_copy.file_name(), real.file_name()) {
+        out = out.replace(
+            copy_name.to_string_lossy().as_ref(),
+            real_name.to_string_lossy().as_ref(),
+        );
+    }
+    out
 }
 
 /// Attempt to delete the temp file; log a warning but do not panic on failure.
@@ -863,6 +936,99 @@ mod tests {
             before,
             "the original must be byte-for-byte untouched on failure"
         );
+    }
+
+    // ── Third review round, item 8: what a failed save says ─────────────
+
+    /// Assert `message` is a plain failure message about `real`, and names
+    /// no copy MeedyaManager made for itself.
+    fn assert_names_only_the_real_file(message: &str, real: &Path, context: &str) {
+        assert!(
+            message.starts_with(&format!(
+                "Could not save the changes to '{}': ",
+                real.display()
+            )),
+            "{context}: must start with plain words and the real file: {message:?}"
+        );
+        assert!(
+            !message.contains("meedya_tmp"),
+            "{context}: must not name the scratch copy: {message:?}"
+        );
+        assert!(
+            !message.contains("_MeedyaManager"),
+            "{context}: must not name the Test Mode copy: {message:?}"
+        );
+        assert!(
+            !message.contains("mutation failed"),
+            "{context}: must not use this crate's own jargon: {message:?}"
+        );
+    }
+
+    /// A damaged file lofty cannot read. The error lofty's reader gives
+    /// names the file it was handed — which is the scratch copy (Test Mode
+    /// off) or the Test Mode copy (on). Reproduced with the `meedya` binary
+    /// built from e18fb18: "mutation failed: Metadata error: Cannot read
+    /// tags from 'bad_MeedyaManager.flac': ...". The message must name the
+    /// person's own file instead, in both modes.
+    #[test]
+    fn a_failed_save_names_the_real_file_with_test_mode_off_and_on() {
+        for test_mode_on in [false, true] {
+            let _guard = ConfigDirGuard::new();
+            if test_mode_on {
+                test_mode::enable().expect("test mode must enable under the isolated dir");
+            }
+            let dir = TempDir::new().unwrap();
+            let original = dir.path().join("track.flac");
+            std::fs::write(&original, b"this is not a FLAC file").unwrap();
+
+            let result = write_tags_safe(&original, &one_tag("title", "X"));
+            assert!(!result.success, "test_mode_on={test_mode_on}");
+            let message = result.error.expect("a failure carries a message");
+            let context = format!("test_mode_on={test_mode_on}");
+            assert_names_only_the_real_file(&message, &original, &context);
+            assert!(
+                message.contains(&format!("Cannot read tags from '{}'", original.display())),
+                "{context}: the reader's own words must now name the real file: {message:?}"
+            );
+        }
+    }
+
+    /// The same for an error that names only the copy's FILE NAME, not its
+    /// full path, and for a second edit in Test Mode, which works on a copy
+    /// that already exists (a different path through `plan_target`).
+    #[test]
+    fn a_failed_save_names_the_real_file_even_by_file_name_alone() {
+        for test_mode_on in [false, true] {
+            let _guard = ConfigDirGuard::new();
+            if test_mode_on {
+                test_mode::enable().expect("test mode must enable under the isolated dir");
+            }
+            let dir = TempDir::new().unwrap();
+            let original = dir.path().join("track.wav");
+            write_wav_fixture(&original);
+            // A first edit that succeeds, so in Test Mode the second one
+            // works on an existing tracked copy.
+            assert!(write_tags_safe(&original, &one_tag("title", "First")).success);
+
+            let result = mutate_file_safe(&original, |target| {
+                let name = target.file_name().unwrap().to_string_lossy().into_owned();
+                Err(MmError::Metadata(format!(
+                    "deliberate failure in {name} (full path '{}')",
+                    target.display()
+                )))
+            });
+            let message = result.error.expect("a failure carries a message");
+            let context = format!("test_mode_on={test_mode_on}");
+            assert_names_only_the_real_file(&message, &original, &context);
+            assert!(
+                message.contains("deliberate failure in track.wav"),
+                "{context}: the bare file name must be the real one: {message:?}"
+            );
+            assert!(
+                message.contains(&format!("(full path '{}')", original.display())),
+                "{context}: {message:?}"
+            );
+        }
     }
 
     #[test]
