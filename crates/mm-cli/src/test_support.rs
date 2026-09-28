@@ -150,3 +150,23 @@ pub(crate) fn write_tagged_wav(path: &std::path::Path, artist: &str, album: &str
 
     mm_core::metadata::write_tags(path, &tags).unwrap();
 }
+
+/// Copy one of `mm-core`'s committed test media files into `dir`, keeping
+/// its name, and return the copy's path.
+///
+/// Those files (see `crates/mm-core/tests/fixtures/README.md`) are real,
+/// tiny recordings of silence written by other tools — an MP3, a FLAC, and
+/// WAV files whose tags disagree about the language — which a test here
+/// could not build with `write_wav_fixture` above: that writes a bare WAV
+/// with no tags at all, and MeedyaManager's own writer would never produce
+/// tags that disagree. A copy is always used, never the committed file, so a
+/// test can change it freely.
+pub(crate) fn copy_core_fixture(name: &str, dir: &std::path::Path) -> std::path::PathBuf {
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../mm-core/tests/fixtures")
+        .join(name);
+    let copy = dir.join(name);
+    std::fs::copy(&source, &copy)
+        .unwrap_or_else(|e| panic!("cannot copy test file {}: {e}", source.display()));
+    copy
+}

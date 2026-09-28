@@ -1068,6 +1068,69 @@ mod tests {
         );
     }
 
+    /// Third review round, item 2: the tests above check each link of the
+    /// chain on its own — the plan holds a note, and `build_human_lines`
+    /// prints a note it is HANDED — but nothing checked the link between
+    /// them, `set_action_for`, which copies the plan's note onto the action
+    /// that gets printed. The reviewer broke exactly that link (the note
+    /// was never attached) and every test still passed. This walks the
+    /// whole chain on a real MP3, the way `run` does: `build_plan`, then
+    /// both `describe_plan` (`--dry-run`) and `apply_plan` (a real write),
+    /// then `build_human_lines` — and checks the warning is really among
+    /// the printed lines both times, and that the file really holds what
+    /// the warning says.
+    #[test]
+    fn a_language_note_reaches_the_printed_lines_on_dry_run_and_real_write() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("silence.mp3", dir.path());
+
+        let args = EditArgs {
+            path: path.clone(),
+            set: vec!["language=pt-BR".to_string()],
+            remove: vec![],
+            cover: None,
+            remove_cover: false,
+            dry_run: false,
+        };
+        let plan = match build_plan(&args) {
+            Ok(plan) => plan,
+            Err(actions) => panic!("pt-BR is a real language: {actions:?}"),
+        };
+        let expected_note = "an ID3 tag can only hold the three-letter language code, so it \
+                             will lose the region you typed — it will be stored there as \
+                             \"por\"";
+
+        let (applied, _written_to) = apply_plan(&args, &plan);
+        for (which, actions) in [("dry run", describe_plan(&plan)), ("real write", applied)] {
+            let action = actions
+                .iter()
+                .find(|a| a.key.as_deref() == Some("language"))
+                .unwrap_or_else(|| panic!("{which}: no action for the language key"));
+            assert!(action.success, "{which}: {action:?}");
+            assert_eq!(
+                action.note.as_deref(),
+                Some(expected_note),
+                "{which}: the plan's note must be attached to the action that is printed"
+            );
+            assert_eq!(
+                build_human_lines(&actions),
+                vec![
+                    HumanLine::Success("Set language = pt-BR".to_string()),
+                    HumanLine::Warning(expected_note.to_string()),
+                ],
+                "{which}: the warning must be among the lines a person actually sees"
+            );
+        }
+
+        // The warning says "por" is what is stored — check that it is.
+        let tags = mm_core::metadata::extract_tags(&path).unwrap();
+        assert_eq!(
+            tags.get("language").map(Vec::as_slice),
+            Some(&["por".to_string()][..])
+        );
+    }
+
     /// The companion case: an action with no note produces exactly one
     /// line, not a spurious empty warning.
     #[test]

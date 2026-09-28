@@ -181,7 +181,11 @@ reviewed" note:
   reviewer's own mutation testing found FIVE places where deliberately breaking a first-round fix
   still passed every test in the crate; new tests close every one (mutation table in that
   commit's own message), plus a real-file, all-four-formats integration test for the rule engine,
-  plus a corrected conformance-test header comment.
+  plus a corrected conformance-test header comment. **Corrected by round 4: "close every one" was
+  wrong — four of the five.** The third reviewer broke them all again and one still passed every
+  test: `meedya edit` never attaching the note to the line it prints (`set_action_for`). Closed in
+  round 4 by `a_language_note_reaches_the_printed_lines_on_dry_run_and_real_write` in
+  `crates/mm-cli/src/commands/edit.rs`.
 
 See `Dev_Notes.md`'s "Language Tags & the MWBM-MEDIA-LANG Policy" section, the "Second review
 round" bullet, for the same account in the project's permanent notes rather than this
@@ -199,6 +203,23 @@ asked again. Check `git log feature/bcp47-language-policy` and `git status -sb` 
 state; `git log origin/feature/bcp47-language-policy..feature/bcp47-language-policy` shows
 exactly which commits are still local-only, and is the one command that cannot go stale the way a
 hand-counted list in this file can.
+
+**A third independent review (a fresh Opus agent standing in for Codex) covered `3a45ed7..e18fb18`
+and found problems; round 4 is acting on it — IN PROGRESS, local commits only, nothing pushed.**
+The lead's decisions for this round are final. Done so far (each commit says "not yet
+independently reviewed"):
+
+- Item 1 (MUST FIX) — `e4b730b` `fix(metadata): no "replaced" note for an ordinary three-letter
+  code`: `eng`/`fre`/`ger`/`deu`/`xxx` no longer get "replaced with the current code", `und` on an
+  ID3 tag no longer gets "no three-letter code". Proven on real MP3/FLAC files read back with
+  mutagen.
+- Item 2 — the plan-to-printed-line step of `meedya edit` now has a test (see the correction to
+  the bullet above).
+
+Still to do in this round: items 3 (tags that disagree are hidden), 4 (help pages), 5 (tests for
+the reviewer's surviving breakages N2, N4, N5, N6, N10–N13), 6–7 (rule `Matches` and friends), 8
+(failure messages name the internal copy), 9 (stale docs), 10 (issues). The reviewer's evidence
+and mutation runner live outside the repository, in the lead's scratch folder.
 
 ---
 

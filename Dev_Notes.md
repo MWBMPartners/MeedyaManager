@@ -914,7 +914,14 @@ stored metadata, and shows no language menus yet):
   places where deliberately breaking the fix still passed every test in the crate — closed by new
   tests in `metadata_roundtrip.rs`, `rule_engine/mod.rs`, `rule_engine/evaluator.rs`,
   `metadata/mod.rs` and `mm-ffi`'s `uniffi_api.rs`, each proven against the actual mutation it
-  exists to catch (see the corresponding commit for the mutation table).
+  exists to catch (see the corresponding commit for the mutation table). **Corrected after the
+  third review round: that was true of four of the five, not all five.** The third reviewer ran
+  the same five breakages again and one still passed every test: stopping `meedya edit` from ever
+  attaching the "what was stored" note to the line it prints (`set_action_for` in
+  `crates/mm-cli/src/commands/edit.rs`). The second round's tests checked the plan held a note, and
+  that `build_human_lines` printed a note it was handed, but never the step between the two.
+  `a_language_note_reaches_the_printed_lines_on_dry_run_and_real_write` now walks the whole chain
+  on a real MP3, for `--dry-run` and for a real write, and fails when that step is broken.
 - **Not fixed here, tracked as its own issue**
   ([#255](https://github.com/MWBMPartners/MeedyaManager/issues/255)): the SAME kind of staleness
   the read-side fix above closes for `language` specifically exists for every other field too —
