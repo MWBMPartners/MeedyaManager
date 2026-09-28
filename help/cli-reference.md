@@ -407,8 +407,11 @@ meedya edit <PATH> [OPTIONS]
 > `--remove` batch is validated *before* any file is touched, so a batch containing one unknown
 > key writes nothing at all (exit `2`, `PARTIAL`) rather than applying the good half. A key with
 > no file-format mapping (e.g. `podcast_title`, `podcast_id`, `podcast_category`) is always
-> rejected, Test Mode or not. When Test Mode redirects a write, JSON output (`--json`) carries a
-> `written_to` field naming the copy path. See [test-mode.md](test-mode.md) for the full picture.
+> rejected, Test Mode or not. Setting `language` to something that is not a real language (not a
+> code like `en` or `pt-BR`, and not an older three-letter code like `fre`) is rejected the same
+> way, with a message that shows a working example. When Test Mode redirects a write, JSON output
+> (`--json`) carries a `written_to` field naming the copy path. See [test-mode.md](test-mode.md)
+> for the full picture.
 
 ### Examples
 

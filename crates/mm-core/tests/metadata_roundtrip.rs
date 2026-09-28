@@ -556,6 +556,62 @@ fn compat_030_an_untouched_language_value_survives_byte_for_byte() {
     }
 }
 
+/// LANG-002: "If the field holds several values (ID3v2.4 separates them
+/// with a null character), split them first and read each on its own; the
+/// first is the primary language."
+///
+/// **A genuine surprise, found by writing this test rather than assuming
+/// it**: a real MP3's `TLAN` frame is poked directly with a null-separated
+/// two-value shape (`"eng\0swe"`, a real null byte) — the same low-level
+/// route `poke_raw_language_value` uses for the COMPAT-030 test above — and
+/// the null character genuinely does reach the file on disk (confirmed by
+/// reading the raw bytes back: `65 6e 67 00 73 77 65`, "eng", a null, then
+/// "swe"). But `lofty`'s OWN ID3v2 reader does not hand that back as ONE
+/// string with an embedded null, the way `poke_raw_language_value`'s write
+/// call took it in — it already splits an ID3v2.4 multi-value text frame
+/// into SEPARATE items on read, exactly like it already does for any other
+/// multi-valued ID3 frame (several artists, say). So `extract_tags` on a
+/// file like this returns `language: ["eng", "swe"]` — a plain two-element
+/// vector, not a single string a caller has to know to split.
+///
+/// This means MeedyaManager's own code never actually needs to perform
+/// LANG-002's null-splitting step itself when reading through `lofty` —
+/// the generic multi-value machinery `read_tag_into_map` already has for
+/// every tag key does it for free. LANG-002's "the first is the primary
+/// language" rule becomes, in practice: take the first element of the
+/// vector. `meedya_lang::from_legacy_three_letter`'s OWN null-splitting
+/// (exercised directly, on a single string, by this crate's unit test
+/// `parse_stored_language_reads_only_the_primary_of_a_multi_value_tlan`)
+/// is still correct and still worth having — it matters for a caller that
+/// receives a raw value some OTHER way than through `lofty`'s already-split
+/// API (a hand-parsed ID3 buffer, another library) — but it is not what
+/// runs for a value that reaches MeedyaManager through its own `write_tags`
+/// / `extract_tags` layer.
+#[test]
+fn multi_value_tlan_is_split_into_separate_items_by_lofty_itself() {
+    let (_dir, path) = copy_fixture("silence.mp3");
+    poke_raw_language_value(&path, "eng\u{0}swe");
+
+    let read_back =
+        extract_tags(&path).unwrap_or_else(|e| panic!("silence.mp3: extract_tags failed: {e}"));
+    let values = read_back
+        .get(TAG_LANGUAGE)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    assert_eq!(
+        values,
+        ["eng".to_string(), "swe".to_string()],
+        "lofty must already have split the multi-value TLAN into separate items, in order, \
+         with no embedded null character left in either one — got {values:?}"
+    );
+
+    // LANG-002's "the first is the primary language", applied to what
+    // extract_tags actually hands back: take the first element.
+    let primary = values.first().expect("must have at least one value");
+    let stored = mm_core::metadata::language::parse_stored_language(primary);
+    assert_eq!(stored.tag.tag, "en");
+}
+
 // ---------------------------------------------------------------------------
 // Cover art round trip — raw and integrity-guarded
 // ---------------------------------------------------------------------------

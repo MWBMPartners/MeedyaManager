@@ -36,6 +36,24 @@
 // both go through `meedya_lang::from_legacy_three_letter` — the LANG-002
 // reader, which is written to accept a value already known to be a BCP 47
 // tag just as happily as an old three-letter code.
+//
+// One LANG-002 case this module does NOT implement, on purpose, because
+// testing it against a real file showed it was already handled: "ID3v2.4
+// TLAN can hold several codes separated by a null character; split them
+// first, the first is the primary." Writing a genuine null-separated TLAN
+// into a real MP3 and reading it back with `lofty` shows the null survives
+// to disk, but `lofty`'s own ID3v2 reader splits it into SEPARATE items —
+// the same multi-value handling every other ID3 text frame already gets —
+// before this crate ever sees a raw string. `metadata::extract_tags`
+// therefore already returns a plain `vec!["eng", "swe"]` for such a file,
+// with no null character anywhere in it, through the generic per-item loop
+// every tag key shares. LANG-002's "the first is the primary language"
+// becomes, for MeedyaManager, simply: take the first element of that
+// vector. See `multi_value_tlan_is_split_into_separate_items_by_lofty_itself`
+// in `crates/mm-core/tests/metadata_roundtrip.rs` for the test that found
+// this (the raw file bytes were inspected directly to confirm the null
+// really does reach disk, ruling out "lofty silently drops it on write" as
+// the explanation).
 
 use lofty::tag::TagType;
 
@@ -196,6 +214,17 @@ mod tests {
         let stored = parse_stored_language("pt-BR");
         assert_eq!(stored.tag.tag, "pt-BR");
         assert_eq!(stored.raw, "pt-BR");
+    }
+
+    #[test]
+    fn parse_stored_language_reads_only_the_primary_of_a_multi_value_tlan() {
+        // ID3v2.4's TLAN frame can hold several three-letter codes separated
+        // by a null character; LANG-002 says the first is the primary
+        // language, and the rest are not read at all. `\u{0}` here is a
+        // genuine null byte, the same shape a real TLAN frame with two
+        // values ("eng" and "swe") would contain, not an escaped string.
+        let stored = parse_stored_language("eng\u{0}swe");
+        assert_eq!(stored.tag.tag, "en");
     }
 
     #[test]

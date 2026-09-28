@@ -792,6 +792,19 @@ stored metadata, and shows no language menus yet):
   language-specific write path is the first thing to have depended on which container
   a file is really using, which is what surfaced it. See the comment on
   `wav_riff_info_round_trip` in `crates/mm-core/tests/metadata_roundtrip.rs`.
+- **A second genuine surprise**: the policy says ID3v2.4's `TLAN` field can hold several
+  three-letter codes separated by a null character, with the first being the primary
+  language — reading LANG-002 alone, this sounds like something MeedyaManager's own code
+  would need to split apart. Testing it against a real MP3 (writing a null-separated
+  value straight into a `TLAN` frame, checking the raw file bytes, then reading it back
+  through this app's normal path) showed the null genuinely reaches the file on disk, but
+  `lofty`'s own ID3v2 reader already splits it into separate values before this app ever
+  sees a raw string — the same multi-value handling every other ID3 text field already
+  gets. `metadata::extract_tags` therefore already returns a plain two-item list, not a
+  string with a null hidden inside it, so nothing extra needed writing; "the first is the
+  primary language" just means taking the first item of that list. See
+  `multi_value_tlan_is_split_into_separate_items_by_lofty_itself` in
+  `crates/mm-core/tests/metadata_roundtrip.rs`.
 - Saving a file for an unrelated reason (changing the title, say) MUST NOT touch an
   untouched `language` value, however it reads — `write_tags` only converts it when
   the caller's map actually contains the `language` key (COMPAT-030). An editor that

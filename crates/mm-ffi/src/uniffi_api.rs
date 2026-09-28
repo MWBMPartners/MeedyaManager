@@ -870,6 +870,57 @@ mod tests {
             "a rejected write must not touch the file"
         );
     }
+    /// Policy MWBM-MEDIA-LANG 1.0.0: a "language" value nothing recognises is
+    /// refused the same way an unknown key already is — before anything is
+    /// written, as an error the native UIs can show, never silently accepted.
+    #[test]
+    fn write_metadata_rejects_gibberish_language() {
+        let guard = ConfigDirGuard::new("gibberishlanguage");
+
+        let p = guard.path().join("track.wav");
+        write_wav_fixture(&p);
+        let before = std::fs::read(&p).unwrap();
+
+        let err = write_metadata(
+            p.display().to_string(),
+            vec![TagEntry {
+                key: "language".to_string(),
+                value: "not a language".to_string(),
+            }],
+        )
+        .expect_err("a language nothing recognises must not report success");
+
+        assert!(
+            matches!(err, MmFfiError::Metadata(ref m) if m.contains("not a language")),
+            "expected a Metadata error naming the rejected value, got: {err:?}"
+        );
+        assert_eq!(
+            std::fs::read(&p).unwrap(),
+            before,
+            "a rejected write must not touch the file"
+        );
+    }
+
+    /// The other half of the same rule: a value LANG-002 DOES recognise —
+    /// here, an old three-letter code — must be accepted and converted, not
+    /// merely tolerated.
+    #[test]
+    fn write_metadata_accepts_a_legacy_three_letter_language() {
+        let guard = ConfigDirGuard::new("legacylanguage");
+
+        let p = guard.path().join("track.wav");
+        write_wav_fixture(&p);
+
+        write_metadata(
+            p.display().to_string(),
+            vec![TagEntry {
+                key: "language".to_string(),
+                value: "fre".to_string(),
+            }],
+        )
+        .expect("a recognised legacy language code must be accepted");
+    }
+
     // ── The write lock — issue #49 ──────────────────────────────────────────
 
     /// **Regression — two copies moving files at once.**
