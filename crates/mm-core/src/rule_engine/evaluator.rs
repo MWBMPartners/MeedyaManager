@@ -162,10 +162,24 @@ impl<'a> EvalContext<'a> {
                     // recognises renders as its own original text,
                     // unchanged, per that function's own LANG-003
                     // guarantee.
-                    let standardised: Vec<String> = values
-                        .iter()
-                        .map(|v| language::standardise_for_comparison(v))
-                        .collect();
+                    // Review item 10 of the second language-policy review
+                    // round: standardising two RAW values that turn out to
+                    // mean the same language ("en" and "eng", say — the
+                    // exact shape `extract_tags` itself now collapses at
+                    // the source, see `read_language_values`, but a
+                    // caller could still hand this a `TagMap` built some
+                    // other way) must not then show that one fact twice —
+                    // "en; en" — in display mode. Deduplicated AFTER
+                    // standardising, not before, since two values that are
+                    // genuinely different raw text can still standardise
+                    // to the exact same form.
+                    let mut standardised: Vec<String> = Vec::new();
+                    for v in values {
+                        let form = language::standardise_for_comparison(v);
+                        if !standardised.contains(&form) {
+                            standardised.push(form);
+                        }
+                    }
                     if self.path_mode {
                         Ok(standardised[0].clone())
                     } else {
@@ -386,6 +400,64 @@ mod tests {
             );
         }
         map
+    }
+
+    // ── Language standardisation (policy MWBM-MEDIA-LANG 1.0.0) ─────
+    //
+    // None of these existed before the second language-policy review
+    // round — an independent review's own mutation testing found that
+    // reverting `resolve_metadata_tag`'s standardisation of `language`
+    // back to plain text still passed every test in this crate, because
+    // there was no test anywhere that would have noticed.
+
+    /// `<Language>` renders the STANDARD form, not whatever raw text the
+    /// file's own tag container happens to hold — the whole point of
+    /// standardising at all (see `resolve_metadata_tag`'s own doc comment).
+    #[test]
+    fn language_template_renders_the_standard_form_not_the_stored_text() {
+        let tags = make_tags(&[(TAG_LANGUAGE, "eng")]);
+        let ctx = EvalContext::new(&tags);
+        assert_eq!(evaluate_template("<Language>", &ctx).unwrap(), "en");
+    }
+
+    /// Review item 2 of the second review round: a value nothing
+    /// recognises must render as its own text unchanged, never as `und` or
+    /// anything else guessed at — `standardise_for_comparison`'s own
+    /// LANG-003 guarantee, exercised here through the template path a
+    /// rename rule actually uses.
+    #[test]
+    fn language_template_renders_an_unrecognised_value_as_its_own_text() {
+        let tags = make_tags(&[(TAG_LANGUAGE, "not a language")]);
+        let ctx = EvalContext::new(&tags);
+        assert_eq!(
+            evaluate_template("<Language>", &ctx).unwrap(),
+            "not a language"
+        );
+    }
+
+    /// Review item 10 of the second review round: two RAW values that
+    /// standardise to the SAME form must not render as that fact repeated
+    /// — "en; en" — in DISPLAY mode (path mode already returns only the
+    /// first value, so it cannot show a repeat regardless). (`extract_tags`
+    /// itself now dedupes this at the source for a real file — see
+    /// `read_language_values` in `metadata/mod.rs` — but
+    /// `resolve_metadata_tag` must not rely on every caller having already
+    /// done that; a `TagMap` built some other way could still hand it two
+    /// raw values for one fact.)
+    #[test]
+    fn language_template_does_not_repeat_a_value_after_standardising() {
+        let tags = make_multi_tags(&[(TAG_LANGUAGE, &["en", "eng"])]);
+        let ctx = EvalContext::new(&tags).with_path_mode(false);
+        assert_eq!(evaluate_template("<Language>", &ctx).unwrap(), "en");
+    }
+
+    /// The companion case: two values that are GENUINELY different once
+    /// standardised must both still show up, in order, in display mode.
+    #[test]
+    fn language_template_keeps_genuinely_different_standardised_values() {
+        let tags = make_multi_tags(&[(TAG_LANGUAGE, &["en", "fr"])]);
+        let ctx = EvalContext::new(&tags).with_path_mode(false);
+        assert_eq!(evaluate_template("<Language>", &ctx).unwrap(), "en; fr");
     }
 
     // ── Basic evaluation ────────────────────────────────────────────
