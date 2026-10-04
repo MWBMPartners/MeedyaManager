@@ -1714,6 +1714,187 @@ fn read_raw_language_values_from_tag_type(
 }
 
 // ---------------------------------------------------------------------------
+// A WAV language save never drops another RIFF INFO entry (Codex's catch-up
+// review, finding 1)
+// ---------------------------------------------------------------------------
+
+/// Every RIFF INFO entry in a WAV, raw: four-letter id and the exact bytes
+/// its size counts. Written here, separately from the crate's own reader in
+/// `metadata/riff_info.rs`, so a fault in that reader cannot hide a fault
+/// in the check it feeds.
+fn raw_riff_info_entries(path: &Path) -> Vec<(String, Vec<u8>)> {
+    let data = fs::read(path).unwrap();
+    assert_eq!(&data[0..4], b"RIFF", "{}: not a RIFF file", path.display());
+    let mut out = Vec::new();
+    let mut pos = 12;
+    while pos + 8 <= data.len() {
+        let size = u32::from_le_bytes(data[pos + 4..pos + 8].try_into().unwrap()) as usize;
+        let body = &data[pos + 8..pos + 8 + size];
+        if &data[pos..pos + 4] == b"LIST" && &body[..4] == b"INFO" {
+            let mut p = 4;
+            while p + 8 <= body.len() {
+                let len = u32::from_le_bytes(body[p + 4..p + 8].try_into().unwrap()) as usize;
+                out.push((
+                    String::from_utf8_lossy(&body[p..p + 4]).into_owned(),
+                    body[p + 8..p + 8 + len].to_vec(),
+                ));
+                p += 8 + len + (len & 1);
+            }
+        }
+        pos += 8 + size + (size & 1);
+    }
+    out
+}
+
+/// Names of every file in `dir`, sorted — used to prove a refused save left
+/// no temporary file behind.
+fn file_names_in(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+/// Codex's input: a WAV whose RIFF INFO list holds `ILNG` = `fre` and a
+/// title written in Latin-1, "Café" as `43 61 66 E9 00`. The tag library
+/// cannot read that title, so it used to write the list back without it.
+/// Reproduced with the `meedya` binary built from `a150926` (see the commit
+/// that added the fixture): setting, clearing and removing the language each
+/// reported success and deleted the title.
+///
+/// All three ways of changing the language must now be refused, name what
+/// would be lost, and leave the file byte for byte as it was, with no
+/// temporary file left behind.
+#[test]
+fn a_wav_language_save_that_would_drop_a_riff_info_entry_is_refused() {
+    let _guard = ConfigDirGuard::new();
+
+    type Save = fn(&Path) -> mm_core::integrity::IntegrityWriteResult;
+    let saves: [(&str, Save); 3] = [
+        ("set language=en", |p| {
+            write_tags_safe(p, &build_tags(&[(TAG_LANGUAGE, "en")]))
+        }),
+        ("set language= (clear)", |p| {
+            write_tags_safe(p, &build_tags(&[(TAG_LANGUAGE, "")]))
+        }),
+        ("remove language", |p| {
+            mm_core::integrity::remove_tag_safe(p, TAG_LANGUAGE)
+        }),
+    ];
+
+    for (what, save) in saves {
+        let (dir, path) = copy_fixture("lang_riff_fre_title_latin1.wav");
+        let before = fs::read(&path).unwrap();
+        assert!(
+            raw_riff_info_entries(&path).contains(&("INAM".to_string(), b"Caf\xe9\0".to_vec())),
+            "fixture sanity check: the Latin-1 title is there"
+        );
+
+        let result = save(&path);
+        assert!(
+            !result.success,
+            "{what}: must be refused, not reported as done"
+        );
+        let message = result.error.unwrap_or_default();
+        assert!(
+            message.contains("the title (INAM)"),
+            "{what}: the message must name what would be lost, got {message:?}"
+        );
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            before,
+            "{what}: the file must be left byte for byte as it was"
+        );
+        assert_eq!(
+            file_names_in(dir.path()),
+            vec!["lang_riff_fre_title_latin1.wav".to_string()],
+            "{what}: no temporary file may be left behind"
+        );
+    }
+}
+
+/// The same refusal in Test Mode, when an earlier edit has already made the
+/// Test Mode copy: the save works on that copy directly, and the copy holds
+/// the earlier edit, so a refused language save must leave the COPY byte for
+/// byte as it was too — not only the original. (The check runs before
+/// anything is written, so nothing is half-done.)
+#[test]
+fn in_test_mode_a_refused_wav_language_save_leaves_the_copy_untouched() {
+    let _guard = ConfigDirGuard::new();
+    let (_dir, path) = copy_fixture("lang_riff_fre_title_latin1.wav");
+    let original = fs::read(&path).unwrap();
+
+    test_mode::enable().unwrap();
+    // A first edit that does not touch RIFF INFO (a comment is written into
+    // the WAV's ID3 tag, never its RIFF INFO list), so it succeeds and makes
+    // the copy.
+    let first = write_tags_safe(&path, &build_tags(&[(TAG_COMMENT, "first edit")]));
+    assert!(
+        first.success,
+        "the first edit must succeed: {:?}",
+        first.error
+    );
+    let copy = test_mode::test_mode_path(&path);
+    let copy_before = fs::read(&copy).unwrap();
+    assert!(
+        raw_riff_info_entries(&copy).contains(&("INAM".to_string(), b"Caf\xe9\0".to_vec())),
+        "the first edit kept the Latin-1 title in the copy"
+    );
+
+    let second = write_tags_safe(&path, &build_tags(&[(TAG_LANGUAGE, "en")]));
+    test_mode::disable().unwrap();
+
+    assert!(!second.success, "the language save must be refused");
+    assert_eq!(
+        fs::read(&copy).unwrap(),
+        copy_before,
+        "the copy must be untouched"
+    );
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        original,
+        "the original must be untouched"
+    );
+}
+
+/// The other side of finding 1: every entry is UTF-8, so nothing is lost
+/// and the save must go ahead — with every entry other than `ILNG` byte for
+/// byte the same and in the same order, and `ILNG` holding exactly what was
+/// asked (the full code, `en`, as TRACK-070 says a RIFF INFO entry holds).
+#[test]
+fn a_wav_language_save_keeps_every_other_riff_info_entry_exactly() {
+    let _guard = ConfigDirGuard::new();
+    let (_dir, path) = copy_fixture("lang_riff_fre_all_utf8.wav");
+    let others = |entries: Vec<(String, Vec<u8>)>| -> Vec<(String, Vec<u8>)> {
+        entries.into_iter().filter(|(id, _)| id != "ILNG").collect()
+    };
+    let before = raw_riff_info_entries(&path);
+    assert_eq!(others(before.clone()).len(), 4, "fixture sanity check");
+
+    let result = write_tags_safe(&path, &build_tags(&[(TAG_LANGUAGE, "en")]));
+    assert!(result.success, "nothing would be lost: {:?}", result.error);
+
+    let after = raw_riff_info_entries(&path);
+    assert_eq!(
+        others(after.clone()),
+        others(before),
+        "other entries unchanged, same order"
+    );
+    let languages: Vec<&Vec<u8>> = after
+        .iter()
+        .filter(|(id, _)| id == "ILNG")
+        .map(|(_, data)| data)
+        .collect();
+    assert_eq!(
+        languages,
+        vec![&b"en\0".to_vec()],
+        "ILNG holds exactly \"en\""
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Cover art round trip — raw and integrity-guarded
 // ---------------------------------------------------------------------------
 

@@ -65,6 +65,12 @@ pub mod tag_registry;
 /// doc comment before touching anything to do with the `language` tag.
 pub mod language;
 
+/// A small, bounded reader for a WAV file's RIFF INFO list, so a language
+/// save can prove it loses nothing else from that list (Codex's catch-up
+/// review of the language-policy branch, finding 1). Crate-private: see
+/// its own comment for why it exists and what it cannot do.
+mod riff_info;
+
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -1028,6 +1034,21 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
         .filter(|tt| *tt != primary_type)
         .collect();
 
+    // -- Codex's catch-up review, finding 1: a WAV whose RIFF INFO list is
+    // about to be rewritten (because it holds a language, and the language
+    // is changing) must lose nothing else from that list. Checked here,
+    // BEFORE the first save, so a refusal leaves the file completely as it
+    // was — which matters for a Test Mode copy an earlier edit made, which
+    // `integrity::mutate_file_safe` keeps rather than deletes on failure —
+    // and checked again after the last save, against what is really on
+    // disk. See `RiffInfoGuard`.
+    let riff_guard = match &language_change {
+        Some(change) if other_tag_types.contains(&TagType::RiffInfo) => {
+            Some(RiffInfoGuard::before_saving(path, &tagged_file, change)?)
+        }
+        _ => None,
+    };
+
     // Get (or create) the primary tag for this file format
     let tag = get_or_create_primary_tag(&mut tagged_file);
 
@@ -1043,18 +1064,8 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
             // this function's own doc comment for why "present but
             // identical" must behave exactly like "absent", not merely
             // like "converted to the same canonical form".
-            match &language_change {
-                None => {}
-                Some(LanguageChange::Clear) => {
-                    tag.remove_key(&ItemKey::Language);
-                }
-                Some(LanguageChange::Set(parsed)) => {
-                    let value = language::language_value_for_tag_type(parsed, tag.tag_type());
-                    tag.remove_key(&ItemKey::Language);
-                    if !value.is_empty() {
-                        tag.push(TagItem::new(ItemKey::Language, ItemValue::Text(value)));
-                    }
-                }
+            if let Some(change) = &language_change {
+                apply_language_change(tag, change);
             }
             continue;
         }
@@ -1100,39 +1111,136 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     // container the file has, so a language clear silently doing less
     // than an ordinary field's removal was the surprising direction for
     // the two to have drifted apart in.
-    match &language_change {
-        None => {}
-        Some(LanguageChange::Clear) => {
-            for tag_type in other_tag_types {
-                let Some(other_tag) = tagged_file.tag_mut(tag_type) else {
-                    continue; // the type was listed a moment ago; still defensive
-                };
-                if other_tag.get_items(&ItemKey::Language).next().is_none() {
-                    continue; // never had one — not this fix's job to touch
-                }
-                other_tag.remove_key(&ItemKey::Language);
-                other_tag.save_to_path(path, WriteOptions::default())?;
+    if let Some(change) = &language_change {
+        for tag_type in other_tag_types {
+            let Some(other_tag) = tagged_file.tag_mut(tag_type) else {
+                continue; // the type was listed a moment ago; still defensive
+            };
+            if other_tag.get_items(&ItemKey::Language).next().is_none() {
+                continue; // never had one — not this fix's job to add or touch one
             }
-        }
-        Some(LanguageChange::Set(parsed)) => {
-            for tag_type in other_tag_types {
-                let Some(other_tag) = tagged_file.tag_mut(tag_type) else {
-                    continue; // the type was listed a moment ago; still defensive
-                };
-                if other_tag.get_items(&ItemKey::Language).next().is_none() {
-                    continue; // never had one — not this fix's job to add one
-                }
-                let value = language::language_value_for_tag_type(parsed, tag_type);
-                other_tag.remove_key(&ItemKey::Language);
-                if !value.is_empty() {
-                    other_tag.push(TagItem::new(ItemKey::Language, ItemValue::Text(value)));
-                }
-                other_tag.save_to_path(path, WriteOptions::default())?;
-            }
+            apply_language_change(other_tag, change);
+            other_tag.save_to_path(path, WriteOptions::default())?;
         }
     }
 
+    // Finding 1, second half: what is really on disk now.
+    if let Some(guard) = riff_guard {
+        guard.after_saving(path)?;
+    }
+
     Ok(())
+}
+
+/// Put one language change into one tag container, in that container's own
+/// TRACK-070 form: remove what it held, then (when setting) add the new
+/// value. The ONE place this is done — for the primary container, for every
+/// other container that already held a language, and for the copy
+/// [`RiffInfoGuard::before_saving`] checks before anything is written — so
+/// what is checked can never drift from what is saved.
+fn apply_language_change(tag: &mut Tag, change: &LanguageChange) {
+    tag.remove_key(&ItemKey::Language);
+    if let LanguageChange::Set(parsed) = change {
+        let value = language::language_value_for_tag_type(parsed, tag.tag_type());
+        if !value.is_empty() {
+            tag.push(TagItem::new(ItemKey::Language, ItemValue::Text(value)));
+        }
+    }
+}
+
+/// Codex's catch-up review, finding 1: proof that a language save which
+/// rewrites a WAV's RIFF INFO list loses nothing else from it.
+///
+/// Why it is needed: the `lofty` tag library writes a RIFF INFO list back
+/// whole, from what it read — and it cannot read an entry whose text is not
+/// UTF-8 (RIFF INFO names no encoding, and older Windows tools write their
+/// own code page), so in its forgiving reading mode it leaves such an entry
+/// out. Reproduced with the `meedya` binary built from `a150926`: a WAV
+/// whose title was "Café" in Latin-1 lost its title when its language was
+/// set, cleared or removed, and the save reported success.
+///
+/// How: the list is read RAW (id and bytes, nothing decoded, so nothing can
+/// be skipped — see `riff_info`) before anything is saved. Then twice:
+///
+/// 1. [`before_saving`](Self::before_saving) asks `lofty` for the exact
+///    bytes it WOULD write for the list (`TagExt::dump_to`, which uses the
+///    same code as its file writer) and compares them — so a save that
+///    would lose something is refused before a single byte changes.
+/// 2. [`after_saving`](Self::after_saving) reads the list RAW again from the
+///    file and compares that — the proof from what is really on disk.
+///
+/// Both compare with `riff_info::check_entries_kept`: every entry other than
+/// `ILNG` byte for byte the same and in the same order, and `ILNG` holding
+/// exactly what was asked (or gone, when clearing). Any difference refuses
+/// the save with a message naming what would be lost. Where a save is
+/// written and what happens to that file on a refusal is decided by
+/// `integrity::mutate_file_safe`, unchanged: the person's own file is never
+/// replaced by one that failed.
+///
+/// What it cannot do: it guards only language saves (see its two callers);
+/// `remove_tag` of another field also rewrites every container, RIFF INFO
+/// included, and is not guarded by this.
+struct RiffInfoGuard {
+    /// The list's entries before anything was saved.
+    before: Vec<riff_info::InfoEntry>,
+    /// What `ILNG` must hold afterwards.
+    language: riff_info::LanguageExpectation,
+}
+
+impl RiffInfoGuard {
+    /// Read the list as it is now and refuse, before anything is written,
+    /// if the save would lose or change anything other than the language.
+    fn before_saving(
+        path: &Path,
+        tagged_file: &lofty::file::TaggedFile,
+        change: &LanguageChange,
+    ) -> MmResult<Self> {
+        let before = riff_info::read_info_entries(path)
+            .map_err(MmError::Metadata)?
+            .ok_or_else(|| {
+                MmError::Metadata(
+                    "its RIFF INFO list could not be found where the tag library found one, so \
+                     the change was refused"
+                        .to_string(),
+                )
+            })?;
+        let language = match change {
+            LanguageChange::Clear => riff_info::LanguageExpectation::Absent,
+            LanguageChange::Set(parsed) => {
+                let value = language::language_value_for_tag_type(parsed, TagType::RiffInfo);
+                if value.is_empty() {
+                    riff_info::LanguageExpectation::Absent
+                } else {
+                    riff_info::LanguageExpectation::Holds(value)
+                }
+            }
+        };
+
+        // What `lofty` would write: its own copy of the list, given the same
+        // change the save will make, written into memory instead of a file.
+        if let Some(riff_tag) = tagged_file.tag(TagType::RiffInfo) {
+            let mut would_write = riff_tag.clone();
+            apply_language_change(&mut would_write, change);
+            let mut bytes = Vec::new();
+            would_write.dump_to(&mut bytes, WriteOptions::default())?;
+            let predicted =
+                riff_info::entries_from_list_chunk(&bytes).map_err(MmError::Metadata)?;
+            riff_info::check_entries_kept(&before, &predicted, &language)
+                .map_err(MmError::Metadata)?;
+        }
+
+        Ok(Self { before, language })
+    }
+
+    /// Read the list again, from the file as saved, and refuse if anything
+    /// other than the language differs.
+    fn after_saving(self, path: &Path) -> MmResult<()> {
+        let after = riff_info::read_info_entries(path)
+            .map_err(MmError::Metadata)?
+            .unwrap_or_default();
+        riff_info::check_entries_kept(&self.before, &after, &self.language)
+            .map_err(MmError::Metadata)
+    }
 }
 
 /// Which tag containers [`write_tags`] will actually put a NEW `language`
@@ -1253,14 +1361,42 @@ pub fn remove_tag(path: &Path, key: &str) -> MmResult<()> {
         .map(lofty::tag::Tag::tag_type)
         .collect();
 
+    // Codex's catch-up review, finding 1: removing `language` is a language
+    // save too, so it gets the same treatment as clearing it through
+    // `write_tags` — only a container that actually holds a language is
+    // touched (every other container used to be rewritten as well, which
+    // for a WAV meant its whole RIFF INFO list, for nothing), and a RIFF
+    // INFO list that IS rewritten must lose nothing else (`RiffInfoGuard`).
+    let is_language = key == TAG_LANGUAGE;
+    let riff_guard = if is_language
+        && tagged_file
+            .tag(TagType::RiffInfo)
+            .is_some_and(|riff| riff.get_items(&ItemKey::Language).next().is_some())
+    {
+        Some(RiffInfoGuard::before_saving(
+            path,
+            &tagged_file,
+            &LanguageChange::Clear,
+        )?)
+    } else {
+        None
+    };
+
     // Remove the key from each tag container, then save
     for tt in &tag_types {
         if let Some(tag) = tagged_file.tag_mut(*tt) {
+            if is_language && tag.get_items(&item_key).next().is_none() {
+                continue; // holds no language: nothing to remove, so leave it alone
+            }
             // Remove all items matching this key
             tag.remove_key(&item_key);
             // Save this tag back to disk
             tag.save_to_path(path, WriteOptions::default())?;
         }
+    }
+
+    if let Some(guard) = riff_guard {
+        guard.after_saving(path)?;
     }
 
     Ok(())
