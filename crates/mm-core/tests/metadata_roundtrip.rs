@@ -1895,6 +1895,60 @@ fn a_wav_language_save_keeps_every_other_riff_info_entry_exactly() {
 }
 
 // ---------------------------------------------------------------------------
+// Several languages in ONE stored string (Codex's catch-up review, finding 4)
+// ---------------------------------------------------------------------------
+
+/// An APE tag keeps several values in ONE item, separated by a zero
+/// character, where an ID3 tag's reader hands them over as separate values.
+/// `lang_ape_eng_fra.mp3` (built byte by byte by
+/// `make_language_fixtures.py`; mutagen reads its `Language` item as
+/// `["eng", "fra"]`) holds English then French that way. Reproduced with the
+/// code as it was at `a150926`: MeedyaManager read it as ONE value
+/// `"eng\0fra"`, so `language Matches "fra"` matched while a path was being
+/// built from the FIRST language (English), and display mode showed only
+/// "en" — French was lost.
+///
+/// The values must now be split, kept in order, and treated exactly as the
+/// ID3 path treats them — compare `language_matches_on_a_real_file_with_two_languages`
+/// above, which makes the same checks on an MP3 whose ID3 tag holds the same
+/// two languages.
+#[test]
+fn several_languages_in_one_ape_value_are_read_as_the_id3_path_reads_them() {
+    use mm_core::rule_engine::ConditionOp::{Equals, Matches};
+
+    let (_dir, path) = copy_fixture("lang_ape_eng_fra.mp3");
+    let tags = extract_tags(&path).unwrap();
+    assert_eq!(
+        tags.get(TAG_LANGUAGE).map(Vec::as_slice),
+        Some(["eng".to_string(), "fra".to_string()].as_slice()),
+        "the APE item's two values must be read as two values, in order"
+    );
+
+    // Building a path: the first language only, as for ID3.
+    assert!(
+        !language_rule_matches(&tags, true, Matches, "fra"),
+        "while building a path, only the FIRST language (English) counts"
+    );
+    assert!(language_rule_matches(&tags, true, Matches, "^eng$"));
+    assert!(language_rule_matches(&tags, true, Equals, "en"));
+    let path_ctx = mm_core::rule_engine::EvalContext::new(&tags);
+    assert_eq!(
+        mm_core::rule_engine::evaluate_template("<Language>", &path_ctx).unwrap(),
+        "en"
+    );
+
+    // Display mode: every language, French included, in order.
+    let display_ctx = mm_core::rule_engine::EvalContext::new(&tags).with_path_mode(false);
+    assert_eq!(
+        mm_core::rule_engine::evaluate_template("<Language>", &display_ctx).unwrap(),
+        "en; fr",
+        "display mode must not lose the second language"
+    );
+    assert!(language_rule_matches(&tags, false, Matches, "^fra$"));
+    assert!(!language_rule_matches(&tags, false, Matches, "eng.fra"));
+}
+
+// ---------------------------------------------------------------------------
 // Cover art round trip — raw and integrity-guarded
 // ---------------------------------------------------------------------------
 

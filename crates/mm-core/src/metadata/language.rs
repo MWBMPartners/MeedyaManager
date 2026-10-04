@@ -145,6 +145,44 @@ pub fn parse_stored_language(raw: &str) -> StoredLanguage {
     }
 }
 
+/// Split ONE stored language field into its separate values, in order.
+///
+/// LANG-002: "If the field holds several values (ID3v2.4 separates them
+/// with a null character), split them first and read each on its own; the
+/// first is the primary language." Codex's catch-up review of the
+/// language-policy branch, finding 4: this used to happen for ID3 only, and
+/// only because the `lofty` tag library's ID3 reader splits a field on its
+/// zero characters before this crate sees it. APE keeps several values in
+/// ONE item the same way (zero characters between them) and `lofty` hands
+/// that over whole, as can a Vorbis comment, the MP4 freeform item or a
+/// RIFF INFO entry written by another tool. Reproduced with the code as it
+/// was at `a150926` on a real MP3 with an APE `Language` item of `eng`,
+/// zero, `fra`: it was read as ONE value, `"eng\u{0}fra"`, so a rule's
+/// `language Matches "fra"` matched while a path was being built from the
+/// first language (English), and display mode showed only `en` — French
+/// lost.
+///
+/// So every stored value goes through here, whatever format it came from,
+/// and comes out exactly as the ID3 path already gave it: split at every
+/// zero character, each part trimmed the way stored values are trimmed,
+/// and empty parts left out (which is also what happens to the empty parts
+/// `lofty` produces for an ID3 field with a zero at its end, or two zeros
+/// in a row). Order is kept, so the first is still the primary language.
+/// A value with no zero character comes back as itself, trimmed (or not at
+/// all, when only whitespace).
+///
+/// What this cannot do: tell a value that is genuinely several languages
+/// from one some tool padded oddly — a zero always separates, as LANG-002
+/// says. Callers that need "one value" ([`standardise_for_comparison`],
+/// [`parse_stored_language`]) are given the parts one at a time.
+pub fn split_stored_values(raw: &str) -> Vec<String> {
+    raw.split('\u{0}')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 /// The form a `language` value should be RENDERED or COMPARED in.
 ///
 /// Used wherever the value means the same thing regardless of which tag
@@ -165,6 +203,12 @@ pub fn parse_stored_language(raw: &str) -> StoredLanguage {
 /// not — never a guess (LANG-003), and never `und` standing in for
 /// something a person actually typed that this crate simply could not
 /// parse.
+///
+/// Takes ONE value. A stored field that may hold several, separated by a
+/// zero character, must be split with [`split_stored_values`] first —
+/// every caller in this crate does (Codex's catch-up review, finding 4:
+/// given several at once, the shared reader answers for the first alone,
+/// and the rest would silently not be compared at all).
 pub fn standardise_for_comparison(raw: &str) -> String {
     let stored = parse_stored_language(raw);
     if stored.recognised {
@@ -1408,6 +1452,22 @@ mod tests {
         let stored = parse_stored_language("zzz");
         assert_eq!(stored.tag.tag, "und");
         assert_eq!(stored.raw, "zzz");
+    }
+
+    /// Codex's catch-up review, finding 4: a zero character separates
+    /// values whatever format they came from; order is kept, each part is
+    /// trimmed, and empty parts are left out — the way the ID3 path gives
+    /// them.
+    #[test]
+    fn split_stored_values_splits_at_every_zero_and_keeps_the_order() {
+        assert_eq!(split_stored_values("eng\u{0}fra"), ["eng", "fra"]);
+        assert_eq!(split_stored_values("fra\u{0}eng"), ["fra", "eng"]);
+        assert_eq!(split_stored_values("eng\u{0}\u{0}fra\u{0}"), ["eng", "fra"]);
+        assert_eq!(split_stored_values("\u{0}en"), ["en"]);
+        assert_eq!(split_stored_values(" en-GB "), ["en-GB"]);
+        assert_eq!(split_stored_values("English"), ["English"]);
+        assert!(split_stored_values("").is_empty());
+        assert!(split_stored_values("\u{0}").is_empty());
     }
 
     #[test]

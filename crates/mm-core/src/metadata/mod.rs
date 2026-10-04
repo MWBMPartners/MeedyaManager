@@ -657,6 +657,11 @@ fn read_language_values(tagged_file: &lofty::file::TaggedFile) -> Vec<String> {
 /// differently: first every tag that can hold a full language code (Vorbis
 /// comments, the MP4 freeform item, APE, RIFF INFO), then the ID3v2 tag,
 /// which only ever holds the three-letter form. File order within each.
+///
+/// Several values held in ONE stored string, separated by zero characters
+/// (an APE item does this; `lofty` splits only ID3's), are split here, in
+/// order, by [`language::split_stored_values`] — so every format is read
+/// the way the ID3 path already was (Codex's catch-up review, finding 4).
 fn raw_language_values_by_tier(
     tagged_file: &lofty::file::TaggedFile,
 ) -> (Vec<String>, Vec<String>) {
@@ -671,10 +676,7 @@ fn raw_language_values_by_tier(
         };
         for item in tag.get_items(&ItemKey::Language) {
             if let ItemValue::Text(text) = item.value() {
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    bucket.push(trimmed.to_string());
-                }
+                bucket.extend(language::split_stored_values(text));
             }
         }
     }

@@ -271,14 +271,26 @@ fn evaluate_condition(condition: &Condition, ctx: &EvalContext<'_>) -> MmResult<
 /// there the standard form is every value joined with "; " (`"en; fr"`).
 /// So only path mode is a mirror. Nothing runs a rule in display mode
 /// today, so nothing a person sees is affected.
+///
+/// Codex's catch-up review, finding 4: each stored value is split at its
+/// zero characters first (`language::split_stored_values`), so several
+/// languages held in one stored string count as several values here too,
+/// and path mode really does look at the first language alone — before,
+/// an APE item holding `eng`, zero, `fra` was one "stored value", and
+/// `Matches "fra"` found French inside it while a path was being built from
+/// English.
 fn stored_language_forms(condition: &Condition, ctx: &EvalContext<'_>) -> Vec<String> {
     if !condition.field.eq_ignore_ascii_case(TAG_LANGUAGE) {
         return Vec::new();
     }
-    match ctx.tags.get(TAG_LANGUAGE) {
-        Some(values) if ctx.path_mode => values.iter().take(1).cloned().collect(),
-        Some(values) => values.clone(),
-        None => Vec::new(),
+    let Some(values) = ctx.tags.get(TAG_LANGUAGE) else {
+        return Vec::new();
+    };
+    let split = values.iter().flat_map(|v| language::split_stored_values(v));
+    if ctx.path_mode {
+        split.take(1).collect()
+    } else {
+        split.collect()
     }
 }
 

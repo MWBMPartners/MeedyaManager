@@ -173,12 +173,27 @@ impl<'a> EvalContext<'a> {
                     // standardising, not before, since two values that are
                     // genuinely different raw text can still standardise
                     // to the exact same form.
+                    //
+                    // Codex's catch-up review, finding 4: each value is
+                    // split at its zero characters first (several
+                    // languages in one stored string — see
+                    // `language::split_stored_values`), whatever made the
+                    // `TagMap`: `extract_tags` already splits them, but a
+                    // map built some other way (an app sending tags
+                    // through the C API to `apply_template`, say) might
+                    // not, and standardising `"eng\u{0}fra"` as one value
+                    // would answer for English alone.
                     let mut standardised: Vec<String> = Vec::new();
-                    for v in values {
-                        let form = language::standardise_for_comparison(v);
+                    for v in values.iter().flat_map(|v| language::split_stored_values(v)) {
+                        let form = language::standardise_for_comparison(&v);
                         if !standardised.contains(&form) {
                             standardised.push(form);
                         }
+                    }
+                    if standardised.is_empty() {
+                        // Nothing but zero characters and whitespace: no
+                        // language at all, the same as a missing tag.
+                        return self.handle_missing(display_name);
                     }
                     if self.path_mode {
                         Ok(standardised[0].clone())
@@ -449,6 +464,28 @@ mod tests {
         let tags = make_multi_tags(&[(TAG_LANGUAGE, &["en", "eng"])]);
         let ctx = EvalContext::new(&tags).with_path_mode(false);
         assert_eq!(evaluate_template("<Language>", &ctx).unwrap(), "en");
+    }
+
+    /// Codex's catch-up review, finding 4: a `TagMap` that still holds
+    /// several languages in one string (not built by `extract_tags`, which
+    /// splits them) is split before standardising — path mode gives the
+    /// first, display mode every one in order — and a value that is nothing
+    /// but zero characters counts as missing.
+    #[test]
+    fn language_template_splits_several_values_held_in_one_string() {
+        let tags = make_tags(&[(TAG_LANGUAGE, "eng\u{0}fra")]);
+        assert_eq!(
+            evaluate_template("<Language>", &EvalContext::new(&tags)).unwrap(),
+            "en"
+        );
+        let ctx = EvalContext::new(&tags).with_path_mode(false);
+        assert_eq!(evaluate_template("<Language>", &ctx).unwrap(), "en; fr");
+
+        let empty = make_tags(&[(TAG_LANGUAGE, "\u{0}")]);
+        assert_eq!(
+            evaluate_template("<Language>", &EvalContext::new(&empty)).unwrap(),
+            ""
+        );
     }
 
     /// The companion case: two values that are GENUINELY different once
