@@ -1949,6 +1949,41 @@ fn several_languages_in_one_ape_value_are_read_as_the_id3_path_reads_them() {
 }
 
 // ---------------------------------------------------------------------------
+// Only the policy's own whitespace is trimmed (Codex's catch-up review,
+// finding 5)
+// ---------------------------------------------------------------------------
+
+/// LANG-001 step 1 trims space, tab, line feed and carriage return — "those
+/// four characters and no others. Anything else, a no-break space included,
+/// is part of the value and makes it malformed." `lang_vorbis_nbsp_en.flac`
+/// holds a no-break space (U+00A0) followed by "en" (mutagen reads
+/// `'\xa0en'`). Reproduced with the code as it was at `a150926`: the read
+/// used Rust's `str::trim`, which also removes a no-break space, so the
+/// value was read as plain "en" and `language Equals en` matched.
+///
+/// It must now stay malformed: not recognised, shown as its original text,
+/// and not equal to English.
+#[test]
+fn a_no_break_space_around_a_stored_language_leaves_it_malformed() {
+    use mm_core::rule_engine::ConditionOp::Equals;
+
+    let (_dir, path) = copy_fixture("lang_vorbis_nbsp_en.flac");
+    let tags = extract_tags(&path).unwrap();
+    let stored = tags
+        .get(TAG_LANGUAGE)
+        .and_then(|values| values.first())
+        .cloned()
+        .expect("the file holds a language value");
+    assert_eq!(stored, "\u{a0}en", "the original text is kept for display");
+    assert!(
+        !mm_core::metadata::language::parse_stored_language(&stored).recognised,
+        "a no-break space is part of the value, which makes it malformed"
+    );
+    assert!(!language_rule_matches(&tags, true, Equals, "en"));
+    assert!(!language_rule_matches(&tags, false, Equals, "en"));
+}
+
+// ---------------------------------------------------------------------------
 // Cover art round trip — raw and integrity-guarded
 // ---------------------------------------------------------------------------
 

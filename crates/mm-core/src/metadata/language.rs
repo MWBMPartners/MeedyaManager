@@ -164,8 +164,9 @@ pub fn parse_stored_language(raw: &str) -> StoredLanguage {
 ///
 /// So every stored value goes through here, whatever format it came from,
 /// and comes out exactly as the ID3 path already gave it: split at every
-/// zero character, each part trimmed the way stored values are trimmed,
-/// and empty parts left out (which is also what happens to the empty parts
+/// zero character, each part trimmed of LANG-001 step 1's four whitespace
+/// characters only (space, tab, line feed, carriage return — see
+/// `trim_lang_whitespace`), and empty parts left out (which is also what happens to the empty parts
 /// `lofty` produces for an ID3 field with a zero at its end, or two zeros
 /// in a row). Order is kept, so the first is still the primary language.
 /// A value with no zero character comes back as itself, trimmed (or not at
@@ -175,9 +176,19 @@ pub fn parse_stored_language(raw: &str) -> StoredLanguage {
 /// from one some tool padded oddly — a zero always separates, as LANG-002
 /// says. Callers that need "one value" ([`standardise_for_comparison`],
 /// [`parse_stored_language`]) are given the parts one at a time.
+///
+/// Codex's catch-up review, finding 5: the trim used to be Rust's
+/// `str::trim`, which also removes a no-break space and every other Unicode
+/// space. The policy says "those four characters and no others. Anything
+/// else, a no-break space included, is part of the value and makes it
+/// malformed." Reproduced with the code as it was at `a150926` on a real
+/// FLAC whose `LANGUAGE` was a no-break space then `en`: it was read as
+/// plain `en`, `<Language>` gave `en`, and `language Equals en` matched. The
+/// value now keeps its no-break space, so it is not recognised, is shown as
+/// stored, and matches nothing but itself.
 pub fn split_stored_values(raw: &str) -> Vec<String> {
     raw.split('\u{0}')
-        .map(str::trim)
+        .map(trim_lang_whitespace)
         .filter(|part| !part.is_empty())
         .map(str::to_string)
         .collect()
@@ -1465,6 +1476,12 @@ mod tests {
         assert_eq!(split_stored_values("eng\u{0}\u{0}fra\u{0}"), ["eng", "fra"]);
         assert_eq!(split_stored_values("\u{0}en"), ["en"]);
         assert_eq!(split_stored_values(" en-GB "), ["en-GB"]);
+        // Finding 5: only the policy's four whitespace characters are
+        // trimmed — a no-break space (and any other Unicode space) stays.
+        assert_eq!(split_stored_values("\t\r\n en \n"), ["en"]);
+        assert_eq!(split_stored_values("\u{a0}en"), ["\u{a0}en"]);
+        assert_eq!(split_stored_values("en\u{2003}"), ["en\u{2003}"]);
+        assert_eq!(split_stored_values("\u{a0}"), ["\u{a0}"]);
         assert_eq!(split_stored_values("English"), ["English"]);
         assert!(split_stored_values("").is_empty());
         assert!(split_stored_values("\u{0}").is_empty());
