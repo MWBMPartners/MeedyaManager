@@ -129,8 +129,11 @@ applies cleanly; `PARTIAL` in either of two distinct cases that a script should 
 reading `actions[].success`, not just the exit code:
 
 - **Phase-1 (validation) failure** — at least one requested operation is invalid (e.g. an
-  unmapped tag key, or a `--set language=...` value the shared MWBM-MEDIA-LANG policy does not
-  recognise as a language at all — see `mm_core::metadata::language::parse_language_input`). In
+  unmapped tag key, a `--set language=...` value the shared MWBM-MEDIA-LANG policy does not
+  recognise as a language at all or that holds a control character — see
+  `mm_core::metadata::language::parse_language_input` — or the same key given to `--set` more
+  than once, which gets one failed action per `--set`, each naming the key and every value
+  given). In
   this case **none** of the batch is applied, not even the operations that were themselves valid
   — this happens before any file I/O, regardless of `--dry-run`.
 - **Phase-2 (apply) failure** — every operation validated, but a real I/O error occurred while

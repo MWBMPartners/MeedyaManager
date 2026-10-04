@@ -850,7 +850,11 @@ stored metadata, and shows no language menus yet):
   text through `metadata::language::standardise_for_comparison` before comparing or
   rendering it, so both sides of a comparison — and a template's output — always use
   the STANDARD form, whatever the file itself happens to store. A value nothing
-  recognises is compared and shown as its own original text, unchanged, never a guess.
+  recognises is compared and shown as its own original text, never a guess — with only the
+  policy's own four whitespace characters (space, tab, line feed, carriage return) taken off
+  its two ends. (Until Codex's catch-up review this used Rust's `str::trim`, which also takes
+  off a no-break space and every other Unicode space, so a value the policy calls malformed was
+  read as English; see the round 6 notes below.)
 - The conformance test, `crates/mm-core/tests/media_language_conformance.rs`, runs
   every case in the local copy of the policy's own test file
   (`tests/fixtures/bcp47-language-policy-v1.json`) for the four sections MeedyaManager
@@ -1018,6 +1022,49 @@ stored metadata, and shows no language menus yet):
     covered are now caught; three of that reviewer's others (P4, P8, P9 — not covered by the
     decisions) still are not; the third reviewer's O6 cannot be caught by its nature (it breaks
     a test, not the code); everything else that can run is caught.
+- **Codex's catch-up review, 2026-10-04** (Codex, the usual reviewer, over the whole branch,
+  `7697b9c..a150926`; six findings, each reproduced on a real file before it was fixed, and the
+  lead's decisions on them final):
+  - **A WAV language save never drops another RIFF INFO entry** (finding 1). `lofty` cannot read
+    a RIFF INFO entry that is not UTF-8 (RIFF INFO names no encoding; old Windows tools write
+    their own code page), leaves it out of what it read, and writes the list back whole — so
+    setting, clearing or removing the language of a WAV whose title was "Café" in Latin-1 deleted
+    the title and reported success. `metadata/riff_info.rs` now reads the list raw (id and bytes)
+    and `write_tags` / `remove_tag` check, before the first save (against what `lofty` would
+    write, `TagExt::dump_to`) and after the last (against the file), that every entry other than
+    `ILNG` is byte for byte the same and in the same order and that `ILNG` holds exactly what was
+    asked. Anything else is refused, naming what would be lost. Limits: it guards language saves
+    only (`remove_tag` of another field still rewrites every tag), and it refuses harmless
+    differences too, because it cannot tell them apart without guessing. A side effect worth
+    knowing: a WAV with two `LIST INFO` chunks (#259) holding a language is now refused rather
+    than left with two languages, because `lofty` copies the second chunk's entries into the
+    first.
+  - **A language being set is ONE value** (finding 2). The shared reader reads only the first of
+    several values separated by a zero character — right for reading a stored field (LANG-002),
+    wrong for a value being set, where it silently threw the rest away (the C API stored `en`
+    for `"en\u0000fr"` and answered `{"ok":true}`). `parse_language_input` now refuses a zero
+    character anywhere, and any other control character left once the policy's four whitespace
+    characters are trimmed from the ends, with its own plain message, on every way in.
+  - **`meedya edit` refuses the same field given twice** (finding 3), before anything is written,
+    on `--dry-run` too, with one failed row per `--set` naming the field and every value. It used
+    to be "last one wins" with every row reported as done and carrying the last value's note.
+  - **Several languages in one stored string are split for every format** (finding 4).
+    `language::split_stored_values` splits at every zero character, keeps the order, trims each
+    part and drops empty ones — exactly what the ID3 path already gave, because `lofty` splits
+    ID3 fields itself — and is used when reading a file and in the rule engine, so an APE item
+    holding `eng`, zero, `fra` reads as `["eng", "fra"]`, path mode looks at English only, and
+    display mode keeps French.
+  - **Only the policy's own whitespace is trimmed** (finding 5): see the corrected bullet above.
+    A FLAC whose `LANGUAGE` is a no-break space then `en` is not recognised, is shown as stored,
+    and does not match `language Equals en`.
+  - **The C API and UniFFI write result carries the note** (finding 6). `write_metadata` now
+    returns `WriteMetadataResult { notes }` (the C API adds `"notes":[...]` to `{"ok":true}`):
+    for the `language` entry, the same note `meedya edit --set` shows, worked out before the save
+    from the file the save starts from. The apps do not show it yet (#256).
+  - **`.gitattributes`:** every line protecting a policy copy is now `-text -filter
+    -working-tree-encoding -ident`, proven in a throwaway clone (a filter or encoding set through
+    that clone's own `.git/config` changed the copies with the old lines and not with the new; a
+    line in its `.git/info/attributes` still wins, and the copy checker then reports the copy).
 - **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
   language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
   `companion` module still matches sidecars by exact name only. Tracked as issue #252,

@@ -2,7 +2,8 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 >
-> Facts and lessons that a fresh session is most likely to get wrong. Checked on 2026-09-23.
+> Facts and lessons that a fresh session is most likely to get wrong. Checked on 2026-09-23;
+> the last five lessons were added on 2026-10-04.
 > For the live state of the work, `.claude/HANDOFF.md` §0 always wins over this file.
 
 ## Where the work happens
@@ -66,3 +67,21 @@
 - **A handoff should not say what is on GitHub.** Push-status lines in the language note went
   stale more than once; git (`git status -sb`) is the record. The note keeps only a table of
   finished reviews and which commits each covered.
+- **A library that rewrites a whole structure can drop what it could not read.** In the
+  language work, the tag library could not read a WAV's RIFF INFO title written in Latin-1,
+  left it out of what it read, and wrote the list back without it — a language save deleted
+  the title and reported success. Language saves now read that list's raw bytes before and
+  after and refuse any other change (`metadata/riff_info.rs`). Other saves (`remove_tag` of
+  another field) are not guarded yet.
+- **A reader's rule is not a writer's rule.** The shared language reader takes the first of
+  several values separated by a zero character — right for reading a stored field, wrong for a
+  value being set, where it silently threw the rest away. Check which side a function was
+  written for before reusing it on the other.
+- **"Last one wins" hides a lost write.** `meedya edit --set x=1 --set x=2` reported both as
+  done. Refusing the ambiguity is the answer that cannot mislead.
+- **Trim exactly what the standard says.** Rust's `str::trim` removes a no-break space and other
+  Unicode spaces; the language policy keeps them (they make a value malformed). Use the policy's
+  own four characters (`trim_lang_whitespace`).
+- **Codex reviews here when it can.** Its catch-up review of the whole language branch (36
+  commits) found six problems four earlier rounds had not; it traced code but could not run it,
+  so each finding was reproduced on a real file before it was fixed.

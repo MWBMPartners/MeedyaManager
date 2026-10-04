@@ -211,6 +211,24 @@ Format: `## [Version] — YYYY-MM-DD`
   codes, not names, so `Contains "en"` also matches Bengali stored as `ben`; use `Equals` to ask
   "is this file in this language?". See "Language in rules" in `help/rule-syntax.md`.
 
+  **Fixed after a review of the whole of this work:** changing the language of a WAV file no
+  longer deletes other text from its older RIFF INFO tag section. Text saved there by an old
+  Windows program in its own character set (a title "Café", say) could not be read, and was
+  quietly left out when the section was written back — setting, clearing or removing the
+  language deleted the title and reported success. Such a save is now refused, naming what would
+  be lost, and the file is left exactly as it was; when nothing would be lost, the save goes
+  ahead with every other entry exactly as it was. A language value holding a hidden control
+  character (a zero character is how a tag separates several values) is refused rather than cut
+  at the first value, through the command line and the desktop apps' engine alike. `meedya edit`
+  refuses the same field given twice in one command, instead of saving the last value while
+  reporting both as done. Several languages stored in one field (as an APE tag stores them) are
+  read as separate languages, in order, whatever kind of tag holds them, so a rule looks at the
+  first language only, as this entry promises above. Only spaces, tabs and line breaks around a
+  stored language are ignored: a no-break space is part of the text, as the shared policy says,
+  so such a value is no longer mistaken for English. And the desktop apps' engine now reports
+  the same note `meedya edit` shows when a language write loses detail (their screens do not
+  show it yet, [#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
+
   When saving a file fails, the message now starts "Could not save the changes to" and names the
   file you asked to change — never the temporary working copy MeedyaManager edits first, or its
   Test Mode copy, which used to appear in some of these messages. When the trouble is in a Test
@@ -229,7 +247,8 @@ Format: `## [Version] — YYYY-MM-DD`
   one.
 
   **Also tracked separately, found while testing this:** a WAV file with two `LIST INFO` chunks
-  only has the first one changed when its language is set or cleared
+  holding a language had only the first one changed when its language was set or cleared; since
+  the RIFF INFO fix above, such a change is refused instead, leaving the file as it was
   ([#259](https://github.com/MWBMPartners/MeedyaManager/issues/259)); any save to a FLAC file that
   starts with an ID3 tag fails
   ([#257](https://github.com/MWBMPartners/MeedyaManager/issues/257), older than this work);

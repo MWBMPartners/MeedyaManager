@@ -415,7 +415,14 @@ meedya edit <PATH> [OPTIONS]
 > no file-format mapping (e.g. `podcast_title`, `podcast_id`, `podcast_category`) is always
 > rejected, Test Mode or not. Setting `language` to something that is not a real language (not a
 > code like `en` or `pt-BR`, and not an older three-letter code like `fre`) is rejected the same
-> way, with a message that shows a working example. When Test Mode redirects a write, JSON output
+> way, with a message that shows a working example — and so is a `language` value holding a hidden
+> control character (a zero character is how a tag separates several values; a language is set one
+> value at a time). Giving the same field twice in one command (`--set language=en --set
+> language=pt-BR`) is rejected too, naming the field, because MeedyaManager cannot know which value
+> you meant; nothing is written, on `--dry-run` or not. Changing the language of a WAV file whose
+> older RIFF INFO tag section holds text MeedyaManager cannot read as it is stored (a title saved by
+> an old Windows program in its own character set, say) is refused, naming what would be lost,
+> and the file is left exactly as it was. When Test Mode redirects a write, JSON output
 > (`--json`) carries a `written_to` field naming the copy path. See [test-mode.md](test-mode.md)
 > for the full picture.
 
