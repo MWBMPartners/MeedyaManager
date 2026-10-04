@@ -44,16 +44,31 @@
 
 # MWBM-MEDIA-LANG policy copies must stay byte-for-byte identical to the
 # master files in MWBMPartners/MeedyaSuite-core (the policy document says so
-# itself, in docs/standards/media-language-bcp47-policy.md, section 8.3). The
-# generic rules above would still be free to convert their line endings on a
-# checkout, and the copy checker (scripts/media-lang/check_copies.py) would
-# then report every one of them as "changed" even though nobody touched a
-# single character — so each one is marked "-text" here, overriding those
-# generic rules, to say plainly that git must never rewrite them.
-docs/standards/media-language-bcp47-policy.md -text
-docs/standards/MWBM-MEDIA-LANG.lock -text
-tests/fixtures/bcp47-language-policy-v1.json -text
-tests/fixtures/bcp47-language-policy-v1.schema.json -text
-docs/standards/data/bcp47-language-data-v1.json -text
-docs/standards/data/bcp47-language-data-v1.schema.json -text
-scripts/media-lang/check_copies.py -text
+# itself, in docs/standards/media-language-bcp47-policy.md, section 8.3), and
+# the copy checker (scripts/media-lang/check_copies.py) compares their exact
+# bytes. Git can change a file's bytes when it checks the file out in four
+# ways, and each line below switches all four off for one copy, overriding
+# the generic rules above and any broader setting of the same kind:
+#
+#   -text                   no line-ending conversion
+#   -filter                 no filter program run over the file (a "clean"
+#                           or "smudge" filter someone has set up)
+#   -working-tree-encoding  no conversion into another text encoding
+#   -ident                  no expansion of "$Id$" into a version string
+#
+# What these lines cannot do: a setting with higher priority on someone's
+# own machine still wins over this file — a line in that clone's own
+# .git/info/attributes, for one. If that happens, the copy checker reports
+# the copy as changed, which is the right answer: the bytes on that disk no
+# longer match the master. (Proven in a throwaway clone when these lines were
+# written: a filter and an encoding set up through that clone's own
+# .git/config changed the copies with the old "-text"-only lines and left
+# them byte for byte alone with these; a line in .git/info/attributes still
+# changed one, and the copy checker reported it.)
+docs/standards/media-language-bcp47-policy.md -text -filter -working-tree-encoding -ident
+docs/standards/MWBM-MEDIA-LANG.lock -text -filter -working-tree-encoding -ident
+tests/fixtures/bcp47-language-policy-v1.json -text -filter -working-tree-encoding -ident
+tests/fixtures/bcp47-language-policy-v1.schema.json -text -filter -working-tree-encoding -ident
+docs/standards/data/bcp47-language-data-v1.json -text -filter -working-tree-encoding -ident
+docs/standards/data/bcp47-language-data-v1.schema.json -text -filter -working-tree-encoding -ident
+scripts/media-lang/check_copies.py -text -filter -working-tree-encoding -ident
