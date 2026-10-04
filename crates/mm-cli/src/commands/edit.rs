@@ -988,6 +988,55 @@ mod tests {
         );
     }
 
+    /// Codex's catch-up review, finding 2, through the command line: a
+    /// language value holding a zero character (several values) or any other
+    /// control character is refused in Phase 1 with its own plain message,
+    /// and nothing is written, on `--dry-run` or not. A real command line
+    /// cannot carry a zero character (the operating system ends an argument
+    /// there), but `EditArgs` is also built by code, so it is tested here
+    /// directly, beside a control character a command line CAN carry.
+    #[test]
+    fn edit_set_language_refuses_several_values_or_a_control_character() {
+        let _guard = ConfigDirGuard::new();
+
+        for (value, says) in [
+            ("en\u{0}fr", "more than one value"),
+            ("en\u{1}fr", "control character"),
+            ("en\nfr", "control character"),
+        ] {
+            for dry_run in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = crate::test_support::copy_core_fixture("silence.flac", dir.path());
+                let before = std::fs::read(&path).unwrap();
+                let args = EditArgs {
+                    path: path.clone(),
+                    set: vec![format!("language={value}")],
+                    remove: vec![],
+                    cover: None,
+                    remove_cover: false,
+                    dry_run,
+                };
+
+                let Err(actions) = build_plan(&args) else {
+                    panic!("{value:?}: must fail Phase 1");
+                };
+                let message = actions[0].error.as_deref().unwrap_or_default();
+                assert!(message.contains(says), "{value:?}: {message:?}");
+                assert!(
+                    !message.contains('\u{0}'),
+                    "{value:?}: raw zero in {message:?}"
+                );
+
+                assert_eq!(run(&test_ctx(), &args).unwrap(), ExitCode::PARTIAL);
+                assert_eq!(
+                    std::fs::read(&path).unwrap(),
+                    before,
+                    "{value:?} dry_run={dry_run}: the file must be untouched"
+                );
+            }
+        }
+    }
+
     /// Both accepted shapes LANG-002 defines — a full BCP 47 tag and an old
     /// three-letter code — must be accepted by `--set language=...`, and an
     /// EMPTY value must still be allowed (it clears the field, same as any

@@ -1017,6 +1017,82 @@ mod tests {
         );
     }
 
+    /// Codex's catch-up review, finding 2, through the UniFFI API (the
+    /// macOS app's way in): a language value holding a zero character is
+    /// several values, and used to be cut at the first — a FLAC whose
+    /// language was German was saved as `en`, French discarded, and the call
+    /// succeeded. It must be refused, naming the problem, with the file
+    /// untouched; so must any other control character.
+    #[test]
+    fn write_metadata_refuses_several_languages_or_a_control_character() {
+        let guard = ConfigDirGuard::new("severallanguages");
+        for (value, says) in [
+            ("en\u{0}fr", "more than one value"),
+            ("en\u{1b}fr", "control character"),
+        ] {
+            let path = copy_core_fixture("silence.flac", guard.path());
+            let before = std::fs::read(&path).unwrap();
+
+            let err = write_metadata(
+                path.display().to_string(),
+                vec![TagEntry {
+                    key: "language".to_string(),
+                    value: value.to_string(),
+                    note: None,
+                }],
+            )
+            .expect_err("several values or a control character must not be saved");
+
+            assert!(
+                matches!(err, MmFfiError::Metadata(ref m) if m.contains(says) && !m.contains('\u{0}')),
+                "{value:?}: {err:?}"
+            );
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                before,
+                "{value:?}: file untouched"
+            );
+            std::fs::remove_file(&path).unwrap();
+        }
+    }
+
+    /// The same, through the C API (the Windows app's way in), with Codex's
+    /// own input: the JSON escape `\u0000` becomes a real zero character once
+    /// the JSON is read. Reproduced with the library built from `a150926`:
+    /// the answer was `{"ok":true}` and the FLAC stored `en`.
+    #[test]
+    fn c_api_refuses_several_languages_in_one_value_and_leaves_the_file() {
+        use std::ffi::{CStr, CString};
+
+        let guard = ConfigDirGuard::new("capiseverallanguages");
+        let path = copy_core_fixture("silence.flac", guard.path());
+        let before = std::fs::read(&path).unwrap();
+
+        let c_path = CString::new(path.display().to_string()).unwrap();
+        let c_json = CString::new(r#"[{"key":"language","value":"en\u0000fr"}]"#).unwrap();
+        // SAFETY: both arguments are valid, zero-terminated C strings that
+        // outlive the call, and the answer is freed exactly once below with
+        // the library's own `mm_ffi_free_string`.
+        let answer = unsafe {
+            let ptr = crate::capi::mm_ffi_write_metadata(c_path.as_ptr(), c_json.as_ptr());
+            let text = CStr::from_ptr(ptr).to_str().unwrap().to_string();
+            crate::capi::mm_ffi_free_string(ptr.cast_mut());
+            text
+        };
+
+        let json: serde_json::Value = serde_json::from_str(&answer).unwrap();
+        let error = json["error"]
+            .as_str()
+            .unwrap_or_else(|| panic!("refused: {answer}"));
+        assert!(error.contains("more than one value"), "{answer}");
+        assert!(json.get("ok").is_none(), "{answer}");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "the file must be untouched"
+        );
+    }
+
     /// The other half of the same rule: a value LANG-002 DOES recognise —
     /// here, an old three-letter code — must be accepted and converted, not
     /// merely tolerated.

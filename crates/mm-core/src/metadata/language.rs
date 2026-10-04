@@ -178,14 +178,44 @@ pub fn standardise_for_comparison(raw: &str) -> String {
 // A person setting or changing a language on purpose
 // ---------------------------------------------------------------------------
 
-/// A language value a person typed could not be understood at all.
+/// A language value a person typed (or a program sent) was refused.
 ///
 /// Carries the input back, both so the message can quote it and so a
 /// caller further up (the CLI, a future editor) does not have to keep hold
-/// of it separately just to report the failure.
+/// of it separately just to report the failure — and says which of the
+/// reasons in [`InputProblem`] it was.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguageInputError {
     pub input: String,
+    pub problem: InputProblem,
+}
+
+/// Why a language value was refused.
+///
+/// Codex's catch-up review of the language-policy branch, finding 2: the
+/// shared reader this crate uses (`meedya_lang::from_legacy_three_letter`)
+/// is written for READING a stored field, where a zero character separates
+/// several values (ID3 version 2.4, APE) and LANG-002 says the first is the
+/// primary one — so it reads the first and ignores the rest. Used for a
+/// value somebody is SETTING, that silently threw information away:
+/// reproduced through the C API with `[{"key":"language","value":"en\u0000fr"}]`
+/// (the JSON escape becomes a real zero character), which stored `en` on a
+/// FLAC and `eng` on an MP3, discarded French, and answered `{"ok":true}`.
+/// A value being set must be ONE value, so a zero character — or any other
+/// control character, which no language code can contain — is now refused
+/// with its own plain message, before anything is written, on every way in
+/// (the CLI, the C API and the UniFFI API all reach this function).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputProblem {
+    /// Nothing recognises it as a language.
+    NotRecognised,
+    /// It holds a zero character: the way a tag separates several values,
+    /// so it is more than one value.
+    SeveralValues,
+    /// It holds this control character (other than a zero character, and
+    /// other than the four whitespace characters LANG-001 step 1 trims from
+    /// the two ends).
+    ControlCharacter(char),
 }
 
 impl std::fmt::Display for LanguageInputError {
@@ -207,14 +237,48 @@ impl std::fmt::Display for LanguageInputError {
         // had passed through the write guard. Fixed in `integrity.rs`,
         // not here; this comment is corrected so it no longer claims a
         // guarantee this one function cannot make on its own.
-        write!(
-            f,
-            "'{}' is not a language MeedyaManager recognises. Use a language code such as \
-             \"en\", \"pt-BR\" or \"zh-Hant\" (an older three-letter code such as \"fre\" is \
-             accepted too), or \"und\" if the language is genuinely not known.",
-            self.input
-        )
+        //
+        // The input is quoted with every control character written out as
+        // `\u{..}` (`show_with_control_characters_visible`), so a refusal
+        // can never print a raw zero character — which would cut the
+        // message short at the C API, where text ends at a zero.
+        let shown = show_with_control_characters_visible(&self.input);
+        match self.problem {
+            InputProblem::NotRecognised => write!(
+                f,
+                "'{shown}' is not a language MeedyaManager recognises. Use a language code such \
+                 as \"en\", \"pt-BR\" or \"zh-Hant\" (an older three-letter code such as \
+                 \"fre\" is accepted too), or \"und\" if the language is genuinely not known."
+            ),
+            InputProblem::SeveralValues => write!(
+                f,
+                "'{shown}' holds more than one value (they are separated by a zero character, \
+                 shown here as \\u{{0}}). A language is set one value at a time: give just one \
+                 language code, such as \"en\" or \"pt-BR\"."
+            ),
+            InputProblem::ControlCharacter(c) => write!(
+                f,
+                "'{shown}' contains a control character ({}), which no language code contains. \
+                 Use a language code such as \"en\", \"pt-BR\" or \"zh-Hant\".",
+                c.escape_unicode()
+            ),
+        }
     }
+}
+
+/// `input` with every control character written out as `\u{..}` and
+/// everything else left as it is — for quoting a refused value safely.
+fn show_with_control_characters_visible(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| {
+            if c.is_control() {
+                c.escape_unicode().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
 }
 
 impl std::error::Error for LanguageInputError {}
@@ -232,13 +296,31 @@ impl std::error::Error for LanguageInputError {}
 /// different one — and silently accepting the mistake as `und` would hide
 /// it from the one person who could still fix it.
 ///
+/// A value being set must be ONE value (Codex's catch-up review, finding
+/// 2): a zero character anywhere in it — the way a tag separates several
+/// values — is refused rather than cut at the first value, and so is any
+/// other control character left once LANG-001 step 1's four whitespace
+/// characters (space, tab, line feed, carriage return) are trimmed from the
+/// two ends. Those four at the ends are trimmed, as the policy says, so
+/// `"en\n"` is still accepted as `en`; a line feed in the middle is not.
+///
 /// # Errors
 /// Returns [`LanguageInputError`] naming the input, with an example of what
-/// a valid one looks like, when nothing above recognises it.
+/// a valid one looks like, when nothing above recognises it, and with its
+/// own explanation when it holds several values or a control character
+/// (see [`InputProblem`]).
 pub fn parse_language_input(input: &str) -> Result<LanguageTag, LanguageInputError> {
-    from_legacy_three_letter(input).ok_or_else(|| LanguageInputError {
+    let refuse = |problem: InputProblem| LanguageInputError {
         input: input.to_string(),
-    })
+        problem,
+    };
+    if input.contains('\u{0}') {
+        return Err(refuse(InputProblem::SeveralValues));
+    }
+    if let Some(c) = trim_lang_whitespace(input).chars().find(|c| c.is_control()) {
+        return Err(refuse(InputProblem::ControlCharacter(c)));
+    }
+    from_legacy_three_letter(input).ok_or_else(|| refuse(InputProblem::NotRecognised))
 }
 
 // ---------------------------------------------------------------------------
@@ -1372,6 +1454,60 @@ mod tests {
         assert!(parse_language_input("zzz").is_err());
         assert!(parse_language_input("not a language").is_err());
         assert!(parse_language_input("").is_err());
+    }
+
+    /// Codex's catch-up review, finding 2: a zero character means several
+    /// values, and a value being set must be one. The shared reader would
+    /// read `en` and drop the rest, so this must refuse first — wherever the
+    /// zero is, including at the end, where a READ would treat it as padding.
+    #[test]
+    fn parse_language_input_refuses_several_values_rather_than_cutting_them() {
+        for input in [
+            "en\u{0}fr",
+            "eng\u{0}fra",
+            "\u{0}en",
+            "en\u{0}",
+            "pt-BR\u{0}pt-PT",
+        ] {
+            let err = parse_language_input(input).unwrap_err();
+            assert_eq!(err.problem, InputProblem::SeveralValues, "{input:?}");
+            let message = err.to_string();
+            assert!(
+                message.contains("more than one value"),
+                "{input:?}: {message:?}"
+            );
+            assert!(
+                !message.contains('\u{0}'),
+                "the message must never carry a raw zero character: {message:?}"
+            );
+            assert!(message.contains("\\u{0}"), "the zero is shown: {message:?}");
+        }
+    }
+
+    /// Any other control character is refused too, with its own message —
+    /// except LANG-001 step 1's four whitespace characters at the two ends,
+    /// which the policy trims.
+    #[test]
+    fn parse_language_input_refuses_a_control_character_but_trims_the_policys_own() {
+        for input in [
+            "en\u{1}fr",
+            "en\nfr",
+            "e\tn",
+            "en\u{7f}",
+            "\u{85}en",
+            "\u{1b}[31men",
+        ] {
+            let err = parse_language_input(input).unwrap_err();
+            assert!(
+                matches!(err.problem, InputProblem::ControlCharacter(_)),
+                "{input:?}: {:?}",
+                err.problem
+            );
+            assert!(err.to_string().contains("control character"), "{input:?}");
+        }
+        for input in ["en\n", "\ten", " en\r\n"] {
+            assert_eq!(parse_language_input(input).unwrap().tag, "en", "{input:?}");
+        }
     }
 
     #[test]
