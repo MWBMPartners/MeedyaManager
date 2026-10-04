@@ -29,9 +29,11 @@ hid the other. These five files test that, and are built byte by byte from
 the files above by `make_language_fixtures.py` in this folder, using only
 Python's standard library — deliberately not `lofty`, the library the app
 itself uses, so a fault in `lofty` cannot hide a fault in the app. Regenerate
-all five with `python3 make_language_fixtures.py`; the output is the same
-every time (the first three were checked to come out byte for byte the same
-when the last two were added, for the fourth review round).
+all nine (these five and the four in the next table) with
+`python3 make_language_fixtures.py`; the output is the same every time (the
+first three were checked to come out byte for byte the same when the next two
+were added, for the fourth review round, and all five again when the last
+four were added, for Codex's catch-up review).
 
 | File | What is in it | Used for |
 |------|---------------|----------|
@@ -40,6 +42,19 @@ when the last two were added, for the fourth review round).
 | `lang_riff_english_id3_eng.wav` | `silence.wav` with its RIFF INFO replaced by `ILNG` = `English` (a word, not a code) and `INAM` = `Old`, plus an ID3v2.4 tag with `TLAN` = `eng` | A value nothing recognises beside a real code; also a program that reads every field and writes them all back with only the title changed must not be refused |
 | `lang_riff_english_id3_english.wav` | `silence.wav` with `ILNG` = `English` and `INAM` = `Old`, plus an ID3v2.4 tag with `TLAN` = `English` | The same unrecognised word in both tags is agreement: no disagreement may be reported |
 | `lang_riff_en_id3_ger_twice.wav` | `silence.wav` with `ILNG` = `en` and `INAM` = `Old`, plus an ID3v2.4 tag whose `TLAN` holds `ger` twice (two values, separated by a zero byte) | The disagreement must name `ger` once, not twice |
+
+### Files for Codex's catch-up review of the language-policy branch
+
+Built by the same script. Each one reproduced a finding with the `meedya`
+binary built from `a150926`, before the fix (the evidence is in the commit
+that added the files).
+
+| File | What is in it | Used for |
+|------|---------------|----------|
+| `lang_riff_fre_title_latin1.wav` | `silence.wav` with RIFF INFO `ILNG` = `fre` and `INAM` (the title) = "Café" written in Latin-1, the bytes `43 61 66 E9`, not UTF-8 | Finding 1: changing or clearing the language used to delete the title, because the tag library cannot read it and wrote the list back without it. It must now be refused, with the file left exactly as it was |
+| `lang_riff_fre_all_utf8.wav` | `silence.wav` with RIFF INFO `IART`, `INAM`, `ILNG` = `fre`, `ICMT` and `ISFT`, all UTF-8, with odd and even lengths | Finding 1's other side: nothing is lost, so the save goes ahead, and every other entry stays byte for byte the same and in the same order |
+| `lang_ape_eng_fra.mp3` | `silence.mp3` with an APE version 2 tag at the end whose `Language` item holds `eng`, a zero byte, then `fra` — two values in one item, as APE stores them | Finding 4: the two values must be read as two, in order, the way an ID3 tag's two values are |
+| `lang_vorbis_nbsp_en.flac` | `silence.flac` with its Vorbis `LANGUAGE` set to a no-break space (U+00A0) followed by `en` | Finding 5: only the policy's own four whitespace characters are trimmed, so this value is malformed and must not be read as English |
 
 Total size is well under 1 MB (~28 KB as of writing). Do not replace these
 with larger or non-silent audio — the tests only need parseable tag

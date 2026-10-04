@@ -3,10 +3,12 @@
 #
 # MeedyaManager — crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
-# Builds the five "language in more than one tag at once" test files from
-# the committed `silence.wav`, `silence.flac` and `riff_language.wav`, using
-# nothing but Python's standard library. (Three since the third review round;
-# two more added for the fourth.) Run it from anywhere:
+# Builds nine language test files from the committed `silence.wav`,
+# `silence.flac`, `silence.mp3` and `riff_language.wav`, using nothing but
+# Python's standard library. (Three since the third review round; two more
+# added for the fourth; four more for Codex's catch-up review of the whole
+# language-policy branch — see "The fixtures" at the bottom for what each one
+# is for.) Run it from anywhere:
 #
 #     python3 crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
@@ -25,9 +27,11 @@
 #
 # WHAT IT CANNOT DO
 # -----------------
-# It only knows the few pieces of the WAV, FLAC and ID3 formats these files
-# need (one text frame per ID3 tag, UTF-8 text, the Vorbis comment block).
-# It is not a general tag writer and should not be grown into one.
+# It only knows the few pieces of the WAV, FLAC, ID3 and APE formats these
+# files need (one text frame per ID3 tag, UTF-8 text, the Vorbis comment
+# block, RIFF INFO entries given as exact bytes, and one APE version 2 tag at
+# the end of a file). It is not a general tag writer and should not be grown
+# into one.
 #
 # License: GPL-2.0-or-later
 
@@ -95,17 +99,28 @@ def _wav_from_chunks(chunks: list[tuple[bytes, bytes]]) -> bytes:
     return b"RIFF" + struct.pack("<I", len(body)) + body
 
 
-def riff_info(pairs: list[tuple[str, str]]) -> bytes:
+def riff_info(pairs: list[tuple[str, str | bytes]]) -> bytes:
     """The payload of a `LIST` chunk of type `INFO`: one sub-chunk per
     `(four-letter id, text)`, each text ending in a zero byte as RIFF INFO
-    expects."""
+    expects.
+
+    Text given as `str` is written as UTF-8. Text given as `bytes` is written
+    exactly as given — RIFF INFO names no text encoding at all, and older
+    Windows tools write the computer's own code page, so a Latin-1 "Café"
+    (`43 61 66 E9`) is a real thing to find in a file, and the only way to
+    test what happens to one is to write those exact bytes (Codex's catch-up
+    review, finding 1)."""
     return b"INFO" + b"".join(
-        _chunk(cid.encode("ascii"), text.encode("utf-8") + b"\x00") for cid, text in pairs
+        _chunk(
+            cid.encode("ascii"),
+            (text if isinstance(text, bytes) else text.encode("utf-8")) + b"\x00",
+        )
+        for cid, text in pairs
     )
 
 
 def wav_with(
-    source: Path, info: list[tuple[str, str]] | None, id3: bytes | None
+    source: Path, info: list[tuple[str, str | bytes]] | None, id3: bytes | None
 ) -> bytes:
     """`source`'s audio with its own `LIST INFO` chunk replaced by `info` (if
     given) and an `ID3 ` chunk holding `id3` added at the end (if given).
@@ -174,6 +189,38 @@ def flac_with_vorbis(source: Path, comments: list[tuple[str, str]]) -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# APE version 2
+# ---------------------------------------------------------------------------
+
+
+def apev2_tag(items: list[tuple[str, bytes]]) -> bytes:
+    """A complete APE version 2 tag (a header, the items, a footer) holding
+    one UTF-8 text item per `(key, value)`, for the END of a file.
+
+    The value is given as exact bytes because the point of the one file that
+    uses this is a value with a zero byte inside it: APE stores several
+    values in ONE item, separated by zero bytes, where an ID3 tag would keep
+    them as separate values (Codex's catch-up review, finding 4).
+
+    Layout, all numbers little-endian: the header and the footer are each 32
+    bytes — "APETAGEX", version 2000, the size of the items plus the footer
+    (not the header), the item count, flags, and 8 zero bytes. The flags say
+    "this tag has a header" (top bit) and, on the header only, "this is the
+    header" (bit 29). Each item is its value's length, its own flags (0
+    means UTF-8 text), the key, a zero byte, then the value."""
+    body = b"".join(
+        struct.pack("<II", len(value), 0) + key.encode("ascii") + b"\x00" + value
+        for key, value in items
+    )
+    size = len(body) + 32
+
+    def frame(flags: int) -> bytes:
+        return b"APETAGEX" + struct.pack("<IIII", 2000, size, len(items), flags) + bytes(8)
+
+    return frame(0xA000_0000) + body + frame(0x8000_0000)
+
+
+# ---------------------------------------------------------------------------
 # The fixtures
 # ---------------------------------------------------------------------------
 
@@ -217,6 +264,49 @@ def main() -> None:
             HERE / "silence.wav",
             [("ILNG", "en"), ("INAM", "Old")],
             id3v24_tag([("TLAN", "ger\x00ger")]),
+        ),
+        # Codex's catch-up review, finding 1. RIFF INFO holds `ILNG` = `fre`
+        # and a title written in Latin-1, not UTF-8: "Café" as the bytes
+        # 43 61 66 E9. The `lofty` library cannot read that title, so it
+        # leaves it out of what it read — and used to leave it out of what
+        # it wrote back, too, when the language was changed. A language
+        # save must now refuse and leave the file exactly as it was.
+        "lang_riff_fre_title_latin1.wav": wav_with(
+            HERE / "silence.wav",
+            [("ILNG", "fre"), ("INAM", b"Caf\xe9")],
+            None,
+        ),
+        # The other side of the same finding: every RIFF INFO entry is
+        # UTF-8, so a language save loses nothing and must go ahead, with
+        # every other entry byte for byte the same and in the same order.
+        # `ILNG` sits in the middle on purpose (a save may move it; it may
+        # not move anything else), and the entries have both odd and even
+        # lengths, so padding is covered too.
+        "lang_riff_fre_all_utf8.wav": wav_with(
+            HERE / "silence.wav",
+            [
+                ("IART", "Les Élèves"),
+                ("INAM", "Café"),
+                ("ILNG", "fre"),
+                ("ICMT", "Été"),
+                ("ISFT", "Lavf62"),
+            ],
+            None,
+        ),
+        # Codex's catch-up review, finding 4: an APE tag (at the end of an
+        # MP3, as some players write them) whose `Language` item holds two
+        # values in one string, English then French, separated by a zero
+        # byte. Read the way the ID3 path reads them, the first is the
+        # primary language and both are kept.
+        "lang_ape_eng_fra.mp3": (HERE / "silence.mp3").read_bytes()
+        + apev2_tag([("Title", b"Two languages"), ("Language", b"eng\x00fra")]),
+        # Codex's catch-up review, finding 5: a Vorbis `LANGUAGE` comment of
+        # a no-break space (U+00A0) followed by "en". The policy trims only
+        # four characters (space, tab, line feed, carriage return); anything
+        # else, a no-break space included, is part of the value and makes
+        # it malformed — so this must NOT be read as English.
+        "lang_vorbis_nbsp_en.flac": flac_with_vorbis(
+            HERE / "silence.flac", [("LANGUAGE", " en")]
         ),
     }
     for name, data in fixtures.items():
