@@ -1859,6 +1859,35 @@ fn in_test_mode_a_refused_wav_language_save_leaves_the_copy_untouched() {
     );
 }
 
+/// Issue #259, as finding 1's check now handles it: a WAV with two `LIST
+/// INFO` chunks, the second holding the language and a title. The tag
+/// library rewrites only the first chunk, copying the second's entries into
+/// it — reproduced with the `meedya` binary built from `a150926`: after
+/// `--set language=es` the file held `ILNG` "es" and a copy of the title in
+/// the first chunk and still `ILNG` "fre" and the title in the second. The
+/// check after the save sees the title twice and two languages, so the save
+/// is now refused and the file left exactly as it was. (Changing both chunks
+/// properly is still #259's job.)
+#[test]
+fn a_wav_with_two_info_lists_is_refused_rather_than_half_changed() {
+    let _guard = ConfigDirGuard::new();
+    for (what, tags) in [
+        ("set", build_tags(&[(TAG_LANGUAGE, "es")])),
+        ("clear", build_tags(&[(TAG_LANGUAGE, "")])),
+    ] {
+        let (dir, path) = copy_fixture("lang_riff_two_info_lists.wav");
+        let before = fs::read(&path).unwrap();
+        let result = write_tags_safe(&path, &tags);
+        assert!(!result.success, "{what}: must be refused");
+        assert_eq!(fs::read(&path).unwrap(), before, "{what}: file untouched");
+        assert_eq!(
+            file_names_in(dir.path()),
+            vec!["lang_riff_two_info_lists.wav".to_string()],
+            "{what}: no temporary file left"
+        );
+    }
+}
+
 /// The other side of finding 1: every entry is UTF-8, so nothing is lost
 /// and the save must go ahead — with every entry other than `ILNG` byte for
 /// byte the same and in the same order, and `ILNG` holding exactly what was

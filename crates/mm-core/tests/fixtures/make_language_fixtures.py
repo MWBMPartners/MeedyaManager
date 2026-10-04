@@ -3,7 +3,7 @@
 #
 # MeedyaManager — crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
-# Builds nine language test files from the committed `silence.wav`,
+# Builds ten language test files from the committed `silence.wav`,
 # `silence.flac`, `silence.mp3` and `riff_language.wav`, using nothing but
 # Python's standard library. (Three since the third review round; two more
 # added for the fourth; four more for Codex's catch-up review of the whole
@@ -292,6 +292,25 @@ def main() -> None:
                 ("ISFT", "Lavf62"),
             ],
             None,
+        ),
+        # Issue #259, and a consequence of finding 1's fix: a WAV with TWO
+        # LIST INFO chunks — the first holding only the software name, the
+        # second the language and a title. The tag library reads both but
+        # rewrites only the first, copying the second's entries into it and
+        # leaving the second as it was, so the file ended up with two
+        # languages and two titles. A language save must now be refused,
+        # leaving the file as it was. Built by appending a second chunk, which
+        # `wav_with` deliberately never does.
+        "lang_riff_two_info_lists.wav": _wav_from_chunks(
+            [
+                (cid, payload)
+                for cid, payload in _wav_chunks((HERE / "silence.wav").read_bytes())
+                if not (cid == b"LIST" and payload[:4] == b"INFO")
+            ]
+            + [
+                (b"LIST", riff_info([("ISFT", "Lavf62")])),
+                (b"LIST", riff_info([("ILNG", "fre"), ("INAM", "Old")])),
+            ]
         ),
         # Codex's catch-up review, finding 4: an APE tag (at the end of an
         # MP3, as some players write them) whose `Language` item holds two

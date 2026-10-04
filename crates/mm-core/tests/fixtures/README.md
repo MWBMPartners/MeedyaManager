@@ -45,7 +45,8 @@ four were added, for Codex's catch-up review).
 
 ### Files for Codex's catch-up review of the language-policy branch
 
-Built by the same script. Each one reproduced a finding with the `meedya`
+Built by the same script (with one more, `lang_riff_two_info_lists.wav`, at the end of
+this table). Each of the first four reproduced a finding with the `meedya`
 binary built from `a150926`, before the fix (the evidence is in the commit
 that added the files).
 
@@ -55,6 +56,7 @@ that added the files).
 | `lang_riff_fre_all_utf8.wav` | `silence.wav` with RIFF INFO `IART`, `INAM`, `ILNG` = `fre`, `ICMT` and `ISFT`, all UTF-8, with odd and even lengths | Finding 1's other side: nothing is lost, so the save goes ahead, and every other entry stays byte for byte the same and in the same order |
 | `lang_ape_eng_fra.mp3` | `silence.mp3` with an APE version 2 tag at the end whose `Language` item holds `eng`, a zero byte, then `fra` — two values in one item, as APE stores them | Finding 4: the two values must be read as two, in order, the way an ID3 tag's two values are |
 | `lang_vorbis_nbsp_en.flac` | `silence.flac` with its Vorbis `LANGUAGE` set to a no-break space (U+00A0) followed by `en` | Finding 5: only the policy's own four whitespace characters are trimmed, so this value is malformed and must not be read as English |
+| `lang_riff_two_info_lists.wav` | `silence.wav` with two `LIST INFO` chunks: the first holds only `ISFT`, the second `ILNG` = `fre` and `INAM` = `Old` | Issue #259: the tag library rewrites only the first chunk and copies the second's entries into it. Since finding 1's fix, a language save is refused instead, leaving the file as it was |
 
 Total size is well under 1 MB (~28 KB as of writing). Do not replace these
 with larger or non-silent audio — the tests only need parseable tag
