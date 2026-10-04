@@ -234,6 +234,27 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
     let mut set_pairs: Vec<(String, String)> = Vec::new();
     let mut language_note: Option<String> = None;
 
+    // Codex's catch-up review of the language-policy branch, finding 3: the
+    // same field set twice in one command is refused, before anything is
+    // written. It used to be "the last one wins" — but every `--set` was
+    // still reported as done, each with the LAST value's note. Reproduced
+    // with the binary built from `a150926`: `--set language=en --set
+    // language=pt-BR` on an MP3 printed two successful rows, both saying the
+    // region would be lost and "por" stored, the file stored `por`, and
+    // `en` was never written at all; `--dry-run` said the same. Refusing is
+    // the only answer that cannot mislead: which value a person meant is not
+    // something this command can know. Every value given for each field is
+    // collected first, in order, so the message can name them all.
+    let mut values_by_key: Vec<(&str, Vec<&str>)> = Vec::new();
+    for set_arg in &args.set {
+        if let Some((key, value)) = set_arg.split_once('=') {
+            match values_by_key.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, values)) => values.push(value),
+                None => values_by_key.push((key, vec![value])),
+            }
+        }
+    }
+
     for set_arg in &args.set {
         let Some((key, value)) = set_arg.split_once('=') else {
             failures.push(EditAction::failed(
@@ -255,6 +276,27 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
             continue;
         }
 
+        // Finding 3 (see above): one failed row for each time the field was
+        // given, so every `--set` the person typed is answered, and none of
+        // them is reported as done.
+        if let Some((_, values)) = values_by_key
+            .iter()
+            .find(|(k, values)| *k == key && values.len() > 1)
+        {
+            let given: Vec<String> = values.iter().map(|v| format!("\"{v}\"")).collect();
+            failures.push(EditAction::failed(
+                "set",
+                Some(key.to_string()),
+                Some(value.to_string()),
+                format!(
+                    "'{key}' is given more than once in this command ({}) — give each field \
+                     once, so it is clear which value to save",
+                    given.join(", then ")
+                ),
+            ));
+            continue;
+        }
+
         // `language` gets one extra check here, on top of the generic
         // unknown-key check above: policy MWBM-MEDIA-LANG 1.0.0 says a
         // person setting a language on purpose is refused with a plain
@@ -265,15 +307,11 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
         // against this exact `--set` pair, in Phase 1, before any file is
         // opened at all — the same all-or-nothing guarantee an unknown key
         // already gets. A non-empty value is what fails; an empty one
-        // (`--set language=`) clears the field, the same as any other key.
-        if key == mm_core::metadata::TAG_LANGUAGE && value.is_empty() {
-            // A clearing `--set language=` later in the same batch wins
-            // (last-flag-wins, below), so a note computed for an earlier
-            // `--set language=...` no longer describes what will happen —
-            // found while working on the third review round; before, the
-            // earlier value's note was printed next to the clear.
-            language_note = None;
-        } else if key == mm_core::metadata::TAG_LANGUAGE {
+        // (`--set language=`) clears the field, the same as any other key,
+        // and has no note. (A clearing `--set language=` after an earlier
+        // `--set language=...` used to need its note dropped here; giving
+        // a field twice is now refused above, so that cannot happen.)
+        if key == mm_core::metadata::TAG_LANGUAGE && !value.is_empty() {
             if let Err(e) = mm_core::metadata::language::parse_language_input(value) {
                 failures.push(EditAction::failed(
                     "set",
@@ -292,8 +330,7 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
             // Since the third review round (item 3) this also says when
             // the value is already the file's language but one of its tags
             // disagrees and will be left alone — never a silent "✓ Set".
-            // Recomputed on every matching `--set` in the batch,
-            // last-flag-wins, matching `tags`'s own convention just below.
+            // Worked out once: a field given twice is refused above.
             //
             // Read from the file the save will really change, which is not
             // always `args.path`: with Test Mode on and a copy already made
@@ -306,8 +343,8 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
                 mm_core::metadata::language::preview_conversion_note(&save_starts_from, value);
         }
 
-        // Later `--set` occurrences of the same key win, matching the
-        // last-flag-wins convention users expect from a CLI.
+        // Each field reaches here at most once: giving one twice is refused
+        // above (finding 3), so nothing is overwritten.
         tags.insert(key.to_string(), vec![value.to_string()]);
         set_pairs.push((key.to_string(), value.to_string()));
     }
@@ -1413,27 +1450,82 @@ mod tests {
         );
     }
 
-    /// Found while working on item 3: a clearing `--set language=` later in
-    /// the same batch wins, so a note computed for an earlier value must
-    /// not be printed next to the clear.
+    /// Codex's catch-up review, finding 3: the same field set twice in one
+    /// command is refused before anything is written — in a real run and on
+    /// `--dry-run` — with every `--set` answered by a failed row that names
+    /// the field and every value given. It used to be "the last one wins",
+    /// with every row reported as done and carrying the last value's note.
+    /// Covers `language` (with the case that once needed its note dropped: a
+    /// clearing `--set language=` after `pt-BR`) and an ordinary field.
     #[test]
-    fn a_later_clearing_set_drops_an_earlier_language_note() {
+    fn the_same_field_set_twice_is_refused_before_anything_is_written() {
         let _guard = ConfigDirGuard::new();
-        let dir = tempfile::tempdir().unwrap();
-        let path = crate::test_support::copy_core_fixture("silence.mp3", dir.path());
 
-        let plan = match build_plan(&EditArgs {
-            path,
-            set: vec!["language=pt-BR".to_string(), "language=".to_string()],
-            remove: vec![],
-            cover: None,
-            remove_cover: false,
-            dry_run: true,
-        }) {
-            Ok(plan) => plan,
-            Err(actions) => panic!("both values are acceptable: {actions:?}"),
-        };
-        assert_eq!(plan.language_note, None);
+        let cases: [(&[&str], &str, &str); 3] = [
+            (
+                &["language=en", "language=pt-BR"],
+                "language",
+                "(\"en\", then \"pt-BR\")",
+            ),
+            (
+                &["language=pt-BR", "language="],
+                "language",
+                "(\"pt-BR\", then \"\")",
+            ),
+            (
+                &["title=One", "artist=Someone", "title=Two"],
+                "title",
+                "(\"One\", then \"Two\")",
+            ),
+        ];
+        for (sets, field, values) in cases {
+            for dry_run in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = crate::test_support::copy_core_fixture("silence.mp3", dir.path());
+                let before = std::fs::read(&path).unwrap();
+                let args = EditArgs {
+                    path: path.clone(),
+                    set: sets.iter().map(ToString::to_string).collect(),
+                    remove: vec![],
+                    cover: None,
+                    remove_cover: false,
+                    dry_run,
+                };
+
+                let Err(actions) = build_plan(&args) else {
+                    panic!("{sets:?}: '{field}' given twice must be refused");
+                };
+                let refused: Vec<&EditAction> = actions
+                    .iter()
+                    .filter(|a| a.key.as_deref() == Some(field))
+                    .collect();
+                assert_eq!(
+                    refused.len(),
+                    2,
+                    "{sets:?}: one failed row per --set of '{field}'"
+                );
+                for action in refused {
+                    assert!(!action.success && action.note.is_none(), "{action:?}");
+                    let message = action.error.as_deref().unwrap_or_default();
+                    assert!(
+                        message.contains(&format!("'{field}' is given more than once"))
+                            && message.contains(values),
+                        "{sets:?}: {message:?}"
+                    );
+                }
+
+                assert_eq!(
+                    run(&test_ctx(), &args).unwrap(),
+                    ExitCode::PARTIAL,
+                    "{sets:?} dry_run={dry_run}: must not report success"
+                );
+                assert_eq!(
+                    std::fs::read(&path).unwrap(),
+                    before,
+                    "{sets:?} dry_run={dry_run}: nothing may be written"
+                );
+            }
+        }
     }
 
     /// The companion case: an action with no note produces exactly one
