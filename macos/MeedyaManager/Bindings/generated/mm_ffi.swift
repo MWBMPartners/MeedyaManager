@@ -1567,6 +1567,104 @@ public func FfiConverterTypeWatchEventFfi_lower(_ value: WatchEventFfi) -> RustB
 
 
 /**
+ * What `write_metadata` reports when the save succeeded.
+ *
+ * Codex's catch-up review of the language-policy branch, finding 6: an app
+ * writing `language` = `pt-BR` to an MP3 got `{"ok":true}` back while the
+ * file stored only `por` — an ID3 tag can hold just the three-letter code,
+ * so the region is lost — and nothing told it. The command line has said so
+ * since the first review round; the apps had no way to. This carries the
+ * same note the command line shows.
+ */
+public struct WriteMetadataResult: Equatable, Hashable {
+    /**
+     * One `TagEntry` for each field written that a person should be told
+     * something about: the key and the value as given, and `note` — the
+     * same plain-English text `meedya edit --set` prints, worked out by
+     * the same code (`mm_core::metadata::language::preview_conversion_note`),
+     * before the save, from the file the save starts from.
+     *
+     * Only the `language` field has notes today: when what is stored loses
+     * something that was asked for (an ID3 tag keeping only `por` for
+     * `pt-BR`), when the shared code has something to say about the value
+     * itself, or when the value is already the file's and one of its tags
+     * disagrees and is left alone. `None` — not an empty list — when there
+     * is nothing to say, so the C API's JSON stays exactly `{"ok":true}`.
+     *
+     * When `tags` held the same key more than once, the last one is the
+     * one written and the only one with a note.
+     *
+     * The apps do not show these notes yet (#256).
+     */
+    public var notes: [TagEntry]?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * One `TagEntry` for each field written that a person should be told
+         * something about: the key and the value as given, and `note` — the
+         * same plain-English text `meedya edit --set` prints, worked out by
+         * the same code (`mm_core::metadata::language::preview_conversion_note`),
+         * before the save, from the file the save starts from.
+         *
+         * Only the `language` field has notes today: when what is stored loses
+         * something that was asked for (an ID3 tag keeping only `por` for
+         * `pt-BR`), when the shared code has something to say about the value
+         * itself, or when the value is already the file's and one of its tags
+         * disagrees and is left alone. `None` — not an empty list — when there
+         * is nothing to say, so the C API's JSON stays exactly `{"ok":true}`.
+         *
+         * When `tags` held the same key more than once, the last one is the
+         * one written and the only one with a note.
+         *
+         * The apps do not show these notes yet (#256).
+         */notes: [TagEntry]? = nil) {
+        self.notes = notes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WriteMetadataResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWriteMetadataResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WriteMetadataResult {
+        return
+            try WriteMetadataResult(
+                notes: FfiConverterOptionSequenceTypeTagEntry.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WriteMetadataResult, into buf: inout [UInt8]) {
+        FfiConverterOptionSequenceTypeTagEntry.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWriteMetadataResult_lift(_ buf: RustBuffer) throws -> WriteMetadataResult {
+    return try FfiConverterTypeWriteMetadataResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWriteMetadataResult_lower(_ value: WriteMetadataResult) -> RustBuffer {
+    return FfiConverterTypeWriteMetadataResult.lower(value)
+}
+
+
+/**
  * Error variants returned by mm-ffi functions across the FFI boundary.
  *
  * UniFFI maps these to Swift/Kotlin error types automatically.
@@ -1745,6 +1843,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionSequenceTypeTagEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [TagEntry]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceTypeTagEntry.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceTypeTagEntry.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -2112,13 +2234,25 @@ public func validateTemplate(template: String) -> ValidationResult  {
  * after the third review round of the language-policy work.)  A
  * `TagEntry`'s
  * `note` is ignored here — it is a report about the file, not data.
+ * * **A `"language"` value is ONE value.**  One holding a zero character
+ * (several values, the way a tag separates them) or any other control
+ * character is refused with `MmFfiError::Metadata`, before anything is
+ * written — it used to be cut at the first value silently (Codex's
+ * catch-up review, finding 2).
+ * * **The result says when a language write loses detail.**  On success
+ * this returns a `WriteMetadataResult` whose `notes` carries, for the
+ * `language` entry, the same note `meedya edit --set` shows — for
+ * example that an MP3 stores `por` for `pt-BR`, losing the region — or
+ * `None` when there is nothing to say (Codex's catch-up review, finding
+ * 6).  It used to return nothing at all.
  */
-public func writeMetadata(path: String, tags: [TagEntry])throws   {try rustCallWithError(FfiConverterTypeMmFfiError_lift) {
+public func writeMetadata(path: String, tags: [TagEntry])throws  -> WriteMetadataResult  {
+    return try  FfiConverterTypeWriteMetadataResult_lift(try rustCallWithError(FfiConverterTypeMmFfiError_lift) {
     uniffi_mm_ffi_fn_func_write_metadata(
         FfiConverterString.lower(path),
         FfiConverterSequenceTypeTagEntry.lower(tags),$0
     )
-}
+})
 }
 
 private enum InitializationResult {
@@ -2190,7 +2324,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_mm_ffi_checksum_func_validate_template() != 30304) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_mm_ffi_checksum_func_write_metadata() != 13181) {
+    if (uniffi_mm_ffi_checksum_func_write_metadata() != 88) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_mm_ffi_checksum_method_scanprogresscallback_on_progress() != 6441) {

@@ -66,8 +66,10 @@ namespace mm_ffi {
 
     /// Write/update metadata tags on a media file.
     /// Only the tags present in `tags` are modified; others are left intact.
+    /// Returns notes a person should be told about what was stored (for
+    /// example, an MP3 keeps only "por" for "pt-BR"), or null notes.
     [Throws=MmFfiError]
-    void write_metadata(string path, sequence<TagEntry> tags);
+    WriteMetadataResult write_metadata(string path, sequence<TagEntry> tags);
 
     /// Remove a single tag field from a media file.
     [Throws=MmFfiError]
@@ -144,6 +146,15 @@ dictionary TagEntry {
     /// the "language" entry when the file's tags disagree); ignored by
     /// write_metadata. Optional, defaulting to null.
     string? note = null;
+};
+
+/// What a successful write_metadata reports
+dictionary WriteMetadataResult {
+    /// For each field written that a person should be told something about
+    /// (only "language" today: the same note `meedya edit --set` prints),
+    /// the key, the value as given, and the note. Null when there is
+    /// nothing to say. The apps do not show these yet (#256).
+    sequence<TagEntry>? notes = null;
 };
 
 /// The result of simulating a single file rename

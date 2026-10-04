@@ -441,7 +441,7 @@ RustBuffer uniffi_mm_ffi_fn_func_validate_template(RustBuffer template, RustCall
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MM_FFI_FN_FUNC_WRITE_METADATA
 #define UNIFFI_FFIDEF_UNIFFI_MM_FFI_FN_FUNC_WRITE_METADATA
-void uniffi_mm_ffi_fn_func_write_metadata(RustBuffer path, RustBuffer tags, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_mm_ffi_fn_func_write_metadata(RustBuffer path, RustBuffer tags, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_MM_FFI_RUSTBUFFER_ALLOC

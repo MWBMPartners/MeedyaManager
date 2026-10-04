@@ -33,6 +33,7 @@ use mm_core::watcher::{self, WatchEvent, WatcherConfig};
 use crate::callbacks::WatchCallback;
 use crate::types::{
     AudioPropertiesFfi, MmFfiError, RenamePreviewFfi, TagEntry, ValidationResult, WatchEventFfi,
+    WriteMetadataResult,
 };
 
 // ---------------------------------------------------------------------------
@@ -313,8 +314,22 @@ pub fn get_metadata(path: String) -> Result<Vec<TagEntry>, MmFfiError> {
 ///   after the third review round of the language-policy work.)  A
 ///   `TagEntry`'s
 ///   `note` is ignored here — it is a report about the file, not data.
+/// * **A `"language"` value is ONE value.**  One holding a zero character
+///   (several values, the way a tag separates them) or any other control
+///   character is refused with `MmFfiError::Metadata`, before anything is
+///   written — it used to be cut at the first value silently (Codex's
+///   catch-up review, finding 2).
+/// * **The result says when a language write loses detail.**  On success
+///   this returns a `WriteMetadataResult` whose `notes` carries, for the
+///   `language` entry, the same note `meedya edit --set` shows — for
+///   example that an MP3 stores `por` for `pt-BR`, losing the region — or
+///   `None` when there is nothing to say (Codex's catch-up review, finding
+///   6).  It used to return nothing at all.
 #[uniffi::export]
-pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiError> {
+pub fn write_metadata(
+    path: String,
+    tags: Vec<TagEntry>,
+) -> Result<WriteMetadataResult, MmFfiError> {
     let file_path = PathBuf::from(&path);
 
     // Convert Vec<TagEntry> → TagMap (HashMap<String, Vec<String>>)
@@ -340,6 +355,11 @@ pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiErro
         })
         .collect();
 
+    // Finding 6: the note is worked out BEFORE the save, exactly as
+    // `meedya edit` does — afterwards the file already holds the new value,
+    // and the comparison would see "nothing changed".
+    let language_note = language_write_note(&file_path, &tag_map);
+
     // Route through the integrity guard rather than the raw metadata layer:
     // the guard is the only enforcement point for Test Mode (issue #128), so
     // a direct call would overwrite the user's original file even with Test
@@ -348,7 +368,9 @@ pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiErro
     let result = integrity::write_tags_safe(&file_path, &tag_map);
 
     if result.success {
-        Ok(())
+        Ok(WriteMetadataResult {
+            notes: language_note.map(|entry| vec![entry]),
+        })
     } else {
         Err(MmFfiError::Metadata(
             result
@@ -356,6 +378,27 @@ pub fn write_metadata(path: String, tags: Vec<TagEntry>) -> Result<(), MmFfiErro
                 .unwrap_or_else(|| "metadata write failed".to_string()),
         ))
     }
+}
+
+/// The note to report for the `language` entry of a write, if any — the
+/// same note `meedya edit --set language=...` shows, from the same function
+/// (`metadata::language::preview_conversion_note`), read from the same file
+/// (`integrity::where_a_save_starts`: the Test Mode copy an earlier edit
+/// made, when there is one, since that is what the save changes). `None`
+/// when `language` is not being written, is being cleared, or there is
+/// nothing to say.
+fn language_write_note(path: &std::path::Path, tag_map: &TagMap) -> Option<TagEntry> {
+    let value = metadata::join_multi_value(tag_map.get(metadata::TAG_LANGUAGE)?);
+    if value.is_empty() {
+        return None;
+    }
+    let save_starts_from = integrity::where_a_save_starts(path);
+    let note = metadata::language::preview_conversion_note(&save_starts_from, &value)?;
+    Some(TagEntry {
+        key: metadata::TAG_LANGUAGE.to_string(),
+        value,
+        note: Some(note),
+    })
 }
 
 /// Remove a single tag field from a media file.
@@ -1090,6 +1133,119 @@ mod tests {
             std::fs::read(&path).unwrap(),
             before,
             "the file must be untouched"
+        );
+    }
+
+    /// Codex's catch-up review, finding 6, through the UniFFI API:
+    /// `pt-BR` written to an MP3 is stored as `por` — the region is lost —
+    /// and the result must say so with the same note `meedya edit --set`
+    /// shows. Reproduced with the library built from `a150926`: the C API
+    /// answered only `{"ok":true}`, and the UniFFI call returned nothing. No
+    /// note when nothing is lost (`en` on an MP3 is stored as `eng`, the
+    /// same language; `pt-BR` on a FLAC is kept whole), and none for a
+    /// write that does not set the language.
+    #[test]
+    fn write_metadata_reports_a_language_write_that_loses_detail() {
+        let guard = ConfigDirGuard::new("writenotes");
+        let write = |fixture: &str, key: &str, value: &str| {
+            let path = copy_core_fixture(fixture, guard.path());
+            let result = write_metadata(
+                path.display().to_string(),
+                vec![TagEntry {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                    note: None,
+                }],
+            )
+            .unwrap_or_else(|e| panic!("{fixture} {key}={value}: {e:?}"));
+            (path, result)
+        };
+
+        let (path, result) = write("silence.mp3", "language", "pt-BR");
+        let notes = result
+            .notes
+            .expect("pt-BR on an MP3 loses the region: a note is due");
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert_eq!(
+            (notes[0].key.as_str(), notes[0].value.as_str()),
+            ("language", "pt-BR")
+        );
+        let note = notes[0].note.as_deref().unwrap_or_default();
+        // The CLI's own note for the same input, from the same function,
+        // read from a fresh copy of the same file before any save.
+        let fresh_dir = guard.path().join("fresh");
+        std::fs::create_dir_all(&fresh_dir).unwrap();
+        let fresh = copy_core_fixture("silence.mp3", &fresh_dir);
+        let cli_note =
+            metadata::language::preview_conversion_note(&fresh, "pt-BR").expect("the CLI's note");
+        assert_eq!(note, cli_note, "the same note the CLI shows");
+        assert!(
+            note.contains("\"por\"") && note.contains("region"),
+            "{note}"
+        );
+        assert_eq!(
+            metadata::extract_tags(&path).unwrap().get("language"),
+            Some(&vec!["por".to_string()]),
+            "and it really stored por"
+        );
+
+        for (fixture, key, value) in [
+            ("silence.mp3", "language", "en"),
+            ("silence.flac", "language", "pt-BR"),
+            ("silence.mp3", "title", "A title"),
+        ] {
+            let (_, result) = write(fixture, key, value);
+            assert_eq!(
+                result.notes, None,
+                "{fixture} {key}={value}: nothing was lost"
+            );
+        }
+    }
+
+    /// Finding 6 through the C API: the same note, as `"notes"` beside
+    /// `"ok":true`, and the answer stays exactly `{"ok":true}` when there is
+    /// nothing to say — the Windows app checks only for an `"error"` key, so
+    /// both shapes keep working for it.
+    #[test]
+    fn c_api_write_answer_carries_the_note_only_when_there_is_one() {
+        use std::ffi::{CStr, CString};
+
+        let guard = ConfigDirGuard::new("capiwritenotes");
+        let answer_for = |fixture: &str, json: &str| -> String {
+            let path = copy_core_fixture(fixture, guard.path());
+            let c_path = CString::new(path.display().to_string()).unwrap();
+            let c_json = CString::new(json).unwrap();
+            // SAFETY: both arguments are valid, zero-terminated C strings that
+            // outlive the call, and the answer is freed exactly once with the
+            // library's own `mm_ffi_free_string`.
+            unsafe {
+                let ptr = crate::capi::mm_ffi_write_metadata(c_path.as_ptr(), c_json.as_ptr());
+                let text = CStr::from_ptr(ptr).to_str().unwrap().to_string();
+                crate::capi::mm_ffi_free_string(ptr.cast_mut());
+                text
+            }
+        };
+
+        let answer = answer_for("silence.mp3", r#"[{"key":"language","value":"pt-BR"}]"#);
+        let json: serde_json::Value = serde_json::from_str(&answer).unwrap();
+        assert_eq!(json["ok"], serde_json::Value::Bool(true), "{answer}");
+        let notes = json["notes"]
+            .as_array()
+            .unwrap_or_else(|| panic!("notes: {answer}"));
+        assert_eq!(notes.len(), 1, "{answer}");
+        assert_eq!(notes[0]["key"], "language");
+        assert_eq!(notes[0]["value"], "pt-BR");
+        assert!(
+            notes[0]["note"]
+                .as_str()
+                .is_some_and(|n| n.contains("\"por\"")),
+            "{answer}"
+        );
+
+        assert_eq!(
+            answer_for("silence.flac", r#"[{"key":"language","value":"pt-BR"}]"#),
+            r#"{"ok":true}"#,
+            "nothing lost: the answer keeps its old shape exactly"
         );
     }
 

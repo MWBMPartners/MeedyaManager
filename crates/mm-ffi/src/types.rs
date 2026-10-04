@@ -52,6 +52,42 @@ pub struct TagEntry {
 }
 
 // ---------------------------------------------------------------------------
+// What a successful metadata write reports
+// ---------------------------------------------------------------------------
+
+/// What `write_metadata` reports when the save succeeded.
+///
+/// Codex's catch-up review of the language-policy branch, finding 6: an app
+/// writing `language` = `pt-BR` to an MP3 got `{"ok":true}` back while the
+/// file stored only `por` — an ID3 tag can hold just the three-letter code,
+/// so the region is lost — and nothing told it. The command line has said so
+/// since the first review round; the apps had no way to. This carries the
+/// same note the command line shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct WriteMetadataResult {
+    /// One `TagEntry` for each field written that a person should be told
+    /// something about: the key and the value as given, and `note` — the
+    /// same plain-English text `meedya edit --set` prints, worked out by
+    /// the same code (`mm_core::metadata::language::preview_conversion_note`),
+    /// before the save, from the file the save starts from.
+    ///
+    /// Only the `language` field has notes today: when what is stored loses
+    /// something that was asked for (an ID3 tag keeping only `por` for
+    /// `pt-BR`), when the shared code has something to say about the value
+    /// itself, or when the value is already the file's and one of its tags
+    /// disagrees and is left alone. `None` — not an empty list — when there
+    /// is nothing to say, so the C API's JSON stays exactly `{"ok":true}`.
+    ///
+    /// When `tags` held the same key more than once, the last one is the
+    /// one written and the only one with a note.
+    ///
+    /// The apps do not show these notes yet (#256).
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<Vec<TagEntry>>,
+}
+
+// ---------------------------------------------------------------------------
 // Rename preview
 // ---------------------------------------------------------------------------
 

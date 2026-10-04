@@ -89,7 +89,16 @@ const char *mm_ffi_get_metadata(const char *path);
  * Each object may also carry a `note` (as `mm_ffi_get_metadata` returns
  * them); it is ignored, so that JSON can be sent straight back.
  *
- * On success: `{"ok":true}`
+ * A `language` value must be ONE value: one holding a zero character
+ * (written `\u0000` in the JSON — several values, the way a tag separates
+ * them) or any other control character is refused, and the file is left
+ * untouched.
+ *
+ * On success: `{"ok":true}`, or, when a person should be told something
+ * about what was stored, `{"ok":true,"notes":[{"key":"language",
+ * "value":"pt-BR","note":"<plain-English text>"}]}` — for example that an
+ * MP3 can only store `por` for `pt-BR`, losing the region. The `notes` key
+ * is left out entirely when there is nothing to say.
  * On failure: `{"error":"<message>"}`
  * Caller must free with `mm_ffi_free_string`.
  *

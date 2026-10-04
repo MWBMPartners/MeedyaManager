@@ -177,7 +177,11 @@ final class MmCore: @unchecked Sendable {
         #if MM_FFI_AVAILABLE
         try await Task.detached(priority: .userInitiated) {
             let ffi = tags.map { TagEntry(key: $0.key, value: $0.value) }
-            try writeMetadata(path: path, tags: ffi)
+            // The result's `notes` (what a person should be told about what
+            // was stored, such as an MP3 keeping only "por" for "pt-BR") is
+            // not shown yet: that is issue #256. Discarded explicitly, so
+            // the unused result is a decision, not an oversight.
+            _ = try writeMetadata(path: path, tags: ffi)
         }.value
         #else
         // No engine linked: refuse rather than silently pretend the write
