@@ -431,7 +431,7 @@ ffprobe; `lofty` itself called from a scratch program for L1). The lead's decisi
 
 Not changed: MeedyaManager's `year` has no RIFF INFO entry (`ICRD` is `lofty`'s recording
 date, not mapped) and is not written to ID3 or MP4 at all — an older finding pinned by
-`year_tag_does_not_round_trip_on_id3v2_or_mp4`; an issue is drafted, not posted. Proof and
+`year_tag_does_not_round_trip_on_id3v2_or_mp4`; now issue #263. Proof and
 planted faults (18, each red) are in each commit's message.
 
 **Checks on round 8's final code (2026-10-05, on `c0f5f5c`):** `cargo fmt --all -- --check` 0;
@@ -453,7 +453,8 @@ over to its own sessions; nothing more will be run from the MeedyaDL session.
    named in the record as a stand-in.
 2. The review loop now stops when a review finds no high or medium problems. Low findings,
    wording points and any older faults a reviewer finds become GitHub issues, not new rounds.
-3. Still open: #261 (a zero character in another field), #262 (`--json` output), #256 (the apps
+3. Still open: #261 (a zero character in another field), #262 (`--json` output), #263 (`year`
+   reports success on MP3, M4A and WAV but writes nothing), #256 (the apps
    do not show the notes; the Windows character-set comment), and a scratch path containing a
    real name in section 5 ("Session artefacts") of this file, already in pushed history — left
    alone, waiting on the maintainer.
