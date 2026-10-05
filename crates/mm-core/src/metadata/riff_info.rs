@@ -39,11 +39,16 @@
 // -------------------
 // * It only guards the RIFF INFO list. It knows nothing about the embedded ID3
 //   tag or any other section of the file.
-// * It refuses ANY difference, including harmless ones: an entry another tool
-//   wrote with two zero bytes at its end instead of one would be rewritten by
-//   `lofty` with one, and the save is refused. That is deliberate — it cannot
-//   tell a harmless difference from a harmful one without guessing, and a
-//   refusal can be retried by a person; lost data cannot be got back.
+// * It refuses every difference but one, including harmless ones: an entry
+//   another tool wrote with two zero bytes at its end instead of one would be
+//   rewritten by `lofty` with one, and the save is refused. That is
+//   deliberate — it cannot tell a harmless difference from a harmful one
+//   without guessing, and a refusal can be retried by a person; lost data
+//   cannot be got back. The one exception (the stand-in review of round 6,
+//   L2): an entry with no zero byte at its end, which `lofty` rewrites with
+//   one (and the padding byte that may then follow). Text ends at the first
+//   zero byte either way, so nothing a person could read is changed — and
+//   without the exception every such file could never be saved at all.
 // * It is a reader, not a validator of the whole WAV format: it walks the
 //   file's top-level chunks only as far as it needs to find `LIST INFO`.
 //
@@ -307,30 +312,16 @@ pub(crate) fn check_entries_kept(
     let others_before = others(before);
     let others_after = others(after);
 
-    if others_before != others_after {
-        // Name each entry that is not there afterwards exactly as it was.
-        let mut remaining = others_after;
-        let mut lost: Vec<String> = Vec::new();
-        for entry in &others_before {
-            if let Some(at) = remaining.iter().position(|e| e == entry) {
-                remaining.remove(at);
-            } else {
-                lost.push(describe_entry(&entry.id));
-            }
-        }
-        let what = if lost.is_empty() {
-            // Same entries, different order, or something added.
-            "change the order of, or add to, the other entries in the file's RIFF INFO list"
-                .to_string()
-        } else {
-            format!(
-                "lose or change {} in the file's RIFF INFO list (MeedyaManager's tag \
-                 library cannot read {} as it is stored)",
-                lost.join(", "),
-                if lost.len() == 1 { "it" } else { "them" }
-            )
-        };
-        return Err(format!("saving would {what}, so the change was refused"));
+    let kept_in_order = others_before.len() == others_after.len()
+        && others_before
+            .iter()
+            .zip(&others_after)
+            .all(|(was, now)| kept_as_it_was(was, now));
+    if !kept_in_order {
+        return Err(format!(
+            "saving would {}, so the change was refused",
+            what_would_change(&others_before, &others_after)
+        ));
     }
 
     for (id, expected) in asked {
@@ -354,6 +345,97 @@ pub(crate) fn check_entries_kept(
         }
     }
     Ok(())
+}
+
+/// Whether `now` is `was` come through a save: the same id, and the same
+/// bytes — or the same bytes with one zero byte added at the end, when `was`
+/// had none (the stand-in review of round 6, L2).
+///
+/// Why that one difference is allowed: RIFF INFO text ends at a zero byte,
+/// and some writers leave it off the last entry or every entry. `lofty`
+/// reads such an entry perfectly well and writes it back with the zero byte
+/// (and, when that makes it odd in length, the padding byte after it, which
+/// the entry's own size does not count and so is not part of `data`).
+/// Reproduced with the `meedya` binary built from `49cec29` on a WAV whose
+/// UTF-8 entries `INAM` "Song" and `ILNG` "fre" had no zero byte: setting
+/// the language was refused, and the message said the tag library "cannot
+/// read" the title — which was false. Every other difference still counts,
+/// including a zero byte taken AWAY (`Old\0\0` becoming `Old\0`): that is
+/// not this case, and telling which other differences are harmless would be
+/// guessing.
+fn kept_as_it_was(was: &InfoEntry, now: &InfoEntry) -> bool {
+    if was.id != now.id {
+        return false;
+    }
+    now.data == was.data
+        || (was.data.last() != Some(&0)
+            && now.data.len() == was.data.len() + 1
+            && now.data.starts_with(&was.data)
+            && now.data.last() == Some(&0))
+}
+
+/// What a save would do to the entries it was not asked to change, in
+/// words, for a refusal — called only when [`kept_as_it_was`] does not hold
+/// for them all, in order.
+///
+/// An entry missing entirely from what would be written is "lost", and only
+/// then is the reason given that the tag library cannot read it as it is
+/// stored: that is the one way `lofty` drops an entry it was not asked to
+/// change. An entry still there with other bytes is "rewritten with
+/// different bytes" — the stand-in review of round 6 (L2) found the old
+/// message gave the "cannot read" reason for that too, which was untrue.
+/// Same entries in another order, or one added: said as that.
+fn what_would_change(before: &[InfoEntry], after: &[InfoEntry]) -> String {
+    let mut remaining: Vec<&InfoEntry> = after.iter().collect();
+    let mut unmatched: Vec<&InfoEntry> = Vec::new();
+    for entry in before {
+        if let Some(at) = remaining.iter().position(|e| kept_as_it_was(entry, e)) {
+            remaining.remove(at);
+        } else {
+            unmatched.push(entry);
+        }
+    }
+    let mut lost: Vec<String> = Vec::new();
+    let mut rewritten: Vec<String> = Vec::new();
+    for entry in unmatched {
+        if let Some(at) = remaining.iter().position(|e| e.id == entry.id) {
+            remaining.remove(at);
+            rewritten.push(describe_entry(&entry.id));
+        } else {
+            lost.push(describe_entry(&entry.id));
+        }
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if !lost.is_empty() {
+        parts.push(format!(
+            "lose {} from the file's RIFF INFO list (MeedyaManager's tag library cannot read \
+             {} as {} stored)",
+            join_names(&lost),
+            if lost.len() == 1 { "it" } else { "them" },
+            if lost.len() == 1 { "it is" } else { "they are" }
+        ));
+    }
+    if !rewritten.is_empty() {
+        parts.push(format!(
+            "rewrite {} in the file's RIFF INFO list with different bytes",
+            join_names(&rewritten)
+        ));
+    }
+    if parts.is_empty() {
+        // Same entries, different order, or something added.
+        "change the order of, or add to, the other entries in the file's RIFF INFO list".to_string()
+    } else {
+        parts.join(", and ")
+    }
+}
+
+/// Names joined as a person would say them: "a", "a and b", "a, b and c".
+fn join_names(names: &[String]) -> String {
+    match names.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 /// `data` without the zero bytes RIFF INFO writers put at the end of text.
@@ -432,12 +514,68 @@ mod tests {
         assert!(message.contains("the change was refused"), "{message}");
     }
 
+    /// An entry still there with other bytes is said to be rewritten, not
+    /// lost — and not blamed on the tag library being unable to read it
+    /// (the stand-in review of round 6, L2: that reason was untrue here). A
+    /// zero byte taken away is still a difference.
     #[test]
     fn a_changed_entry_is_refused() {
         let before = [entry(b"INAM", b"Old\0\0"), entry(b"ILNG", b"fre\0")];
         let after = [entry(b"INAM", b"Old\0"), entry(b"ILNG", b"en\0")];
         let message = check_entries_kept(&before, &after, &holds("en")).unwrap_err();
-        assert!(message.contains("the title (INAM)"), "{message}");
+        assert!(
+            message.contains(
+                "rewrite the title (INAM) in the file's RIFF INFO list with different bytes"
+            ),
+            "{message}"
+        );
+        assert!(!message.contains("cannot read"), "{message}");
+    }
+
+    /// The stand-in review of round 6, L2: an entry with no zero byte at
+    /// its end, rewritten with one, is not a loss — the save goes ahead.
+    /// Any other added byte is still refused.
+    #[test]
+    fn a_final_zero_byte_added_is_not_a_loss() {
+        let before = [entry(b"INAM", b"Song"), entry(b"ILNG", b"fre")];
+        let after = [entry(b"INAM", b"Song\0"), entry(b"ILNG", b"en\0")];
+        assert_eq!(check_entries_kept(&before, &after, &holds("en")), Ok(()));
+        // An empty entry gaining its zero byte is the same case.
+        assert_eq!(
+            check_entries_kept(&[entry(b"ICMT", b"")], &[entry(b"ICMT", b"\0")], &[]),
+            Ok(())
+        );
+        for after in [
+            entry(b"INAM", b"Song\0\0"),
+            entry(b"INAM", b"Song!"),
+            entry(b"INAM", b"Son\0"),
+        ] {
+            assert!(
+                check_entries_kept(
+                    &[entry(b"INAM", b"Song")],
+                    std::slice::from_ref(&after),
+                    &[]
+                )
+                .is_err(),
+                "{after:?} is not the same entry with its final zero byte added"
+            );
+        }
+    }
+
+    /// Lost and rewritten entries in one save are each named as what
+    /// happens to them.
+    #[test]
+    fn lost_and_rewritten_entries_are_named_apart() {
+        let before = [entry(b"INAM", b"Caf\xe9\0"), entry(b"IART", b"A\0\0")];
+        let after = [entry(b"IART", b"A\0")];
+        let message = check_entries_kept(&before, &after, &[]).unwrap_err();
+        assert!(
+            message.contains(
+                "lose the title (INAM) from the file's RIFF INFO list (MeedyaManager's tag \
+                 library cannot read it as it is stored), and rewrite the artist (IART)"
+            ),
+            "{message}"
+        );
     }
 
     #[test]

@@ -29,12 +29,12 @@ hid the other. These five files test that, and are built byte by byte from
 the files above by `make_language_fixtures.py` in this folder, using only
 Python's standard library — deliberately not `lofty`, the library the app
 itself uses, so a fault in `lofty` cannot hide a fault in the app. Regenerate
-all eleven (these five and the six in the next tables) with
+all twelve (these five and the seven in the next tables) with
 `python3 make_language_fixtures.py`; the output is the same every time (the
 first three were checked to come out byte for byte the same when the next two
 were added, for the fourth review round, all five again when the next five
-were added, for Codex's catch-up review, and all ten again when the last one
-was added, for the stand-in review of round 6).
+were added, for Codex's catch-up review, and all ten again when the last two
+were added, for the stand-in review of round 6).
 
 | File | What is in it | Used for |
 |------|---------------|----------|
@@ -64,6 +64,7 @@ that added the files).
 | File | What is in it | Used for |
 |------|---------------|----------|
 | `lang_riff_artist_title_latin1.wav` | `silence.wav` with RIFF INFO `IART` = `Someone` (UTF-8), `INAM` = "Café" in Latin-1 (`43 61 66 E9`) and `ILNG` = `fre` | Every save of a WAV, not only a language save, must keep the entries it was not asked to change: removing the artist would lose the title, so it is refused; removing the title (the entry the tag library cannot read) removes it and keeps the artist and the language exactly |
+| `lang_riff_fre_no_final_zero.wav` | `silence.wav` with RIFF INFO `INAM` = `Song` and `ILNG` = `fre`, both UTF-8 and both written with no zero byte at the end, as some tools write them | L2: the tag library rewrites each with its zero byte added, which loses nothing, so a language save goes ahead |
 
 Total size is well under 1 MB (~28 KB as of writing). Do not replace these
 with larger or non-silent audio — the tests only need parseable tag

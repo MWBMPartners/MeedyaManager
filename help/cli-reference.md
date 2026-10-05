@@ -419,10 +419,14 @@ meedya edit <PATH> [OPTIONS]
 > control character (a zero character is how a tag separates several values; a language is set one
 > value at a time). Giving the same field twice in one command (`--set language=en --set
 > language=pt-BR`) is rejected too, naming the field, because MeedyaManager cannot know which value
-> you meant; nothing is written, on `--dry-run` or not. Changing the language of a WAV file whose
-> older RIFF INFO tag section holds text MeedyaManager cannot read as it is stored (a title saved by
-> an old Windows program in its own character set, say) is refused, naming what would be lost,
-> and the file is left exactly as it was. When Test Mode redirects a write, JSON output
+> you meant; nothing is written, on `--dry-run` or not. A change to a WAV file that would rewrite
+> its older RIFF INFO tag section — changing its language, or removing a field that section holds —
+> is refused when that section holds text MeedyaManager cannot read as it is stored (a title saved
+> by an old Windows program in its own character set, say): the message names what would be lost,
+> and the file is left exactly as it was. Any other difference to that section is refused too,
+> named as an entry that "would be rewritten with different bytes" — with one exception: an entry
+> another program wrote without a zero byte at its end is written back with one, which changes
+> nothing anyone can read, so that alone does not stop a save. When Test Mode redirects a write, JSON output
 > (`--json`) carries a `written_to` field naming the copy path. See [test-mode.md](test-mode.md)
 > for the full picture.
 

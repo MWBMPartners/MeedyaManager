@@ -2081,6 +2081,38 @@ fn setting_clearing_and_removing_another_field_keeps_the_riff_info_list() {
     );
 }
 
+/// The stand-in review of round 6, L2: a WAV whose UTF-8 RIFF INFO entries
+/// have no zero byte at their end (the reviewer's file: `INAM` "Song",
+/// `ILNG` "fre"). Reproduced with the `meedya` binary built from `49cec29`:
+/// `--set language=en` was refused, saying the tag library "cannot read" the
+/// title — false: it reads "Song" perfectly well, and only adds the zero
+/// byte. That is not a loss, so the save goes ahead: the title comes through
+/// with just its zero byte added, and `ILNG` holds "en".
+#[test]
+fn a_wav_entry_with_no_final_zero_byte_does_not_stop_a_save() {
+    let _guard = ConfigDirGuard::new();
+    let (_dir, path) = copy_fixture("lang_riff_fre_no_final_zero.wav");
+    assert_eq!(
+        raw_riff_info_entries(&path),
+        vec![
+            ("INAM".to_string(), b"Song".to_vec()),
+            ("ILNG".to_string(), b"fre".to_vec()),
+        ],
+        "fixture sanity check: no zero byte at the end of either entry"
+    );
+
+    let result = write_tags_safe(&path, &build_tags(&[(TAG_LANGUAGE, "en")]));
+    assert!(result.success, "nothing is lost: {:?}", result.error);
+    assert_eq!(
+        raw_riff_info_entries(&path),
+        vec![
+            ("INAM".to_string(), b"Song\0".to_vec()),
+            ("ILNG".to_string(), b"en\0".to_vec()),
+        ],
+        "the title with only its zero byte added; the language exactly as asked"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Several languages in ONE stored string (Codex's catch-up review, finding 4)
 // ---------------------------------------------------------------------------

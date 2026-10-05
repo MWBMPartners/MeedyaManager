@@ -3,11 +3,11 @@
 #
 # MeedyaManager — crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
-# Builds eleven language test files from the committed `silence.wav`,
+# Builds twelve language test files from the committed `silence.wav`,
 # `silence.flac`, `silence.mp3` and `riff_language.wav`, using nothing but
 # Python's standard library. (Three since the third review round; two more
 # added for the fourth; four more for Codex's catch-up review of the whole
-# language-policy branch; one more for the stand-in review of round 6 — see
+# language-policy branch; two more for the stand-in review of round 6 — see
 # "The fixtures" at the bottom for what each one is for.) Run it from
 # anywhere:
 #
@@ -305,6 +305,19 @@ def main() -> None:
             HERE / "silence.wav",
             [("IART", "Someone"), ("INAM", b"Caf\xe9"), ("ILNG", "fre")],
             None,
+        ),
+        # The stand-in review of round 6, L2: every RIFF INFO entry is UTF-8,
+        # but written with NO zero byte at its end, as some tools do. The
+        # tag library reads both entries and writes them back with one —
+        # which loses nothing — so a language save must go ahead. Built
+        # without `riff_info`, which always adds the zero byte.
+        "lang_riff_fre_no_final_zero.wav": _wav_from_chunks(
+            [
+                (cid, payload)
+                for cid, payload in _wav_chunks((HERE / "silence.wav").read_bytes())
+                if not (cid == b"LIST" and payload[:4] == b"INFO")
+            ]
+            + [(b"LIST", b"INFO" + _chunk(b"INAM", b"Song") + _chunk(b"ILNG", b"fre"))]
         ),
         # Issue #259, and a consequence of finding 1's fix: a WAV with TWO
         # LIST INFO chunks — the first holding only the software name, the
