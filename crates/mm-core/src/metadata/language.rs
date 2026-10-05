@@ -512,6 +512,34 @@ pub fn language_value_for_tag_type(tag: &LanguageTag, tag_type: TagType) -> Stri
 // Telling a person when what gets stored differs from what they typed
 // ---------------------------------------------------------------------------
 
+/// When a note about a language is read: before the save, as a preview
+/// (`meedya edit`, which prints it on `--dry-run` too), or after it, as a
+/// report of what happened (the C API and UniFFI write result).
+///
+/// The stand-in review of round 6 (N4): the write result returned the
+/// preview's words — "it will lose the region you typed — it will be stored
+/// there as \"por\"" — after the save had happened, and to a program
+/// rather than a person typing. The facts are worked out the same way, and
+/// BEFORE the save, either way (afterwards the file already holds the new
+/// value, and nothing would look changed); only the wording differs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteTense {
+    /// "it will be stored there as …" — for a preview.
+    BeforeTheSave,
+    /// "it was stored there as …" — for a result returned after the save.
+    AfterTheSave,
+}
+
+impl NoteTense {
+    /// `before` or `after`, whichever this tense says.
+    fn pick(self, before: &'static str, after: &'static str) -> &'static str {
+        match self {
+            Self::BeforeTheSave => before,
+            Self::AfterTheSave => after,
+        }
+    }
+}
+
 /// If writing `input` as `language` into a container of type `tag_type`
 /// would lose or reshape something a person actually typed — TRACK-070's
 /// per-format conversion can genuinely lose information, most concretely
@@ -547,7 +575,10 @@ pub fn language_value_for_tag_type(tag: &LanguageTag, tag_type: TagType) -> Stri
 /// `write_tags` will actually touch, so this function's answer can never
 /// name a container the real write does not reach, and never miss one it
 /// does.
-fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<String> {
+///
+/// `tense` decides only the wording — a preview ("it will be stored there
+/// as …") or what happened ("it was stored there as …"); see [`NoteTense`].
+fn describe_conversion(input: &str, tag_types: &[TagType], tense: NoteTense) -> Option<String> {
     let parsed = parse_language_input(input).ok()?;
     // What the person actually typed, with only LANG-001 step 1's four
     // whitespace characters taken off the ends — the same trimming the
@@ -593,8 +624,10 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
             // and say what to type instead.
             reasons.push(format!(
                 "\"{}\" is an old code; inside a longer tag it is not recognised, so an ID3 tag \
-                 will store it as not known — type \"{}\" instead",
-                old.code, old.suggestion
+                 {} it as not known — type \"{}\" instead",
+                old.code,
+                tense.pick("will store", "stored"),
+                old.suggestion
             ));
             old_code_explained = true;
         } else if stored == "und" && parsed.language.as_deref() != Some("und") {
@@ -611,9 +644,10 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
             // the READING side, ID3's own "xxx" marker) as if it meant
             // something to a reader who has never heard of either.
             reasons.push(format!(
-                "an ID3 tag has no three-letter code for \"{}\" at all, so it will be stored \
-                 there as not known",
-                parsed.language.as_deref().unwrap_or(&parsed.tag)
+                "an ID3 tag has no three-letter code for \"{}\" at all, so it {} stored there \
+                 as not known",
+                parsed.language.as_deref().unwrap_or(&parsed.tag),
+                tense.pick("will be", "was")
             ));
         } else {
             // Review item 9: name exactly which part(s) are lost, rather
@@ -645,9 +679,11 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
             }
             if !dropped.is_empty() {
                 reasons.push(format!(
-                    "an ID3 tag can only hold the three-letter language code, so it will lose \
-                     the {} you typed — it will be stored there as \"{stored}\"",
-                    join_with_and(&dropped)
+                    "an ID3 tag can only hold the three-letter language code, so it {} the {} \
+                     you typed — it {} stored there as \"{stored}\"",
+                    tense.pick("will lose", "lost"),
+                    join_with_and(&dropped),
+                    tense.pick("will be", "was")
                 ));
             }
         }
@@ -691,8 +727,10 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
                     (Some(old), Some(where_kept)) if !old_code_explained => {
                         note_reasons.push(format!(
                             "\"{}\" is an old code; inside a longer tag it is not recognised, \
-                             but it is kept exactly as typed{where_kept} — type \"{}\" instead",
-                            old.code, old.suggestion
+                             but it {} kept exactly as typed{where_kept} — type \"{}\" instead",
+                            old.code,
+                            tense.pick("is", "was"),
+                            old.suggestion
                         ));
                     }
                     // Everything else — including the old code when the ID3
@@ -703,7 +741,8 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
                         "\"{subtag}\" is not on the official list of language subtags{}",
                         where_kept
                             .map(|where_kept| format!(
-                                ", but it is kept exactly as typed{where_kept}"
+                                ", but it {} kept exactly as typed{where_kept}",
+                                tense.pick("is", "was")
                             ))
                             .unwrap_or_default()
                     )),
@@ -712,12 +751,16 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
             TagNote::DeprecatedNoReplacement { subtag } => note_reasons.push(format!(
                 "\"{subtag}\" is an old code with no single replacement{}",
                 keeps_whole
-                    .map(|where_kept| format!(", so it is kept exactly as typed{where_kept}"))
+                    .map(|where_kept| format!(
+                        ", so it {} kept exactly as typed{where_kept}",
+                        tense.pick("is", "was")
+                    ))
                     .unwrap_or_default()
             )),
             TagNote::SubtagReplaced { from, to } => {
                 note_reasons.push(format!(
-                    "\"{from}\" is written as \"{to}\" in the standard form"
+                    "\"{from}\" {} written as \"{to}\" in the standard form",
+                    tense.pick("is", "was")
                 ));
             }
         }
@@ -746,8 +789,9 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
     // apart now.
     if note_reasons.is_empty() && is_whole_tag_replacement(typed) {
         note_reasons.push(format!(
-            "\"{typed}\" is an old or grouped form that is no longer used — it is replaced with \
-             the current code, \"{}\"",
+            "\"{typed}\" is an old or grouped form that is no longer used — it {} replaced \
+             with the current code, \"{}\"",
+            tense.pick("is", "was"),
             parsed.tag
         ));
     }
@@ -762,6 +806,14 @@ fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<S
     }
 
     Some(reasons.join("; "))
+}
+
+/// [`describe_conversion`] in the preview wording — the form most of the
+/// tests below pin down word for word. Only the tests use it: the code
+/// itself always says which wording it wants.
+#[cfg(test)]
+fn describe_conversion_for_types(input: &str, tag_types: &[TagType]) -> Option<String> {
+    describe_conversion(input, tag_types, NoteTense::BeforeTheSave)
 }
 
 /// Joins a short list of plain-English part names the way a person would
@@ -913,7 +965,7 @@ fn is_whole_tag_replacement(typed: &str) -> bool {
     subtags(&restated.tag) != subtags(typed)
 }
 
-/// The same explanation as this module's private `describe_conversion_for_types`, for a file
+/// The same explanation as this module's private `describe_conversion`, for a file
 /// on disk.
 ///
 /// Reads the file (never writes to it) purely to find out (a) whether
@@ -945,13 +997,23 @@ fn is_whole_tag_replacement(typed: &str) -> bool {
 /// a resend must stay a no-change. A deliberate "make every tag agree"
 /// action is tracked as its own issue.
 pub fn preview_conversion_note(path: &Path, input: &str) -> Option<String> {
+    conversion_note(path, input, NoteTense::BeforeTheSave)
+}
+
+/// [`preview_conversion_note`], worded for `tense`.
+///
+/// The facts are the same, and are worked out from the file as it is NOW,
+/// so call this before the save even for [`NoteTense::AfterTheSave`] (the C
+/// API and UniFFI write result: the stand-in review of round 6, N4).
+pub fn conversion_note(path: &Path, input: &str, tense: NoteTense) -> Option<String> {
     let tagged_file = super::open_tagged_file(path).ok()?;
     if super::current_joined_value(&tagged_file, super::TAG_LANGUAGE).as_deref() == Some(input) {
-        return super::language_disagreement(&tagged_file)
-            .map(|found| describe_disagreement(&found, DisagreementContext::LeftAloneByAnEdit));
+        return super::language_disagreement(&tagged_file).map(|found| {
+            describe_disagreement(&found, DisagreementContext::LeftAloneByAnEdit(tense))
+        });
     }
     let tag_types = super::language_write_targets(&tagged_file);
-    describe_conversion_for_types(input, &tag_types)
+    describe_conversion(input, &tag_types, tense)
 }
 
 /// A plain-English note, for someone LOOKING at a file, when its tags
@@ -977,8 +1039,9 @@ enum DisagreementContext {
     /// Someone is looking at the file (`meedya debug`, an app's tag list).
     Reading,
     /// An edit resent the value already shown, so nothing is written and
-    /// the disagreeing ID3 tag stays as it is.
-    LeftAloneByAnEdit,
+    /// the disagreeing ID3 tag stays as it is — said as a preview or as
+    /// what happened.
+    LeftAloneByAnEdit(NoteTense),
 }
 
 /// Word a [`super::LanguageDisagreement`] for a person. Values are quoted
@@ -1011,9 +1074,10 @@ fn describe_disagreement(
             "this file's ID3 tag says {hidden}, which {verb} with {shown} — only {shown} is \
              shown, because the tag that can hold the full language code is read first"
         ),
-        DisagreementContext::LeftAloneByAnEdit => format!(
-            "this file's ID3 tag says {hidden}, which {verb} with {shown} and will be left \
-             alone, because {shown} is already the file's language"
+        DisagreementContext::LeftAloneByAnEdit(tense) => format!(
+            "this file's ID3 tag says {hidden}, which {verb} with {shown} and {} left alone, \
+             because {shown} is already the file's language",
+            tense.pick("will be", "was")
         ),
     }
 }
@@ -1038,6 +1102,43 @@ mod tests {
             note.contains("an ID3 tag"),
             "must name the tag format, not assume the file is an MP3: {note:?}"
         );
+    }
+
+    /// The stand-in review of round 6, N4: the note returned AFTER a save
+    /// (the C API and UniFFI write result) says what happened, in the past
+    /// tense, with the same facts as the preview — for every kind of note.
+    #[test]
+    fn a_note_after_the_save_says_what_happened() {
+        let id3 = [TagType::Id3v2];
+        assert_eq!(
+            describe_conversion("pt-BR", &id3, NoteTense::AfterTheSave).as_deref(),
+            Some(
+                "an ID3 tag can only hold the three-letter language code, so it lost the region \
+                 you typed — it was stored there as \"por\""
+            )
+        );
+        let both = [TagType::Id3v2, TagType::RiffInfo];
+        for (input, types) in [
+            ("pt-BR", &id3[..]),
+            ("yue", &id3[..]),
+            ("eng-Latn", &id3[..]),
+            ("eng-Latn", &[TagType::VorbisComments][..]),
+            ("en-JJ", &both[..]),
+            ("iw", &id3[..]),
+            ("i-klingon", &[TagType::VorbisComments][..]),
+        ] {
+            let before = describe_conversion(input, types, NoteTense::BeforeTheSave)
+                .unwrap_or_else(|| panic!("{input}: a note is due"));
+            let after = describe_conversion(input, types, NoteTense::AfterTheSave)
+                .unwrap_or_else(|| panic!("{input}: a note is due"));
+            assert!(!after.contains(" will "), "{input}: {after}");
+            assert!(!after.contains(" is kept"), "{input}: {after}");
+            assert!(
+                !after.contains(" is written") && !after.contains(" is replaced"),
+                "{input}: {after}"
+            );
+            assert_ne!(before, after, "{input}: the preview's words differ");
+        }
     }
 
     #[test]

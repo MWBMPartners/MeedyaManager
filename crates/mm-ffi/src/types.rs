@@ -67,9 +67,11 @@ pub struct TagEntry {
 pub struct WriteMetadataResult {
     /// One `TagEntry` for each field written that a person should be told
     /// something about: the key and the value as given, and `note` — the
-    /// same plain-English text `meedya edit --set` prints, worked out by
-    /// the same code (`mm_core::metadata::language::preview_conversion_note`),
-    /// before the save, from the file the save starts from.
+    /// same facts `meedya edit --set` prints, worked out by the same code
+    /// (`mm_core::metadata::language::conversion_note`), before the save,
+    /// from the file the save starts from, and worded as what happened ("it
+    /// was stored there as \"por\"") rather than as the command line's
+    /// preview (the stand-in review of round 6, N4).
     ///
     /// Only the `language` field has notes today: when what is stored loses
     /// something that was asked for (an ID3 tag keeping only `por` for

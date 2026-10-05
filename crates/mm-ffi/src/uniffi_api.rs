@@ -431,8 +431,9 @@ fn refuse_a_key_given_twice(tags: &[TagEntry]) -> Result<(), MmFfiError> {
 }
 
 /// The note to report for the `language` entry of a write, if any — the
-/// same note `meedya edit --set language=...` shows, from the same function
-/// (`metadata::language::preview_conversion_note`), read from the same file
+/// same facts `meedya edit --set language=...` shows, from the same function
+/// (`metadata::language::conversion_note`), worded as what happened rather
+/// than as a preview, and read from the same file
 /// (`integrity::where_a_save_starts`: the Test Mode copy an earlier edit
 /// made, when there is one, since that is what the save changes). `None`
 /// when `language` is not being written, is being cleared, or there is
@@ -443,7 +444,13 @@ fn language_write_note(path: &std::path::Path, tag_map: &TagMap) -> Option<TagEn
         return None;
     }
     let save_starts_from = integrity::where_a_save_starts(path);
-    let note = metadata::language::preview_conversion_note(&save_starts_from, &value)?;
+    // Worked out now, before the save; worded as what happened, since the
+    // caller reads it after (the stand-in review of round 6, N4).
+    let note = metadata::language::conversion_note(
+        &save_starts_from,
+        &value,
+        metadata::language::NoteTense::AfterTheSave,
+    )?;
     Some(TagEntry {
         key: metadata::TAG_LANGUAGE.to_string(),
         value,
@@ -1221,17 +1228,28 @@ mod tests {
             ("language", "pt-BR")
         );
         let note = notes[0].note.as_deref().unwrap_or_default();
-        // The CLI's own note for the same input, from the same function,
-        // read from a fresh copy of the same file before any save.
+        // The same facts the CLI shows, from the same function, read from a
+        // fresh copy of the same file before any save — worded as what
+        // happened, where the CLI's preview says what will happen (the
+        // stand-in review of round 6, N4).
         let fresh_dir = guard.path().join("fresh");
         std::fs::create_dir_all(&fresh_dir).unwrap();
         let fresh = copy_core_fixture("silence.mp3", &fresh_dir);
+        let after = metadata::language::conversion_note(
+            &fresh,
+            "pt-BR",
+            metadata::language::NoteTense::AfterTheSave,
+        );
+        assert_eq!(Some(note), after.as_deref(), "the same facts as the CLI");
+        assert!(
+            note.contains("lost the region you typed — it was stored there as \"por\""),
+            "said as what happened: {note}"
+        );
         let cli_note =
             metadata::language::preview_conversion_note(&fresh, "pt-BR").expect("the CLI's note");
-        assert_eq!(note, cli_note, "the same note the CLI shows");
         assert!(
-            note.contains("\"por\"") && note.contains("region"),
-            "{note}"
+            cli_note.contains("will lose the region you typed"),
+            "the CLI's preview: {cli_note}"
         );
         assert_eq!(
             metadata::extract_tags(&path).unwrap().get("language"),
