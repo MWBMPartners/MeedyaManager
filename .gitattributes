@@ -48,7 +48,7 @@
 # the copy checker (scripts/media-lang/check_copies.py) compares their exact
 # bytes. Git can change a file's bytes when it checks the file out in four
 # ways, and each line below switches all four off for one copy, overriding
-# the generic rules above and any broader setting of the same kind:
+# the generic rules above it in this file:
 #
 #   -text                   no line-ending conversion
 #   -filter                 no filter program run over the file (a "clean"
@@ -56,15 +56,28 @@
 #   -working-tree-encoding  no conversion into another text encoding
 #   -ident                  no expansion of "$Id$" into a version string
 #
-# What these lines cannot do: a setting with higher priority on someone's
-# own machine still wins over this file — a line in that clone's own
-# .git/info/attributes, for one. If that happens, the copy checker reports
-# the copy as changed, which is the right answer: the bytes on that disk no
-# longer match the master. (Proven in a throwaway clone when these lines were
-# written: a filter and an encoding set up through that clone's own
-# .git/config changed the copies with the old "-text"-only lines and left
-# them byte for byte alone with these; a line in .git/info/attributes still
-# changed one, and the copy checker reported it.)
+# What can still override these lines (git takes each attribute from the
+# setting with the highest priority):
+#   * any LATER line in this same file that also matches the copy — git uses
+#     the last matching line for each attribute, so it need not be a broader
+#     one. Keep these lines at the end of the file;
+#   * a .gitattributes closer to the copy: in the copy's own folder, or in a
+#     folder between the copy and the top of the repository (a deeper file
+#     wins over a shallower one). A .gitattributes in a folder that does not
+#     contain the copy has no effect on it;
+#   * .git/info/attributes on someone's own machine, which git always gives
+#     the highest priority.
+# The global and system attributes files have the LOWEST priority, so they
+# do not override these lines. If anything does change a copy's bytes, the
+# copy checker reports that copy as changed, which is the right answer: the
+# bytes on that disk no longer match the master. (Proven in throwaway clones,
+# using only each clone's own .git/config: a filter and an encoding set up
+# there changed the copies with the old "-text"-only lines and left them
+# byte for byte alone with these, including through the clone's own
+# core.attributesFile; a later line in this file, a .gitattributes in
+# docs/standards and a line in .git/info/attributes each still changed the
+# policy document's line endings, and the copy checker reported it; a
+# .gitattributes in help/, which does not hold a copy, changed nothing.)
 docs/standards/media-language-bcp47-policy.md -text -filter -working-tree-encoding -ident
 docs/standards/MWBM-MEDIA-LANG.lock -text -filter -working-tree-encoding -ident
 tests/fixtures/bcp47-language-policy-v1.json -text -filter -working-tree-encoding -ident
