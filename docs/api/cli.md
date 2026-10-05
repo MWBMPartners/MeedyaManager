@@ -141,7 +141,9 @@ reading `actions[].success`, not just the exit code:
   own, run read-only for every kind of operation — `--set`, `--remove`, `--cover` and
   `--remove-cover` (`mm_core::metadata::check_tag_write` / `check_tag_removal` /
   `check_cover_change`, worded by `mm_core::integrity::check_save`) — so `--dry-run` gives the
-  same answer and exit code as a real run. (The cover options were not checked until the stand-in
+  same answer and exit code as a real run. A real run's refusal starts "Could not save the changes
+  to …", as the save's own would; a dry run's starts "A real run would not save the changes to …",
+  because a dry run never saves (the reason after it is the same). (The cover options were not checked until the stand-in
   review of round 7, L2: a dry run of `--cover` or `--remove-cover` on a text file said "✓" and
   exited 0 where the real run refused and exited 2.) In this case **none** of the batch is applied, not even the operations that were themselves
   valid — this happens before anything is written, regardless of `--dry-run`.

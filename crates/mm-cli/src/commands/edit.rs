@@ -233,7 +233,7 @@ pub fn run_as_typed(ctx: &CliContext, args: &EditArgs, typed: &TypedOrder) -> an
     let dry_run = ctx.dry_run || args.dry_run;
 
     // ── Phase 1: validate everything before any I/O ─────────────────────
-    let plan = match build_plan_as_typed(args, typed) {
+    let plan = match build_plan_as_typed(args, typed, dry_run) {
         Ok(plan) => plan,
         // At least one operation is invalid.  Report the failures and stop —
         // deliberately performing none of the *valid* operations either, so
@@ -293,13 +293,23 @@ struct EditPlan {
 }
 
 /// Validate every requested operation, naming options in the order they
-/// were `typed`.
+/// were `typed`. `dry_run` says whether this is a dry run, so a refusal from
+/// a save's own check is worded truly ([`mm_core::integrity::CheckFor`]).
 ///
 /// Returns `Ok(plan)` when the whole batch is sound, or `Err(actions)` holding
 /// one failed `EditAction` per problem — the caller renders those and performs
 /// no writes at all.
-fn build_plan_as_typed(args: &EditArgs, typed: &TypedOrder) -> Result<EditPlan, Vec<EditAction>> {
+fn build_plan_as_typed(
+    args: &EditArgs,
+    typed: &TypedOrder,
+    dry_run: bool,
+) -> Result<EditPlan, Vec<EditAction>> {
     let mut failures: Vec<EditAction> = Vec::new();
+    let check_for = if dry_run {
+        mm_core::integrity::CheckFor::DryRun
+    } else {
+        mm_core::integrity::CheckFor::RealRun
+    };
 
     // The set of keys the metadata layer can actually persist.  Derived from
     // the lofty ItemKey mapping, so it cannot drift from what a write accepts.
@@ -589,7 +599,7 @@ fn build_plan_as_typed(args: &EditArgs, typed: &TypedOrder) -> Result<EditPlan, 
     // check as well.
     if failures.is_empty() {
         if !tags.is_empty()
-            && let Err(reason) = mm_core::integrity::check_save(&args.path, |target| {
+            && let Err(reason) = mm_core::integrity::check_save(&args.path, check_for, |target| {
                 mm_core::metadata::check_tag_write(target, &tags)
             })
         {
@@ -603,7 +613,7 @@ fn build_plan_as_typed(args: &EditArgs, typed: &TypedOrder) -> Result<EditPlan, 
             }
         }
         for key in &remove_keys {
-            if let Err(reason) = mm_core::integrity::check_save(&args.path, |target| {
+            if let Err(reason) = mm_core::integrity::check_save(&args.path, check_for, |target| {
                 mm_core::metadata::check_tag_removal(target, key)
             }) {
                 failures.push(EditAction::failed(
@@ -620,9 +630,11 @@ fn build_plan_as_typed(args: &EditArgs, typed: &TypedOrder) -> Result<EditPlan, 
         // file and on two damaged WAVs, `--cover` and `--remove-cover` each
         // exiting 0 on a dry run and 2 for real.
         if cover.is_some() || args.remove_cover {
-            if let Err(reason) =
-                mm_core::integrity::check_save(&args.path, mm_core::metadata::check_cover_change)
-            {
+            if let Err(reason) = mm_core::integrity::check_save(
+                &args.path,
+                check_for,
+                mm_core::metadata::check_cover_change,
+            ) {
                 if let Some((cover_path, _, _)) = &cover {
                     failures.push(EditAction::failed(
                         "embed_cover",
@@ -956,7 +968,7 @@ mod tests {
 
     /// `build_plan_as_typed` for an `EditArgs` built in code (see `run`).
     fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
-        build_plan_as_typed(args, &TypedOrder::default())
+        build_plan_as_typed(args, &TypedOrder::default(), args.dry_run)
     }
 
     fn test_ctx() -> CliContext {
@@ -2021,6 +2033,21 @@ mod tests {
                     save_says,
                     "removing={removing} dry_run={dry_run}: the save's own words"
                 );
+                // The stand-in review of round 7, N3: a dry run never saves,
+                // so its refusal must not say "Could not save".
+                let opening = if dry_run {
+                    "A real run would not save the changes to '"
+                } else {
+                    "Could not save the changes to '"
+                };
+                let message = actions[0].error.as_deref().unwrap_or_default();
+                assert!(
+                    message.starts_with(opening),
+                    "removing={removing} dry_run={dry_run}: {message:?}"
+                );
+                if dry_run {
+                    assert!(!message.contains("Could not save"), "{message:?}");
+                }
                 assert_eq!(
                     run(&test_ctx(), &args).unwrap(),
                     ExitCode::PARTIAL,
@@ -2189,6 +2216,15 @@ mod tests {
                         "{what}: the save's own reason"
                     );
                     assert_eq!(
+                        actions[0]
+                            .error
+                            .as_deref()
+                            .unwrap_or_default()
+                            .starts_with("A real run would not save"),
+                        dry_run,
+                        "{what}: a dry run's refusal is worded as one (N3)"
+                    );
+                    assert_eq!(
                         run(&test_ctx(), &args).unwrap(),
                         ExitCode::PARTIAL,
                         "{what}: exit 2"
@@ -2257,7 +2293,7 @@ mod tests {
             ),
         ] {
             let (args, typed) = parse_edit(&path, &rest);
-            let Err(actions) = build_plan_as_typed(&args, &typed) else {
+            let Err(actions) = build_plan_as_typed(&args, &typed, args.dry_run) else {
                 panic!("{rest:?}: must be refused");
             };
             assert!(actions.len() >= 2, "{rest:?}: {actions:?}");

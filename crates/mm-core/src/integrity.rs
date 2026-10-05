@@ -561,11 +561,26 @@ fn could_not_save_in(path: &Path, in_earlier_copy: bool, reason: &str) -> String
     }
 }
 
+/// Which run a [`check_save`] answers for, so its refusal is worded truly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckFor {
+    /// A real run, checking before it saves: a refusal starts "Could not
+    /// save the changes to …", the words the save itself would use.
+    RealRun,
+    /// A dry run, which never saves: a refusal starts "A real run would not
+    /// save the changes to …".
+    DryRun,
+}
+
 /// What a guarded save of `path` would answer if `check` refuses.
 ///
 /// `check` is a read-only form of a check the save itself makes before it
 /// writes anything, such as `metadata::check_tag_write`. A refusal is given
-/// as the same message, in the same words, naming the person's own file.
+/// with the same reason, in the same words, naming the person's own file —
+/// for a real run (`for_run` is [`CheckFor::RealRun`]) as the very message
+/// the save would give; for a dry run starting "A real run would not save
+/// the changes to …" instead, because no save was going to happen (the
+/// stand-in review of round 7, N3: a dry run used to say "Could not save").
 /// `check` is run on the file the save would start from
 /// ([`where_a_save_starts`]: the Test Mode copy an earlier edit made, when
 /// there is one).
@@ -580,12 +595,29 @@ fn could_not_save_in(path: &Path, in_earlier_copy: bool, reason: &str) -> String
 /// documentation).
 ///
 /// # Errors
-/// The message the real save would give.
-pub fn check_save(path: &Path, check: impl FnOnce(&Path) -> MmResult<()>) -> Result<(), String> {
+/// The message the real save would give (for a dry run, with its opening
+/// words changed as above).
+pub fn check_save(
+    path: &Path,
+    for_run: CheckFor,
+    check: impl FnOnce(&Path) -> MmResult<()>,
+) -> Result<(), String> {
     let target = where_a_save_starts(path);
     check(&target).map_err(|e| {
         let reason = name_the_real_file(&plain_reason(&e), &target, path);
-        could_not_save_in(path, target != path, &reason)
+        let in_earlier_copy = target != path;
+        match for_run {
+            CheckFor::RealRun => could_not_save_in(path, in_earlier_copy, &reason),
+            CheckFor::DryRun => format!(
+                "A real run would not save the changes to '{}'{}: {reason}",
+                path.display(),
+                if in_earlier_copy {
+                    " in its Test Mode copy"
+                } else {
+                    ""
+                }
+            ),
+        }
     })
 }
 
@@ -1078,6 +1110,54 @@ mod tests {
             original,
             "a copy deleted by hand is not where the next save starts"
         );
+    }
+
+    /// The stand-in review of round 7, N3: `check_save`'s refusal is worded
+    /// for the run it answers. A real run says what the save itself would
+    /// ("Could not save the changes to …"); a dry run never saves, so it
+    /// says "A real run would not save the changes to …". Both name the
+    /// person's own file, say "in its Test Mode copy" when the check read
+    /// such a copy, and give the same reason.
+    #[test]
+    fn check_save_words_a_refusal_for_the_run_it_answers() {
+        let _guard = ConfigDirGuard::new();
+        let dir = TempDir::new().unwrap();
+        let original = dir.path().join("track.wav");
+        write_wav_fixture(&original);
+        let refuse =
+            |_: &Path| -> MmResult<()> { Err(MmError::Metadata("the reason".to_string())) };
+        let shown = original.display();
+
+        assert_eq!(
+            check_save(&original, CheckFor::RealRun, refuse),
+            Err(format!(
+                "Could not save the changes to '{shown}': the reason"
+            ))
+        );
+        assert_eq!(
+            check_save(&original, CheckFor::DryRun, refuse),
+            Err(format!(
+                "A real run would not save the changes to '{shown}': the reason"
+            ))
+        );
+
+        test_mode::enable().unwrap();
+        let first = write_tags_safe(&original, &one_tag(crate::metadata::TAG_TITLE, "First"));
+        assert!(first.success, "setup: the copy is made: {:?}", first.error);
+        assert_eq!(
+            check_save(&original, CheckFor::RealRun, refuse),
+            Err(format!(
+                "Could not save the changes to '{shown}' in its Test Mode copy: the reason"
+            ))
+        );
+        assert_eq!(
+            check_save(&original, CheckFor::DryRun, refuse),
+            Err(format!(
+                "A real run would not save the changes to '{shown}' in its Test Mode copy: \
+                 the reason"
+            ))
+        );
+        test_mode::disable().unwrap();
     }
 
     // ── mutate_file_safe — the generalised guard ────────────────────────────
