@@ -133,7 +133,10 @@ reading `actions[].success`, not just the exit code:
   recognise as a language at all or that holds a control character — see
   `mm_core::metadata::language::parse_language_input` — or the same key given more than once
   across `--set` and `--remove`, which gets one failed action each time it was given, each naming
-  the key and every time it was given), or a save would refuse it before writing anything (a WAV
+  the key and every time it was given, in the order typed; or `--cover` together with
+  `--remove-cover`, refused the same way as cover art given twice; an unknown key, and the key and
+  value on a refused action's line, are shown with any invisible character written out as
+  `\u{…}`), or a save would refuse it before writing anything (a WAV
   whose RIFF INFO list it would damage, or a file with no tags to read): that check is the save's
   own, run read-only for every kind of operation — `--set`, `--remove`, `--cover` and
   `--remove-cover` (`mm_core::metadata::check_tag_write` / `check_tag_removal` /

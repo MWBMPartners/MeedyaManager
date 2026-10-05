@@ -1465,6 +1465,37 @@ mod tests {
         }
     }
 
+    /// The stand-in review of round 7, L7, through the C API: an unknown key
+    /// is quoted with its invisible characters written out. The reviewer
+    /// read this path but did not run it; run with the library built from
+    /// `e4db8f8`, a key holding a right-to-left override came back raw.
+    #[test]
+    fn c_api_unknown_key_is_quoted_with_invisible_characters_shown() {
+        use std::ffi::{CStr, CString};
+
+        let guard = ConfigDirGuard::new("capiunknownkey");
+        let path = copy_core_fixture("silence.flac", guard.path());
+        let before = std::fs::read(&path).unwrap();
+        let c_path = CString::new(path.display().to_string()).unwrap();
+        let c_json = CString::new("[{\"key\":\"ti\u{202e}tle\",\"value\":\"X\"}]").unwrap();
+        // SAFETY: both arguments are valid, zero-terminated C strings that
+        // outlive the call, and the answer is freed exactly once below with
+        // the library's own `mm_ffi_free_string`.
+        let answer = unsafe {
+            let ptr = crate::capi::mm_ffi_write_metadata(c_path.as_ptr(), c_json.as_ptr());
+            let text = CStr::from_ptr(ptr).to_str().unwrap().to_string();
+            crate::capi::mm_ffi_free_string(ptr.cast_mut());
+            text
+        };
+        let json: serde_json::Value = serde_json::from_str(&answer).unwrap();
+        let error = json["error"]
+            .as_str()
+            .unwrap_or_else(|| panic!("must be refused: {answer}"));
+        assert!(error.contains("'ti\\u{202e}tle'"), "{error}");
+        assert!(!error.contains('\u{202e}'), "nothing raw: {error}");
+        assert_eq!(std::fs::read(&path).unwrap(), before, "nothing written");
+    }
+
     /// The stand-in review of round 6 (L3, its planted fault F6b): with Test
     /// Mode on and a copy an earlier edit made, the write result's note
     /// must describe the COPY — the file the save changes — not the

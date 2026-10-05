@@ -40,6 +40,77 @@ pub struct EditArgs {
     pub dry_run: bool,
 }
 
+/// Where each `--set`, `--remove`, `--cover` and `--remove-cover` came on the
+/// command line, so a refusal can name them in the order they were typed.
+///
+/// Why (the stand-in review of round 7, L5): `EditArgs` keeps the `--set`
+/// values and the `--remove` keys in two separate lists, so the order between
+/// the two is lost. Reproduced with the binary built from `e4db8f8`: `meedya
+/// edit base.mp3 --remove language --set language=pt-BR` was refused (rightly)
+/// with "(--set language=pt-BR, then --remove language)" — the reverse of
+/// what was typed. clap records each value's position on the command line;
+/// `main` reads them into this.
+///
+/// What this cannot do: know the order for an `EditArgs` built in code rather
+/// than parsed (the tests build most of theirs that way). Then every `--set`
+/// counts as coming before every `--remove`, and `--cover` before
+/// `--remove-cover`, as the fields are written — see the `*_at` methods.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct TypedOrder {
+    /// The position of each `--set` value, in the order `EditArgs::set`
+    /// holds them.
+    set: Vec<usize>,
+    /// The position of each `--remove` key, in the order `EditArgs::remove`
+    /// holds them.
+    remove: Vec<usize>,
+    /// The position of `--cover`'s value, when given.
+    cover: Option<usize>,
+    /// The position of `--remove-cover`, when given.
+    remove_cover: Option<usize>,
+}
+
+impl TypedOrder {
+    /// Read the positions from the `edit` subcommand's own matches.
+    pub fn from_matches(matches: &clap::ArgMatches) -> Self {
+        // A flag left at its default value has no position, which is what
+        // `None` means here.
+        let given = |id: &str| {
+            (matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine))
+                .then(|| matches.index_of(id))
+                .flatten()
+        };
+        Self {
+            set: matches
+                .indices_of("set")
+                .map(Iterator::collect)
+                .unwrap_or_default(),
+            remove: matches
+                .indices_of("remove")
+                .map(Iterator::collect)
+                .unwrap_or_default(),
+            cover: given("cover"),
+            remove_cover: given("remove_cover"),
+        }
+    }
+
+    /// Where the `i`th `--set` came; see the type's own note for an
+    /// `EditArgs` built in code.
+    fn set_at(&self, i: usize) -> usize {
+        self.set.get(i).copied().unwrap_or(i)
+    }
+
+    /// Where the `i`th `--remove` came, `sets` being how many `--set` there
+    /// are.
+    fn remove_at(&self, i: usize, sets: usize) -> usize {
+        self.remove.get(i).copied().unwrap_or(sets + i)
+    }
+
+    /// Whether `--remove-cover` was typed before `--cover`.
+    fn remove_cover_first(&self) -> bool {
+        matches!((self.cover, self.remove_cover), (Some(c), Some(r)) if r < c)
+    }
+}
+
 // ─── JSON output structures ─────────────────────────────────────────────────
 
 /// Edit result for JSON output.
@@ -138,7 +209,12 @@ impl EditAction {
 /// All writes go through `mm_core::integrity`, never `mm_core::metadata`
 /// directly, because the integrity layer is the only place Test Mode is
 /// enforced (issue #128).
-pub fn run(ctx: &CliContext, args: &EditArgs) -> anyhow::Result<i32> {
+///
+/// `typed` says where each option came on the command line
+/// ([`TypedOrder`]), which `main` reads from clap; the tests build most of
+/// their `EditArgs` in code and pass `TypedOrder::default()` (through a
+/// `run` helper of their own).
+pub fn run_as_typed(ctx: &CliContext, args: &EditArgs, typed: &TypedOrder) -> anyhow::Result<i32> {
     // Verify the file exists
     if !args.path.exists() {
         output::print_error(&format!("File not found: {}", args.path.display()));
@@ -157,7 +233,7 @@ pub fn run(ctx: &CliContext, args: &EditArgs) -> anyhow::Result<i32> {
     let dry_run = ctx.dry_run || args.dry_run;
 
     // ── Phase 1: validate everything before any I/O ─────────────────────
-    let plan = match build_plan(args) {
+    let plan = match build_plan_as_typed(args, typed) {
         Ok(plan) => plan,
         // At least one operation is invalid.  Report the failures and stop —
         // deliberately performing none of the *valid* operations either, so
@@ -216,12 +292,13 @@ struct EditPlan {
     language_note: Option<String>,
 }
 
-/// Validate every requested operation.
+/// Validate every requested operation, naming options in the order they
+/// were `typed`.
 ///
 /// Returns `Ok(plan)` when the whole batch is sound, or `Err(actions)` holding
 /// one failed `EditAction` per problem — the caller renders those and performs
 /// no writes at all.
-fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
+fn build_plan_as_typed(args: &EditArgs, typed: &TypedOrder) -> Result<EditPlan, Vec<EditAction>> {
     let mut failures: Vec<EditAction> = Vec::new();
 
     // The set of keys the metadata layer can actually persist.  Derived from
@@ -252,25 +329,35 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
     // rows — the first saying "por" would be stored — and the file was left
     // with no tag at all; `--set title=X --remove title` and `--remove title
     // --remove title` each reported every row as done. So every time a field
-    // is named, by either flag, counts. Each is collected first, in order, as
-    // it was typed (with any invisible character written out), so the message
-    // can name them all.
-    let mut given_by_key: Vec<(&str, Vec<String>)> = Vec::new();
-    let named = args
+    // is named, by either flag, counts. Each is collected first, in the
+    // order it was typed (`typed` — the stand-in review of round 7, L5,
+    // found `--set` always listed before `--remove`), with any invisible
+    // character written out, so the message can name them all.
+    let show = mm_core::metadata::language::show_invisible_characters;
+    let mut named: Vec<(usize, &str, String)> = args
         .set
         .iter()
-        .filter_map(|set_arg| {
+        .enumerate()
+        .filter_map(|(i, set_arg)| {
             set_arg.split_once('=').map(|(key, value)| {
-                let shown = mm_core::metadata::language::show_invisible_characters(value);
-                (key, format!("--set {key}={shown}"))
+                (
+                    typed.set_at(i),
+                    key,
+                    format!("--set {}={}", show(key), show(value)),
+                )
             })
         })
-        .chain(
-            args.remove
-                .iter()
-                .map(|key| (key.as_str(), format!("--remove {key}"))),
-        );
-    for (key, as_typed) in named {
+        .chain(args.remove.iter().enumerate().map(|(i, key)| {
+            (
+                typed.remove_at(i, args.set.len()),
+                key.as_str(),
+                format!("--remove {}", show(key)),
+            )
+        }))
+        .collect();
+    named.sort_by_key(|(at, _, _)| *at);
+    let mut given_by_key: Vec<(&str, Vec<String>)> = Vec::new();
+    for (_, key, as_typed) in named {
         match given_by_key.iter_mut().find(|(k, _)| *k == key) {
             Some((_, given)) => given.push(as_typed),
             None => given_by_key.push((key, vec![as_typed])),
@@ -283,8 +370,9 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
             .find(|(k, given)| *k == key && given.len() > 1)
             .map(|(_, given)| {
                 format!(
-                    "'{key}' is given more than once in this command ({}) — give each field \
+                    "'{}' is given more than once in this command ({}) — give each field \
                      once, so it is clear what to save",
+                    show(key),
                     given.join(", then ")
                 )
             })
@@ -302,11 +390,17 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
         };
 
         if !known.contains(&key) {
+            // The key with every invisible character written out (the
+            // stand-in review of round 7, L7): reproduced with the binary
+            // built from `e4db8f8`, `--set "ti<U+202E>tle=X"` answered with
+            // the right-to-left override raw, which reverses what follows it
+            // in a terminal, and a zero-width space inside a key made it read
+            // as "title".
             failures.push(EditAction::failed(
                 "set",
                 Some(key.to_string()),
                 Some(value.to_string()),
-                format!("unknown key '{key}' — valid: {valid_list}"),
+                format!("unknown key '{}' — valid: {valid_list}", show(key)),
             ));
             continue;
         }
@@ -380,11 +474,12 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
     let mut remove_keys: Vec<String> = Vec::new();
     for key in &args.remove {
         if !known.contains(&key.as_str()) {
+            // L7: as for `--set` above.
             failures.push(EditAction::failed(
                 "remove",
                 Some(key.clone()),
                 None,
-                format!("unknown key '{key}' — valid: {valid_list}"),
+                format!("unknown key '{}' — valid: {valid_list}", show(key)),
             ));
         } else if let Some(refusal) = given_more_than_once(key) {
             // M3 (see above).
@@ -399,9 +494,50 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
         }
     }
 
+    // -- Cover art given twice ----------------------------------------------
+    //
+    // The stand-in review of round 7, L6: `--cover X --remove-cover` in one
+    // command used to embed the picture, then remove every picture, and
+    // report both as done — reproduced with the binary built from
+    // `e4db8f8`: exit 0, two "✓" rows, and mutagen then found no picture.
+    // The same misleading report a field given twice gave (M3), so it is
+    // refused the same way, naming both options in the order typed.
+    let cover_given_twice = args
+        .cover
+        .as_ref()
+        .filter(|_| args.remove_cover)
+        .map(|path| {
+            let mut given = [
+                format!("--cover {}", show(&path.display().to_string())),
+                "--remove-cover".to_string(),
+            ];
+            if typed.remove_cover_first() {
+                given.reverse();
+            }
+            format!(
+                "cover art is given more than once in this command ({}) — give it once, so it \
+             is clear what to save",
+                given.join(", then ")
+            )
+        });
+    if let Some(refusal) = &cover_given_twice {
+        failures.push(EditAction::failed(
+            "embed_cover",
+            None,
+            args.cover.as_ref().map(|path| path.display().to_string()),
+            refusal.clone(),
+        ));
+        failures.push(EditAction::failed(
+            "remove_cover",
+            None,
+            None,
+            refusal.clone(),
+        ));
+    }
+
     // -- --cover: the image must exist and be readable ---------------------
     let mut cover = None;
-    if let Some(cover_path) = args.cover.as_ref() {
+    if let Some(cover_path) = args.cover.as_ref().filter(|_| cover_given_twice.is_none()) {
         if cover_path.exists() {
             match std::fs::read(cover_path) {
                 Ok(data) => {
@@ -692,18 +828,29 @@ enum HumanLine {
 
 /// What each action's own description line reads, before success/failure
 /// or a note is folded in.
+///
+/// For a refused action the key and the value are shown with every
+/// invisible character written out (the stand-in review of round 7, L7):
+/// the line is printed before the refusal's own message, so a
+/// right-to-left override in an unknown key would otherwise reverse the
+/// rest of the line, refusal and all.
 fn action_description(action: &EditAction) -> String {
+    let shown = |text: Option<&str>| -> String {
+        let text = text.unwrap_or("?");
+        if action.success {
+            text.to_string()
+        } else {
+            mm_core::metadata::language::show_invisible_characters(text)
+        }
+    };
     match action.action.as_str() {
         "set" => format!(
             "Set {} = {}",
-            action.key.as_deref().unwrap_or("?"),
-            action.value.as_deref().unwrap_or("?"),
+            shown(action.key.as_deref()),
+            shown(action.value.as_deref()),
         ),
-        "remove" => format!("Remove {}", action.key.as_deref().unwrap_or("?")),
-        "embed_cover" => format!(
-            "Embed cover from {}",
-            action.value.as_deref().unwrap_or("?"),
-        ),
+        "remove" => format!("Remove {}", shown(action.key.as_deref())),
+        "embed_cover" => format!("Embed cover from {}", shown(action.value.as_deref())),
         "remove_cover" => "Remove cover art".to_string(),
         _ => action.action.clone(),
     }
@@ -800,6 +947,17 @@ fn render(
 mod tests {
     use super::*;
     use crate::output::OutputFormat;
+
+    /// `run_as_typed` for an `EditArgs` built in code, with no command-line
+    /// positions: every `--set` counts as coming before every `--remove`.
+    fn run(ctx: &CliContext, args: &EditArgs) -> anyhow::Result<i32> {
+        run_as_typed(ctx, args, &TypedOrder::default())
+    }
+
+    /// `build_plan_as_typed` for an `EditArgs` built in code (see `run`).
+    fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
+        build_plan_as_typed(args, &TypedOrder::default())
+    }
 
     fn test_ctx() -> CliContext {
         CliContext {
@@ -2037,6 +2195,174 @@ mod tests {
                     );
                     assert_eq!(std::fs::read(&path).unwrap(), before, "{what}: untouched");
                 }
+            }
+        }
+    }
+
+    /// Build `meedya edit <path> <rest...>` exactly as the command line
+    /// does, through clap, and return the arguments and where each option
+    /// came — the way `main` does it.
+    fn parse_edit(path: &std::path::Path, rest: &[&str]) -> (EditArgs, TypedOrder) {
+        use clap::{CommandFactory, FromArgMatches};
+        let mut command_line = vec!["meedya", "edit", path.to_str().unwrap()];
+        command_line.extend_from_slice(rest);
+        let matches = crate::Cli::command()
+            .try_get_matches_from(command_line)
+            .unwrap();
+        let typed = TypedOrder::from_matches(matches.subcommand_matches("edit").unwrap());
+        let crate::Commands::Edit(args) = crate::Cli::from_arg_matches(&matches)
+            .unwrap()
+            .command
+            .unwrap()
+        else {
+            panic!("not the edit command");
+        };
+        (args, typed)
+    }
+
+    /// The stand-in review of round 7, L5: the "given more than once"
+    /// refusal names the options in the order they were typed. Reproduced
+    /// with the binary built from `e4db8f8`: `--remove language --set
+    /// language=pt-BR` was refused with "(--set language=pt-BR, then
+    /// --remove language)", the reverse of what was typed. The same for the
+    /// cover options (L6).
+    #[test]
+    fn a_field_given_twice_is_named_in_the_order_typed() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("silence.mp3", dir.path());
+        let image = dir.path().join("cover.jpg");
+        std::fs::write(&image, b"\xff\xd8\xff").unwrap();
+        let image_arg = image.to_str().unwrap();
+        for (rest, names) in [
+            (
+                vec!["--remove", "language", "--set", "language=pt-BR"],
+                "(--remove language, then --set language=pt-BR)".to_string(),
+            ),
+            (
+                vec!["--set", "language=pt-BR", "--remove", "language"],
+                "(--set language=pt-BR, then --remove language)".to_string(),
+            ),
+            (
+                vec!["--remove", "title", "--set", "title=X", "--remove", "title"],
+                "(--remove title, then --set title=X, then --remove title)".to_string(),
+            ),
+            (
+                vec!["--remove-cover", "--cover", image_arg],
+                format!("(--remove-cover, then --cover {image_arg})"),
+            ),
+            (
+                vec!["--cover", image_arg, "--remove-cover"],
+                format!("(--cover {image_arg}, then --remove-cover)"),
+            ),
+        ] {
+            let (args, typed) = parse_edit(&path, &rest);
+            let Err(actions) = build_plan_as_typed(&args, &typed) else {
+                panic!("{rest:?}: must be refused");
+            };
+            assert!(actions.len() >= 2, "{rest:?}: {actions:?}");
+            for action in &actions {
+                let message = action.error.as_deref().unwrap_or_default();
+                assert!(message.contains(&names), "{rest:?}: {message:?}");
+            }
+        }
+    }
+
+    /// The stand-in review of round 7, L6: `--cover X --remove-cover` in one
+    /// command is refused as cover art given twice, in a real run and on
+    /// `--dry-run`, with nothing written. Reproduced with the binary built
+    /// from `e4db8f8`: exit 0, both rows reported as done, and mutagen then
+    /// found no picture.
+    #[test]
+    fn cover_art_given_twice_is_refused_before_anything_is_written() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("cover.jpg");
+        std::fs::write(&image, b"\xff\xd8\xff").unwrap();
+        for dry_run in [false, true] {
+            let path = crate::test_support::copy_core_fixture("silence.mp3", dir.path());
+            let before = std::fs::read(&path).unwrap();
+            let args = EditArgs {
+                path: path.clone(),
+                set: vec![],
+                remove: vec![],
+                cover: Some(image.clone()),
+                remove_cover: true,
+                dry_run,
+            };
+            let Err(actions) = build_plan(&args) else {
+                panic!("dry_run={dry_run}: must be refused");
+            };
+            let rows: Vec<&str> = actions.iter().map(|a| a.action.as_str()).collect();
+            assert_eq!(rows, ["embed_cover", "remove_cover"], "dry_run={dry_run}");
+            for action in &actions {
+                assert!(!action.success);
+                assert!(
+                    action
+                        .error
+                        .as_deref()
+                        .unwrap_or_default()
+                        .contains("cover art is given more than once in this command"),
+                    "{action:?}"
+                );
+            }
+            assert_eq!(
+                run(&test_ctx(), &args).unwrap(),
+                ExitCode::PARTIAL,
+                "dry_run={dry_run}"
+            );
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                before,
+                "dry_run={dry_run}: nothing written"
+            );
+        }
+    }
+
+    /// The stand-in review of round 7, L7: an unknown key is shown with its
+    /// invisible characters written out — in the refusal and in the line
+    /// printed before it. Reproduced with the binary built from `e4db8f8`:
+    /// `--set "ti<U+202E>tle=X"` printed the right-to-left override raw,
+    /// which reverses the rest of the line in a terminal, and `--remove
+    /// "ti<U+200B>tle"` showed a key that reads as "title".
+    #[test]
+    fn an_unknown_key_is_shown_with_its_invisible_characters_written_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::test_support::copy_core_fixture("silence.flac", dir.path());
+        for (set, remove, shown, raw) in [
+            (
+                vec!["ti\u{202e}tle=X"],
+                vec![],
+                "ti\\u{202e}tle",
+                '\u{202e}',
+            ),
+            (vec![], vec!["ti\u{200b}tle"], "ti\\u{200b}tle", '\u{200b}'),
+        ] {
+            let args = EditArgs {
+                path: path.clone(),
+                set: set.iter().map(ToString::to_string).collect(),
+                remove: remove.iter().map(ToString::to_string).collect(),
+                cover: None,
+                remove_cover: false,
+                dry_run: false,
+            };
+            let Err(actions) = build_plan(&args) else {
+                panic!("{shown}: an unknown key must be refused");
+            };
+            let message = actions[0].error.as_deref().unwrap_or_default();
+            assert!(
+                message.contains(&format!("unknown key '{shown}'")),
+                "{message:?}"
+            );
+            for line in build_human_lines(&actions) {
+                let HumanLine::Error(text) = line else {
+                    panic!("a refusal prints an error line");
+                };
+                assert!(text.contains(shown), "{text:?}");
+                assert!(
+                    !text.contains(raw),
+                    "nothing raw on the printed line: {text:?}"
+                );
             }
         }
     }

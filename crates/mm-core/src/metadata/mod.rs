@@ -519,10 +519,15 @@ pub fn known_tag_keys() -> Vec<&'static str> {
 /// a UI developer guessing at a key name) and a bare "unknown key" would leave
 /// them no way forward.
 fn unknown_tag_key_error(keys: &[&str]) -> MmError {
-    // Quote each offending key so an empty or whitespace-only key is visible.
+    // Quote each offending key so an empty or whitespace-only key is
+    // visible, with every invisible character written out (the stand-in
+    // review of round 7, L7: reproduced through the C API of the library
+    // built from `e4db8f8`, a key holding a right-to-left override was
+    // quoted raw — which reverses what follows it on screen — and one
+    // holding a zero-width space read as "title").
     let offenders = keys
         .iter()
-        .map(|k| format!("'{k}'"))
+        .map(|k| format!("'{}'", language::show_invisible_characters(k)))
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -2852,6 +2857,31 @@ mod tests {
             msg.contains(TAG_TITLE),
             "the error must list the valid keys, got: {msg}"
         );
+    }
+
+    /// The stand-in review of round 7, L7: an unknown key is quoted with
+    /// every invisible character written out, for a write and a removal
+    /// alike — a right-to-left override raw would reverse what follows it
+    /// on screen, and a zero-width space would make the key read as "title".
+    #[test]
+    fn an_unknown_key_is_quoted_with_invisible_characters_shown() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("track.wav");
+        write_wav_fixture(&p);
+        for (key, shown) in [
+            ("ti\u{202e}tle", "'ti\\u{202e}tle'"),
+            ("ti\u{200b}tle", "'ti\\u{200b}tle'"),
+        ] {
+            let mut tags = TagMap::new();
+            tags.insert(key.to_string(), vec!["X".to_string()]);
+            for msg in [
+                write_tags(&p, &tags).unwrap_err().to_string(),
+                remove_tag(&p, key).unwrap_err().to_string(),
+            ] {
+                assert!(msg.contains(shown), "{msg:?}");
+                assert!(!msg.contains(key), "the key must not appear raw: {msg:?}");
+            }
+        }
     }
 
     /// Review item 12 of issue #251's independent review: `mm-ffi`'s

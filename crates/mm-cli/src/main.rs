@@ -116,8 +116,19 @@ async fn main() {
     // Initialise i18n — must run before any user-visible strings are produced
     mm_core::i18n::init();
 
-    // Parse command-line arguments using clap derive
-    let cli = Cli::parse();
+    // Parse command-line arguments using clap derive. The matches are kept
+    // (rather than calling `Cli::parse()`, which drops them) because
+    // `meedya edit` needs to know where each of its options came on the
+    // command line, to name them in that order when it refuses a field given
+    // twice (the stand-in review of round 7, L5) — `Cli` itself only keeps
+    // the values.
+    let matches = <Cli as clap::CommandFactory>::command().get_matches();
+    let cli =
+        <Cli as clap::FromArgMatches>::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    let edit_order = matches
+        .subcommand_matches("edit")
+        .map(commands::edit::TypedOrder::from_matches)
+        .unwrap_or_default();
 
     // Console verbosity comes from the -v count, never from settings.json5.
     // The CLI is user-facing, so its terminal output stays quiet by default
@@ -189,7 +200,7 @@ async fn main() {
     let exit_code = match cli.command {
         Some(Commands::Scan(ref args)) => commands::scan::run(&ctx, args),
         Some(Commands::Debug(ref args)) => commands::debug::run(&ctx, args),
-        Some(Commands::Edit(ref args)) => commands::edit::run(&ctx, args),
+        Some(Commands::Edit(ref args)) => commands::edit::run_as_typed(&ctx, args, &edit_order),
         Some(Commands::Rule(ref args)) => commands::rule::run(&ctx, args),
         Some(Commands::Watch(ref args)) => commands::watch::run(&ctx, args).await,
         Some(Commands::Lookup(ref args)) => commands::lookup::run(&ctx, args),
