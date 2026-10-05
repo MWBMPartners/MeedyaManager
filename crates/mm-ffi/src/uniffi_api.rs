@@ -1249,6 +1249,42 @@ mod tests {
         );
     }
 
+    /// The stand-in review of round 6, N7: a refused write's message says
+    /// "Metadata error:" once. Reproduced with the library built from
+    /// `49cec29`: the C API answered "Metadata error: Could not save the
+    /// changes to '…': Metadata error: cannot set 'language': …".
+    #[test]
+    fn c_api_refusal_says_metadata_error_once() {
+        use std::ffi::{CStr, CString};
+
+        let guard = ConfigDirGuard::new("capilabelonce");
+        let path = copy_core_fixture("silence.mp3", guard.path());
+        let c_path = CString::new(path.display().to_string()).unwrap();
+        let c_json = CString::new(r#"[{"key":"language","value":"not a language"}]"#).unwrap();
+        // SAFETY: both arguments are valid, zero-terminated C strings that
+        // outlive the call, and the answer is freed exactly once below with
+        // the library's own `mm_ffi_free_string`.
+        let answer = unsafe {
+            let ptr = crate::capi::mm_ffi_write_metadata(c_path.as_ptr(), c_json.as_ptr());
+            let text = CStr::from_ptr(ptr).to_str().unwrap().to_string();
+            crate::capi::mm_ffi_free_string(ptr.cast_mut());
+            text
+        };
+        let json: serde_json::Value = serde_json::from_str(&answer).unwrap();
+        let error = json["error"]
+            .as_str()
+            .unwrap_or_else(|| panic!("must be refused: {answer}"));
+        assert_eq!(
+            error.matches("Metadata error:").count(),
+            1,
+            "the label once: {error}"
+        );
+        assert!(
+            error.contains("'not a language' is not a language"),
+            "{error}"
+        );
+    }
+
     /// The other half of the same rule: a value LANG-002 DOES recognise —
     /// here, an old three-letter code — must be accepted and converted, not
     /// merely tolerated.

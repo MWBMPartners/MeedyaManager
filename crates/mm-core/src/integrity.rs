@@ -273,7 +273,7 @@ pub fn mutate_file_safe(
         // an EARLIER edit made — a damaged copy gave "Cannot read tags from
         // '<your file>'" while the file itself was fine. The message now
         // says "in its Test Mode copy" in exactly that case.
-        let reason = name_the_real_file(&e.to_string(), &plan.target, path);
+        let reason = name_the_real_file(&plain_reason(&e), &plan.target, path);
         return failure(
             path,
             sha256_before,
@@ -584,9 +584,28 @@ fn could_not_save_in(path: &Path, in_earlier_copy: bool, reason: &str) -> String
 pub fn check_save(path: &Path, check: impl FnOnce(&Path) -> MmResult<()>) -> Result<(), String> {
     let target = where_a_save_starts(path);
     check(&target).map_err(|e| {
-        let reason = name_the_real_file(&e.to_string(), &target, path);
+        let reason = name_the_real_file(&plain_reason(&e), &target, path);
         could_not_save_in(path, target != path, &reason)
     })
+}
+
+/// What went wrong, for a message that already begins "Could not save the
+/// changes to …": a metadata refusal's own words, without the "Metadata
+/// error:" label its type adds; any other error as it describes itself.
+///
+/// Why (the stand-in review of round 6, N7): the C API and UniFFI wrap a
+/// failed save's whole message in their own metadata error, which adds the
+/// same label again — reproduced with the library built from `49cec29`: a
+/// refused language gave "Metadata error: Could not save the changes to
+/// '…': Metadata error: cannot set 'language': …". The label is this
+/// crate's own sorting of errors, not something a person reading the
+/// message needs, so it is dropped here and said at most once, by the
+/// caller that adds it.
+fn plain_reason(e: &MmError) -> String {
+    match e {
+        MmError::Metadata(message) => message.clone(),
+        other => other.to_string(),
+    }
 }
 
 /// `message` with every mention of `working_copy` — its full path, and
