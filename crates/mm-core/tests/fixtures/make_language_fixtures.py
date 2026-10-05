@@ -3,13 +3,13 @@
 #
 # MeedyaManager — crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
-# Builds twelve language test files from the committed `silence.wav`,
+# Builds fourteen language test files from the committed `silence.wav`,
 # `silence.flac`, `silence.mp3` and `riff_language.wav`, using nothing but
 # Python's standard library. (Three since the third review round; two more
 # added for the fourth; four more for Codex's catch-up review of the whole
-# language-policy branch; two more for the stand-in review of round 6 — see
-# "The fixtures" at the bottom for what each one is for.) Run it from
-# anywhere:
+# language-policy branch; two more for the stand-in review of round 6; two
+# more for the stand-in review of round 7 — see "The fixtures" at the bottom
+# for what each one is for.) Run it from anywhere:
 #
 #     python3 crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
@@ -318,6 +318,39 @@ def main() -> None:
                 if not (cid == b"LIST" and payload[:4] == b"INFO")
             ]
             + [(b"LIST", b"INFO" + _chunk(b"INAM", b"Song") + _chunk(b"ILNG", b"fre"))]
+        ),
+        # The stand-in review of round 7, L1: RIFF INFO entries that hold
+        # no text at all — a comment of no bytes and a genre of a single
+        # zero byte — beside a title and a language. The tag library reads
+        # each as empty text and leaves it out when it writes the list back,
+        # which loses nothing anyone could read, so a language save must go
+        # ahead. Built without `riff_info`, which always adds a zero byte.
+        "lang_riff_empty_entries.wav": _wav_from_chunks(
+            [
+                (cid, payload)
+                for cid, payload in _wav_chunks((HERE / "silence.wav").read_bytes())
+                if not (cid == b"LIST" and payload[:4] == b"INFO")
+            ]
+            + [
+                (
+                    b"LIST",
+                    b"INFO"
+                    + _chunk(b"INAM", b"Song\x00")
+                    + _chunk(b"ICMT", b"")
+                    + _chunk(b"IGNR", b"\x00")
+                    + _chunk(b"ILNG", b"fre\x00"),
+                )
+            ]
+        ),
+        # The stand-in review of round 7, L1: the track number held twice,
+        # as `IPRT` and as `ITRK`. The tag library reads both as the track
+        # number but writes it back as `IPRT` only, so a language save would
+        # turn `ITRK` into a second `IPRT` — refused, saying exactly that.
+        # Setting the track number itself must leave one `IPRT` holding it.
+        "lang_riff_track_itrk.wav": wav_with(
+            HERE / "silence.wav",
+            [("IPRT", "3"), ("ITRK", "3"), ("ILNG", "fre")],
+            None,
         ),
         # Issue #259, and a consequence of finding 1's fix: a WAV with TWO
         # LIST INFO chunks — the first holding only the software name, the

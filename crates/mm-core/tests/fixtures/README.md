@@ -66,6 +66,13 @@ that added the files).
 | `lang_riff_artist_title_latin1.wav` | `silence.wav` with RIFF INFO `IART` = `Someone` (UTF-8), `INAM` = "Café" in Latin-1 (`43 61 66 E9`) and `ILNG` = `fre` | Every save of a WAV, not only a language save, must keep the entries it was not asked to change: removing the artist would lose the title, so it is refused; removing the title (the entry the tag library cannot read) removes it and keeps the artist and the language exactly |
 | `lang_riff_fre_no_final_zero.wav` | `silence.wav` with RIFF INFO `INAM` = `Song` and `ILNG` = `fre`, both UTF-8 and both written with no zero byte at the end, as some tools write them | L2: the tag library rewrites each with its zero byte added, which loses nothing, so a language save goes ahead |
 
+### Files for the stand-in review of round 7
+
+| File | What is in it | Used for |
+|------|---------------|----------|
+| `lang_riff_empty_entries.wav` | `silence.wav` with RIFF INFO `INAM` = `Song`, an `ICMT` of no bytes at all, an `IGNR` of a single zero byte, and `ILNG` = `fre` | L1: the tag library reads the two empty entries as empty text and leaves them out when it writes the list back. That loses nothing anyone could read, so a language save goes ahead |
+| `lang_riff_track_itrk.wav` | `silence.wav` with RIFF INFO `IPRT` = `3`, `ITRK` = `3` and `ILNG` = `fre` | L1: the tag library reads both `IPRT` and `ITRK` as the track number but writes it back as `IPRT` only, so a language save would turn `ITRK` into a second `IPRT`; it is refused, saying exactly that. Setting the track number itself leaves one `IPRT` holding the new number (M1) |
+
 Total size is well under 1 MB (~28 KB as of writing). Do not replace these
 with larger or non-silent audio — the tests only need parseable tag
 containers, not audible content.

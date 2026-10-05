@@ -2181,6 +2181,82 @@ fn a_wav_entry_with_no_final_zero_byte_does_not_stop_a_save() {
     );
 }
 
+/// The stand-in review of round 7, L1: a WAV whose RIFF INFO list holds a
+/// comment of no bytes and a genre of one zero byte. Reproduced with the
+/// `meedya` binary built from `e4db8f8` on such files: `--set language=en`
+/// was refused, saying the tag library "cannot read" the comment as it is
+/// stored — untrue: it reads it as empty text and, writing the list back,
+/// leaves it out. That loses nothing anyone could read, so the save goes
+/// ahead: the empty entries are gone, the title comes through byte for byte
+/// and `ILNG` holds "en".
+#[test]
+fn a_wav_entry_holding_no_text_does_not_stop_a_save() {
+    let _guard = ConfigDirGuard::new();
+    let (_dir, path) = copy_fixture("lang_riff_empty_entries.wav");
+    assert_eq!(
+        raw_riff_info_entries(&path),
+        vec![
+            ("INAM".to_string(), b"Song\0".to_vec()),
+            ("ICMT".to_string(), Vec::new()),
+            ("IGNR".to_string(), b"\0".to_vec()),
+            ("ILNG".to_string(), b"fre\0".to_vec()),
+        ],
+        "fixture sanity check"
+    );
+
+    let result = write_tags_safe(&path, &build_tags(&[(TAG_LANGUAGE, "en")]));
+    assert!(result.success, "nothing is lost: {:?}", result.error);
+    assert_eq!(
+        raw_riff_info_entries(&path),
+        vec![
+            ("INAM".to_string(), b"Song\0".to_vec()),
+            ("ILNG".to_string(), b"en\0".to_vec()),
+        ],
+        "the empty entries left out; the title as it was; the language as asked"
+    );
+}
+
+/// The stand-in review of round 7, L1: a WAV holding the track number
+/// twice, as `IPRT` and `ITRK`. The tag library reads both as the track
+/// number and writes it back as `IPRT` only, so a language save would turn
+/// `ITRK` into a second `IPRT`. Reproduced with the `meedya` binary built
+/// from `e4db8f8`: refused, but saying the tag library "cannot read" `ITRK`
+/// — untrue. The refusal now says what would really happen, and the file is
+/// left as it was. Setting the track number itself (M1) leaves exactly one
+/// `IPRT` holding the new number, and no `ITRK`.
+#[test]
+fn a_wav_track_number_held_as_itrk_is_refused_with_the_true_reason() {
+    let _guard = ConfigDirGuard::new();
+    let (dir, path) = copy_fixture("lang_riff_track_itrk.wav");
+    let before = fs::read(&path).unwrap();
+    let result = write_tags_safe(&path, &build_tags(&[(TAG_LANGUAGE, "en")]));
+    assert!(!result.success, "must be refused");
+    let message = result.error.unwrap_or_default();
+    assert!(
+        message
+            .contains("write the track number (ITRK) back as an entry with a different id (IPRT)"),
+        "{message:?}"
+    );
+    assert!(!message.contains("cannot read"), "{message:?}");
+    assert_eq!(fs::read(&path).unwrap(), before, "the file untouched");
+    assert_eq!(
+        file_names_in(dir.path()),
+        vec!["lang_riff_track_itrk.wav".to_string()],
+        "no temporary file left"
+    );
+
+    let result = write_tags_safe(&path, &build_tags(&[(TAG_TRACK_NUMBER, "5")]));
+    assert!(result.success, "set the track number: {:?}", result.error);
+    assert_eq!(
+        raw_riff_info_entries(&path),
+        vec![
+            ("ILNG".to_string(), b"fre\0".to_vec()),
+            ("IPRT".to_string(), b"5\0".to_vec()),
+        ],
+        "one IPRT holding the new number; ITRK gone; the language as it was"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Several languages in ONE stored string (Codex's catch-up review, finding 4)
 // ---------------------------------------------------------------------------
