@@ -691,6 +691,41 @@ mod tests {
         );
     }
 
+    /// The stand-in review of round 6 (L3, its planted fault F4a): rule
+    /// CONDITIONS split a stored value at its zero characters, as an APE
+    /// item keeps several languages in one string. Nothing tested that on
+    /// its own — the reviewer changed `stored_language_forms` to use the
+    /// values unsplit and every rule-engine test still passed (the existing
+    /// split tests covered templates). Given `"eng\u{0}fra"` unsplit: while
+    /// building a path, only the first language, English, counts, so
+    /// `Matches "fra"` must not match; otherwise each language is tried on
+    /// its own, so `Matches "^fra$"` must.
+    #[test]
+    fn language_conditions_split_one_stored_string_holding_two_languages() {
+        let unsplit = ["eng\u{0}fra"];
+        assert!(
+            !evaluate_on(
+                &unsplit,
+                true,
+                &language_condition(ConditionOp::Matches, "fra")
+            ),
+            "building a path from the first language: French must not match"
+        );
+        assert!(evaluate_on(
+            &unsplit,
+            true,
+            &language_condition(ConditionOp::Matches, "^eng$")
+        ));
+        assert!(
+            evaluate_on(
+                &unsplit,
+                false,
+                &language_condition(ConditionOp::Matches, "^fra$")
+            ),
+            "not building a path: the second language is tried on its own"
+        );
+    }
+
     /// Item 6, not building a path: each stored language is tried on its
     /// own, never all of them run together.
     #[test]

@@ -1410,6 +1410,59 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), before, "nothing written");
     }
 
+    /// The stand-in review of round 6 (L3, its planted fault F6b): with Test
+    /// Mode on and a copy an earlier edit made, the write result's note
+    /// must describe the COPY — the file the save changes — not the
+    /// original. The reviewer made `language_write_note` read the original
+    /// and every mm-ffi test still passed. Here the original holds "en-JJ"
+    /// (a region code nobody has registered), so on the original resending
+    /// "en-JJ" is no change and there is nothing to say; after a first Test
+    /// Mode write sets "en", the copy holds "en", so "en-JJ" is a real
+    /// change there and the result must say "JJ" is not on the official
+    /// list. (The same case the command line's
+    /// `in_test_mode_a_note_the_copy_needs_is_not_lost` covers.)
+    #[test]
+    fn write_metadata_note_in_test_mode_describes_the_copy() {
+        let guard = ConfigDirGuard::new("testmodenote");
+        let path = copy_core_fixture("riff_language.wav", guard.path());
+        let mut en_jj = TagMap::new();
+        en_jj.insert("language".to_string(), vec!["en-JJ".to_string()]);
+        metadata::write_tags(&path, &en_jj).expect("setup: en-JJ on the original");
+
+        let write = |value: &str| {
+            write_metadata(
+                path.display().to_string(),
+                vec![TagEntry {
+                    key: "language".to_string(),
+                    value: value.to_string(),
+                    note: None,
+                }],
+            )
+        };
+        mm_core::test_mode::enable().expect("test mode must enable under the isolated config dir");
+        let first = write("en");
+        let second = write("en-JJ");
+        mm_core::test_mode::disable().expect("test mode must disable");
+
+        first.expect("the first write makes the copy");
+        let notes = second
+            .expect("en-JJ is a real language")
+            .notes
+            .expect("a note is due: the copy held en");
+        let note = notes[0].note.as_deref().unwrap_or_default();
+        assert!(
+            note.contains("\"JJ\" is not on the official list"),
+            "{note}"
+        );
+        assert_eq!(
+            metadata::extract_tags(&mm_core::test_mode::test_mode_path(&path))
+                .unwrap()
+                .get("language"),
+            Some(&vec!["en-JJ".to_string()]),
+            "and the copy holds en-JJ"
+        );
+    }
+
     /// The other half of the same rule: a value LANG-002 DOES recognise —
     /// here, an old three-letter code — must be accepted and converted, not
     /// merely tolerated.
