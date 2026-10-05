@@ -330,7 +330,7 @@ impl std::fmt::Display for LanguageInputError {
 ///
 /// "Not plainly visible" means: a control character; a format character
 /// (zero-width space and joiners, the byte-order mark, the bidirectional
-/// controls such as U+202E — see [`is_format_character`]); a line or
+/// controls such as U+202E — see the private `is_format_character`); a line or
 /// paragraph separator; and every space other than the ordinary U+0020.
 ///
 /// Why this is wider than control characters (the stand-in review of round
@@ -347,7 +347,7 @@ impl std::fmt::Display for LanguageInputError {
 /// "е" for a Latin "e") — those are plainly visible, just misleading, and
 /// telling them apart would need the whole confusables table. Nor does it
 /// know characters Unicode assigned after the table in
-/// [`is_format_character`] was written.
+/// `is_format_character` was written.
 pub fn show_invisible_characters(input: &str) -> String {
     input
         .chars()
