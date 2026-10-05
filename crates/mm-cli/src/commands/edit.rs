@@ -397,6 +397,52 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
         }
     }
 
+    // -- The checks a save makes before writing anything, run now ---------
+    //
+    // The stand-in review of round 6, M2: a save can refuse from inside —
+    // a WAV whose RIFF INFO list it would damage — and `--dry-run` never
+    // saves, so it said "✓" where the real run refused. Reproduced with the
+    // binary built from `49cec29` on a WAV with a Latin-1 title: `--set
+    // language=en --dry-run` exited 0, the real run exited 2. So the same
+    // check runs here, read-only, for a dry run and a real run alike, and a
+    // refusal is answered exactly as the save would answer it. Only once
+    // everything else is valid: an unknown key is answered on its own.
+    //
+    // What this cannot do: the saves of a real run happen one after
+    // another (the `--set` batch, then each `--remove`), and each check
+    // here reads the file as it is now, before any of them. A save only ever
+    // changes the language entry of a RIFF INFO list or removes entries, so
+    // what one save leaves cannot make a later one lose an entry this check
+    // passed — and each save still runs its own check as well.
+    if failures.is_empty() {
+        if !tags.is_empty()
+            && let Err(reason) = mm_core::integrity::check_save(&args.path, |target| {
+                mm_core::metadata::check_tag_write(target, &tags)
+            })
+        {
+            for (key, value) in &set_pairs {
+                failures.push(EditAction::failed(
+                    "set",
+                    Some(key.clone()),
+                    Some(value.clone()),
+                    reason.clone(),
+                ));
+            }
+        }
+        for key in &remove_keys {
+            if let Err(reason) = mm_core::integrity::check_save(&args.path, |target| {
+                mm_core::metadata::check_tag_removal(target, key)
+            }) {
+                failures.push(EditAction::failed(
+                    "remove",
+                    Some(key.clone()),
+                    None,
+                    reason,
+                ));
+            }
+        }
+    }
+
     if failures.is_empty() {
         Ok(EditPlan {
             tags,
@@ -735,19 +781,47 @@ mod tests {
         assert_eq!(run(&ctx, &args).unwrap(), ExitCode::ERROR);
     }
 
-    /// Dry-run mode succeeds without modifying files
+    /// Dry-run mode succeeds without modifying files — and, since the
+    /// stand-in review of round 6 (M2), answers as the real run would. This
+    /// used to dry-run a `Cargo.toml` and expect success; the real run on
+    /// that file fails ("Cannot read tags"), so the dry run must too. A
+    /// real (WAV) file is used for the success.
     #[test]
     fn edit_dry_run() {
+        let _guard = ConfigDirGuard::new();
         let ctx = test_ctx();
-        let args = EditArgs {
-            path: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+        let dir = tempfile::tempdir().unwrap();
+        let wav = dir.path().join("track.wav");
+        write_wav_fixture(&wav);
+        let before = std::fs::read(&wav).unwrap();
+        let args = |path: PathBuf, dry_run: bool| EditArgs {
+            path,
             set: vec!["artist=Test".to_string()],
             remove: vec!["genre".to_string()],
             cover: None,
             remove_cover: true,
-            dry_run: true,
+            dry_run,
         };
-        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(
+            run(&ctx, &args(wav.clone(), true)).unwrap(),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            std::fs::read(&wav).unwrap(),
+            before,
+            "a dry run writes nothing"
+        );
+
+        let text = dir.path().join("notes.txt");
+        std::fs::write(&text, "not a media file").unwrap();
+        for dry_run in [true, false] {
+            assert_eq!(
+                run(&ctx, &args(text.clone(), dry_run)).unwrap(),
+                ExitCode::PARTIAL,
+                "dry_run={dry_run}: a file with no tags to read is refused either way"
+            );
+        }
+        assert_eq!(std::fs::read(&text).unwrap(), b"not a media file");
     }
 
     /// Invalid set format is handled gracefully
@@ -1604,6 +1678,80 @@ mod tests {
             before,
             "the title must survive: nothing held an artist"
         );
+    }
+
+    /// The stand-in review of round 6, M2: `--dry-run` gives the same answer
+    /// and exit code as the real run when the save would refuse from inside.
+    /// Reproduced with the binary built from `49cec29` on a WAV with a
+    /// Latin-1 title: `--set language=en --dry-run` printed "✓ Set language
+    /// = en" and exited 0; the real run refused and exited 2. Both now
+    /// refuse, exit 2, leave the file as it was, and say exactly what the
+    /// save itself says when it refuses — for a set and for a removal of
+    /// the language.
+    #[test]
+    fn dry_run_predicts_a_wav_refusal_like_the_real_run() {
+        let _guard = ConfigDirGuard::new();
+        let fixture = "lang_riff_fre_title_latin1.wav";
+        // The words after the file's path, which differs from copy to copy.
+        let after_path = |message: &str| message.split_once("': ").map(|(_, r)| r.to_string());
+
+        for removing in [false, true] {
+            // What the save itself answers, called directly.
+            let dir = tempfile::tempdir().unwrap();
+            let path = crate::test_support::copy_core_fixture(fixture, dir.path());
+            let saved = if removing {
+                mm_core::integrity::remove_tag_safe(&path, "language")
+            } else {
+                let mut tags = mm_core::metadata::TagMap::new();
+                tags.insert("language".to_string(), vec!["en".to_string()]);
+                mm_core::integrity::write_tags_safe(&path, &tags)
+            };
+            assert!(!saved.success, "removing={removing}: the save refuses");
+            let save_says = after_path(&saved.error.unwrap_or_default());
+            assert!(
+                save_says
+                    .as_deref()
+                    .is_some_and(|s| s.contains("the title (INAM)")),
+                "{save_says:?}"
+            );
+
+            for dry_run in [true, false] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = crate::test_support::copy_core_fixture(fixture, dir.path());
+                let before = std::fs::read(&path).unwrap();
+                let args = EditArgs {
+                    path: path.clone(),
+                    set: if removing {
+                        vec![]
+                    } else {
+                        vec!["language=en".to_string()]
+                    },
+                    remove: if removing {
+                        vec!["language".to_string()]
+                    } else {
+                        vec![]
+                    },
+                    cover: None,
+                    remove_cover: false,
+                    dry_run,
+                };
+                let Err(actions) = build_plan(&args) else {
+                    panic!("removing={removing} dry_run={dry_run}: must be refused");
+                };
+                assert_eq!(actions.len(), 1, "{actions:?}");
+                assert_eq!(
+                    after_path(actions[0].error.as_deref().unwrap_or_default()),
+                    save_says,
+                    "removing={removing} dry_run={dry_run}: the save's own words"
+                );
+                assert_eq!(
+                    run(&test_ctx(), &args).unwrap(),
+                    ExitCode::PARTIAL,
+                    "removing={removing} dry_run={dry_run}: exit 2"
+                );
+                assert_eq!(std::fs::read(&path).unwrap(), before, "file untouched");
+            }
+        }
     }
 
     /// The companion case: an action with no note produces exactly one

@@ -544,7 +544,14 @@ fn could_not_save(path: &Path, reason: &str) -> String {
 /// A copy made by THIS save is a fresh copy of the original, so a fault
 /// there is a fault in the original, and the ordinary wording is right.
 fn could_not_save_working_on(path: &Path, plan: &MutationTarget, reason: &str) -> String {
-    if plan.is_test_mode_copy && !plan.created_here {
+    could_not_save_in(path, plan.is_test_mode_copy && !plan.created_here, reason)
+}
+
+/// [`could_not_save`], saying "in its Test Mode copy" when `in_earlier_copy`
+/// — shared by a real save ([`could_not_save_working_on`]) and a preview
+/// ([`check_save`]), so the two say a refusal in the same words.
+fn could_not_save_in(path: &Path, in_earlier_copy: bool, reason: &str) -> String {
+    if in_earlier_copy {
         format!(
             "Could not save the changes to '{}' in its Test Mode copy: {reason}",
             path.display()
@@ -552,6 +559,34 @@ fn could_not_save_working_on(path: &Path, plan: &MutationTarget, reason: &str) -
     } else {
         could_not_save(path, reason)
     }
+}
+
+/// What a guarded save of `path` would answer if `check` refuses.
+///
+/// `check` is a read-only form of a check the save itself makes before it
+/// writes anything, such as `metadata::check_tag_write`. A refusal is given
+/// as the same message, in the same words, naming the person's own file.
+/// `check` is run on the file the save would start from
+/// ([`where_a_save_starts`]: the Test Mode copy an earlier edit made, when
+/// there is one).
+///
+/// Why (the stand-in review of round 6, M2): `meedya edit --dry-run` must
+/// give the same answer, and the same exit code, as the real run, and a
+/// real run can be refused by a check inside the save — a WAV whose RIFF
+/// INFO list it would damage. Nothing is written, logged as a failure, or
+/// added to the corruption log: nothing failed.
+///
+/// What it cannot do: anything `check` does not check (see the check's own
+/// documentation).
+///
+/// # Errors
+/// The message the real save would give.
+pub fn check_save(path: &Path, check: impl FnOnce(&Path) -> MmResult<()>) -> Result<(), String> {
+    let target = where_a_save_starts(path);
+    check(&target).map_err(|e| {
+        let reason = name_the_real_file(&e.to_string(), &target, path);
+        could_not_save_in(path, target != path, &reason)
+    })
 }
 
 /// `message` with every mention of `working_copy` — its full path, and

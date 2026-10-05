@@ -423,7 +423,8 @@ meedya edit <PATH> [OPTIONS]
 > its older RIFF INFO tag section — changing its language, or removing a field that section holds —
 > is refused when that section holds text MeedyaManager cannot read as it is stored (a title saved
 > by an old Windows program in its own character set, say): the message names what would be lost,
-> and the file is left exactly as it was. Any other difference to that section is refused too,
+> and the file is left exactly as it was — `--dry-run` gives the same answer and exit code, because
+> it runs the same check without writing. Any other difference to that section is refused too,
 > named as an entry that "would be rewritten with different bytes" — with one exception: an entry
 > another program wrote without a zero byte at its end is written back with one, which changes
 > nothing anyone can read, so that alone does not stop a save. When Test Mode redirects a write, JSON output

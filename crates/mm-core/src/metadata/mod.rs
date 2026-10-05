@@ -954,87 +954,11 @@ fn get_or_create_primary_tag(tagged_file: &mut lofty::file::TaggedFile) -> &mut 
 /// [`language::parse_language_input`]) — refused before any key is
 /// written, for the same all-or-nothing reason as an unknown key.
 pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
-    // -- Validate every key BEFORE touching the file (issue #206) ----------
-    //
-    // A key with no `ItemKey` mapping cannot be persisted by any tag format
-    // we support.  Previously such keys were dropped inside the write loop,
-    // so `meedya edit --set bogus=1` reported "✓ Set" having changed nothing.
-    // Rejecting up-front also makes the write all-or-nothing: on a bad key we
-    // never open the file, so the caller's other keys are not half-applied.
-    let mut unknown: Vec<&str> = tags
-        .keys()
-        .filter(|key| mm_key_to_item_key(key).is_none())
-        .map(String::as_str)
-        .collect();
-    if !unknown.is_empty() {
-        // TagMap is a HashMap, so its iteration order is randomised per
-        // process — sort so the message is reproducible in logs and tests.
-        unknown.sort_unstable();
-        return Err(unknown_tag_key_error(&unknown));
-    }
-
-    // Open and read the existing file so we can preserve its tags. This is
-    // read-only until `tag.save_to_path` at the very end — nothing on disk
-    // changes if a check below returns an error first, same all-or-nothing
-    // guarantee as the unknown-key check above, just necessarily reached a
-    // little later because the COMPAT-030 comparison just below needs to
-    // see what the file already holds before it can decide anything.
-    let mut tagged_file = open_tagged_file(path)?;
-
-    // -- COMPAT-030: is a supplied `language` value actually NEW? ----------
-    //
-    // `None` means "leave `language` alone" — covers both "the key was
-    // absent from `tags`" and "the key was present but identical to what
-    // is already stored". The comparison is against what extract_tags
-    // would report TODAY, not against what this crate would canonicalise
-    // the input to — the whole point is to leave an untouched value
-    // exactly as it is, including one this crate could never have parsed,
-    // not to decide "close enough".
-    let language_change: Option<LanguageChange> = match tags.get(TAG_LANGUAGE) {
-        None => None,
-        Some(values) => {
-            let joined = join_multi_value(values);
-            if current_joined_value(&tagged_file, TAG_LANGUAGE).as_deref() == Some(joined.as_str())
-            {
-                None
-            } else if joined.is_empty() {
-                // A genuine change TO empty (clearing the field): no
-                // language to parse, same as any other key.
-                Some(LanguageChange::Clear)
-            } else {
-                let parsed = language::parse_language_input(&joined)
-                    .map_err(|e| MmError::Metadata(format!("cannot set '{TAG_LANGUAGE}': {e}")))?;
-                Some(LanguageChange::Set(Box::new(parsed)))
-            }
-        }
-    };
-
-    // -- Item 5 groundwork: which OTHER tag containers does this file
-    // already have a language value in, besides the primary one? Collected
-    // now, while `tagged_file` is only borrowed immutably, because getting
-    // the primary tag mutably (next line) borrows it exclusively until that
-    // borrow's last use. A file can genuinely carry more than one tag
-    // container at once (a WAV with both a RIFF INFO chunk and an
-    // embedded ID3v2 tag, say) — found and reproduced while this rule was
-    // being reviewed: setting `language` only ever touched the primary
-    // container, leaving a stale, contradicting value in any other one
-    // that already had its own. See the loop after the primary tag is
-    // saved, below.
-    //
-    // `language_write_targets` is the single source of truth for this set
-    // — also used by `language::preview_conversion_note` so a caller
-    // previewing `--set language=...` (including on `--dry-run`, before
-    // any write happens) sees a note that describes EXACTLY what this
-    // function is actually about to do, never a guess based on the
-    // primary container alone (review item 4 of the second language-
-    // policy review round: the note used to describe a plan, not what
-    // `write_tags` would really do to a file with more than one
-    // container).
-    let primary_type = tagged_file.primary_tag_type();
-    let other_tag_types: Vec<TagType> = language_write_targets(&tagged_file)
-        .into_iter()
-        .filter(|tt| *tt != primary_type)
-        .collect();
+    let TagWritePlan {
+        mut tagged_file,
+        language_change,
+        other_tag_types,
+    } = TagWritePlan::new(path, tags)?;
 
     // -- Codex's catch-up review, finding 1 (every save since the stand-in
     // review of round 6): a WAV must lose nothing from its RIFF INFO list.
@@ -1044,13 +968,9 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     // completely as it was — which matters for a Test Mode copy an earlier
     // edit made, which `integrity::mutate_file_safe` keeps rather than
     // deletes on failure — and checked again after the last save, against
-    // what is really on disk. See `RiffInfoGuard`.
-    let riff_change = match &language_change {
-        Some(change) if other_tag_types.contains(&TagType::RiffInfo) => {
-            RiffChange::Language(change)
-        }
-        _ => RiffChange::Untouched,
-    };
+    // what is really on disk. See `RiffInfoGuard`. [`check_tag_write`] runs
+    // exactly this check, for a preview.
+    let riff_change = riff_change_for_write(language_change.as_ref(), &other_tag_types);
     let riff_guard = RiffInfoGuard::before_saving(path, &tagged_file, &riff_change)?;
 
     // Get (or create) the primary tag for this file format
@@ -1138,6 +1058,158 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
         guard.after_saving(path)?;
     }
 
+    Ok(())
+}
+
+/// Everything [`write_tags`] works out before it changes anything: the
+/// keys are known, the file is read, whether `language` really changes
+/// (COMPAT-030), and which other containers hold a language. Shared with
+/// [`check_tag_write`], so a preview and the save it predicts work from the
+/// same answers (the stand-in review of round 6, M2).
+struct TagWritePlan {
+    /// The file as read, to be changed in memory and saved.
+    tagged_file: lofty::file::TaggedFile,
+    /// What `language` is really asked to do; `None` leaves it alone.
+    language_change: Option<LanguageChange>,
+    /// The containers other than the primary that hold a language.
+    other_tag_types: Vec<TagType>,
+}
+
+impl TagWritePlan {
+    /// Validate `tags` and read `path` — nothing is written.
+    fn new(path: &Path, tags: &TagMap) -> MmResult<Self> {
+        // -- Validate every key BEFORE touching the file (issue #206) ----------
+        //
+        // A key with no `ItemKey` mapping cannot be persisted by any tag format
+        // we support.  Previously such keys were dropped inside the write loop,
+        // so `meedya edit --set bogus=1` reported "✓ Set" having changed nothing.
+        // Rejecting up-front also makes the write all-or-nothing: on a bad key we
+        // never open the file, so the caller's other keys are not half-applied.
+        let mut unknown: Vec<&str> = tags
+            .keys()
+            .filter(|key| mm_key_to_item_key(key).is_none())
+            .map(String::as_str)
+            .collect();
+        if !unknown.is_empty() {
+            // TagMap is a HashMap, so its iteration order is randomised per
+            // process — sort so the message is reproducible in logs and tests.
+            unknown.sort_unstable();
+            return Err(unknown_tag_key_error(&unknown));
+        }
+
+        // Open and read the existing file so we can preserve its tags. This is
+        // read-only until `tag.save_to_path` at the very end — nothing on disk
+        // changes if a check below returns an error first, same all-or-nothing
+        // guarantee as the unknown-key check above, just necessarily reached a
+        // little later because the COMPAT-030 comparison just below needs to
+        // see what the file already holds before it can decide anything.
+        let tagged_file = open_tagged_file(path)?;
+
+        // -- COMPAT-030: is a supplied `language` value actually NEW? ----------
+        //
+        // `None` means "leave `language` alone" — covers both "the key was
+        // absent from `tags`" and "the key was present but identical to what
+        // is already stored". The comparison is against what extract_tags
+        // would report TODAY, not against what this crate would canonicalise
+        // the input to — the whole point is to leave an untouched value
+        // exactly as it is, including one this crate could never have parsed,
+        // not to decide "close enough".
+        let language_change: Option<LanguageChange> = match tags.get(TAG_LANGUAGE) {
+            None => None,
+            Some(values) => {
+                let joined = join_multi_value(values);
+                if current_joined_value(&tagged_file, TAG_LANGUAGE).as_deref()
+                    == Some(joined.as_str())
+                {
+                    None
+                } else if joined.is_empty() {
+                    // A genuine change TO empty (clearing the field): no
+                    // language to parse, same as any other key.
+                    Some(LanguageChange::Clear)
+                } else {
+                    let parsed = language::parse_language_input(&joined).map_err(|e| {
+                        MmError::Metadata(format!("cannot set '{TAG_LANGUAGE}': {e}"))
+                    })?;
+                    Some(LanguageChange::Set(Box::new(parsed)))
+                }
+            }
+        };
+
+        // -- Item 5 groundwork: which OTHER tag containers does this file
+        // already have a language value in, besides the primary one? Collected
+        // now, while `tagged_file` is only borrowed immutably, because getting
+        // the primary tag mutably (in `write_tags`) borrows it exclusively
+        // until that borrow's last use. A file can genuinely carry more than one tag
+        // container at once (a WAV with both a RIFF INFO chunk and an
+        // embedded ID3v2 tag, say) — found and reproduced while this rule was
+        // being reviewed: setting `language` only ever touched the primary
+        // container, leaving a stale, contradicting value in any other one
+        // that already had its own. See the loop after the primary tag is
+        // saved, below.
+        //
+        // `language_write_targets` is the single source of truth for this set
+        // — also used by `language::preview_conversion_note` so a caller
+        // previewing `--set language=...` (including on `--dry-run`, before
+        // any write happens) sees a note that describes EXACTLY what this
+        // function is actually about to do, never a guess based on the
+        // primary container alone (review item 4 of the second language-
+        // policy review round: the note used to describe a plan, not what
+        // `write_tags` would really do to a file with more than one
+        // container).
+        let primary_type = tagged_file.primary_tag_type();
+        let other_tag_types: Vec<TagType> = language_write_targets(&tagged_file)
+            .into_iter()
+            .filter(|tt| *tt != primary_type)
+            .collect();
+
+        Ok(Self {
+            tagged_file,
+            language_change,
+            other_tag_types,
+        })
+    }
+}
+
+/// What a [`write_tags`] save does to a WAV's RIFF INFO list: it rewrites it
+/// only when the list holds a language (`other_tag_types` names it) and the
+/// language is really changing.
+fn riff_change_for_write<'a>(
+    language_change: Option<&'a LanguageChange>,
+    other_tag_types: &[TagType],
+) -> RiffChange<'a> {
+    match language_change {
+        Some(change) if other_tag_types.contains(&TagType::RiffInfo) => {
+            RiffChange::Language(change)
+        }
+        _ => RiffChange::Untouched,
+    }
+}
+
+/// A read-only form of the check [`write_tags`] makes before it writes
+/// anything.
+///
+/// Reads `path` and answers `Err` with the same refusal the save would give
+/// — an unknown key, a language nothing recognises, or a WAV whose RIFF
+/// INFO list the save would damage (`RiffInfoGuard`). Writes nothing.
+///
+/// Why it exists (the stand-in review of round 6, M2): `meedya edit
+/// --dry-run` never saves, so it never ran the RIFF INFO check, and said a
+/// change would succeed that the real run refused. Reproduced with the
+/// `meedya` binary built from `49cec29` on a WAV with a Latin-1 title:
+/// `--set language=en --dry-run` printed "✓ Set language = en" and exited 0,
+/// the real run refused it and exited 2.
+///
+/// What it cannot do: predict a failure that only the save itself meets — a
+/// full disk, a file another program changes in between, or what the check
+/// AFTER saving finds. It answers "would the save refuse, as things stand
+/// now", nothing more.
+///
+/// # Errors
+/// The refusal [`write_tags`] would return before saving.
+pub fn check_tag_write(path: &Path, tags: &TagMap) -> MmResult<()> {
+    let plan = TagWritePlan::new(path, tags)?;
+    let riff_change = riff_change_for_write(plan.language_change.as_ref(), &plan.other_tag_types);
+    RiffInfoGuard::before_saving(path, &plan.tagged_file, &riff_change)?;
     Ok(())
 }
 
@@ -1429,6 +1501,89 @@ pub(crate) fn current_joined_value(
     map.get(key).map(|values| join_multi_value(values))
 }
 
+/// Everything [`remove_tag`] works out before it changes anything: the key
+/// is known, the file is read, and which containers hold the field. Shared
+/// with [`check_tag_removal`] (the stand-in review of round 6, M2).
+struct TagRemovalPlan {
+    /// The field being removed.
+    item_key: ItemKey,
+    /// The file as read, to be changed in memory and saved.
+    tagged_file: lofty::file::TaggedFile,
+    /// The containers that hold the field — the only ones rewritten.
+    targets: Vec<TagType>,
+    /// Whether the save rewrites a WAV's RIFF INFO list (or must, and
+    /// cannot — see below).
+    rewrites_riff_info: bool,
+}
+
+impl TagRemovalPlan {
+    /// Validate `key` and read `path` — nothing is written.
+    fn new(path: &Path, key: &str) -> MmResult<Self> {
+        // Reject an unmapped key before any I/O — see `remove_tag`'s doc
+        // comment.
+        let item_key = mm_key_to_item_key(key).ok_or_else(|| unknown_tag_key_error(&[key]))?;
+
+        // Open and read the existing file
+        let tagged_file = open_tagged_file(path)?;
+
+        // Which containers hold the field — only those are rewritten. Codex's
+        // catch-up review, finding 1, made this the rule for `language`; the
+        // stand-in review of round 6 (carry-over 1) found every other field
+        // still rewrote EVERY container, whether or not it held the field — for
+        // a WAV, its whole RIFF INFO list. Reproduced with the `meedya` binary
+        // built from `49cec29`: `--remove artist` on a WAV with no artist at
+        // all, whose RIFF INFO title was Latin-1 "Café", deleted the title and
+        // reported success. Rewriting a container that holds nothing to remove
+        // can only lose something, never gain anything.
+        //
+        // The RIFF INFO list is asked RAW as well as through `lofty`: an entry
+        // `lofty` cannot read (that Latin-1 title, when the title is what is
+        // being removed) is still in the file, so the list must still be
+        // rewritten for the removal to happen.
+        let raw_riff_holds = riff_info::read_info_lists(path)
+            .map_err(MmError::Metadata)?
+            .is_some_and(|lists| lists.entries.iter().any(|e| riff_entry_is(e, &item_key)));
+        let targets: Vec<TagType> = tagged_file
+            .tags()
+            .iter()
+            .filter(|tag| {
+                tag.get_items(&item_key).next().is_some()
+                    || (tag.tag_type() == TagType::RiffInfo && raw_riff_holds)
+            })
+            .map(lofty::tag::Tag::tag_type)
+            .collect();
+
+        // Every save of a WAV must lose nothing else from its RIFF INFO list
+        // (`RiffInfoGuard`). When the list holds the field but `lofty` read
+        // nothing at all from it, it is not among `targets` — and the check
+        // before saving refuses, because the removal cannot be done.
+        let rewrites_riff_info = targets.contains(&TagType::RiffInfo)
+            || (raw_riff_holds && tagged_file.tag(TagType::RiffInfo).is_none());
+        Ok(Self {
+            item_key,
+            tagged_file,
+            targets,
+            rewrites_riff_info,
+        })
+    }
+}
+
+/// A read-only form of the check [`remove_tag`] makes before it writes
+/// anything — see [`check_tag_write`], which is the same for a write.
+///
+/// # Errors
+/// The refusal [`remove_tag`] would return before saving.
+pub fn check_tag_removal(path: &Path, key: &str) -> MmResult<()> {
+    let plan = TagRemovalPlan::new(path, key)?;
+    let riff_change = if plan.rewrites_riff_info {
+        RiffChange::Remove(&plan.item_key)
+    } else {
+        RiffChange::Untouched
+    };
+    RiffInfoGuard::before_saving(path, &plan.tagged_file, &riff_change)?;
+    Ok(())
+}
+
 /// Remove a specific tag field from the file at `path`.
 ///
 /// The `key` must be one of the `TAG_*` constants (see [`known_tag_keys`]).
@@ -1441,46 +1596,17 @@ pub(crate) fn current_joined_value(
 /// Returns `MmError::Metadata` if `key` has no `ItemKey` mapping, or if the
 /// file cannot be opened, read, or saved.
 pub fn remove_tag(path: &Path, key: &str) -> MmResult<()> {
-    // Reject an unmapped key before any I/O — see the doc comment above.
-    let item_key = mm_key_to_item_key(key).ok_or_else(|| unknown_tag_key_error(&[key]))?;
-
-    // Open and read the existing file
-    let mut tagged_file = open_tagged_file(path)?;
-
-    // Which containers hold the field — only those are rewritten. Codex's
-    // catch-up review, finding 1, made this the rule for `language`; the
-    // stand-in review of round 6 (carry-over 1) found every other field
-    // still rewrote EVERY container, whether or not it held the field — for
-    // a WAV, its whole RIFF INFO list. Reproduced with the `meedya` binary
-    // built from `49cec29`: `--remove artist` on a WAV with no artist at
-    // all, whose RIFF INFO title was Latin-1 "Café", deleted the title and
-    // reported success. Rewriting a container that holds nothing to remove
-    // can only lose something, never gain anything.
-    //
-    // The RIFF INFO list is asked RAW as well as through `lofty`: an entry
-    // `lofty` cannot read (that Latin-1 title, when the title is what is
-    // being removed) is still in the file, so the list must still be
-    // rewritten for the removal to happen.
-    let raw_riff_holds = riff_info::read_info_lists(path)
-        .map_err(MmError::Metadata)?
-        .is_some_and(|lists| lists.entries.iter().any(|e| riff_entry_is(e, &item_key)));
-    let targets: Vec<TagType> = tagged_file
-        .tags()
-        .iter()
-        .filter(|tag| {
-            tag.get_items(&item_key).next().is_some()
-                || (tag.tag_type() == TagType::RiffInfo && raw_riff_holds)
-        })
-        .map(lofty::tag::Tag::tag_type)
-        .collect();
+    let TagRemovalPlan {
+        item_key,
+        mut tagged_file,
+        targets,
+        rewrites_riff_info,
+    } = TagRemovalPlan::new(path, key)?;
 
     // Every save of a WAV must lose nothing else from its RIFF INFO list
-    // (`RiffInfoGuard`). When the list holds the field but `lofty` read
-    // nothing at all from it, it is not among `targets` — and the check
-    // before saving refuses, because the removal cannot be done.
-    let riff_change = if targets.contains(&TagType::RiffInfo)
-        || (raw_riff_holds && tagged_file.tag(TagType::RiffInfo).is_none())
-    {
+    // (`RiffInfoGuard`). [`check_tag_removal`] runs exactly this check, for a
+    // preview.
+    let riff_change = if rewrites_riff_info {
         RiffChange::Remove(&item_key)
     } else {
         RiffChange::Untouched
