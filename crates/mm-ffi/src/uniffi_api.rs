@@ -1428,6 +1428,43 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), before, "nothing written");
     }
 
+    /// The stand-in review of round 7, M1, through the C API (the Windows
+    /// app's way in). Reproduced with the library built from `e4db8f8` on a
+    /// WAV whose RIFF INFO list holds the title "Café" (all UTF-8):
+    /// `[{"key":"title","value":"New"}]` answered `{"ok":true}` and left
+    /// "Café" in the list beside the new ID3 title (ffprobe showed both);
+    /// `[{"key":"title","value":""}]` answered `{"ok":true}` and changed
+    /// nothing. The list now holds exactly what was asked, so the file
+    /// reads back as one title, or none.
+    #[test]
+    fn c_api_setting_or_clearing_a_title_a_wav_list_holds_changes_it_there_too() {
+        use std::ffi::{CStr, CString};
+
+        let guard = ConfigDirGuard::new("capiriffset");
+        for (value, expected) in [("New", Some(vec!["New".to_string()])), ("", None)] {
+            let path = copy_core_fixture("lang_riff_fre_all_utf8.wav", guard.path());
+            let c_path = CString::new(path.display().to_string()).unwrap();
+            let c_json = CString::new(format!(r#"[{{"key":"title","value":"{value}"}}]"#)).unwrap();
+            // SAFETY: both arguments are valid, zero-terminated C strings
+            // that outlive the call, and the answer is freed exactly once
+            // below with the library's own `mm_ffi_free_string`.
+            let answer = unsafe {
+                let ptr = crate::capi::mm_ffi_write_metadata(c_path.as_ptr(), c_json.as_ptr());
+                let text = CStr::from_ptr(ptr).to_str().unwrap().to_string();
+                crate::capi::mm_ffi_free_string(ptr.cast_mut());
+                text
+            };
+            assert_eq!(answer, r#"{"ok":true}"#, "title={value:?}");
+            let tags = metadata::extract_tags(&path).unwrap();
+            assert_eq!(
+                tags.get("title"),
+                expected.as_ref(),
+                "title={value:?}: the title the file holds afterwards"
+            );
+            std::fs::remove_file(&path).unwrap();
+        }
+    }
+
     /// The stand-in review of round 6 (L3, its planted fault F6b): with Test
     /// Mode on and a copy an earlier edit made, the write result's note
     /// must describe the COPY — the file the save changes — not the

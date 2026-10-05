@@ -958,19 +958,25 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
         mut tagged_file,
         language_change,
         other_tag_types,
+        riff_entries,
     } = TagWritePlan::new(path, tags)?;
 
     // -- Codex's catch-up review, finding 1 (every save since the stand-in
     // review of round 6): a WAV must lose nothing from its RIFF INFO list.
-    // This save rewrites that list only when it holds a language and the
-    // language is changing; every other field is written into the WAV's ID3
-    // tag. Checked here, BEFORE the first save, so a refusal leaves the file
-    // completely as it was — which matters for a Test Mode copy an earlier
-    // edit made, which `integrity::mutate_file_safe` keeps rather than
-    // deletes on failure — and checked again after the last save, against
-    // what is really on disk. See `RiffInfoGuard`. [`check_tag_write`] runs
-    // exactly this check, for a preview.
-    let riff_change = riff_change_for_write(language_change.as_ref(), &other_tag_types);
+    // Since the stand-in review of round 7 (M1), that list also holds
+    // exactly what was asked for every field this save sets or clears: a
+    // field the list already holds (the title in `INAM`, say) is changed
+    // there too, the way a language always was. It used to be written into
+    // the WAV's ID3 tag only, so the list kept the old value beside it.
+    // Every other field still goes into the ID3 tag alone. Checked here,
+    // BEFORE the first save, so a refusal leaves the file completely as it
+    // was — which matters for a Test Mode copy an earlier edit made, which
+    // `integrity::mutate_file_safe` keeps rather than deletes on failure —
+    // and checked again after the last save, against what is really on
+    // disk. See `RiffInfoGuard`. [`check_tag_write`] runs exactly this
+    // check, for a preview.
+    let riff_change =
+        riff_change_for_write(tags, language_change.as_ref(), riff_entries.as_deref());
     let riff_guard = RiffInfoGuard::before_saving(path, &tagged_file, &riff_change)?;
 
     // Get (or create) the primary tag for this file format
@@ -1037,21 +1043,24 @@ pub fn write_tags(path: &Path, tags: &TagMap) -> MmResult<()> {
     // the two to have drifted apart in.
     if let Some(change) = &language_change {
         for tag_type in other_tag_types {
+            if tag_type == TagType::RiffInfo {
+                continue; // the RIFF INFO list is saved just below, from `riff_change`
+            }
             let Some(other_tag) = tagged_file.tag_mut(tag_type) else {
                 continue; // the type was listed a moment ago; still defensive
             };
             if other_tag.get_items(&ItemKey::Language).next().is_none() {
                 continue; // never had one — not this fix's job to add or touch one
             }
-            if tag_type == TagType::RiffInfo {
-                // The same description the check before saving worked from.
-                riff_change.apply_to(other_tag);
-            } else {
-                apply_language_change(other_tag, change);
-            }
+            apply_language_change(other_tag, change);
             other_tag.save_to_path(path, WriteOptions::default())?;
         }
     }
+
+    // A WAV's RIFF INFO list: every field it holds that this save sets or
+    // clears, the language included — the same description the check before
+    // saving worked from.
+    save_riff_change(&mut tagged_file, path, &riff_change)?;
 
     // Finding 1, second half: what is really on disk now.
     if let Some(guard) = riff_guard {
@@ -1073,6 +1082,10 @@ struct TagWritePlan {
     language_change: Option<LanguageChange>,
     /// The containers other than the primary that hold a language.
     other_tag_types: Vec<TagType>,
+    /// A WAV's RIFF INFO entries, read raw (`None` for any other kind of
+    /// file) — so a field the list holds is found even when `lofty` cannot
+    /// read its entry (a title written in Latin-1, say).
+    riff_entries: Option<Vec<riff_info::InfoEntry>>,
 }
 
 impl TagWritePlan {
@@ -1162,26 +1175,69 @@ impl TagWritePlan {
             .filter(|tt| *tt != primary_type)
             .collect();
 
+        let riff_entries = riff_info::read_info_lists(path)
+            .map_err(MmError::Metadata)?
+            .map(|lists| lists.entries);
+
         Ok(Self {
             tagged_file,
             language_change,
             other_tag_types,
+            riff_entries,
         })
     }
 }
 
-/// What a [`write_tags`] save does to a WAV's RIFF INFO list: it rewrites it
-/// only when the list holds a language (`other_tag_types` names it) and the
-/// language is really changing.
+/// What a [`write_tags`] save does to a WAV's RIFF INFO list: for every
+/// field in `tags` that the list already holds (`riff_entries`, read raw),
+/// it changes that field's entries — to the new value, or away when the
+/// value is empty (a clear). The language changes only when it is really
+/// changing (`language_change`, COMPAT-030). A field the list does not hold
+/// is left out of it, as a language always was: this keeps what is there
+/// in step, it does not go looking for new places to put a value.
+///
+/// Why every field (the stand-in review of round 7, M1; issue #255 for a
+/// WAV's RIFF INFO list): only the language used to be changed in the list.
+/// Reproduced with the `meedya` binary built from `e4db8f8` on a WAV whose
+/// list held `INAM` "Café": `--set title=New` reported success and left
+/// `INAM` "Café" beside the new ID3 title (ffprobe showed two titles,
+/// `meedya debug` `["Café", "New"]`); `--set title=` reported success and
+/// changed nothing at all. The C API did the same.
 fn riff_change_for_write<'a>(
+    tags: &TagMap,
     language_change: Option<&'a LanguageChange>,
-    other_tag_types: &[TagType],
+    riff_entries: Option<&[riff_info::InfoEntry]>,
 ) -> RiffChange<'a> {
-    match language_change {
-        Some(change) if other_tag_types.contains(&TagType::RiffInfo) => {
-            RiffChange::Language(change)
+    let Some(entries) = riff_entries else {
+        return RiffChange::Untouched;
+    };
+    // Sorted, because `TagMap` is a `HashMap` whose order changes from run
+    // to run: the same command must always describe the same change.
+    let mut keys: Vec<&String> = tags.keys().collect();
+    keys.sort();
+    let mut fields: Vec<RiffFieldWrite<'a>> = Vec::new();
+    for key in keys {
+        let Some(item_key) = mm_key_to_item_key(key) else {
+            continue; // refused before this is reached; never written
+        };
+        if !entries.iter().any(|entry| riff_entry_is(entry, &item_key)) {
+            continue; // the list does not hold this field
         }
-        _ => RiffChange::Untouched,
+        if key == TAG_LANGUAGE {
+            if let Some(change) = language_change {
+                fields.push(RiffFieldWrite::Language(change));
+            }
+        } else {
+            fields.push(RiffFieldWrite::Text {
+                item_key,
+                value: join_multi_value(&tags[key]),
+            });
+        }
+    }
+    if fields.is_empty() {
+        RiffChange::Untouched
+    } else {
+        RiffChange::Write(fields)
     }
 }
 
@@ -1208,7 +1264,11 @@ fn riff_change_for_write<'a>(
 /// The refusal [`write_tags`] would return before saving.
 pub fn check_tag_write(path: &Path, tags: &TagMap) -> MmResult<()> {
     let plan = TagWritePlan::new(path, tags)?;
-    let riff_change = riff_change_for_write(plan.language_change.as_ref(), &plan.other_tag_types);
+    let riff_change = riff_change_for_write(
+        tags,
+        plan.language_change.as_ref(),
+        plan.riff_entries.as_deref(),
+    );
     RiffInfoGuard::before_saving(path, &plan.tagged_file, &riff_change)?;
     Ok(())
 }
@@ -1235,15 +1295,28 @@ fn apply_language_change(tag: &mut Tag, change: &LanguageChange) {
 /// checked can never drift from what is saved.
 enum RiffChange<'a> {
     /// The save does not rewrite the RIFF INFO list at all: it writes only
-    /// the WAV's ID3 tag (any field other than a language the list already
-    /// holds, and cover art), or nothing.
+    /// the WAV's ID3 tag (a field the list does not hold, and cover art), or
+    /// nothing.
     Untouched,
-    /// The list's language entry changes (`write_tags`, when the list
-    /// already holds a language and the language is changing).
-    Language(&'a LanguageChange),
+    /// The entries of these fields change (`write_tags`, for each field it
+    /// sets or clears that the list already holds — see
+    /// [`riff_change_for_write`]).
+    Write(Vec<RiffFieldWrite<'a>>),
     /// Every entry for this field is removed (`remove_tag`, when the list
     /// holds the field).
     Remove(&'a ItemKey),
+}
+
+/// One field a [`write_tags`] save changes in a WAV's RIFF INFO list.
+enum RiffFieldWrite<'a> {
+    /// The language, in the list's own TRACK-070 form (the full code).
+    Language(&'a LanguageChange),
+    /// Any other field: every entry `lofty` files under `item_key` is
+    /// replaced by one holding `value` exactly as given — or removed, when
+    /// `value` is empty (the field is being cleared). No other field has a
+    /// different correct form per tag section, so the text the ID3 tag gets
+    /// is the text the list gets.
+    Text { item_key: ItemKey, value: String },
 }
 
 impl RiffChange<'_> {
@@ -1252,10 +1325,124 @@ impl RiffChange<'_> {
     fn apply_to(&self, tag: &mut Tag) {
         match self {
             Self::Untouched => {}
-            Self::Language(change) => apply_language_change(tag, change),
+            Self::Write(fields) => {
+                for field in fields {
+                    match field {
+                        RiffFieldWrite::Language(change) => apply_language_change(tag, change),
+                        RiffFieldWrite::Text { item_key, value } => {
+                            tag.remove_key(item_key);
+                            if !value.is_empty() {
+                                tag.push(TagItem::new(
+                                    item_key.clone(),
+                                    ItemValue::Text(value.clone()),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
             Self::Remove(item_key) => tag.remove_key(item_key),
         }
     }
+
+    /// What each entry this change touches must hold once it is saved, for
+    /// [`RiffInfoGuard`] to check — worked out from the list as it is now
+    /// (`entries`, read raw). Every entry NOT named here must come through
+    /// byte for byte.
+    fn asked(&self, entries: &[riff_info::InfoEntry]) -> riff_info::AskedChanges {
+        // Every entry already in the list that `lofty` files under
+        // `item_key` (`IPRT` and `ITRK` are both the track number), each
+        // id once, expected to be gone.
+        let all_gone = |item_key: &ItemKey| -> riff_info::AskedChanges {
+            let mut asked: riff_info::AskedChanges = Vec::new();
+            for entry in entries {
+                if riff_entry_is(entry, item_key) && !asked.iter().any(|(id, _)| *id == entry.id) {
+                    asked.push((entry.id, riff_info::Expectation::Absent));
+                }
+            }
+            asked
+        };
+        match self {
+            Self::Untouched => Vec::new(),
+            Self::Remove(item_key) => all_gone(item_key),
+            Self::Write(fields) => {
+                let mut asked: riff_info::AskedChanges = Vec::new();
+                for field in fields {
+                    match field {
+                        RiffFieldWrite::Language(LanguageChange::Clear) => {
+                            asked.push((riff_info::LANGUAGE_ID, riff_info::Expectation::Absent));
+                        }
+                        RiffFieldWrite::Language(LanguageChange::Set(parsed)) => {
+                            let value =
+                                language::language_value_for_tag_type(parsed, TagType::RiffInfo);
+                            let expected = if value.is_empty() {
+                                riff_info::Expectation::Absent
+                            } else {
+                                riff_info::Expectation::Holds(value)
+                            };
+                            asked.push((riff_info::LANGUAGE_ID, expected));
+                        }
+                        RiffFieldWrite::Text { item_key, value } => {
+                            let mut field_asked = all_gone(item_key);
+                            // The id `lofty` writes the field under (`IPRT`
+                            // for the track number, never `ITRK`) holds the
+                            // new text, whether or not the list held that
+                            // id before; every other id for the field is
+                            // gone.
+                            let written_as = item_key
+                                .map_key(TagType::RiffInfo, false)
+                                .and_then(|id| <[u8; 4]>::try_from(id.as_bytes()).ok());
+                            if let Some(written_as) = written_as {
+                                field_asked.retain(|(id, _)| *id != written_as);
+                                field_asked.push((
+                                    written_as,
+                                    if value.is_empty() {
+                                        riff_info::Expectation::Absent
+                                    } else {
+                                        riff_info::Expectation::Holds(value.clone())
+                                    },
+                                ));
+                            }
+                            asked.extend(field_asked);
+                        }
+                    }
+                }
+                asked
+            }
+        }
+    }
+}
+
+/// Make `change` to the file's RIFF INFO list and save it — the one place
+/// [`write_tags`] and [`remove_tag`] do so, after
+/// [`RiffInfoGuard::before_saving`] has passed the same change.
+///
+/// When `lofty` read nothing at all from the list (every entry in it is one
+/// it cannot read, such as a title written in Latin-1), it has no RIFF INFO
+/// tag to change, so an empty one is started: `lofty` then writes the list
+/// back holding only what this change put in it. That is safe only because
+/// the check before saving predicted exactly this — from the same empty
+/// start — and refused if anything the save was not asked to change would
+/// be lost; the check after saving proves it on disk.
+fn save_riff_change(
+    tagged_file: &mut lofty::file::TaggedFile,
+    path: &Path,
+    change: &RiffChange<'_>,
+) -> MmResult<()> {
+    if matches!(change, RiffChange::Untouched) {
+        return Ok(());
+    }
+    if tagged_file.tag(TagType::RiffInfo).is_none() {
+        tagged_file.insert_tag(Tag::new(TagType::RiffInfo));
+    }
+    let Some(riff_tag) = tagged_file.tag_mut(TagType::RiffInfo) else {
+        return Err(MmError::Metadata(
+            "the file's RIFF INFO list could not be changed, so the change was refused".to_string(),
+        ));
+    };
+    change.apply_to(riff_tag);
+    riff_tag.save_to_path(path, WriteOptions::default())?;
+    Ok(())
 }
 
 /// Whether one raw RIFF INFO entry is one `lofty` files under `item_key` —
@@ -1279,7 +1466,10 @@ fn riff_entry_is(entry: &riff_info::InfoEntry, item_key: &ItemKey) -> bool {
 /// set, cleared or removed, and the save reported success. Round 6 guarded
 /// those language saves only; with the binary built from `49cec29`,
 /// `--remove artist` (on a file with no artist) and `--remove-cover` still
-/// deleted that title, so every save of a WAV is guarded now.
+/// deleted that title, so every save of a WAV is guarded now. Since the
+/// stand-in review of round 7 (M1), a save that sets or clears a field the
+/// list holds changes that field's entries too ([`RiffChange::Write`]), and
+/// the guard checks each holds exactly the new text, or is gone.
 ///
 /// How: the list is read RAW (id and bytes, nothing decoded, so nothing can
 /// be skipped — see `riff_info`) before anything is saved. Then twice:
@@ -1328,32 +1518,7 @@ impl RiffInfoGuard {
         let Some(lists) = riff_info::read_info_lists(path).map_err(MmError::Metadata)? else {
             return Ok(None);
         };
-        let riff_tag = tagged_file.tag(TagType::RiffInfo);
-        let asked: riff_info::AskedChanges = match change {
-            RiffChange::Untouched => Vec::new(),
-            RiffChange::Language(LanguageChange::Clear) => {
-                vec![(riff_info::LANGUAGE_ID, riff_info::Expectation::Absent)]
-            }
-            RiffChange::Language(LanguageChange::Set(parsed)) => {
-                let value = language::language_value_for_tag_type(parsed, TagType::RiffInfo);
-                let expected = if value.is_empty() {
-                    riff_info::Expectation::Absent
-                } else {
-                    riff_info::Expectation::Holds(value)
-                };
-                vec![(riff_info::LANGUAGE_ID, expected)]
-            }
-            RiffChange::Remove(item_key) => {
-                let mut ids: riff_info::AskedChanges = Vec::new();
-                for entry in &lists.entries {
-                    if riff_entry_is(entry, item_key) && !ids.iter().any(|(id, _)| *id == entry.id)
-                    {
-                        ids.push((entry.id, riff_info::Expectation::Absent));
-                    }
-                }
-                ids
-            }
-        };
+        let asked = change.asked(&lists.entries);
 
         if !matches!(change, RiffChange::Untouched) {
             if lists.list_count > 1 {
@@ -1363,32 +1528,21 @@ impl RiffInfoGuard {
             }
             // What `lofty` would write: its own copy of the list, given the
             // same change the save will make, written into memory instead of
-            // a file. No copy at all means `lofty` read nothing it could use
-            // from the list — every entry is one it cannot read — so it has
-            // nothing to rewrite the list from, and the save cannot do what
-            // was asked; the comparison against an empty prediction names
-            // what would be lost.
-            let predicted = match riff_tag {
-                Some(riff_tag) => {
-                    let mut would_write = riff_tag.clone();
-                    change.apply_to(&mut would_write);
-                    let mut bytes = Vec::new();
-                    would_write.dump_to(&mut bytes, WriteOptions::default())?;
-                    riff_info::entries_from_list_chunk(&bytes).map_err(MmError::Metadata)?
-                }
-                None => Vec::new(),
-            };
+            // a file. When `lofty` read nothing it could use from the list
+            // (every entry is one it cannot read), the save starts from an
+            // empty one (`save_riff_change`), and so does this prediction —
+            // so the comparison names every entry that would be lost.
+            let mut would_write = tagged_file
+                .tag(TagType::RiffInfo)
+                .cloned()
+                .unwrap_or_else(|| Tag::new(TagType::RiffInfo));
+            change.apply_to(&mut would_write);
+            let mut bytes = Vec::new();
+            would_write.dump_to(&mut bytes, WriteOptions::default())?;
+            let predicted =
+                riff_info::entries_from_list_chunk(&bytes).map_err(MmError::Metadata)?;
             riff_info::check_entries_kept(&lists.entries, &predicted, &asked)
                 .map_err(MmError::Metadata)?;
-            if riff_tag.is_none() && !lists.entries.is_empty() {
-                // Only reached when every entry is asked to go: the save
-                // still cannot rewrite a list `lofty` never read.
-                return Err(MmError::Metadata(
-                    "MeedyaManager's tag library cannot read the file's RIFF INFO list as it \
-                     is stored, so the change was refused"
-                        .to_string(),
-                ));
-            }
         }
 
         Ok(Some(Self {
@@ -1509,10 +1663,12 @@ struct TagRemovalPlan {
     item_key: ItemKey,
     /// The file as read, to be changed in memory and saved.
     tagged_file: lofty::file::TaggedFile,
-    /// The containers that hold the field — the only ones rewritten.
+    /// The containers other than a WAV's RIFF INFO list that hold the field
+    /// — the only ones rewritten (the list is decided by
+    /// `rewrites_riff_info`).
     targets: Vec<TagType>,
-    /// Whether the save rewrites a WAV's RIFF INFO list (or must, and
-    /// cannot — see below).
+    /// Whether the save rewrites a WAV's RIFF INFO list: the list, read
+    /// raw, holds the field.
     rewrites_riff_info: bool,
 }
 
@@ -1536,29 +1692,25 @@ impl TagRemovalPlan {
         // reported success. Rewriting a container that holds nothing to remove
         // can only lose something, never gain anything.
         //
-        // The RIFF INFO list is asked RAW as well as through `lofty`: an entry
+        // The RIFF INFO list is asked RAW, not through `lofty`: an entry
         // `lofty` cannot read (that Latin-1 title, when the title is what is
         // being removed) is still in the file, so the list must still be
-        // rewritten for the removal to happen.
-        let raw_riff_holds = riff_info::read_info_lists(path)
+        // rewritten for the removal to happen. Every save of a WAV must lose
+        // nothing else from that list (`RiffInfoGuard`), and the list is
+        // saved by `save_riff_change`, which starts from an empty list when
+        // `lofty` read nothing at all from it.
+        let rewrites_riff_info = riff_info::read_info_lists(path)
             .map_err(MmError::Metadata)?
             .is_some_and(|lists| lists.entries.iter().any(|e| riff_entry_is(e, &item_key)));
         let targets: Vec<TagType> = tagged_file
             .tags()
             .iter()
             .filter(|tag| {
-                tag.get_items(&item_key).next().is_some()
-                    || (tag.tag_type() == TagType::RiffInfo && raw_riff_holds)
+                tag.tag_type() != TagType::RiffInfo && tag.get_items(&item_key).next().is_some()
             })
             .map(lofty::tag::Tag::tag_type)
             .collect();
 
-        // Every save of a WAV must lose nothing else from its RIFF INFO list
-        // (`RiffInfoGuard`). When the list holds the field but `lofty` read
-        // nothing at all from it, it is not among `targets` — and the check
-        // before saving refuses, because the removal cannot be done.
-        let rewrites_riff_info = targets.contains(&TagType::RiffInfo)
-            || (raw_riff_holds && tagged_file.tag(TagType::RiffInfo).is_none());
         Ok(Self {
             item_key,
             tagged_file,
@@ -1616,16 +1768,14 @@ pub fn remove_tag(path: &Path, key: &str) -> MmResult<()> {
     // Remove the key from each container that holds it, then save that one.
     for tt in &targets {
         if let Some(tag) = tagged_file.tag_mut(*tt) {
-            if *tt == TagType::RiffInfo {
-                // The same description the check before saving worked from.
-                riff_change.apply_to(tag);
-            } else {
-                tag.remove_key(&item_key);
-            }
+            tag.remove_key(&item_key);
             // Save this tag back to disk
             tag.save_to_path(path, WriteOptions::default())?;
         }
     }
+    // A WAV's RIFF INFO list, from the same description the check before
+    // saving worked from.
+    save_riff_change(&mut tagged_file, path, &riff_change)?;
 
     if let Some(guard) = riff_guard {
         guard.after_saving(path)?;

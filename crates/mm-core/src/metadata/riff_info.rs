@@ -10,9 +10,10 @@
 // ---------------------------------------------------------------------------
 // A WAV file can carry two tag sections at once: an embedded ID3 tag, and the
 // older RIFF INFO list (four-letter entries such as `INAM`, the title, and
-// `ILNG`, the language). Whenever a save rewrites that list — keeping its
-// language in step with a new one, or removing a field from it — the `lofty`
-// tag library writes the WHOLE list back from what it read.
+// `ILNG`, the language). Whenever a save rewrites that list — keeping a
+// field it holds in step with a new value (since the stand-in review of
+// round 7, M1, any field, not only the language), or removing a field from
+// it — the `lofty` tag library writes the WHOLE list back from what it read.
 //
 // RIFF INFO names no text encoding. Older Windows tools write the computer's
 // own code page, so a title such as "Café" can be the Latin-1 bytes

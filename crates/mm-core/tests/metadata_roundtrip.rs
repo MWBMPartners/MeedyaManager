@@ -1631,17 +1631,15 @@ fn a_program_that_writes_back_every_field_can_still_change_only_the_title() {
     write_tags(&path, &everything)
         .unwrap_or_else(|e| panic!("writing back unchanged fields must not be refused: {e}"));
 
-    // The new title went into the file's main (ID3) tag. The RIFF INFO
-    // chunk's own "Old" title is still there too, so both come back — that
-    // is issue #255 (any field, not only language, goes stale in the tag
-    // that was not written), not what this test is about.
+    // The new title went into the file's main (ID3) tag and, since the
+    // stand-in review of round 7 (M1), into the RIFF INFO chunk's own title
+    // too, which used to keep "Old" beside it (issue #255, for that chunk):
+    // exactly one title comes back.
     let after = extract_tags(&path).unwrap();
-    assert!(
-        after
-            .get(TAG_TITLE)
-            .is_some_and(|titles| titles.contains(&"New".to_string())),
-        "the title change must have been made: {:?}",
-        after.get(TAG_TITLE)
+    assert_eq!(
+        after.get(TAG_TITLE).map(Vec::as_slice),
+        Some(&["New".to_string()][..]),
+        "the title change must have been made, with no stale title beside it"
     );
     assert_eq!(
         read_raw_language_from_tag_type(&path, lofty::tag::TagType::RiffInfo).as_deref(),
@@ -2046,27 +2044,97 @@ fn a_removal_that_would_lose_another_riff_info_entry_is_refused() {
     );
 }
 
-/// Carry-over 1: setting, clearing and removing a field other than the
-/// language. Setting or clearing one writes the WAV's ID3 tag only, so the
-/// RIFF INFO list — a Latin-1 title included — comes through byte for byte
-/// (checked raw, after a save the guard also checked). Removing a field
-/// the list holds, on a file whose entries are all UTF-8, removes exactly
-/// that entry and keeps the others in order.
+/// The stand-in review of round 7, M1 (issue #255, for a WAV's RIFF INFO
+/// list): setting or clearing a field the list holds changes it THERE too,
+/// so the list holds exactly what was asked — the same way a language
+/// change always has. Round 7's version of this test asserted the opposite
+/// (the list "byte for byte the same" after setting the title), which was
+/// the fault: reproduced with the `meedya` binary and the C library built
+/// from `e4db8f8` on the all-UTF-8 WAV, `--set title=New` reported success
+/// and left `INAM` "Café" beside the new ID3 title (ffprobe showed both;
+/// `meedya debug` showed `["Café", "New"]`), and `--set title=` reported
+/// success and changed nothing.
+///
+/// Now: on the all-UTF-8 WAV and on the Latin-1-title WAV, setting the
+/// title leaves exactly one `INAM` holding the new text and clearing it
+/// leaves none — every other entry byte for byte the same, in order — and
+/// MeedyaManager reads back exactly the one title (or none). A field the
+/// list does NOT hold (the artist, on the Latin-1 WAV) is written into the
+/// ID3 tag only, and the list comes through byte for byte. Removing a field
+/// the list holds removes exactly that entry.
 #[test]
-fn setting_clearing_and_removing_another_field_keeps_the_riff_info_list() {
+fn setting_clearing_and_removing_another_field_keeps_the_riff_info_list_as_asked() {
     let _guard = ConfigDirGuard::new();
 
-    for (what, value) in [("set", "New title"), ("clear", "")] {
-        let (_dir, path) = copy_fixture("lang_riff_fre_title_latin1.wav");
-        let before = raw_riff_info_entries(&path);
-        let result = write_tags_safe(&path, &build_tags(&[(TAG_TITLE, value)]));
-        assert!(result.success, "{what} the title: {:?}", result.error);
-        assert_eq!(
-            raw_riff_info_entries(&path),
-            before,
-            "{what}: the RIFF INFO list byte for byte the same"
-        );
+    for fixture in [
+        "lang_riff_fre_all_utf8.wav",
+        "lang_riff_fre_title_latin1.wav",
+    ] {
+        for (what, value) in [("set", "New"), ("clear", "")] {
+            let (_dir, path) = copy_fixture(fixture);
+            let before = raw_riff_info_entries(&path);
+            assert!(
+                before.iter().any(|(id, _)| id == "INAM"),
+                "{fixture}: fixture sanity check, the list holds a title"
+            );
+            let result = write_tags_safe(&path, &build_tags(&[(TAG_TITLE, value)]));
+            assert!(
+                result.success,
+                "{fixture}: {what} the title: {:?}",
+                result.error
+            );
+
+            let after = raw_riff_info_entries(&path);
+            let others = |entries: &[(String, Vec<u8>)]| -> Vec<(String, Vec<u8>)> {
+                entries
+                    .iter()
+                    .filter(|(id, _)| id != "INAM")
+                    .cloned()
+                    .collect()
+            };
+            assert_eq!(
+                others(&after),
+                others(&before),
+                "{fixture}: {what}: every other entry byte for byte the same, in order"
+            );
+            let titles: Vec<&Vec<u8>> = after
+                .iter()
+                .filter(|(id, _)| id == "INAM")
+                .map(|(_, data)| data)
+                .collect();
+            let read_back = extract_tags(&path).unwrap();
+            if value.is_empty() {
+                assert!(titles.is_empty(), "{fixture}: cleared: no INAM left");
+                assert_eq!(
+                    read_back.get(TAG_TITLE),
+                    None,
+                    "{fixture}: cleared: no title anywhere"
+                );
+            } else {
+                assert_eq!(
+                    titles,
+                    vec![&b"New\0".to_vec()],
+                    "{fixture}: set: INAM holds exactly the new title"
+                );
+                assert_eq!(
+                    read_back.get(TAG_TITLE).map(Vec::as_slice),
+                    Some(&["New".to_string()][..]),
+                    "{fixture}: set: one title, not the old one beside it"
+                );
+            }
+        }
     }
+
+    // A field the list does not hold: the ID3 tag only, the list untouched.
+    let (_dir, path) = copy_fixture("lang_riff_fre_title_latin1.wav");
+    let before = raw_riff_info_entries(&path);
+    let result = write_tags_safe(&path, &build_tags(&[(TAG_ARTIST, "Someone")]));
+    assert!(result.success, "set the artist: {:?}", result.error);
+    assert_eq!(
+        raw_riff_info_entries(&path),
+        before,
+        "the list holds no artist, so it comes through byte for byte"
+    );
 
     let (_dir, path) = copy_fixture("lang_riff_fre_all_utf8.wav");
     let before = raw_riff_info_entries(&path);

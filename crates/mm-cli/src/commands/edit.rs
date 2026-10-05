@@ -446,9 +446,11 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
     // What this cannot do: the saves of a real run happen one after
     // another (the `--set` batch, then each `--remove`), and each check
     // here reads the file as it is now, before any of them. A save only ever
-    // changes the language entry of a RIFF INFO list or removes entries, so
-    // what one save leaves cannot make a later one lose an entry this check
-    // passed — and each save still runs its own check as well.
+    // writes entries for the fields it was asked to set (as UTF-8 text the
+    // tag library can read back) or removes entries, and keeps every other
+    // entry byte for byte, so what one save leaves cannot make a later one
+    // lose an entry this check passed — and each save still runs its own
+    // check as well.
     if failures.is_empty() {
         if !tags.is_empty()
             && let Err(reason) = mm_core::integrity::check_save(&args.path, |target| {
@@ -1741,6 +1743,38 @@ mod tests {
             before,
             "the title must survive: nothing held an artist"
         );
+    }
+
+    /// The stand-in review of round 7, M1, through the command a person
+    /// types. Reproduced with the `meedya` binary built from `e4db8f8` on a
+    /// WAV whose RIFF INFO list holds the title "Café" (all UTF-8): `--set
+    /// title=New` printed "✓" and left "Café" in the list beside the new ID3
+    /// title, so `meedya debug` showed `["Café", "New"]`; `--set title=`
+    /// printed "✓" and changed nothing. The list now holds exactly what was
+    /// asked, so the file reads back as one title, or none.
+    #[test]
+    fn setting_or_clearing_a_title_a_wav_list_holds_changes_it_there_too() {
+        let _guard = ConfigDirGuard::new();
+        for (value, expected) in [("New", Some(vec!["New".to_string()])), ("", None)] {
+            let dir = tempfile::tempdir().unwrap();
+            let path =
+                crate::test_support::copy_core_fixture("lang_riff_fre_all_utf8.wav", dir.path());
+            let args = EditArgs {
+                path: path.clone(),
+                set: vec![format!("title={value}")],
+                remove: vec![],
+                cover: None,
+                remove_cover: false,
+                dry_run: false,
+            };
+            assert_eq!(run(&test_ctx(), &args).unwrap(), ExitCode::SUCCESS);
+            let tags = mm_core::metadata::extract_tags(&path).unwrap();
+            assert_eq!(
+                tags.get("title"),
+                expected.as_ref(),
+                "--set title={value}: the title the file holds afterwards"
+            );
+        }
     }
 
     /// The stand-in review of round 6, M2: `--dry-run` gives the same answer
