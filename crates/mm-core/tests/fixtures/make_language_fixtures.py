@@ -3,12 +3,13 @@
 #
 # MeedyaManager — crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
-# Builds ten language test files from the committed `silence.wav`,
+# Builds eleven language test files from the committed `silence.wav`,
 # `silence.flac`, `silence.mp3` and `riff_language.wav`, using nothing but
 # Python's standard library. (Three since the third review round; two more
 # added for the fourth; four more for Codex's catch-up review of the whole
-# language-policy branch — see "The fixtures" at the bottom for what each one
-# is for.) Run it from anywhere:
+# language-policy branch; one more for the stand-in review of round 6 — see
+# "The fixtures" at the bottom for what each one is for.) Run it from
+# anywhere:
 #
 #     python3 crates/mm-core/tests/fixtures/make_language_fixtures.py
 #
@@ -291,6 +292,18 @@ def main() -> None:
                 ("ICMT", "Été"),
                 ("ISFT", "Lavf62"),
             ],
+            None,
+        ),
+        # The stand-in review of round 6, carry-over 1: EVERY save of a WAV
+        # must keep every RIFF INFO entry it was not asked to change, not
+        # only a language save. A UTF-8 artist the tag library CAN read,
+        # beside a Latin-1 title it cannot: removing the artist rewrites the
+        # list, which would lose the title, so it must be refused; removing
+        # the title itself (the entry it cannot read) must still remove it,
+        # and keep the artist and the language exactly.
+        "lang_riff_artist_title_latin1.wav": wav_with(
+            HERE / "silence.wav",
+            [("IART", "Someone"), ("INAM", b"Caf\xe9"), ("ILNG", "fre")],
             None,
         ),
         # Issue #259, and a consequence of finding 1's fix: a WAV with TWO

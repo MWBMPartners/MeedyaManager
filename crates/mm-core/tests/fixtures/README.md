@@ -29,11 +29,12 @@ hid the other. These five files test that, and are built byte by byte from
 the files above by `make_language_fixtures.py` in this folder, using only
 Python's standard library — deliberately not `lofty`, the library the app
 itself uses, so a fault in `lofty` cannot hide a fault in the app. Regenerate
-all nine (these five and the four in the next table) with
+all eleven (these five and the six in the next tables) with
 `python3 make_language_fixtures.py`; the output is the same every time (the
 first three were checked to come out byte for byte the same when the next two
-were added, for the fourth review round, and all five again when the last
-four were added, for Codex's catch-up review).
+were added, for the fourth review round, all five again when the next five
+were added, for Codex's catch-up review, and all ten again when the last one
+was added, for the stand-in review of round 6).
 
 | File | What is in it | Used for |
 |------|---------------|----------|
@@ -56,7 +57,13 @@ that added the files).
 | `lang_riff_fre_all_utf8.wav` | `silence.wav` with RIFF INFO `IART`, `INAM`, `ILNG` = `fre`, `ICMT` and `ISFT`, all UTF-8, with odd and even lengths | Finding 1's other side: nothing is lost, so the save goes ahead, and every other entry stays byte for byte the same and in the same order |
 | `lang_ape_eng_fra.mp3` | `silence.mp3` with an APE version 2 tag at the end whose `Language` item holds `eng`, a zero byte, then `fra` — two values in one item, as APE stores them | Finding 4: the two values must be read as two, in order, the way an ID3 tag's two values are |
 | `lang_vorbis_nbsp_en.flac` | `silence.flac` with its Vorbis `LANGUAGE` set to a no-break space (U+00A0) followed by `en` | Finding 5: only the policy's own four whitespace characters are trimmed, so this value is malformed and must not be read as English |
-| `lang_riff_two_info_lists.wav` | `silence.wav` with two `LIST INFO` chunks: the first holds only `ISFT`, the second `ILNG` = `fre` and `INAM` = `Old` | Issue #259: the tag library rewrites only the first chunk and copies the second's entries into it. Since finding 1's fix, a language save is refused instead, leaving the file as it was |
+| `lang_riff_two_info_lists.wav` | `silence.wav` with two `LIST INFO` chunks: the first holds only `ISFT`, the second `ILNG` = `fre` and `INAM` = `Old` | Issue #259: the tag library rewrites only the first chunk and copies the second's entries into it. A save that would rewrite the lists is refused before anything is written (since the stand-in review of round 6 — before that, only after the save, which in Test Mode had already changed an earlier copy), leaving the file as it was |
+
+### Files for the stand-in review of round 6
+
+| File | What is in it | Used for |
+|------|---------------|----------|
+| `lang_riff_artist_title_latin1.wav` | `silence.wav` with RIFF INFO `IART` = `Someone` (UTF-8), `INAM` = "Café" in Latin-1 (`43 61 66 E9`) and `ILNG` = `fre` | Every save of a WAV, not only a language save, must keep the entries it was not asked to change: removing the artist would lose the title, so it is refused; removing the title (the entry the tag library cannot read) removes it and keeps the artist and the language exactly |
 
 Total size is well under 1 MB (~28 KB as of writing). Do not replace these
 with larger or non-silent audio — the tests only need parseable tag

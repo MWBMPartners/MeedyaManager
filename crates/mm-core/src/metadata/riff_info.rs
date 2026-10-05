@@ -3,17 +3,16 @@
 // MeedyaManager — crates/mm-core/src/metadata/riff_info.rs
 //
 // A small, bounded reader for a WAV file's RIFF INFO list, used only to make
-// sure a language save never loses anything else from that list.
+// sure no save ever loses anything else from that list.
 //
 // WHY THIS EXISTS (Codex's catch-up review of the language-policy branch,
-// finding 1, issue #251)
+// finding 1, issue #251; widened by the stand-in review of round 6)
 // ---------------------------------------------------------------------------
 // A WAV file can carry two tag sections at once: an embedded ID3 tag, and the
 // older RIFF INFO list (four-letter entries such as `INAM`, the title, and
-// `ILNG`, the language). When a WAV already has a language in its RIFF INFO
-// list, `write_tags` keeps that entry in step with the new language — and to
-// do that, the `lofty` tag library writes the WHOLE list back from what it
-// read.
+// `ILNG`, the language). Whenever a save rewrites that list — keeping its
+// language in step with a new one, or removing a field from it — the `lofty`
+// tag library writes the WHOLE list back from what it read.
 //
 // RIFF INFO names no text encoding. Older Windows tools write the computer's
 // own code page, so a title such as "Café" can be the Latin-1 bytes
@@ -22,22 +21,24 @@
 // what it read. Writing the list back then leaves it out of the file too. So
 // changing the language deleted the title, and the save reported success.
 // Reproduced with the `meedya` binary built from `a150926` before this file
-// existed: see the commit that added it.
+// existed: see the commit that added it. Round 6 guarded language saves only;
+// the binary built from `49cec29` still deleted that title on
+// `--remove artist` (the file had no artist at all) and on `--remove-cover`
+// (a RIFF INFO list cannot even hold a picture), because both rewrote every
+// tag section the file had, whether or not it held what was being removed.
 //
-// So, around every language save that rewrites a RIFF INFO list, this module
-// reads the list's entries RAW — four-letter id and exact bytes, with no
-// decoding at all, so nothing can be skipped — before and after, and
-// `check_entries_kept` compares them: every entry other than `ILNG` must be
-// byte-for-byte the same and in the same order, and `ILNG` must hold exactly
-// what was asked. Anything else is refused, naming what would be lost.
+// So, around EVERY save of a WAV, this module reads the list's entries RAW —
+// four-letter id and exact bytes, with no decoding at all, so nothing can be
+// skipped — before and after, and `check_entries_kept` compares them: every
+// entry other than the ones the save was asked to change must be byte-for-byte
+// the same and in the same order, and each asked-for entry must hold exactly
+// what was asked (or be gone, when it was removed). Anything else is refused,
+// naming what would be lost.
 //
 // WHAT THIS CANNOT DO
 // -------------------
 // * It only guards the RIFF INFO list. It knows nothing about the embedded ID3
 //   tag or any other section of the file.
-// * It is used by language saves only (`write_tags` setting or clearing a
-//   language, and `remove_tag` of `language`). Other saves that rewrite RIFF
-//   INFO — `remove_tag` of any other field, for one — are not guarded by it.
 // * It refuses ANY difference, including harmless ones: an entry another tool
 //   wrote with two zero bytes at its end instead of one would be rewritten by
 //   `lofty` with one, and the save is refused. That is deliberate — it cannot
@@ -90,18 +91,33 @@ impl InfoEntry {
     }
 }
 
+/// What a raw read of a WAV file's RIFF INFO lists found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InfoLists {
+    /// Every entry, in file order, across every `LIST INFO` chunk.
+    pub(crate) entries: Vec<InfoEntry>,
+    /// How many `LIST INFO` chunks the file has. A file should have one at
+    /// most; the stand-in review of round 6 (M1, issue #259) is why the
+    /// count is kept: `lofty` rewrites only the FIRST list, copying the
+    /// second's entries into it, so a save that rewrites the list of such a
+    /// file must be refused before anything is written — the comparison of
+    /// entries alone could not tell, because the tag library's predicted
+    /// list already holds the second list's entries.
+    pub(crate) list_count: usize,
+}
+
 /// Every RIFF INFO entry in the WAV file at `path`, in file order, across
 /// every `LIST` chunk of type `INFO` (a file should have one; if it has more,
-/// all are read, in order).
+/// all are read, in order), and how many such chunks there are.
 ///
 /// Returns `Ok(None)` when the file is not a RIFF `WAVE` file at all, and
-/// `Ok(Some(empty))` for a WAV with no INFO list.
+/// no entries and a count of 0 for a WAV with no INFO list.
 ///
 /// # Errors
 /// A plain-English description when the file cannot be read or its chunk
 /// sizes do not fit inside it — the caller refuses the save rather than
 /// guessing what the list holds.
-pub(crate) fn read_info_entries(path: &Path) -> Result<Option<Vec<InfoEntry>>, String> {
+pub(crate) fn read_info_lists(path: &Path) -> Result<Option<InfoLists>, String> {
     let describe = |e: std::io::Error| format!("its RIFF INFO list could not be read: {e}");
     let mut file = File::open(path).map_err(describe)?;
     let file_len = file.metadata().map_err(describe)?.len();
@@ -116,6 +132,7 @@ pub(crate) fn read_info_entries(path: &Path) -> Result<Option<Vec<InfoEntry>>, S
     }
 
     let mut entries = Vec::new();
+    let mut list_count = 0usize;
     let mut pos: u64 = 12;
     let mut chunks_seen = 0usize;
     while pos + 8 <= file_len {
@@ -168,12 +185,16 @@ pub(crate) fn read_info_entries(path: &Path) -> Result<Option<Vec<InfoEntry>>, S
             file.seek(SeekFrom::Start(body_start)).map_err(describe)?;
             file.read_exact(&mut payload).map_err(describe)?;
             entries.extend(parse_info_payload(&payload)?);
+            list_count += 1;
         }
         // A chunk with an odd size is followed by one padding byte its size
         // does not count.
         pos = body_start + size + (size & 1);
     }
-    Ok(Some(entries))
+    Ok(Some(InfoLists {
+        entries,
+        list_count,
+    }))
 }
 
 /// Whether the `LIST` chunk whose body starts at `body_start` is of type
@@ -240,20 +261,36 @@ pub(crate) fn entries_from_list_chunk(bytes: &[u8]) -> Result<Vec<InfoEntry>, St
     parse_info_payload(&bytes[8..])
 }
 
-/// What the RIFF INFO language entry must hold once a save is done.
+/// What one entry the save was asked to change must hold once it is done.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LanguageExpectation {
-    /// Exactly one `ILNG` entry, holding this text (a zero byte or two at
-    /// its end, as RIFF INFO writers add, is allowed).
+pub(crate) enum Expectation {
+    /// Exactly one entry with this id, holding this text (a zero byte or two
+    /// at its end, as RIFF INFO writers add, is allowed).
     Holds(String),
-    /// No `ILNG` entry at all (the language was cleared).
+    /// No entry with this id at all (the field was cleared or removed).
     Absent,
 }
 
-/// Compare a RIFF INFO list before and after a language save.
+/// The entries one save is asked to change: each id, and what it must hold
+/// afterwards. Every OTHER entry must come through byte for byte.
+pub(crate) type AskedChanges = Vec<([u8; 4], Expectation)>;
+
+/// The refusal for a save that would rewrite the RIFF INFO list of a file
+/// with more than one (issue #259; the stand-in review of round 6, M1 and
+/// N6) — said plainly, so a person knows what is unusual about their file.
+pub(crate) fn two_lists_refusal(list_count: usize) -> String {
+    format!(
+        "this file has {list_count} RIFF INFO lists, and MeedyaManager's tag library would \
+         merge them into one when saving, changing entries nobody asked to change, so the \
+         change was refused"
+    )
+}
+
+/// Compare a RIFF INFO list before and after a save.
 ///
-/// Every entry other than `ILNG` must be byte-for-byte the same and in the
-/// same order; `ILNG` may move, but must satisfy `language`.
+/// Every entry whose id is not in `asked` must be byte-for-byte the same and
+/// in the same order; an asked-for entry may move, but must satisfy its
+/// [`Expectation`].
 ///
 /// # Errors
 /// A plain-English reason naming what would be lost or changed, for the
@@ -261,14 +298,11 @@ pub(crate) enum LanguageExpectation {
 pub(crate) fn check_entries_kept(
     before: &[InfoEntry],
     after: &[InfoEntry],
-    language: &LanguageExpectation,
+    asked: &[([u8; 4], Expectation)],
 ) -> Result<(), String> {
+    let is_asked = |entry: &InfoEntry| asked.iter().any(|(id, _)| *id == entry.id);
     let others = |entries: &[InfoEntry]| -> Vec<InfoEntry> {
-        entries
-            .iter()
-            .filter(|e| e.id != LANGUAGE_ID)
-            .cloned()
-            .collect()
+        entries.iter().filter(|e| !is_asked(e)).cloned().collect()
     };
     let others_before = others(before);
     let others_after = others(after);
@@ -281,7 +315,7 @@ pub(crate) fn check_entries_kept(
             if let Some(at) = remaining.iter().position(|e| e == entry) {
                 remaining.remove(at);
             } else {
-                lost.push(describe_entry(entry));
+                lost.push(describe_entry(&entry.id));
             }
         }
         let what = if lost.is_empty() {
@@ -296,25 +330,28 @@ pub(crate) fn check_entries_kept(
                 if lost.len() == 1 { "it" } else { "them" }
             )
         };
-        return Err(format!(
-            "changing the language would {what}, so the change was refused"
-        ));
+        return Err(format!("saving would {what}, so the change was refused"));
     }
 
-    let languages_after: Vec<&InfoEntry> = after.iter().filter(|e| e.id == LANGUAGE_ID).collect();
-    let as_expected = match language {
-        LanguageExpectation::Absent => languages_after.is_empty(),
-        LanguageExpectation::Holds(text) => {
-            languages_after.len() == 1
-                && trim_trailing_zeros(&languages_after[0].data) == text.as_bytes()
+    for (id, expected) in asked {
+        let found: Vec<&InfoEntry> = after.iter().filter(|e| e.id == *id).collect();
+        let as_expected = match expected {
+            Expectation::Absent => found.is_empty(),
+            Expectation::Holds(text) => {
+                found.len() == 1 && trim_trailing_zeros(&found[0].data) == text.as_bytes()
+            }
+        };
+        if !as_expected {
+            let done = match expected {
+                Expectation::Absent => "removed from",
+                Expectation::Holds(_) => "written into",
+            };
+            return Err(format!(
+                "{} could not be {done} the file's RIFF INFO list as asked, so the change was \
+                 refused",
+                describe_entry(id)
+            ));
         }
-    };
-    if !as_expected {
-        return Err(
-            "the language could not be written into the file's RIFF INFO list as asked, so \
-             the change was refused"
-                .to_string(),
-        );
     }
     Ok(())
 }
@@ -327,8 +364,8 @@ fn trim_trailing_zeros(data: &[u8]) -> &[u8] {
 
 /// A plain-English name for an entry: what it is, if it is one of the
 /// common ones, and its id (`the title (INAM)`).
-fn describe_entry(entry: &InfoEntry) -> String {
-    let what = match &entry.id {
+pub(crate) fn describe_entry(id: &[u8; 4]) -> String {
+    let what = match id {
         b"INAM" => Some("the title"),
         b"IART" => Some("the artist"),
         b"IPRD" => Some("the album"),
@@ -344,11 +381,17 @@ fn describe_entry(entry: &InfoEntry) -> String {
         b"IPRT" | b"ITRK" => Some("the track number"),
         b"IMUS" => Some("the composer"),
         b"IWRI" => Some("the writer"),
+        b"ILNG" => Some("the language"),
         _ => None,
     };
+    let shown = InfoEntry {
+        id: *id,
+        data: Vec::new(),
+    }
+    .id_text();
     match what {
-        Some(what) => format!("{what} ({})", entry.id_text()),
-        None => format!("the entry {}", entry.id_text()),
+        Some(what) => format!("{what} ({shown})"),
+        None => format!("the entry {shown}"),
     }
 }
 
@@ -363,8 +406,14 @@ mod tests {
         }
     }
 
-    fn holds(text: &str) -> LanguageExpectation {
-        LanguageExpectation::Holds(text.to_string())
+    /// The language entry is asked to hold `text`.
+    fn holds(text: &str) -> AskedChanges {
+        vec![(LANGUAGE_ID, Expectation::Holds(text.to_string()))]
+    }
+
+    /// The language entry is asked to be gone.
+    fn language_absent() -> AskedChanges {
+        vec![(LANGUAGE_ID, Expectation::Absent)]
     }
 
     #[test]
@@ -395,8 +444,7 @@ mod tests {
     fn a_reordered_entry_is_refused() {
         let before = [entry(b"INAM", b"A\0"), entry(b"IART", b"B\0")];
         let after = [entry(b"IART", b"B\0"), entry(b"INAM", b"A\0")];
-        let message =
-            check_entries_kept(&before, &after, &LanguageExpectation::Absent).unwrap_err();
+        let message = check_entries_kept(&before, &after, &language_absent()).unwrap_err();
         assert!(message.contains("order"), "{message}");
     }
 
@@ -404,7 +452,7 @@ mod tests {
     fn an_added_entry_is_refused() {
         let before = [entry(b"INAM", b"A\0")];
         let after = [entry(b"INAM", b"A\0"), entry(b"IART", b"B\0")];
-        assert!(check_entries_kept(&before, &after, &LanguageExpectation::Absent).is_err());
+        assert!(check_entries_kept(&before, &after, &language_absent()).is_err());
     }
 
     #[test]
@@ -423,17 +471,29 @@ mod tests {
         }
         // A clear must leave none.
         assert!(
-            check_entries_kept(
-                &before,
-                &[entry(b"ILNG", b"en\0")],
-                &LanguageExpectation::Absent
-            )
-            .is_err()
+            check_entries_kept(&before, &[entry(b"ILNG", b"en\0")], &language_absent()).is_err()
         );
+        assert_eq!(check_entries_kept(&before, &[], &language_absent()), Ok(()));
+    }
+
+    /// Every save of a WAV, not only a language save (the stand-in review
+    /// of round 6, carry-over 1): a removed field must be gone, and nothing
+    /// else may be lost — named as what it is.
+    #[test]
+    fn a_removed_field_must_be_gone_and_nothing_else_lost() {
+        let asked = vec![(*b"IART", Expectation::Absent)];
+        let before = [entry(b"IART", b"A\0"), entry(b"INAM", b"T\0")];
         assert_eq!(
-            check_entries_kept(&before, &[], &LanguageExpectation::Absent),
+            check_entries_kept(&before, &[entry(b"INAM", b"T\0")], &asked),
             Ok(())
         );
+        let still_there = check_entries_kept(&before, &before, &asked).unwrap_err();
+        assert!(
+            still_there.contains("the artist (IART) could not be removed"),
+            "{still_there}"
+        );
+        let title_lost = check_entries_kept(&before, &[], &asked).unwrap_err();
+        assert!(title_lost.contains("the title (INAM)"), "{title_lost}");
     }
 
     #[test]

@@ -1577,6 +1577,35 @@ mod tests {
         }
     }
 
+    /// Carry-over 1 of the stand-in review of round 6, through the command a
+    /// person types. Reproduced with the `meedya` binary built from
+    /// `49cec29`: `meedya edit <file> --remove artist` on a WAV with no
+    /// artist at all, whose RIFF INFO title was Latin-1 "Café", printed
+    /// "✓ Remove artist" and deleted the title. Nothing holds an artist, so
+    /// nothing may be rewritten: the file must be byte for byte as it was.
+    #[test]
+    fn remove_artist_on_a_wav_keeps_its_latin1_title() {
+        let _guard = ConfigDirGuard::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path =
+            crate::test_support::copy_core_fixture("lang_riff_fre_title_latin1.wav", dir.path());
+        let before = std::fs::read(&path).unwrap();
+        let args = EditArgs {
+            path: path.clone(),
+            set: vec![],
+            remove: vec!["artist".to_string()],
+            cover: None,
+            remove_cover: false,
+            dry_run: false,
+        };
+        assert_eq!(run(&test_ctx(), &args).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "the title must survive: nothing held an artist"
+        );
+    }
+
     /// The companion case: an action with no note produces exactly one
     /// line, not a spurious empty warning.
     #[test]

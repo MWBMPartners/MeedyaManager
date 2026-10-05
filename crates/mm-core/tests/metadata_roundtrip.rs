@@ -1864,9 +1864,10 @@ fn in_test_mode_a_refused_wav_language_save_leaves_the_copy_untouched() {
 /// library rewrites only the first chunk, copying the second's entries into
 /// it — reproduced with the `meedya` binary built from `a150926`: after
 /// `--set language=es` the file held `ILNG` "es" and a copy of the title in
-/// the first chunk and still `ILNG` "fre" and the title in the second. The
-/// check after the save sees the title twice and two languages, so the save
-/// is now refused and the file left exactly as it was. (Changing both chunks
+/// the first chunk and still `ILNG` "fre" and the title in the second. Since
+/// the stand-in review of round 6 (M1), a save that would rewrite the lists
+/// of such a file is refused BEFORE anything is written, naming the two
+/// lists, and the file is left exactly as it was. (Changing both chunks
 /// properly is still #259's job.)
 #[test]
 fn a_wav_with_two_info_lists_is_refused_rather_than_half_changed() {
@@ -1879,6 +1880,11 @@ fn a_wav_with_two_info_lists_is_refused_rather_than_half_changed() {
         let before = fs::read(&path).unwrap();
         let result = write_tags_safe(&path, &tags);
         assert!(!result.success, "{what}: must be refused");
+        let message = result.error.unwrap_or_default();
+        assert!(
+            message.contains("this file has 2 RIFF INFO lists"),
+            "{what}: the message must say what is unusual about the file: {message:?}"
+        );
         assert_eq!(fs::read(&path).unwrap(), before, "{what}: file untouched");
         assert_eq!(
             file_names_in(dir.path()),
@@ -1920,6 +1926,158 @@ fn a_wav_language_save_keeps_every_other_riff_info_entry_exactly() {
         languages,
         vec![&b"en\0".to_vec()],
         "ILNG holds exactly \"en\""
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Every save of a WAV keeps every other RIFF INFO entry (the stand-in review
+// of round 6: carry-over 1 and M1)
+// ---------------------------------------------------------------------------
+
+/// The stand-in review of round 6, M1 (issue #259): with Test Mode on and an
+/// earlier edit's copy in place, a save works on that copy directly. For a
+/// WAV with two `LIST INFO` chunks, a language save was refused only by the
+/// check AFTER saving — reproduced with the `meedya` binary built from
+/// `49cec29`: `--set comment=first` made the copy, then `--set language=en`
+/// answered "refused" while the copy's first list had gained `INAM` and
+/// `ILNG` "en" and its ID3 tag `TLAN` "eng" (mutagen and ffprobe agreed).
+/// The check before saving now refuses a file with two lists, so the copy
+/// is left byte for byte as the first edit made it.
+#[test]
+fn in_test_mode_a_wav_with_two_info_lists_is_refused_before_the_copy_changes() {
+    let _guard = ConfigDirGuard::new();
+    let (_dir, path) = copy_fixture("lang_riff_two_info_lists.wav");
+    let original = fs::read(&path).unwrap();
+
+    test_mode::enable().unwrap();
+    // The first edit writes only the WAV's ID3 tag, never its RIFF INFO
+    // lists, so it succeeds and makes the copy.
+    let first = write_tags_safe(&path, &build_tags(&[(TAG_COMMENT, "first")]));
+    assert!(first.success, "the first edit: {:?}", first.error);
+    let copy = test_mode::test_mode_path(&path);
+    let copy_before = fs::read(&copy).unwrap();
+
+    let second = write_tags_safe(&path, &build_tags(&[(TAG_LANGUAGE, "en")]));
+    test_mode::disable().unwrap();
+
+    assert!(!second.success, "the language save must be refused");
+    assert_eq!(
+        fs::read(&copy).unwrap(),
+        copy_before,
+        "the copy must be byte for byte as the first edit left it"
+    );
+    assert_eq!(fs::read(&path).unwrap(), original, "the original untouched");
+    let message = second.error.unwrap_or_default();
+    assert!(
+        message.contains("this file has 2 RIFF INFO lists"),
+        "{message:?}"
+    );
+}
+
+/// Carry-over 1 of the stand-in review of round 6: round 6 guarded language
+/// saves only. Reproduced with the `meedya` binary built from `49cec29` on
+/// `lang_riff_fre_title_latin1.wav` (no artist anywhere, a Latin-1 title in
+/// its RIFF INFO list): `--remove artist` and `--remove-cover` each reported
+/// success and deleted the title (raw reader, mutagen and ffprobe agreed),
+/// because each rewrote every tag section the file had, the RIFF INFO list
+/// included, though it held nothing to remove. Now only a section that
+/// holds what is being removed is rewritten, so neither touches the file.
+#[test]
+fn removing_what_a_wav_does_not_hold_keeps_its_latin1_title() {
+    let _guard = ConfigDirGuard::new();
+    type Save = fn(&Path) -> mm_core::integrity::IntegrityWriteResult;
+    let saves: [(&str, Save); 2] = [
+        ("remove artist", |p| {
+            mm_core::integrity::remove_tag_safe(p, TAG_ARTIST)
+        }),
+        ("remove cover art", remove_cover_art_safe),
+    ];
+    for (what, save) in saves {
+        let (_dir, path) = copy_fixture("lang_riff_fre_title_latin1.wav");
+        let before = fs::read(&path).unwrap();
+        let result = save(&path);
+        assert!(result.success, "{what}: {:?}", result.error);
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            before,
+            "{what}: nothing to remove, so the file must be byte for byte as it was"
+        );
+        assert!(
+            raw_riff_info_entries(&path).contains(&("INAM".to_string(), b"Caf\xe9\0".to_vec())),
+            "{what}: the Latin-1 title must still be there"
+        );
+    }
+}
+
+/// Carry-over 1, the other half: a removal that DOES rewrite the RIFF INFO
+/// list — the artist is in it — beside a Latin-1 title the tag library
+/// cannot read. Rewriting the list would lose the title, so the removal is
+/// refused before anything is written, naming the title. Removing the title
+/// itself still works, though the tag library cannot read it: the list is
+/// rewritten without it, and the artist and the language come through byte
+/// for byte, in order.
+#[test]
+fn a_removal_that_would_lose_another_riff_info_entry_is_refused() {
+    let _guard = ConfigDirGuard::new();
+
+    let (dir, path) = copy_fixture("lang_riff_artist_title_latin1.wav");
+    let before = fs::read(&path).unwrap();
+    let result = mm_core::integrity::remove_tag_safe(&path, TAG_ARTIST);
+    assert!(!result.success, "removing the artist must be refused");
+    let message = result.error.unwrap_or_default();
+    assert!(message.contains("the title (INAM)"), "{message:?}");
+    assert_eq!(fs::read(&path).unwrap(), before, "the file untouched");
+    assert_eq!(
+        file_names_in(dir.path()),
+        vec!["lang_riff_artist_title_latin1.wav".to_string()],
+        "no temporary file left"
+    );
+
+    let (_dir, path) = copy_fixture("lang_riff_artist_title_latin1.wav");
+    let result = mm_core::integrity::remove_tag_safe(&path, TAG_TITLE);
+    assert!(result.success, "removing the title: {:?}", result.error);
+    assert_eq!(
+        raw_riff_info_entries(&path),
+        vec![
+            ("IART".to_string(), b"Someone\0".to_vec()),
+            ("ILNG".to_string(), b"fre\0".to_vec()),
+        ],
+        "the title gone; the artist and the language exactly as they were, in order"
+    );
+}
+
+/// Carry-over 1: setting, clearing and removing a field other than the
+/// language. Setting or clearing one writes the WAV's ID3 tag only, so the
+/// RIFF INFO list — a Latin-1 title included — comes through byte for byte
+/// (checked raw, after a save the guard also checked). Removing a field
+/// the list holds, on a file whose entries are all UTF-8, removes exactly
+/// that entry and keeps the others in order.
+#[test]
+fn setting_clearing_and_removing_another_field_keeps_the_riff_info_list() {
+    let _guard = ConfigDirGuard::new();
+
+    for (what, value) in [("set", "New title"), ("clear", "")] {
+        let (_dir, path) = copy_fixture("lang_riff_fre_title_latin1.wav");
+        let before = raw_riff_info_entries(&path);
+        let result = write_tags_safe(&path, &build_tags(&[(TAG_TITLE, value)]));
+        assert!(result.success, "{what} the title: {:?}", result.error);
+        assert_eq!(
+            raw_riff_info_entries(&path),
+            before,
+            "{what}: the RIFF INFO list byte for byte the same"
+        );
+    }
+
+    let (_dir, path) = copy_fixture("lang_riff_fre_all_utf8.wav");
+    let before = raw_riff_info_entries(&path);
+    let result = mm_core::integrity::remove_tag_safe(&path, TAG_ARTIST);
+    assert!(result.success, "remove the artist: {:?}", result.error);
+    let expected: Vec<(String, Vec<u8>)> =
+        before.into_iter().filter(|(id, _)| id != "IART").collect();
+    assert_eq!(
+        raw_riff_info_entries(&path),
+        expected,
+        "only the artist gone; every other entry the same, in order"
     );
 }
 
