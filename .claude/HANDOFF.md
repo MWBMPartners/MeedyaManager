@@ -105,8 +105,9 @@ section for the full account; in short:
 Every review so far was independent of the builder. Git is the record of what is on the branch
 (`git log --oneline 7697b9c..feature/bcp47-language-policy`); this table only says which
 finished review covered which commits. Ranges and counts checked with `git log` on 2026-09-28,
-the Codex catch-up row on 2026-10-04 (`git log --oneline 7697b9c..a150926 | wc -l` is 36), and
-the round-6 stand-in row on 2026-10-05 (`git rev-list --count a150926..49cec29` is 11).
+the Codex catch-up row on 2026-10-04 (`git log --oneline 7697b9c..a150926 | wc -l` is 36), the
+round-6 stand-in row on 2026-10-05 (`git rev-list --count a150926..49cec29` is 11), and the
+round-7 stand-in row on 2026-10-05 (`git rev-list --count 49cec29..e4db8f8` is 13).
 Nothing here says what is or is not on GitHub: ask git (`git status -sb`), not this file.
 
 | Review | Commits it covered | How many | Reviewer |
@@ -117,8 +118,9 @@ Nothing here says what is or is not on GitHub: ask git (`git status -sb`), not t
 | 4th | `e18fb18..aa7a30d` | 7 | a fresh Opus agent standing in for Codex |
 | Codex catch-up | `7697b9c..a150926` | 36 | Codex, the usual reviewer — the whole branch so far, rounds 1–5 together |
 | Round 6 | `a150926..49cec29` | 11 | a fresh Opus agent standing in for Codex — 3 medium, 8 low, 7 nits |
+| Round 7 | `49cec29..e4db8f8` | 13 | a fresh Opus agent standing in for Codex — 1 medium, 9 low (4 older than round 7), 3 nits |
 
-Commits after `49cec29` are not yet reviewed.
+Commits after `e4db8f8` are not yet reviewed.
 
 ### What each round of fixes did
 
@@ -307,7 +309,10 @@ lead's decisions, final:
   and after. A save that would rewrite the lists of a WAV with two `LIST INFO` chunks (#259) is
   refused before anything is written ("this file has 2 RIFF INFO lists"); reproduced: in Test
   Mode with an earlier copy, the copy used to be changed while the command said "refused". New
-  fixture `lang_riff_artist_title_latin1.wav`.
+  fixture `lang_riff_artist_title_latin1.wav`. (Its message says each asked-for entry holds
+  exactly what was asked for "write, clear, remove"; that was true of removal only — setting or
+  clearing another field left the list's old value. Found by the round-7 review, M1; fixed in
+  round 8.)
 - `126ad64` (L2) — an entry that comes through with only a final zero byte added is not a loss
   (the reviewer's all-UTF-8 WAV with no zero bytes was refused with a false "cannot read"
   reason); the message now says whether an entry would be lost or "rewritten with different
@@ -374,24 +379,84 @@ actionlint four older style notes).
 
 **Not done / not checked (round 7):**
 - The Swift, C# and GTK screens still do not show `TagEntry.note` or the write result's `notes`
-  (#256); `swift build`, `dotnet` and the GTK build were not run. A draft #256 comment notes that
+  (#256); `swift build`, `dotnet` and the GTK build were not run. A comment on #256 notes that
   the Windows app reads the engine's text in the old Windows character set (L8), which would
   garble the notes' "—" and quotes.
-- Not fixed, drafted as issues (not posted): a zero character in a field other than the
-  language becomes two values (L5); `--json` output carries log lines on standard output (L7).
+- Not fixed here, filed as issues: a zero character in a field other than the language becomes
+  two values (L5, #261); `--json` output carries log lines on standard output (L7, #262). The
+  #256 note about the Windows character set is a posted comment there.
 - A line for the MeedyaSuite-core list is drafted (not posted): the copy checker's advice "Mark …
   -text" misleads when the cause is `.git/info/attributes`.
 - The format-character table in `show_invisible_characters` is Unicode 15.1's, written by hand;
   a character Unicode adds later is not covered, and look-alike letters are never flagged.
 - A real `meedya edit` run now refuses in its validation step what a save would refuse before
-  writing; each check reads the file before any of that run's saves (said in the code).
-- Worth knowing: every save of a WAV now reads its RIFF INFO list raw first, so a WAV whose list
-  is damaged (an entry or the list itself says it is longer than it is) is refused for any save,
-  even one that only writes its ID3 tag — refusing rather than guessing, since nothing could
-  then prove the list came through. Not seen on a real file; said so in case it is.
+  writing; each check reads the file before any of that run's saves (said in the code). (Round 7
+  checked `--set` and `--remove` only; round 8 added the cover options.)
+- Worth knowing: every save of a WAV reads its RIFF INFO list raw first. For the two kinds of
+  damage this once named (an entry, or the list, longer than it says), nothing is new: the tag
+  library already refuses to open such a file ("Cannot read tags"), before the raw read, as it
+  did before round 7 (checked by the round-7 review). The raw read adds a refusal only for a list
+  over 16 MB or a file with more than 10,000 sections; round 8's test uses the second.
 - Issues from this work still open, not fixed: #252, #253, #254, #255, #256, #257, #258, #259,
   #260.
 - **Next:** an independent review (Codex, the usual reviewer) of the commits after `49cec29`.
+  (Done: the stand-in review of round 7, below.)
+
+**After the stand-in review of round 7 — round 8** (commits after `e4db8f8`, none reviewed
+yet). A fresh Opus agent, standing in for Codex, reviewed round 7 (`49cec29..e4db8f8`, 13
+commits): 1 medium, 9 low (4 older than round 7), 3 nits. Each finding was reproduced first on
+real files (the binary and C library built from `e4db8f8`; a raw RIFF INFO reader, mutagen,
+ffprobe; `lofty` itself called from a scratch program for L1). The lead's decisions, final:
+
+- `d96de5e` (M1, #255 for a WAV's RIFF INFO list) — setting or clearing a field the list holds
+  changes it there too, and the check confirms the list holds exactly what was asked
+  (`--set title=New` used to leave "Café" beside it; `--set title=` changed nothing).
+- `68fe351` (L1) — an entry holding no text is not a loss; a refusal says what really happens
+  (`ITRK` written back as `IPRT`; "cannot read" only for text that is not UTF-8). Two fixtures.
+- `65493ef` (L2) — `--dry-run` checks `--cover` and `--remove-cover`.
+- `81d32c4` (L3) — tests that turn red on the reviewer's D1 and D3 faults.
+- `9d3137e` (L4) — every default-ignorable character and U+2800 shown as `\u{..}`; both tables
+  match Unicode 18.0's files exactly.
+- `5079980` (L5, L6, L7) — options named in the order typed; `--cover` with `--remove-cover`
+  refused; unknown keys shown safely (CLI and mm-core).
+- `7f4e89b` (N3) — a dry run's refusal starts "A real run would not save …".
+- `663f916` (N1, N2) — the FFI quotes a repeated key's values with `"` and `\` escaped; "each
+  value".
+- `da7d9a7` (L10) — the health-test guard puts back `MM_CONFIG_DIR`.
+- `2d438ee` (L8) — `help/rule-syntax.md` says what happens to each kind of character in a file
+  name. No route overwrites or merges files (checked with `scan --execute`, both strategies), so
+  nothing was refused.
+- `c0f5f5c` — changelog, help, Dev_Notes, notes; and the commit that carries this note (L9 and
+  the 52e81a8 correction are above).
+
+Not changed: MeedyaManager's `year` has no RIFF INFO entry (`ICRD` is `lofty`'s recording
+date, not mapped) and is not written to ID3 or MP4 at all — an older finding pinned by
+`year_tag_does_not_round_trip_on_id3v2_or_mp4`; an issue is drafted, not posted. Proof and
+planted faults (18, each red) are in each commit's message.
+
+**Checks on round 8's final code (2026-10-05, on `c0f5f5c`):** `cargo fmt --all -- --check` 0;
+`cargo clippy --workspace --all-targets -- -D warnings` 0; `cargo test --workspace` 0 — 1583
+passed, 1 ignored (#254), 0 failed (1566 before; 17 new tests); the same suite with `HOME`
+pointed at an empty folder — the same counts, and nothing created there;
+`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` 0; `check_copies.py` 0 (6 copies
+match core `aaaa585aa145`); the policy copies unchanged since `e4db8f8`; `include/mm_ffi.h`
+regenerates unchanged by the build, the Swift bindings byte for byte with the crate's own
+`uniffi-bindgen`, and `make_language_fixtures.py` all fourteen fixtures byte for byte.
+`cargo deny` and `actionlint` were not re-run: `Cargo.toml`, `Cargo.lock` and `.github` are
+unchanged since `e4db8f8`. Not run: `swift build`, `dotnet`, the GTK build, anything on Windows
+or Linux.
+
+**Next steps (the maintainer, 2026-10-05).** This repository's language-policy work is handed
+over to its own sessions; nothing more will be run from the MeedyaDL session.
+1. Next is a review of the round-8 commits — everything after `e4db8f8`, up to and including
+   the commit that carries this note — by Codex if it has allowance, otherwise by a fresh agent,
+   named in the record as a stand-in.
+2. The review loop now stops when a review finds no high or medium problems. Low findings,
+   wording points and any older faults a reviewer finds become GitHub issues, not new rounds.
+3. Still open: #261 (a zero character in another field), #262 (`--json` output), #256 (the apps
+   do not show the notes; the Windows character-set comment), and a scratch path containing a
+   real name in section 5 ("Session artefacts") of this file, already in pushed history — left
+   alone, waiting on the maintainer.
 
 ---
 
