@@ -163,12 +163,34 @@ stop working just because two files store it differently.
 
 - **`<Language>` gives the standard short form.** An MP3 storing `eng` and a FLAC storing `en`
   both give `en`; `fre` gives `fr`.
-- **Text nothing recognises is shown as the file stores it.** A file whose language says
+- **Text nothing recognises is given as the file stores it.** A file whose language says
   `English` (a word, not a code) gives `English` — never a guess. Only four characters are left
   off either end: the ordinary space, the tab, the line feed and the carriage return. Anything
   else around a code is part of the text — a no-break space, a vertical tab, a form feed, or any
   other kind of line break or space — so a code with one of those in front of it is not a code
-  MeedyaManager recognises: it is shown as it is and does not match `language Equals en`.
+  MeedyaManager recognises: `meedya debug` shows it as stored, and it does not match
+  `language Equals en`.
+- **In a file or folder name, some characters are changed.** When a template builds a name,
+  every name is made safe for every system, so text like that does not always reach the name as
+  stored:
+  - A control character anywhere (a vertical tab, a form feed, a "next line" character, and any
+    other) becomes `_`: a language of "en" with a vertical tab after it gives a folder `en_`.
+  - Any other kind of space or line break at either end of the name (a no-break space, an em
+    space, an ideographic space, a line separator) is dropped. So such a file goes into the
+    **same `en` folder as English files**, though its language is not English. In the middle of a
+    name it is kept.
+  - An invisible character that is not a space (a zero-width space, a byte-order mark, a
+    direction mark such as the right-to-left override) is kept, invisibly: the folder looks like
+    `en` but is a different folder.
+  - `< > : " / \ | ? *` become `_`, and dots at either end are dropped.
+
+  Two files can therefore be given the same name — an English file and one whose language has a
+  no-break space in front of "en", both titled "Song", both get `en/Song.flac`. That is reported
+  as a conflict, and **no file is ever overwritten**: whichever comes first takes the name, and
+  the other is left where it is (with `conflict_strategy = "rename"`, it is given a number,
+  `en/Song (1).flac`). Checked on real files with `meedya scan --execute`, both ways, including a
+  file already in place at `en/Song.flac` and a name that differs only in capitals. Note that
+  "first" is the order the scan found them, so the English file may be the one left behind.
 - **A file with more than one language:** when a template builds a file or folder name (which
   is how MeedyaManager uses templates today), only the first language is used. Where a template
   is shown as text instead, each different language is listed once (`en; fr`), even if the

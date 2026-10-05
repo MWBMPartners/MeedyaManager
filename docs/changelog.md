@@ -229,7 +229,12 @@ Format: `## [Version] — YYYY-MM-DD`
   notice: a stored language with a vertical tab, a form feed or a "next line" character at
   either end used to be tidied to the bare code, and is now kept as stored, as the policy says —
   so a template such as `<Language>/<Title>` puts that character into the name, and the renamer
-  turns it into `_` (a folder `en_` or `_en` where it used to be `en`). And the desktop apps'
+  turns it into `_` (a folder `en_` or `_en` where it used to be `en`). Any other kind of space
+  at either end (a no-break space, an em space, an ideographic space, a line separator) is
+  dropped from a file or folder name, so such a file is filed with English files under `en`,
+  and an invisible character such as a zero-width space is kept in the name, invisibly; a name
+  that clashes with another is reported as a conflict and never overwrites it (see the
+  "Language in rules" section of the rule-syntax help). And the desktop apps'
   engine now reports the same facts `meedya edit` shows when a language write loses detail
   (their screens do not show them yet,
   [#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
