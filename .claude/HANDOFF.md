@@ -105,7 +105,8 @@ section for the full account; in short:
 Every review so far was independent of the builder. Git is the record of what is on the branch
 (`git log --oneline 7697b9c..feature/bcp47-language-policy`); this table only says which
 finished review covered which commits. Ranges and counts checked with `git log` on 2026-09-28,
-and the Codex catch-up row on 2026-10-04 (`git log --oneline 7697b9c..a150926 | wc -l` is 36).
+the Codex catch-up row on 2026-10-04 (`git log --oneline 7697b9c..a150926 | wc -l` is 36), and
+the round-6 stand-in row on 2026-10-05 (`git rev-list --count a150926..49cec29` is 11).
 Nothing here says what is or is not on GitHub: ask git (`git status -sb`), not this file.
 
 | Review | Commits it covered | How many | Reviewer |
@@ -115,8 +116,9 @@ Nothing here says what is or is not on GitHub: ask git (`git status -sb`), not t
 | 3rd | `3a45ed7..e18fb18` | 7 | a fresh Opus agent standing in for Codex |
 | 4th | `e18fb18..aa7a30d` | 7 | a fresh Opus agent standing in for Codex |
 | Codex catch-up | `7697b9c..a150926` | 36 | Codex, the usual reviewer — the whole branch so far, rounds 1–5 together |
+| Round 6 | `a150926..49cec29` | 11 | a fresh Opus agent standing in for Codex — 3 medium, 8 low, 7 nits |
 
-Commits after `a150926` are not yet reviewed.
+Commits after `49cec29` are not yet reviewed.
 
 ### What each round of fixes did
 
@@ -204,7 +206,8 @@ to a private function; fixed in `a1fa6be`, then 0; `cargo deny check` 1, only fo
 RUSTSEC-2026-0285 (`tokio-rustls` through `reqwest`); `check_copies.py` 0 (6 copies match core
 `aaaa585aa145`). The suite ran on `939a1a8`; `a1fa6be` changes two comment lines only.
 
-**After Codex's catch-up review — round 6** (commits after `a150926`, none reviewed yet).
+**After Codex's catch-up review — round 6** (commits `a150926..49cec29`, reviewed since then by
+the stand-in review of round 6 — see the table).
 Codex reviewed the whole branch (`7697b9c..a150926`) and found six problems; it traced the code
 but could not run it, so each was reproduced on a real file first (the `meedya` binary and the C
 library built from `a150926`, files read back with mutagen, ffprobe and a raw RIFF INFO reader).
@@ -229,8 +232,10 @@ All six reproduced. The lead's decisions, final:
   apps stays with #256 (comment posted there).
 - `d3bcdcb` — `.gitattributes`: every policy-copy line is now `-text -filter
   -working-tree-encoding -ident`, proven in a throwaway clone (deleted afterwards).
-- `aaa189e` — a test that a WAV with two `LIST INFO` chunks (#259) is now refused rather than
-  half-changed, a consequence of `83660a6`, with its own fixture.
+- `aaa189e` — a test that a WAV with two `LIST INFO` chunks (#259) is refused rather than
+  half-changed, a consequence of `83660a6`, with its own fixture. (Only true when no earlier Test
+  Mode copy was involved: the refusal came from the check AFTER the save, which by then had
+  changed such a copy. Round 7 refuses before anything is written.)
 - `85bb053` — help pages, `Dev_Notes.md`, changelog and `.OpenAI/MEMORY.md`; and the commit that
   carries this note.
 
@@ -245,7 +250,9 @@ and "deu"; (3) both rows are refused, on a real run and on `--dry-run`, the MP3 
 `meedya debug` shows `['eng', 'fra']` and `<Language>` gives "en"; (5) the value is kept as a
 no-break space then "en" and shown as stored; (6) the C API answers `{"ok":true,"notes":[...]}`
 with the "por" note for `pt-BR` on an MP3 and exactly `{"ok":true}` for a FLAC. A WAV with two
-`LIST INFO` chunks (#259) is now refused, its checksum unchanged. Planted faults, one per decision,
+`LIST INFO` chunks (#259) was refused, its checksum unchanged — outside Test Mode; in Test Mode
+with an earlier copy, that copy was changed before the refusal (found by the round-6 review, M1;
+fixed in round 7). Planted faults, one per decision,
 each restored afterwards: decision 1 (the comparison of the other entries switched off) — two
 integration and four unit tests failed; decision 2 (the zero-character check off) — the value was
 still refused, by the general control-character check but with the wrong message, and four tests
@@ -265,8 +272,10 @@ shellcheck style notes (SC2001 three times, SC2129 once) in `ci-rust.yml` and `v
 on lines older than this branch; no workflow changed in round 6. The suite ran on `aaa189e`; the
 docs commit and this handoff commit change no code.
 
-**Not done / not checked:**
-- The Swift, C# and GTK screens still do not show `TagEntry.note` (#256); `swift build`,
+**Round 6's "not done" list, as it stood** (kept for the record; items fixed in round 7 are
+marked):
+- The Swift, C# and GTK screens do not show `TagEntry.note` or the write result's new `notes`
+  (#256; a comment there says so). The committed Swift bindings were regenerated; `swift build`,
   `dotnet test` and the GTK build were not run — nothing here touches their code.
 - The failure-path tests that need file permissions, and the swap test, are Unix-only; they have
   been run on macOS only. A permission test prints why it skipped, rather than failing, on an
@@ -275,23 +284,114 @@ docs commit and this handoff commit change no code.
   in the shared crate.
 - An APE tag is now READ from a real file in a test (`lang_ape_eng_fra.mp3`, finding 4), but
   no test WRITES one and reads it back.
-- The RIFF INFO guard (finding 1) covers language saves only. `remove_tag` of any other field
-  still rewrites every tag a file has, a WAV's RIFF INFO list included — checked with the round 6
-  build: `meedya edit <the Latin-1 WAV> --remove artist` still deleted its title. Not fixed here
-  (outside the decision); worth its own issue. A WAV with two `LIST INFO` chunks
-  holding a language (#259) is now refused rather than half-changed.
-- The C API / UniFFI `write_metadata` keeps the LAST of two entries with the same key (no
-  refusal, unlike the CLI after finding 3); its note describes that last one.
+- The RIFF INFO guard covered language saves only; `--remove artist` on the Latin-1 WAV still
+  deleted its title. **Fixed in round 7** (`52e81a8`).
+- The C API / UniFFI `write_metadata` kept the LAST of two entries with the same key. **Fixed in
+  round 7** (`e570d80`).
 - Finding 2's "any other control character" was read as: refused anywhere in the value, except
   the policy's own four whitespace characters at the two ends, which LANG-001 trims (so `"en\n"`
   is still accepted). A zero character cannot come through a real command line at all (the
   operating system ends an argument there), so the CLI's test for it builds the arguments in code.
-- The Swift, C# and GTK screens do not show the write result's new `notes` either (#256; a
-  comment there says so). The committed Swift bindings were regenerated; `swift build`,
-  `dotnet` and the GTK build were not run.
+
+**After the stand-in review of round 6 — round 7** (commits after `49cec29`, none reviewed yet).
+A fresh Opus agent, standing in for Codex, reviewed round 6 (`a150926..49cec29`, 11 commits):
+3 medium, 8 low (3 older than this work), 7 nits. Each finding the lead decided to fix was
+reproduced first on real files (the `meedya` binary and the C library built from `49cec29`, the C
+API called through ctypes, files read back with a raw RIFF INFO reader, mutagen and ffprobe). The
+lead's decisions, final:
+
+- `52e81a8` (carry-over 1, M1) — every save of a WAV keeps every other RIFF INFO entry, not only
+  a language save: `remove_tag` and `remove_cover_art` rewrite only the tag sections that hold
+  what is being removed (reproduced: `--remove artist` on a file with no artist, and
+  `--remove-cover`, deleted a Latin-1 title), and `RiffInfoGuard` checks every WAV save before
+  and after. A save that would rewrite the lists of a WAV with two `LIST INFO` chunks (#259) is
+  refused before anything is written ("this file has 2 RIFF INFO lists"); reproduced: in Test
+  Mode with an earlier copy, the copy used to be changed while the command said "refused". New
+  fixture `lang_riff_artist_title_latin1.wav`.
+- `126ad64` (L2) — an entry that comes through with only a final zero byte added is not a loss
+  (the reviewer's all-UTF-8 WAV with no zero bytes was refused with a false "cannot read"
+  reason); the message now says whether an entry would be lost or "rewritten with different
+  bytes"; `help/cli-reference.md` says so. New fixture `lang_riff_fre_no_final_zero.wav`.
+- `ff54d1c` (L4) — refusals show every character that is not plainly visible as `\u{..}`
+  (`language::show_invisible_characters`, now public): control and format characters, line and
+  paragraph separators, every space but U+0020.
+- `9f05166` (M2) — `meedya edit --dry-run` runs the save's own check read-only
+  (`metadata::check_tag_write` / `check_tag_removal`, worded by `integrity::check_save`) and gives
+  the same answer and exit code as the real run (reproduced: exit 0 on a dry run, 2 for real).
+- `820b596` (N7) — a refused save's message says "Metadata error:" once.
+- `e570d80` (M3, carry-over 2) — a field in both `--set` and `--remove`, or twice in `--remove`,
+  is refused like one set twice; the C API and UniFFI refuse the same key twice in one write,
+  naming the key and each value. Header and Swift bindings regenerated.
+- `5f7b410` (L3) — tests for the two planted faults that turned nothing red: a rule CONDITION on
+  an unsplit stored value (F4a) and the FFI note in Test Mode coming from the copy (F6b).
+- `0609e68` (N4) — the FFI write result's note is worded as what happened ("it lost the region
+  you typed — it was stored there as \"por\""); the CLI keeps the preview wording.
+- `dd2f40e` (L6) — the health tests use a temporary settings folder (they wrote into the real
+  one).
+- `a242a04` (L1) — the `.gitattributes` comment says exactly what can still override the
+  policy-copy lines (a later line in the same file, a `.gitattributes` closer to the copy,
+  `.git/info/attributes`), and that the global and system files cannot.
+- `b8c5f4a` — a fault in `ff54d1c`, found by the full check list: the new public function's
+  documentation linked to a private one, so `cargo doc` with warnings as errors failed. Fixed.
+- `c2068f8` — changelog (the untrue #259 sentence corrected; N5), `help/rule-syntax.md` (N2),
+  `Dev_Notes.md`, `.OpenAI/MEMORY.md`, and the fixture script's no-break space written as an
+  escape (N1); and the commit that carries this note. N3 is the merge of two near-duplicate
+  bullets above; N6 is covered by `52e81a8`'s message.
+
+**How round 7 was proven.** Reproduced first, then shown fixed with the rebuilt binary and
+library on the same files: the Latin-1 WAV keeps its title (raw reader, mutagen, ffprobe) after
+`--remove artist` and `--remove-cover`; removing the title beside a Latin-1 artist is refused,
+naming "the artist (IART)"; the two-list WAV's Test Mode copy is byte for byte unchanged; the
+no-zero-byte WAV saves (`INAM b"Song\0"`, `ILNG b"en\0"`, mutagen `TLAN` "eng"); a doubled zero
+byte is refused as "rewritten with different bytes"; dry run and real run both exit 2 with the
+same message; `--set` with `--remove`, and `--remove` twice, are refused and the MP3 keeps
+`TLAN` "deu"; the C API refuses `title` twice and `language` twice; seven invisible characters
+are shown as `\u{..}`; the C API says "Metadata error:" once; its `pt-BR` note reads "it lost
+the region … it was stored there as \"por\""; a fake `HOME` gets nothing from the whole mm-core
+test program. Planted faults, one or more per code decision, each restored and each red: F1-a
+(rewrite every section on removal), F1-b (no two-list refusal — the Test Mode copy changed),
+F1-c (rewrite every section on cover removal), F2a (exact bytes only), F2b (every changed entry
+called lost), F4 (control characters only), F3 (no read-only check in the plan), F-N7 (the label
+twice), F-M3a (`--remove` not counted), F-M3b (no FFI refusal), the reviewer's F4a and F6b
+exactly as he planted them, F-N4 (the FFI asking for the preview), F-N4b (one phrase not
+switching tense), and F-L6 (the guard dropped, run under a fake `HOME`). The `.gitattributes`
+comment was proven in a throwaway clone using only its own `.git/config`, deleted afterwards.
+
+**Checks on round 7's final code (2026-10-05):** `cargo fmt --all -- --check` 0; `cargo clippy
+--workspace --all-targets -- -D warnings` 0; `cargo test --workspace` 0 — 1566 passed, 1 ignored
+(#254), 0 failed (1549 before; 17 new tests); `RUSTDOCFLAGS="-D warnings" cargo doc --workspace
+--no-deps` first 101 — `ff54d1c`'s public doc comment linked to a private function, the same
+fault round 5 recorded; fixed in `b8c5f4a`, then 0; `check_copies.py` 0 (6 copies match core
+`aaaa585aa145`); `include/mm_ffi.h` regenerates unchanged by the build, the committed Swift
+bindings regenerate byte for byte with the crate's own `uniffi-bindgen`, and
+`make_language_fixtures.py` regenerates all twelve fixtures byte for byte; the policy copies are
+unchanged since `49cec29`. All twelve test programs were also run with `HOME` pointed at an
+empty folder: every test passed and nothing was created there. The suite, fmt and clippy ran on
+`c2068f8`; `b8c5f4a` changes two comment lines (the fake-`HOME` run and `cargo doc` were on
+`b8c5f4a`). `cargo deny` and `actionlint` were not re-run: `Cargo.toml`, `Cargo.lock` and
+`.github` are unchanged since `49cec29` (round 6: deny only the known RUSTSEC-2026-0285;
+actionlint four older style notes).
+
+**Not done / not checked (round 7):**
+- The Swift, C# and GTK screens still do not show `TagEntry.note` or the write result's `notes`
+  (#256); `swift build`, `dotnet` and the GTK build were not run. A draft #256 comment notes that
+  the Windows app reads the engine's text in the old Windows character set (L8), which would
+  garble the notes' "—" and quotes.
+- Not fixed, drafted as issues (not posted): a zero character in a field other than the
+  language becomes two values (L5); `--json` output carries log lines on standard output (L7).
+- A line for the MeedyaSuite-core list is drafted (not posted): the copy checker's advice "Mark …
+  -text" misleads when the cause is `.git/info/attributes`.
+- The format-character table in `show_invisible_characters` is Unicode 15.1's, written by hand;
+  a character Unicode adds later is not covered, and look-alike letters are never flagged.
+- A real `meedya edit` run now refuses in its validation step what a save would refuse before
+  writing; each check reads the file before any of that run's saves (said in the code).
+- Worth knowing: every save of a WAV now reads its RIFF INFO list raw first, so a WAV whose list
+  is damaged (an entry or the list itself says it is longer than it is) is refused for any save,
+  even one that only writes its ID3 tag — refusing rather than guessing, since nothing could
+  then prove the list came through. Not seen on a real file; said so in case it is.
 - Issues from this work still open, not fixed: #252, #253, #254, #255, #256, #257, #258, #259,
   #260.
-- **Next:** an independent review (Codex, the usual reviewer) of the commits after `a150926`.
+- **Next:** an independent review (Codex, the usual reviewer) of the commits after `49cec29`.
 
 ---
 
