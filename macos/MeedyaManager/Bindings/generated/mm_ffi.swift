@@ -1591,8 +1591,9 @@ public struct WriteMetadataResult: Equatable, Hashable {
      * disagrees and is left alone. `None` — not an empty list — when there
      * is nothing to say, so the C API's JSON stays exactly `{"ok":true}`.
      *
-     * When `tags` held the same key more than once, the last one is the
-     * one written and the only one with a note.
+     * A write holding the same key more than once is refused, so there is
+     * at most one note per key (the stand-in review of round 6,
+     * carry-over 2).
      *
      * The apps do not show these notes yet (#256).
      */
@@ -1615,8 +1616,9 @@ public struct WriteMetadataResult: Equatable, Hashable {
          * disagrees and is left alone. `None` — not an empty list — when there
          * is nothing to say, so the C API's JSON stays exactly `{"ok":true}`.
          *
-         * When `tags` held the same key more than once, the last one is the
-         * one written and the only one with a note.
+         * A write holding the same key more than once is refused, so there is
+         * at most one note per key (the stand-in review of round 6,
+         * carry-over 2).
          *
          * The apps do not show these notes yet (#256).
          */notes: [TagEntry]? = nil) {
@@ -2239,6 +2241,10 @@ public func validateTemplate(template: String) -> ValidationResult  {
  * character is refused with `MmFfiError::Metadata`, before anything is
  * written — it used to be cut at the first value silently (Codex's
  * catch-up review, finding 2).
+ * * **A key is given once.**  Two entries with the same key in one write
+ * are refused with `MmFfiError::Metadata`, naming the key and each value,
+ * before anything is written — the last one used to win silently (the
+ * stand-in review of round 6, carry-over 2).
  * * **The result says when a language write loses detail.**  On success
  * this returns a `WriteMetadataResult` whose `notes` carries, for the
  * `language` entry, the same note `meedya edit --set` shows — for
@@ -2324,7 +2330,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_mm_ffi_checksum_func_validate_template() != 30304) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_mm_ffi_checksum_func_write_metadata() != 88) {
+    if (uniffi_mm_ffi_checksum_func_write_metadata() != 17483) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_mm_ffi_checksum_method_scanprogresscallback_on_progress() != 6441) {

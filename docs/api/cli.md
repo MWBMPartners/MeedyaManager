@@ -131,11 +131,14 @@ reading `actions[].success`, not just the exit code:
 - **Phase-1 (validation) failure** — at least one requested operation is invalid (e.g. an
   unmapped tag key, a `--set language=...` value the shared MWBM-MEDIA-LANG policy does not
   recognise as a language at all or that holds a control character — see
-  `mm_core::metadata::language::parse_language_input` — or the same key given to `--set` more
-  than once, which gets one failed action per `--set`, each naming the key and every value
-  given). In
-  this case **none** of the batch is applied, not even the operations that were themselves valid
-  — this happens before any file I/O, regardless of `--dry-run`.
+  `mm_core::metadata::language::parse_language_input` — or the same key given more than once
+  across `--set` and `--remove`, which gets one failed action each time it was given, each naming
+  the key and every time it was given), or a save would refuse it before writing anything (a WAV
+  whose RIFF INFO list it would damage, or a file with no tags to read): that check is the save's
+  own, run read-only (`mm_core::metadata::check_tag_write` / `check_tag_removal`, worded by
+  `mm_core::integrity::check_save`), so `--dry-run` gives the same answer and exit code as a real
+  run. In this case **none** of the batch is applied, not even the operations that were themselves
+  valid — this happens before anything is written, regardless of `--dry-run`.
 - **Phase-2 (apply) failure** — every operation validated, but a real I/O error occurred while
   applying one of them. Operations run independently in this phase, so earlier and later actions
   in the same batch can still have succeeded even though one failed.

@@ -319,6 +319,10 @@ pub fn get_metadata(path: String) -> Result<Vec<TagEntry>, MmFfiError> {
 ///   character is refused with `MmFfiError::Metadata`, before anything is
 ///   written — it used to be cut at the first value silently (Codex's
 ///   catch-up review, finding 2).
+/// * **A key is given once.**  Two entries with the same key in one write
+///   are refused with `MmFfiError::Metadata`, naming the key and each value,
+///   before anything is written — the last one used to win silently (the
+///   stand-in review of round 6, carry-over 2).
 /// * **The result says when a language write loses detail.**  On success
 ///   this returns a `WriteMetadataResult` whose `notes` carries, for the
 ///   `language` entry, the same note `meedya edit --set` shows — for
@@ -331,6 +335,16 @@ pub fn write_metadata(
     tags: Vec<TagEntry>,
 ) -> Result<WriteMetadataResult, MmFfiError> {
     let file_path = PathBuf::from(&path);
+
+    // The stand-in review of round 6, carry-over 2: the same key twice in
+    // one write is refused, before anything is written, as `meedya edit`
+    // refuses a field given twice. The list became a map below, so the last
+    // entry silently won: reproduced with the library built from `49cec29`,
+    // `[{"key":"title","value":"A"},{"key":"title","value":"B"}]` answered
+    // `{"ok":true}` and the MP3 stored "B"; two `language` entries ("en",
+    // then "pt-BR") answered with a note for "pt-BR" only. Which value the
+    // caller meant is not something this can know.
+    refuse_a_key_given_twice(&tags)?;
 
     // Convert Vec<TagEntry> → TagMap (HashMap<String, Vec<String>>)
     // Split "; "-delimited values back into separate entries
@@ -378,6 +392,42 @@ pub fn write_metadata(
                 .unwrap_or_else(|| "metadata write failed".to_string()),
         ))
     }
+}
+
+/// `Err` naming every key `tags` holds more than once, and each value given
+/// for it, in order — written with any invisible character shown as
+/// `\u{..}`, so the message can never be cut short at a zero character or
+/// hide what differs. `Ok` when every key appears once.
+fn refuse_a_key_given_twice(tags: &[TagEntry]) -> Result<(), MmFfiError> {
+    let mut given_by_key: Vec<(&str, Vec<&str>)> = Vec::new();
+    for entry in tags {
+        match given_by_key.iter_mut().find(|(k, _)| *k == entry.key) {
+            Some((_, values)) => values.push(&entry.value),
+            None => given_by_key.push((&entry.key, vec![&entry.value])),
+        }
+    }
+    let twice: Vec<String> = given_by_key
+        .iter()
+        .filter(|(_, values)| values.len() > 1)
+        .map(|(key, values)| {
+            let shown: Vec<String> = values
+                .iter()
+                .map(|v| format!("\"{}\"", metadata::language::show_invisible_characters(v)))
+                .collect();
+            format!(
+                "'{}' is given more than once in this write ({})",
+                metadata::language::show_invisible_characters(key),
+                shown.join(", then ")
+            )
+        })
+        .collect();
+    if twice.is_empty() {
+        return Ok(());
+    }
+    Err(MmFfiError::Metadata(format!(
+        "{} — give each field once, so it is clear which value to save. Nothing was written.",
+        twice.join("; ")
+    )))
 }
 
 /// The note to report for the `language` entry of a write, if any — the
@@ -1283,6 +1333,81 @@ mod tests {
             error.contains("'not a language' is not a language"),
             "{error}"
         );
+    }
+
+    /// The stand-in review of round 6, carry-over 2, through the UniFFI API:
+    /// two entries with the same key in one write are refused, naming the
+    /// key and both values, and nothing is written — whether the values
+    /// differ or not, and for `language` too. Reproduced with the library
+    /// built from `49cec29`: the last entry was written and the call
+    /// succeeded.
+    #[test]
+    fn write_metadata_refuses_a_key_given_twice() {
+        let guard = ConfigDirGuard::new("keytwice");
+        for (fixture, key, first, second) in [
+            ("silence.mp3", "title", "A", "B"),
+            ("silence.flac", "title", "Same", "Same"),
+            ("silence.mp3", "language", "en", "pt-BR"),
+        ] {
+            let path = copy_core_fixture(fixture, guard.path());
+            let before = std::fs::read(&path).unwrap();
+            let entry = |value: &str| TagEntry {
+                key: key.to_string(),
+                value: value.to_string(),
+                note: None,
+            };
+            let err = write_metadata(
+                path.display().to_string(),
+                vec![entry(first), entry(second)],
+            )
+            .expect_err("a key given twice must be refused");
+            let MmFfiError::Metadata(message) = err else {
+                panic!("{key}: expected a Metadata error, got {err:?}");
+            };
+            assert!(
+                message.contains(&format!(
+                    "'{key}' is given more than once in this write (\"{first}\", then \"{second}\")"
+                )),
+                "{message}"
+            );
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                before,
+                "{key}: nothing written"
+            );
+            std::fs::remove_file(&path).unwrap();
+        }
+    }
+
+    /// The same through the C API, the Windows app's way in.
+    #[test]
+    fn c_api_refuses_a_key_given_twice() {
+        use std::ffi::{CStr, CString};
+
+        let guard = ConfigDirGuard::new("capikeytwice");
+        let path = copy_core_fixture("silence.mp3", guard.path());
+        let before = std::fs::read(&path).unwrap();
+        let c_path = CString::new(path.display().to_string()).unwrap();
+        let c_json =
+            CString::new(r#"[{"key":"title","value":"A"},{"key":"title","value":"B"}]"#).unwrap();
+        // SAFETY: both arguments are valid, zero-terminated C strings that
+        // outlive the call, and the answer is freed exactly once below with
+        // the library's own `mm_ffi_free_string`.
+        let answer = unsafe {
+            let ptr = crate::capi::mm_ffi_write_metadata(c_path.as_ptr(), c_json.as_ptr());
+            let text = CStr::from_ptr(ptr).to_str().unwrap().to_string();
+            crate::capi::mm_ffi_free_string(ptr.cast_mut());
+            text
+        };
+        let json: serde_json::Value = serde_json::from_str(&answer).unwrap();
+        let error = json["error"]
+            .as_str()
+            .unwrap_or_else(|| panic!("must be refused: {answer}"));
+        assert!(
+            error.contains("'title' is given more than once in this write (\"A\", then \"B\")"),
+            "{error}"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before, "nothing written");
     }
 
     /// The other half of the same rule: a value LANG-002 DOES recognise —

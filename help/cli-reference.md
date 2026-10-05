@@ -418,8 +418,9 @@ meedya edit <PATH> [OPTIONS]
 > way, with a message that shows a working example — and so is a `language` value holding a hidden
 > control character (a zero character is how a tag separates several values; a language is set one
 > value at a time). Giving the same field twice in one command (`--set language=en --set
-> language=pt-BR`) is rejected too, naming the field, because MeedyaManager cannot know which value
-> you meant; nothing is written, on `--dry-run` or not. A change to a WAV file that would rewrite
+> language=pt-BR`, or `--set title=X --remove title`, or `--remove title --remove title`) is
+> rejected too, naming the field and each time it was given, because MeedyaManager cannot know
+> which you meant; nothing is written, on `--dry-run` or not. A change to a WAV file that would rewrite
 > its older RIFF INFO tag section — changing its language, or removing a field that section holds —
 > is refused when that section holds text MeedyaManager cannot read as it is stored (a title saved
 > by an old Windows program in its own character set, say): the message names what would be lost,

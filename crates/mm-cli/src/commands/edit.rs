@@ -240,20 +240,55 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
     // still reported as done, each with the LAST value's note. Reproduced
     // with the binary built from `a150926`: `--set language=en --set
     // language=pt-BR` on an MP3 printed two successful rows, both saying the
-    // region would be lost and "por" stored, the file stored `por`, and
-    // `en` was never written at all; `--dry-run` said the same. Refusing is
-    // the only answer that cannot mislead: which value a person meant is not
-    // something this command can know. Every value given for each field is
-    // collected first, in order, so the message can name them all.
-    let mut values_by_key: Vec<(&str, Vec<&str>)> = Vec::new();
-    for set_arg in &args.set {
-        if let Some((key, value)) = set_arg.split_once('=') {
-            match values_by_key.iter_mut().find(|(k, _)| *k == key) {
-                Some((_, values)) => values.push(value),
-                None => values_by_key.push((key, vec![value])),
-            }
+    // region would be lost and "por" stored, the file stored `por`, and `en`
+    // was never written at all; `--dry-run` said the same. Refusing is the
+    // only answer that cannot mislead: which value a person meant is not
+    // something this command can know.
+    //
+    // The stand-in review of round 6 (M3) found the same misleading report
+    // for a field given to both `--set` and `--remove`, or to `--remove`
+    // twice: reproduced with the binary built from `49cec29`, `--set
+    // language=pt-BR --remove language` on an MP3 printed two successful
+    // rows — the first saying "por" would be stored — and the file was left
+    // with no tag at all; `--set title=X --remove title` and `--remove title
+    // --remove title` each reported every row as done. So every time a field
+    // is named, by either flag, counts. Each is collected first, in order, as
+    // it was typed (with any invisible character written out), so the message
+    // can name them all.
+    let mut given_by_key: Vec<(&str, Vec<String>)> = Vec::new();
+    let named = args
+        .set
+        .iter()
+        .filter_map(|set_arg| {
+            set_arg.split_once('=').map(|(key, value)| {
+                let shown = mm_core::metadata::language::show_invisible_characters(value);
+                (key, format!("--set {key}={shown}"))
+            })
+        })
+        .chain(
+            args.remove
+                .iter()
+                .map(|key| (key.as_str(), format!("--remove {key}"))),
+        );
+    for (key, as_typed) in named {
+        match given_by_key.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, given)) => given.push(as_typed),
+            None => given_by_key.push((key, vec![as_typed])),
         }
     }
+    // The refusal for a field named more than once, or `None`.
+    let given_more_than_once = |key: &str| -> Option<String> {
+        given_by_key
+            .iter()
+            .find(|(k, given)| *k == key && given.len() > 1)
+            .map(|(_, given)| {
+                format!(
+                    "'{key}' is given more than once in this command ({}) — give each field \
+                     once, so it is clear what to save",
+                    given.join(", then ")
+                )
+            })
+    };
 
     for set_arg in &args.set {
         let Some((key, value)) = set_arg.split_once('=') else {
@@ -276,23 +311,15 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
             continue;
         }
 
-        // Finding 3 (see above): one failed row for each time the field was
-        // given, so every `--set` the person typed is answered, and none of
-        // them is reported as done.
-        if let Some((_, values)) = values_by_key
-            .iter()
-            .find(|(k, values)| *k == key && values.len() > 1)
-        {
-            let given: Vec<String> = values.iter().map(|v| format!("\"{v}\"")).collect();
+        // Finding 3 and M3 (see above): one failed row for each time the
+        // field was given, so every `--set` and `--remove` the person typed
+        // is answered, and none of them is reported as done.
+        if let Some(refusal) = given_more_than_once(key) {
             failures.push(EditAction::failed(
                 "set",
                 Some(key.to_string()),
                 Some(value.to_string()),
-                format!(
-                    "'{key}' is given more than once in this command ({}) — give each field \
-                     once, so it is clear which value to save",
-                    given.join(", then ")
-                ),
+                refusal,
             ));
             continue;
         }
@@ -352,15 +379,23 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
     // -- --remove: check the key -------------------------------------------
     let mut remove_keys: Vec<String> = Vec::new();
     for key in &args.remove {
-        if known.contains(&key.as_str()) {
-            remove_keys.push(key.clone());
-        } else {
+        if !known.contains(&key.as_str()) {
             failures.push(EditAction::failed(
                 "remove",
                 Some(key.clone()),
                 None,
                 format!("unknown key '{key}' — valid: {valid_list}"),
             ));
+        } else if let Some(refusal) = given_more_than_once(key) {
+            // M3 (see above).
+            failures.push(EditAction::failed(
+                "remove",
+                Some(key.clone()),
+                None,
+                refusal,
+            ));
+        } else {
+            remove_keys.push(key.clone());
         }
     }
 
@@ -1576,7 +1611,9 @@ mod tests {
     /// Codex's catch-up review, finding 3: the same field set twice in one
     /// command is refused before anything is written — in a real run and on
     /// `--dry-run` — with every `--set` answered by a failed row that names
-    /// the field and every value given. It used to be "the last one wins",
+    /// the field and every time it was given. Since the stand-in review of
+    /// round 6 (M3), the same for a field given to `--set` and `--remove`,
+    /// or to `--remove` twice. It used to be "the last one wins",
     /// with every row reported as done and carrying the last value's note.
     /// Covers `language` (with the case that once needed its note dropped: a
     /// clearing `--set language=` after `pt-BR`) and an ordinary field.
@@ -1584,24 +1621,50 @@ mod tests {
     fn the_same_field_set_twice_is_refused_before_anything_is_written() {
         let _guard = ConfigDirGuard::new();
 
-        let cases: [(&[&str], &str, &str); 3] = [
+        // (the `--set` values, the `--remove` keys, the field, what the
+        // message must name). The stand-in review of round 6 (M3) added the
+        // last three: a field in both `--set` and `--remove`, or in
+        // `--remove` twice, was reported as done every time.
+        type Case<'a> = (&'a [&'a str], &'a [&'a str], &'a str, &'a str);
+        let cases: [Case; 6] = [
             (
                 &["language=en", "language=pt-BR"],
+                &[],
                 "language",
-                "(\"en\", then \"pt-BR\")",
+                "(--set language=en, then --set language=pt-BR)",
             ),
             (
                 &["language=pt-BR", "language="],
+                &[],
                 "language",
-                "(\"pt-BR\", then \"\")",
+                "(--set language=pt-BR, then --set language=)",
             ),
             (
                 &["title=One", "artist=Someone", "title=Two"],
+                &[],
                 "title",
-                "(\"One\", then \"Two\")",
+                "(--set title=One, then --set title=Two)",
+            ),
+            (
+                &["language=pt-BR"],
+                &["language"],
+                "language",
+                "(--set language=pt-BR, then --remove language)",
+            ),
+            (
+                &["title=X"],
+                &["title"],
+                "title",
+                "(--set title=X, then --remove title)",
+            ),
+            (
+                &[],
+                &["title", "title"],
+                "title",
+                "(--remove title, then --remove title)",
             ),
         ];
-        for (sets, field, values) in cases {
+        for (sets, removes, field, values) in cases {
             for dry_run in [false, true] {
                 let dir = tempfile::tempdir().unwrap();
                 let path = crate::test_support::copy_core_fixture("silence.mp3", dir.path());
@@ -1609,14 +1672,14 @@ mod tests {
                 let args = EditArgs {
                     path: path.clone(),
                     set: sets.iter().map(ToString::to_string).collect(),
-                    remove: vec![],
+                    remove: removes.iter().map(ToString::to_string).collect(),
                     cover: None,
                     remove_cover: false,
                     dry_run,
                 };
 
                 let Err(actions) = build_plan(&args) else {
-                    panic!("{sets:?}: '{field}' given twice must be refused");
+                    panic!("{sets:?} {removes:?}: '{field}' given twice must be refused");
                 };
                 let refused: Vec<&EditAction> = actions
                     .iter()
@@ -1625,7 +1688,7 @@ mod tests {
                 assert_eq!(
                     refused.len(),
                     2,
-                    "{sets:?}: one failed row per --set of '{field}'"
+                    "{sets:?} {removes:?}: one failed row each time '{field}' was given"
                 );
                 for action in refused {
                     assert!(!action.success && action.note.is_none(), "{action:?}");
@@ -1633,19 +1696,19 @@ mod tests {
                     assert!(
                         message.contains(&format!("'{field}' is given more than once"))
                             && message.contains(values),
-                        "{sets:?}: {message:?}"
+                        "{sets:?} {removes:?}: {message:?}"
                     );
                 }
 
                 assert_eq!(
                     run(&test_ctx(), &args).unwrap(),
                     ExitCode::PARTIAL,
-                    "{sets:?} dry_run={dry_run}: must not report success"
+                    "{sets:?} {removes:?} dry_run={dry_run}: must not report success"
                 );
                 assert_eq!(
                     std::fs::read(&path).unwrap(),
                     before,
-                    "{sets:?} dry_run={dry_run}: nothing may be written"
+                    "{sets:?} {removes:?} dry_run={dry_run}: nothing may be written"
                 );
             }
         }

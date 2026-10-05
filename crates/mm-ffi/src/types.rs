@@ -78,8 +78,9 @@ pub struct WriteMetadataResult {
     /// disagrees and is left alone. `None` — not an empty list — when there
     /// is nothing to say, so the C API's JSON stays exactly `{"ok":true}`.
     ///
-    /// When `tags` held the same key more than once, the last one is the
-    /// one written and the only one with a note.
+    /// A write holding the same key more than once is refused, so there is
+    /// at most one note per key (the stand-in review of round 6,
+    /// carry-over 2).
     ///
     /// The apps do not show these notes yet (#256).
     #[uniffi(default = None)]
