@@ -271,10 +271,53 @@ pub fn run_health_checks(config_path: &Path, watch_folders: &[PathBuf]) -> Healt
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)] // set_var/remove_var require unsafe in Edition 2024
 mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    /// Points `MM_CONFIG_DIR` at a private temporary folder for one test,
+    /// holding the crate's one `MM_CONFIG_DIR` lock (`config::ENV_LOCK`)
+    /// for as long as it lives, and puts the environment back when dropped
+    /// — even when an assertion fails part-way.
+    ///
+    /// Why (the stand-in review of round 6, L6): the three tests below that
+    /// reach `check_config_dir_writable` used the real settings folder —
+    /// `~/Library/Application Support/MeedyaManager` on a Mac — creating it
+    /// if it was missing and writing a scratch file into it. Reproduced by
+    /// running the mm-core test program with `HOME` set to an empty folder:
+    /// only these tests created `Library/Application Support/MeedyaManager`
+    /// there, and the real folder's modified time changed on every full run.
+    struct ConfigDirGuard {
+        // Dropped top to bottom: the folder goes before the lock is freed.
+        dir: TempDir,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl ConfigDirGuard {
+        fn new() -> Self {
+            let lock = crate::config::ENV_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let dir = TempDir::new().unwrap();
+            // SAFETY: the lock taken above is held by every test in this
+            // crate that reads or writes `MM_CONFIG_DIR`.
+            unsafe {
+                std::env::set_var("MM_CONFIG_DIR", dir.path());
+            }
+            Self { dir, _lock: lock }
+        }
+    }
+
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            // SAFETY: still under the lock (released after this returns).
+            unsafe {
+                std::env::remove_var("MM_CONFIG_DIR");
+            }
+        }
+    }
 
     #[test]
     fn check_status_display() {
@@ -410,15 +453,26 @@ mod tests {
         assert_eq!(result.status, CheckStatus::Warn);
     }
 
+    /// The check uses the configured folder — here a temporary one — and
+    /// finds it writable. (It used to accept Pass or Fail, so it could not
+    /// fail, and it used the real settings folder: see `ConfigDirGuard`.)
     #[test]
     fn check_config_dir_writable_succeeds() {
+        let guard = ConfigDirGuard::new();
         let result = check_config_dir_writable();
-        // Should pass on most systems
-        assert!(result.status == CheckStatus::Pass || result.status == CheckStatus::Fail);
+        assert_eq!(result.status, CheckStatus::Pass, "{}", result.message);
+        assert!(
+            result
+                .message
+                .contains(&guard.dir.path().display().to_string()),
+            "the temporary folder, not the real one: {}",
+            result.message
+        );
     }
 
     #[test]
     fn run_health_checks_with_valid_config() {
+        let _guard = ConfigDirGuard::new();
         let dir = TempDir::new().unwrap();
         let config_path = dir.path().join("settings.json5");
         fs::write(&config_path, "{}").unwrap();
@@ -429,6 +483,7 @@ mod tests {
 
     #[test]
     fn run_health_checks_with_missing_config() {
+        let _guard = ConfigDirGuard::new();
         let report = run_health_checks(Path::new("/nonexistent/settings.json5"), &[]);
         assert!(report.warn_count() >= 2); // Missing config + no watch folders
     }
