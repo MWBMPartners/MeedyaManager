@@ -164,10 +164,11 @@ stop working just because two files store it differently.
 - **`<Language>` gives the standard short form.** An MP3 storing `eng` and a FLAC storing `en`
   both give `en`; `fre` gives `fr`.
 - **Text nothing recognises is shown as the file stores it.** A file whose language says
-  `English` (a word, not a code) gives `English` — never a guess. Only spaces, tabs and line
-  breaks at either end are left off. Anything else around a code is part of the text: a code
-  with a no-break space in front of it is not a code MeedyaManager recognises, so it is shown as
-  it is and does not match `language Equals en`.
+  `English` (a word, not a code) gives `English` — never a guess. Only four characters are left
+  off either end: the ordinary space, the tab, the line feed and the carriage return. Anything
+  else around a code is part of the text — a no-break space, a vertical tab, a form feed, or any
+  other kind of line break or space — so a code with one of those in front of it is not a code
+  MeedyaManager recognises: it is shown as it is and does not match `language Equals en`.
 - **A file with more than one language:** when a template builds a file or folder name (which
   is how MeedyaManager uses templates today), only the first language is used. Where a template
   is shown as text instead, each different language is listed once (`en; fr`), even if the

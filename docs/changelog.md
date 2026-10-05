@@ -223,11 +223,35 @@ Format: `## [Version] — YYYY-MM-DD`
   refuses the same field given twice in one command, instead of saving the last value while
   reporting both as done. Several languages stored in one field (as an APE tag stores them) are
   read as separate languages, in order, whatever kind of tag holds them, so a rule looks at the
-  first language only, as this entry promises above. Only spaces, tabs and line breaks around a
-  stored language are ignored: a no-break space is part of the text, as the shared policy says,
-  so such a value is no longer mistaken for English. And the desktop apps' engine now reports
-  the same note `meedya edit` shows when a language write loses detail (their screens do not
-  show it yet, [#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
+  first language only, as this entry promises above. Only spaces, tabs, line feeds and carriage
+  returns around a stored language are ignored: a no-break space is part of the text, as the
+  shared policy says, so such a value is no longer mistaken for English. One change you may
+  notice: a stored language with a vertical tab, a form feed or a "next line" character at
+  either end used to be tidied to the bare code, and is now kept as stored, as the policy says —
+  so a template such as `<Language>/<Title>` puts that character into the name, and the renamer
+  turns it into `_` (a folder `en_` or `_en` where it used to be `en`). And the desktop apps'
+  engine now reports the same facts `meedya edit` shows when a language write loses detail
+  (their screens do not show them yet,
+  [#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
+
+  **Fixed after a further review:** every save of a WAV file now keeps the rest of its RIFF INFO
+  tag section, not only a language change. Removing a field (`--remove artist`, even from a file
+  with no artist at all) or removing cover art used to rewrite that section too and delete text
+  MeedyaManager cannot read, such as a title saved in an old Windows character set; now only a
+  section that holds what is being removed is rewritten, and any save that would lose something
+  is refused, naming it, with the file left as it was. A WAV file with two RIFF INFO sections is
+  refused before anything is written — including a Test Mode copy an earlier edit made, which
+  used to be half-changed while the command said it had refused. A section entry written without
+  a zero byte at its end no longer stops a save (adding that byte changes nothing anyone can
+  read), and a refusal now says truly whether an entry would be lost or rewritten. `meedya edit
+  --dry-run` gives the same answer and exit code as the real run for all of this, instead of
+  promising success. A field given to both `--set` and `--remove`, or to `--remove` twice, is
+  refused like a field set twice; the desktop apps' engine refuses the same field twice in one
+  save, too, instead of keeping the last. A refused value now shows every invisible character —
+  zero-width spaces, a no-break space, direction-changing characters — written out, so the
+  message cannot hide why it was refused or be garbled by it. The note the desktop apps' engine
+  returns now says what happened (that the file stored `por`, say), not what will happen, and
+  its error messages no longer say "Metadata error:" twice.
 
   When saving a file fails, the message now starts "Could not save the changes to" and names the
   file you asked to change — never the temporary working copy MeedyaManager edits first, or its
@@ -247,8 +271,9 @@ Format: `## [Version] — YYYY-MM-DD`
   one.
 
   **Also tracked separately, found while testing this:** a WAV file with two `LIST INFO` chunks
-  holding a language had only the first one changed when its language was set or cleared; since
-  the RIFF INFO fix above, such a change is refused instead, leaving the file as it was
+  holding a language had only the first one changed when its language was set or cleared; such
+  a change is now refused before anything is written, leaving the file — and a Test Mode copy an
+  earlier edit made — as it was
   ([#259](https://github.com/MWBMPartners/MeedyaManager/issues/259)); any save to a FLAC file that
   starts with an ID3 tag fails
   ([#257](https://github.com/MWBMPartners/MeedyaManager/issues/257), older than this work);

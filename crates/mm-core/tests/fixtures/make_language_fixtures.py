@@ -349,9 +349,11 @@ def main() -> None:
         # a no-break space (U+00A0) followed by "en". The policy trims only
         # four characters (space, tab, line feed, carriage return); anything
         # else, a no-break space included, is part of the value and makes
-        # it malformed — so this must NOT be read as English.
+        # it malformed — so this must NOT be read as English. Written as the
+        # escape \u00a0, never as the character itself, which no editor
+        # shows (the stand-in review of round 6, N1).
         "lang_vorbis_nbsp_en.flac": flac_with_vorbis(
-            HERE / "silence.flac", [("LANGUAGE", " en")]
+            HERE / "silence.flac", [("LANGUAGE", "\u00a0en")]
         ),
     }
     for name, data in fixtures.items():

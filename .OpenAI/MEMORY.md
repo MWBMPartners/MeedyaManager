@@ -71,8 +71,9 @@
   language work, the tag library could not read a WAV's RIFF INFO title written in Latin-1,
   left it out of what it read, and wrote the list back without it — a language save deleted
   the title and reported success. Language saves now read that list's raw bytes before and
-  after and refuse any other change (`metadata/riff_info.rs`). Other saves (`remove_tag` of
-  another field) are not guarded yet.
+  after and refuse any other change (`metadata/riff_info.rs`). Since the stand-in review of
+  round 6 every save of a WAV is guarded, and a removal rewrites only the tag sections that hold
+  the field — rewriting a section that holds nothing to remove can only lose something.
 - **A reader's rule is not a writer's rule.** The shared language reader takes the first of
   several values separated by a zero character — right for reading a stored field, wrong for a
   value being set, where it silently threw the rest away. Check which side a function was
@@ -85,3 +86,14 @@
 - **Codex reviews here when it can.** Its catch-up review of the whole language branch (36
   commits) found six problems four earlier rounds had not; it traced code but could not run it,
   so each finding was reproduced on a real file before it was fixed.
+- **A check after a save is proof, not protection.** A refusal from the check after saving comes
+  after the save; in Test Mode, once an earlier edit made the copy, that save went into the
+  copy. Everything a check can predict must be checked BEFORE the first write (the two-INFO-list
+  WAV, #259, slipped through exactly this way).
+- **A dry run must run the same checks as the real run.** A check that lives only inside the
+  save is invisible to `--dry-run`; expose a read-only form and call it when the plan is built.
+- **A refusal message is only safe if it shows what was refused.** Quoting a value raw hides a
+  zero-width space, a no-break space or a direction-changing character — exactly the things
+  that made it wrong. Write out everything not plainly visible.
+- **Prove a test gap with the reviewer's own planted fault.** Two of eleven planted faults
+  turned no test red; the new tests were each shown red against that exact fault.

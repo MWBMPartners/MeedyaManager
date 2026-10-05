@@ -1033,12 +1033,12 @@ stored metadata, and shows no language menus yet):
     and `write_tags` / `remove_tag` check, before the first save (against what `lofty` would
     write, `TagExt::dump_to`) and after the last (against the file), that every entry other than
     `ILNG` is byte for byte the same and in the same order and that `ILNG` holds exactly what was
-    asked. Anything else is refused, naming what would be lost. Limits: it guards language saves
-    only (`remove_tag` of another field still rewrites every tag), and it refuses harmless
+    asked. Anything else is refused, naming what would be lost. Limits as first written (both
+    since lifted, see the next entry): it guarded language saves only, and it refused harmless
     differences too, because it cannot tell them apart without guessing. A side effect worth
-    knowing: a WAV with two `LIST INFO` chunks (#259) holding a language is now refused rather
-    than left with two languages, because `lofty` copies the second chunk's entries into the
-    first.
+    knowing: a WAV with two `LIST INFO` chunks (#259) holding a language is refused rather than
+    left with two languages, because `lofty` copies the second chunk's entries into the first —
+    though as first written only by the check AFTER the save (see the next entry).
   - **A language being set is ONE value** (finding 2). The shared reader reads only the first of
     several values separated by a zero character — right for reading a stored field (LANG-002),
     wrong for a value being set, where it silently threw the rest away (the C API stored `en`
@@ -1065,6 +1065,45 @@ stored metadata, and shows no language menus yet):
     -working-tree-encoding -ident`, proven in a throwaway clone (a filter or encoding set through
     that clone's own `.git/config` changed the copies with the old lines and not with the new; a
     line in its `.git/info/attributes` still wins, and the copy checker then reports the copy).
+- **The stand-in review of round 6, 2026-10-05** (a fresh Opus agent standing in for Codex,
+  over `a150926..49cec29`; 3 medium, 8 low, 7 nits; each reproduced on a real file, read back
+  with mutagen and ffprobe, before it was fixed; the lead's decisions final):
+  - **Every save of a WAV keeps the rest of its RIFF INFO list** (carry-over 1). `remove_tag` and
+    `remove_cover_art` rewrote every tag section, whether or not it held what was being removed,
+    so `--remove artist` (on a file with no artist) and `--remove-cover` deleted a Latin-1 title.
+    They now rewrite only the sections that hold it (a RIFF INFO list is asked raw as well, so an
+    entry `lofty` cannot read can still be removed), and `RiffInfoGuard` checks every WAV save —
+    write, clear, remove, cover art — against one description of what the save does to the list
+    (`RiffChange`), before and after.
+  - **Two `LIST INFO` chunks are refused before anything is written** (M1, #259). `lofty`'s
+    predicted list already holds the second chunk's entries, so only the check after saving
+    saw the difference — by then, in Test Mode with an earlier copy, the copy had been changed.
+    `riff_info::read_info_lists` counts the chunks; a save that would rewrite them refuses when
+    there is more than one, saying so.
+  - **A missing final zero byte is not a loss** (L2). An entry that comes through with only a
+    zero byte added at its end counts as kept; every other difference still refuses, and the
+    message says whether an entry would be lost (only then "cannot read it as it is stored") or
+    rewritten with different bytes.
+  - **`--dry-run` predicts the refusal** (M2). `metadata::check_tag_write` /
+    `check_tag_removal` run the save's own check read-only (the preparation moved into
+    `TagWritePlan` / `TagRemovalPlan`, shared with the saves), and `integrity::check_save` words a
+    refusal as the save would; `meedya edit` runs them when it builds its plan, dry run or not.
+  - **A field given more than once is refused everywhere** (M3, carry-over 2): `--set` with
+    `--remove`, or `--remove` twice, in `meedya edit`; two entries with the same key in the C API
+    and UniFFI.
+  - **Refusals show every invisible character** (L4): `language::show_invisible_characters`
+    (was `show_with_control_characters_visible`) also writes out format characters, line and
+    paragraph separators and every space but U+0020.
+  - **Notes and messages:** the FFI write result's note is worded as what happened
+    (`NoteTense::AfterTheSave`, N4); "Metadata error:" appears once (`integrity::plain_reason`,
+    N7).
+  - **Tests:** a rule-engine condition test with an unsplit stored value and an FFI Test Mode
+    note test (L3 — two of the reviewer's planted faults had turned no test red); the health
+    tests use a temporary settings folder (L6 — they wrote into the real one).
+  - **Not fixed here, drafted as issues:** a zero character in any field other than the language
+    silently becomes two values (L5); `--json` output is not clean JSON when log lines reach
+    standard output (L7); and, for #256, the Windows app reads the engine's text in the old
+    Windows character set (L8).
 - **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
   language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
   `companion` module still matches sidecars by exact name only. Tracked as issue #252,
