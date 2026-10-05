@@ -293,11 +293,12 @@ impl std::fmt::Display for LanguageInputError {
         // not here; this comment is corrected so it no longer claims a
         // guarantee this one function cannot make on its own.
         //
-        // The input is quoted with every control character written out as
-        // `\u{..}` (`show_with_control_characters_visible`), so a refusal
-        // can never print a raw zero character — which would cut the
-        // message short at the C API, where text ends at a zero.
-        let shown = show_with_control_characters_visible(&self.input);
+        // The input is quoted with every character that is not plainly
+        // visible written out as `\u{..}` (`show_invisible_characters`), so
+        // a refusal can never print a raw zero character — which would cut
+        // the message short at the C API, where text ends at a zero — nor
+        // hide what made the value wrong.
+        let shown = show_invisible_characters(&self.input);
         match self.problem {
             InputProblem::NotRecognised => write!(
                 f,
@@ -321,19 +322,85 @@ impl std::fmt::Display for LanguageInputError {
     }
 }
 
-/// `input` with every control character written out as `\u{..}` and
-/// everything else left as it is — for quoting a refused value safely.
-fn show_with_control_characters_visible(input: &str) -> String {
+/// `input` with every character that is not plainly visible written out as
+/// `\u{..}`, and everything else left as it is.
+///
+/// For quoting a value safely in a message: a refusal, or the CLI and FFI
+/// naming a field given twice.
+///
+/// "Not plainly visible" means: a control character; a format character
+/// (zero-width space and joiners, the byte-order mark, the bidirectional
+/// controls such as U+202E — see [`is_format_character`]); a line or
+/// paragraph separator; and every space other than the ordinary U+0020.
+///
+/// Why this is wider than control characters (the stand-in review of round
+/// 6, L4; this used to be `show_with_control_characters_visible`, which
+/// wrote out only what Rust's `char::is_control` counts): with the CLI and
+/// the C API built from `49cec29`, `en` + zero-width space + `fr` was refused
+/// with the value quoted as it was, so the message read as "enfr"; a no-break
+/// space in front showed as an ordinary space; a U+2028 line separator broke the
+/// message line; and a U+202E right-to-left override was passed through raw,
+/// which reverses the display order of what follows in a terminal or an app.
+/// Each was refused correctly — only the message hid why.
+///
+/// What this cannot do: show a character that looks like another (a Cyrillic
+/// "е" for a Latin "e") — those are plainly visible, just misleading, and
+/// telling them apart would need the whole confusables table. Nor does it
+/// know characters Unicode assigned after the table in
+/// [`is_format_character`] was written.
+pub fn show_invisible_characters(input: &str) -> String {
     input
         .chars()
         .map(|c| {
-            if c.is_control() {
-                c.escape_unicode().to_string()
-            } else {
+            if is_plainly_visible(c) {
                 c.to_string()
+            } else {
+                c.escape_unicode().to_string()
             }
         })
         .collect()
+}
+
+/// Whether `c` shows as itself when printed — see
+/// [`show_invisible_characters`].
+fn is_plainly_visible(c: char) -> bool {
+    // `char::is_whitespace` is every Unicode space separator (U+0020, the
+    // no-break space U+00A0, the em space U+2003, the ideographic space
+    // U+3000 …), the line and paragraph separators U+2028 and U+2029, and
+    // some control characters. The ordinary space is the one kept.
+    !(c.is_control() || (c.is_whitespace() && c != ' ') || is_format_character(c))
+}
+
+/// Whether `c` is a Unicode format character (general category Cf, as of
+/// Unicode 15.1): it changes how text around it is laid out — joining,
+/// direction, word breaks — but has no shape of its own. The Rust standard
+/// library has no general-category lookup, and adding a crate for one table
+/// is not worth it, so the ranges are listed here.
+fn is_format_character(c: char) -> bool {
+    matches!(
+        c,
+        '\u{AD}' // soft hyphen
+            | '\u{600}'..='\u{605}' // Arabic number signs
+            | '\u{61C}' // Arabic letter mark
+            | '\u{6DD}' // Arabic end of ayah
+            | '\u{70F}' // Syriac abbreviation mark
+            | '\u{890}'..='\u{891}' // Arabic pound and piastre marks above
+            | '\u{8E2}' // Arabic disputed end of ayah
+            | '\u{180E}' // Mongolian vowel separator
+            | '\u{200B}'..='\u{200F}' // zero-width space, non-joiner, joiner; left-to-right and right-to-left marks
+            | '\u{202A}'..='\u{202E}' // bidirectional embeddings and overrides
+            | '\u{2060}'..='\u{2064}' // word joiner; invisible operators
+            | '\u{2066}'..='\u{206F}' // bidirectional isolates; deprecated formats
+            | '\u{FEFF}' // byte-order mark / zero-width no-break space
+            | '\u{FFF9}'..='\u{FFFB}' // interlinear annotation
+            | '\u{110BD}' // Kaithi number sign
+            | '\u{110CD}' // Kaithi number sign above
+            | '\u{13430}'..='\u{1343F}' // Egyptian hieroglyph format controls
+            | '\u{1BCA0}'..='\u{1BCA3}' // shorthand format controls
+            | '\u{1D173}'..='\u{1D17A}' // musical symbol formatting
+            | '\u{E0001}' // language tag
+            | '\u{E0020}'..='\u{E007F}' // tag characters
+    )
 }
 
 impl std::error::Error for LanguageInputError {}
@@ -1585,6 +1652,43 @@ mod tests {
         for input in ["en\n", "\ten", " en\r\n"] {
             assert_eq!(parse_language_input(input).unwrap().tag, "en", "{input:?}");
         }
+    }
+
+    /// The stand-in review of round 6, L4: a refusal shows every character
+    /// that is not plainly visible as `\u{..}` — each kind the decision
+    /// names — and leaves ordinary text, an ordinary space and letters from
+    /// other scripts alone.
+    #[test]
+    fn a_refusal_shows_every_invisible_character() {
+        for (input, shown) in [
+            // control characters
+            ("en\u{1}fr", "en\\u{1}fr"),
+            // format characters: zero-width space, joiner and non-joiner,
+            // byte-order mark, a bidirectional override, a soft hyphen
+            ("en\u{200b}fr", "en\\u{200b}fr"),
+            ("en\u{200d}fr", "en\\u{200d}fr"),
+            ("en\u{200c}fr", "en\\u{200c}fr"),
+            ("\u{feff}en", "\\u{feff}en"),
+            ("en\u{202e}fr", "en\\u{202e}fr"),
+            ("en\u{ad}fr", "en\\u{ad}fr"),
+            // line and paragraph separators
+            ("en\u{2028}fr", "en\\u{2028}fr"),
+            ("en\u{2029}fr", "en\\u{2029}fr"),
+            // every space other than U+0020
+            ("\u{a0}en", "\\u{a0}en"),
+            ("en\u{2003}fr", "en\\u{2003}fr"),
+            ("en\u{3000}fr", "en\\u{3000}fr"),
+            ("en\u{202f}fr", "en\\u{202f}fr"),
+        ] {
+            let message = parse_language_input(input).unwrap_err().to_string();
+            assert!(
+                message.starts_with(&format!("'{shown}'")),
+                "{input:?} must be shown as {shown:?}: {message:?}"
+            );
+        }
+        assert_eq!(show_invisible_characters("en fr"), "en fr");
+        assert_eq!(show_invisible_characters("中文-Hant"), "中文-Hant");
+        assert_eq!(show_invisible_characters("Café"), "Café");
     }
 
     #[test]
