@@ -478,6 +478,28 @@ fn build_plan(args: &EditArgs) -> Result<EditPlan, Vec<EditAction>> {
                 ));
             }
         }
+        // The cover options too (the stand-in review of round 7, L2): they
+        // were not checked here, so a dry run said "✓" where the real run
+        // refused — reproduced with the binary built from `e4db8f8` on a text
+        // file and on two damaged WAVs, `--cover` and `--remove-cover` each
+        // exiting 0 on a dry run and 2 for real.
+        if cover.is_some() || args.remove_cover {
+            if let Err(reason) =
+                mm_core::integrity::check_save(&args.path, mm_core::metadata::check_cover_change)
+            {
+                if let Some((cover_path, _, _)) = &cover {
+                    failures.push(EditAction::failed(
+                        "embed_cover",
+                        None,
+                        Some(cover_path.display().to_string()),
+                        reason.clone(),
+                    ));
+                }
+                if args.remove_cover {
+                    failures.push(EditAction::failed("remove_cover", None, None, reason));
+                }
+            }
+        }
     }
 
     if failures.is_empty() {
@@ -1847,6 +1869,102 @@ mod tests {
                     "removing={removing} dry_run={dry_run}: exit 2"
                 );
                 assert_eq!(std::fs::read(&path).unwrap(), before, "file untouched");
+            }
+        }
+    }
+
+    /// The stand-in review of round 7, L2: `--dry-run` checks `--cover` and
+    /// `--remove-cover` too, so it gives the same answer and exit code as
+    /// the real run. Reproduced with the binary built from `e4db8f8`: on a
+    /// text file, and on a WAV whose RIFF INFO entry says it is longer than
+    /// its list, each option exited 0 on a dry run ("✓") and 2 for real
+    /// ("Cannot read tags from …"). Both now refuse with the save's own
+    /// reason, and neither writes anything.
+    #[test]
+    fn dry_run_checks_the_cover_options_like_the_real_run() {
+        let _guard = ConfigDirGuard::new();
+        // The words after the file's path, which differs from copy to copy.
+        let after_path = |message: &str| message.split_once("': ").map(|(_, r)| r.to_string());
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("cover.jpg");
+        std::fs::write(&image, b"\xff\xd8\xff\xe0 not really a picture").unwrap();
+
+        // A WAV whose only RIFF INFO entry says it is 200 bytes long, inside
+        // a list of 18 bytes.
+        let damaged = |path: &std::path::Path| {
+            write_wav_fixture(path);
+            let mut bytes = std::fs::read(path).unwrap();
+            let mut list = b"INFO".to_vec();
+            list.extend(b"INAM");
+            list.extend(200u32.to_le_bytes());
+            list.extend(b"short\0");
+            bytes.extend(b"LIST");
+            bytes.extend(u32::try_from(list.len()).unwrap().to_le_bytes());
+            bytes.extend(list);
+            let riff_size = u32::try_from(bytes.len() - 8).unwrap();
+            bytes[4..8].copy_from_slice(&riff_size.to_le_bytes());
+            std::fs::write(path, bytes).unwrap();
+        };
+
+        let fresh = |name: &str| {
+            let path = dir.path().join(name);
+            if name.ends_with(".txt") {
+                std::fs::write(&path, "not a media file").unwrap();
+            } else {
+                damaged(&path);
+            }
+            path
+        };
+
+        for name in ["notes.txt", "damaged.wav"] {
+            for removing in [false, true] {
+                // What the save itself answers, called directly.
+                let path = fresh(name);
+                let saved = if removing {
+                    mm_core::integrity::remove_cover_art_safe(&path)
+                } else {
+                    mm_core::integrity::embed_cover_art_safe(&path, b"image", "image/jpeg")
+                };
+                assert!(
+                    !saved.success,
+                    "{name} removing={removing}: the save refuses"
+                );
+                let save_says = after_path(&saved.error.unwrap_or_default());
+                assert!(
+                    save_says
+                        .as_deref()
+                        .is_some_and(|s| s.contains("Cannot read tags")),
+                    "{save_says:?}"
+                );
+
+                for dry_run in [true, false] {
+                    let path = fresh(name);
+                    let before = std::fs::read(&path).unwrap();
+                    let args = EditArgs {
+                        path: path.clone(),
+                        set: vec![],
+                        remove: vec![],
+                        cover: (!removing).then(|| image.clone()),
+                        remove_cover: removing,
+                        dry_run,
+                    };
+                    let what = format!("{name} removing={removing} dry_run={dry_run}");
+                    let Err(actions) = build_plan(&args) else {
+                        panic!("{what}: must be refused before anything is saved");
+                    };
+                    assert_eq!(actions.len(), 1, "{what}: {actions:?}");
+                    assert_eq!(
+                        after_path(actions[0].error.as_deref().unwrap_or_default()),
+                        save_says,
+                        "{what}: the save's own reason"
+                    );
+                    assert_eq!(
+                        run(&test_ctx(), &args).unwrap(),
+                        ExitCode::PARTIAL,
+                        "{what}: exit 2"
+                    );
+                    assert_eq!(std::fs::read(&path).unwrap(), before, "{what}: untouched");
+                }
             }
         }
     }

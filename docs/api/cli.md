@@ -135,9 +135,12 @@ reading `actions[].success`, not just the exit code:
   across `--set` and `--remove`, which gets one failed action each time it was given, each naming
   the key and every time it was given), or a save would refuse it before writing anything (a WAV
   whose RIFF INFO list it would damage, or a file with no tags to read): that check is the save's
-  own, run read-only (`mm_core::metadata::check_tag_write` / `check_tag_removal`, worded by
-  `mm_core::integrity::check_save`), so `--dry-run` gives the same answer and exit code as a real
-  run. In this case **none** of the batch is applied, not even the operations that were themselves
+  own, run read-only for every kind of operation — `--set`, `--remove`, `--cover` and
+  `--remove-cover` (`mm_core::metadata::check_tag_write` / `check_tag_removal` /
+  `check_cover_change`, worded by `mm_core::integrity::check_save`) — so `--dry-run` gives the
+  same answer and exit code as a real run. (The cover options were not checked until the stand-in
+  review of round 7, L2: a dry run of `--cover` or `--remove-cover` on a text file said "✓" and
+  exited 0 where the real run refused and exited 2.) In this case **none** of the batch is applied, not even the operations that were themselves
   valid — this happens before anything is written, regardless of `--dry-run`.
 - **Phase-2 (apply) failure** — every operation validated, but a real I/O error occurred while
   applying one of them. Operations run independently in this phase, so earlier and later actions

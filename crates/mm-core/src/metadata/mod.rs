@@ -1784,6 +1784,30 @@ pub fn remove_tag(path: &Path, key: &str) -> MmResult<()> {
     Ok(())
 }
 
+/// A read-only form of the check [`embed_cover_art`] and
+/// [`remove_cover_art`] make before they write anything — see
+/// [`check_tag_write`], which is the same for a write.
+///
+/// Reads `path` and answers `Err` with the same refusal either save would
+/// give before writing: a file the tag library cannot read, or a WAV whose
+/// RIFF INFO list cannot be read raw (a cover-art save never rewrites the
+/// list, but every save of a WAV checks it comes through). Writes nothing.
+///
+/// Why it exists (the stand-in review of round 7, L2): `meedya edit
+/// --dry-run` checked `--set` and `--remove` but not the cover options, so
+/// it said "✓" where the real run refused. Reproduced with the `meedya`
+/// binary built from `e4db8f8`: `--remove-cover` and `--cover cover.jpg` on a
+/// text file, and on two damaged WAVs, each exited 0 on a dry run and 2 for
+/// real ("Cannot read tags from …").
+///
+/// # Errors
+/// The refusal either cover-art save would return before saving.
+pub fn check_cover_change(path: &Path) -> MmResult<()> {
+    let tagged_file = open_tagged_file(path)?;
+    RiffInfoGuard::before_saving(path, &tagged_file, &RiffChange::Untouched)?;
+    Ok(())
+}
+
 /// Embed front-cover art into the file at `path`.
 ///
 /// `data` is the raw image bytes (JPEG, PNG, etc.) and `mime` is the MIME
