@@ -395,9 +395,10 @@ pub fn write_metadata(
 }
 
 /// `Err` naming every key `tags` holds more than once, and each value given
-/// for it, in order — written with any invisible character shown as
-/// `\u{..}`, so the message can never be cut short at a zero character or
-/// hide what differs. `Ok` when every key appears once.
+/// for it, in order — each value in double quotes (see [`quoted`]), and the
+/// key with any invisible character shown as `\u{..}`, so the message can
+/// never be cut short at a zero character or hide what differs. `Ok` when
+/// every key appears once.
 fn refuse_a_key_given_twice(tags: &[TagEntry]) -> Result<(), MmFfiError> {
     let mut given_by_key: Vec<(&str, Vec<&str>)> = Vec::new();
     for entry in tags {
@@ -410,10 +411,7 @@ fn refuse_a_key_given_twice(tags: &[TagEntry]) -> Result<(), MmFfiError> {
         .iter()
         .filter(|(_, values)| values.len() > 1)
         .map(|(key, values)| {
-            let shown: Vec<String> = values
-                .iter()
-                .map(|v| format!("\"{}\"", metadata::language::show_invisible_characters(v)))
-                .collect();
+            let shown: Vec<String> = values.iter().map(|v| quoted(v)).collect();
             format!(
                 "'{}' is given more than once in this write ({})",
                 metadata::language::show_invisible_characters(key),
@@ -428,6 +426,25 @@ fn refuse_a_key_given_twice(tags: &[TagEntry]) -> Result<(), MmFfiError> {
         "{} — give each field once, so it is clear which value to save. Nothing was written.",
         twice.join("; ")
     )))
+}
+
+/// `value` in double quotes, for a message: a backslash or a double quote
+/// inside it is escaped (`\\`, `\"`) and every invisible character is
+/// written out as `\u{..}`.
+///
+/// Why the escaping (the stand-in review of round 7, N1): two entries whose
+/// values were `A", then "B` and `C` gave exactly the message three entries
+/// `A`, `B` and `C` give — `("A", then "B", then "C")` — reproduced through
+/// the C API of the library built from `e4db8f8`. With the quote escaped,
+/// the first reads `("A\", then \"B", then "C")`. Backslashes are escaped
+/// first, so a value that itself holds the text `\u{200b}` shows as
+/// `\\u{200b}`, never as the zero-width space written out.
+fn quoted(value: &str) -> String {
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        "\"{}\"",
+        metadata::language::show_invisible_characters(&escaped)
+    )
 }
 
 /// The note to report for the `language` entry of a write, if any — the
@@ -1355,7 +1372,7 @@ mod tests {
 
     /// The stand-in review of round 6, carry-over 2, through the UniFFI API:
     /// two entries with the same key in one write are refused, naming the
-    /// key and both values, and nothing is written — whether the values
+    /// key and each value, and nothing is written — whether the values
     /// differ or not, and for `language` too. Reproduced with the library
     /// built from `49cec29`: the last entry was written and the call
     /// succeeded.
@@ -1395,6 +1412,41 @@ mod tests {
             );
             std::fs::remove_file(&path).unwrap();
         }
+    }
+
+    /// The stand-in review of round 7, N1 and N2: each value given for a
+    /// repeated key is named (three here, not "both"), in double quotes
+    /// with any quote or backslash inside it escaped — so two entries
+    /// `A", then "B` and `C` can no longer read exactly like three entries
+    /// `A`, `B` and `C`, as they did with the library built from `e4db8f8`.
+    #[test]
+    fn a_key_given_twice_names_each_value_with_quotes_escaped() {
+        let guard = ConfigDirGuard::new("keytwicequotes");
+        let path = copy_core_fixture("silence.mp3", guard.path());
+        let refusal = |values: &[&str]| -> String {
+            let entries = values
+                .iter()
+                .map(|value| TagEntry {
+                    key: "title".to_string(),
+                    value: (*value).to_string(),
+                    note: None,
+                })
+                .collect();
+            match write_metadata(path.display().to_string(), entries) {
+                Err(MmFfiError::Metadata(message)) => message,
+                other => panic!("{values:?}: expected a refusal, got {other:?}"),
+            }
+        };
+        let three = refusal(&["A", "B", "C"]);
+        assert!(three.contains(r#"("A", then "B", then "C")"#), "{three}");
+        let two = refusal(&[r#"A", then "B"#, "C"]);
+        assert!(two.contains(r#"("A\", then \"B", then "C")"#), "{two}");
+        assert_ne!(two, three, "two entries must not read like three");
+        let slash = refusal(&[r"back\slash", r"\u{200b}"]);
+        assert!(
+            slash.contains(r#"("back\\slash", then "\\u{200b}")"#),
+            "a backslash is escaped, so typed text never looks written out: {slash}"
+        );
     }
 
     /// The same through the C API, the Windows app's way in.

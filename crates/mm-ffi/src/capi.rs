@@ -171,8 +171,8 @@ pub unsafe extern "C" fn mm_ffi_get_metadata(path: *const c_char) -> *const c_ch
 /// Each object may also carry a `note` (as `mm_ffi_get_metadata` returns
 /// them); it is ignored, so that JSON can be sent straight back.
 ///
-/// Each key may appear once: two objects with the same key are refused,
-/// naming the key and both values, and the file is left untouched.
+/// Each key may appear once: two or more objects with the same key are
+/// refused, naming the key and each value, and the file is left untouched.
 ///
 /// A `language` value must be ONE value: one holding a zero character
 /// (written `\u0000` in the JSON — several values, the way a tag separates
