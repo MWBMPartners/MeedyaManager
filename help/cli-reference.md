@@ -419,16 +419,22 @@ meedya edit <PATH> [OPTIONS]
 > control character (a zero character is how a tag separates several values; a language is set one
 > value at a time). Giving the same field twice in one command (`--set language=en --set
 > language=pt-BR`, or `--set title=X --remove title`, or `--remove title --remove title`) is
-> rejected too, naming the field and each time it was given, because MeedyaManager cannot know
-> which you meant; nothing is written, on `--dry-run` or not. A change to a WAV file that would rewrite
-> its older RIFF INFO tag section — changing its language, or removing a field that section holds —
-> is refused when that section holds text MeedyaManager cannot read as it is stored (a title saved
-> by an old Windows program in its own character set, say): the message names what would be lost,
-> and the file is left exactly as it was — `--dry-run` gives the same answer and exit code, because
-> it runs the same check without writing. Any other difference to that section is refused too,
-> named as an entry that "would be rewritten with different bytes" — with one exception: an entry
-> another program wrote without a zero byte at its end is written back with one, which changes
-> nothing anyone can read, so that alone does not stop a save. When Test Mode redirects a write, JSON output
+> rejected too, naming the field and each time it was given, in the order you typed them, because
+> MeedyaManager cannot know which you meant; nothing is written, on `--dry-run` or not. `--cover`
+> and `--remove-cover` together are rejected the same way. A WAV file can hold a second, older tag
+> section (RIFF INFO) beside its main tag: setting or clearing a field that section already holds
+> changes it there too, so the file holds exactly what you asked for (it used to keep the old
+> title, say, beside the new one). A change that would rewrite that section — setting, clearing
+> or removing a field it holds — is refused when that section holds text MeedyaManager cannot
+> read as it is stored (a title saved by an old Windows program in its own character set, say):
+> the message names what would be lost, and the file is left exactly as it was — `--dry-run`
+> gives the same answer and exit code, for `--cover` and `--remove-cover` too, because it runs
+> the same checks without writing (its message starts "A real run would not save …"). Any other
+> difference to that section is refused too, said as what would happen: an entry "rewritten with
+> different bytes", or a track number stored as `ITRK` that would be written back under a
+> different id, `IPRT`. Two differences change nothing anyone can read, so they do not stop a
+> save: an entry another program wrote without a zero byte at its end is written back with one,
+> and an entry holding no text at all is left out. When Test Mode redirects a write, JSON output
 > (`--json`) carries a `written_to` field naming the copy path. See [test-mode.md](test-mode.md)
 > for the full picture.
 

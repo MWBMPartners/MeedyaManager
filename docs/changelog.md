@@ -258,6 +258,20 @@ Format: `## [Version] — YYYY-MM-DD`
   returns now says what happened (that the file stored `por`, say), not what will happen, and
   its error messages no longer say "Metadata error:" twice.
 
+  **Fixed after the review that followed:** setting or clearing a field on a WAV file now changes
+  it in the file's older RIFF INFO tag section too, when that section holds it — setting a new
+  title used to leave the old one there beside it, so other programs showed two titles, and
+  clearing it changed nothing at all. A refusal to change that section now gives the true reason:
+  an entry holding no text no longer stops a save (leaving it out changes nothing anyone can
+  read), and a track number stored as `ITRK` is refused because it would be written back under a
+  different id, not because MeedyaManager "cannot read" it. `meedya edit --dry-run` now checks
+  `--cover` and `--remove-cover` as well, and says "A real run would not save …" rather than
+  "Could not save …". A field given twice is named in the order you typed it; `--cover` with
+  `--remove-cover` is refused, instead of embedding a picture and then removing it while reporting
+  both as done; an unknown field name, and more kinds of invisible character (variation
+  selectors, Hangul fillers, the Braille blank), are shown written out in a refusal; and the
+  desktop apps' engine quotes the values of a field given twice so they cannot be misread.
+
   When saving a file fails, the message now starts "Could not save the changes to" and names the
   file you asked to change — never the temporary working copy MeedyaManager edits first, or its
   Test Mode copy, which used to appear in some of these messages. When the trouble is in a Test

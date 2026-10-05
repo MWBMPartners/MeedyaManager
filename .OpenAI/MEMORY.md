@@ -97,3 +97,13 @@
   that made it wrong. Write out everything not plainly visible.
 - **Prove a test gap with the reviewer's own planted fault.** Two of eleven planted faults
   turned no test red; the new tests were each shown red against that exact fault.
+- **A test can pin the wrong answer.** Round 7 asserted that setting a WAV's title left its
+  RIFF INFO list "byte for byte the same" — which was the fault itself (the old title stayed
+  beside the new one). When a test checks that nothing changed, ask whether something should
+  have.
+- **Find out what the library really does before naming the reason.** A refusal said the tag
+  library "cannot read" entries it read perfectly well (an empty comment; a track number stored
+  as `ITRK`). Calling `lofty` directly in a scratch program showed what it reads and writes.
+- **"Every save is checked" needs a test where only the check refuses.** A WAV the library
+  reads but the guard's raw reader gives up on (10,001 sections) makes every save refuse; a save
+  that skips the guard then shows up at once.

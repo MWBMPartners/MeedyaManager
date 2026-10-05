@@ -1100,10 +1100,47 @@ stored metadata, and shows no language menus yet):
   - **Tests:** a rule-engine condition test with an unsplit stored value and an FFI Test Mode
     note test (L3 — two of the reviewer's planted faults had turned no test red); the health
     tests use a temporary settings folder (L6 — they wrote into the real one).
-  - **Not fixed here, drafted as issues:** a zero character in any field other than the language
-    silently becomes two values (L5); `--json` output is not clean JSON when log lines reach
-    standard output (L7); and, for #256, the Windows app reads the engine's text in the old
-    Windows character set (L8).
+  - **Not fixed here, filed as issues:** a zero character in any field other than the language
+    silently becomes two values (L5, now #261); `--json` output is not clean JSON when log lines
+    reach standard output (L7, now #262); and, for #256, a comment there says the Windows app
+    reads the engine's text in the old Windows character set (L8).
+- **The stand-in review of round 7, 2026-10-05** (a fresh Opus agent standing in for Codex,
+  over `49cec29..e4db8f8`; 1 medium, 9 low, 3 nits; each reproduced on a real file, read back
+  with a raw RIFF INFO reader, mutagen and ffprobe, before it was fixed; the lead's decisions
+  final):
+  - **A WAV's RIFF INFO list holds exactly what was asked, for every field** (M1; #255 for that
+    list). `write_tags` used to change only the language there, so `--set title=New` left
+    `INAM` "Café" beside the new ID3 title and `--set title=` changed nothing. Every field it
+    sets or clears that the list holds (read raw) is now changed there too
+    (`RiffChange::Write`, from `riff_change_for_write`), and the check confirms each asked-for
+    entry holds exactly the new text — `IPRT` for the track number, any `ITRK` gone — or is
+    gone. When `lofty` read nothing from the list, the save starts from an empty one
+    (`save_riff_change`), as the check's prediction does. Round 7's message for `52e81a8` said
+    this for "write, clear, remove"; it was true of removal only.
+  - **A refusal's reason is true** (L1). `lofty` reads an entry holding no text (no bytes, or
+    only zero bytes) as empty and leaves it out, which loses nothing: no longer counted
+    (`riff_info::holds_no_text`). It writes the track number back as `IPRT` only, so `ITRK`
+    would change id: said as that. "Cannot read it as it is stored" is given only for text that
+    is not UTF-8.
+  - **The dry run checks cover art** (L2, `metadata::check_cover_change`), and its refusal starts
+    "A real run would not save …" (N3, `integrity::CheckFor`).
+  - **The command line:** options given twice are named in the order typed (L5,
+    `edit::TypedOrder`, read from clap's matches in `main`); `--cover` with `--remove-cover` is
+    refused (L6); an unknown key is shown with invisible characters written out, in the CLI and
+    in mm-core's message (L7).
+  - **Invisible characters** (L4): `show_invisible_characters` also writes out every
+    `Default_Ignorable_Code_Point` and U+2800; both tables checked against Unicode 18.0's files.
+  - **File names** (L8): what `sanitize_filename` does to each kind of character is now in
+    `help/rule-syntax.md`. No route overwrites or merges files: a clash is a conflict (checked
+    on real files with `scan --execute`, both strategies, and a case-only clash on APFS).
+  - **Tests and small fixes:** every WAV save runs the guard, and the check before saving reads
+    the Test Mode copy (L3 — the reviewer's D1 and D3 had turned nothing red); the health-test
+    guard puts back `MM_CONFIG_DIR` (L10); the FFI quotes a repeated key's values with `"` and
+    `\` escaped and says "each value" (N1, N2).
+  - **Not changed:** MeedyaManager's `year` is not the RIFF INFO date (`ICRD` is `lofty`'s
+    recording date, which MeedyaManager does not map) and is not written to ID3 or MP4 at all —
+    an older finding pinned by `year_tag_does_not_round_trip_on_id3v2_or_mp4`; an issue is
+    drafted, not posted.
 - **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
   language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
   `companion` module still matches sidecars by exact name only. Tracked as issue #252,
