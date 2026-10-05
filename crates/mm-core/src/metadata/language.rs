@@ -330,8 +330,13 @@ impl std::fmt::Display for LanguageInputError {
 ///
 /// "Not plainly visible" means: a control character; a format character
 /// (zero-width space and joiners, the byte-order mark, the bidirectional
-/// controls such as U+202E — see the private `is_format_character`); a line or
-/// paragraph separator; and every space other than the ordinary U+0020.
+/// controls such as U+202E — see the private `is_format_character`); every
+/// other character Unicode marks as one a reader shows nothing for (its
+/// `Default_Ignorable_Code_Point` property: the combining grapheme joiner,
+/// the variation selectors, the Hangul fillers and others — see the private
+/// `is_default_ignorable`); the Braille blank U+2800, which shows as an
+/// empty cell; a line or paragraph separator; and every space other than the
+/// ordinary U+0020.
 ///
 /// Why this is wider than control characters (the stand-in review of round
 /// 6, L4; this used to be `show_with_control_characters_visible`, which
@@ -341,13 +346,23 @@ impl std::fmt::Display for LanguageInputError {
 /// space in front showed as an ordinary space; a U+2028 line separator broke the
 /// message line; and a U+202E right-to-left override was passed through raw,
 /// which reverses the display order of what follows in a terminal or an app.
-/// Each was refused correctly — only the message hid why.
+/// Each was refused correctly — only the message hid why. The stand-in
+/// review of round 7 (L4) then found five more quoted raw through the C API
+/// and the CLI built from `e4db8f8`: `en` + U+034F (combining grapheme
+/// joiner) + `fr` read as "enfr"; `en` + U+FE0F or U+E0100 (variation
+/// selectors); U+3164 (Hangul filler) + `en`; and `en` + U+2800 (Braille
+/// blank). Hence the default-ignorable table and the Braille blank.
+///
+/// Both tables follow Unicode 18.0 (UnicodeData.txt for the format
+/// characters, DerivedCoreProperties.txt for `Default_Ignorable_Code_Point`,
+/// both checked against the published files when they were written).
 ///
 /// What this cannot do: show a character that looks like another (a Cyrillic
 /// "е" for a Latin "e") — those are plainly visible, just misleading, and
 /// telling them apart would need the whole confusables table. Nor does it
-/// know characters Unicode assigned after the table in
-/// `is_format_character` was written.
+/// know characters a Unicode version after 18.0 adds to either table (the
+/// default-ignorable table does already cover the blocks Unicode keeps
+/// unassigned for such characters, so most will be caught anyway).
 pub fn show_invisible_characters(input: &str) -> String {
     input
         .chars()
@@ -368,14 +383,19 @@ fn is_plainly_visible(c: char) -> bool {
     // no-break space U+00A0, the em space U+2003, the ideographic space
     // U+3000 …), the line and paragraph separators U+2028 and U+2029, and
     // some control characters. The ordinary space is the one kept.
-    !(c.is_control() || (c.is_whitespace() && c != ' ') || is_format_character(c))
+    !(c.is_control()
+        || (c.is_whitespace() && c != ' ')
+        || is_format_character(c)
+        || is_default_ignorable(c)
+        || c == '\u{2800}') // Braille pattern blank: an empty cell
 }
 
 /// Whether `c` is a Unicode format character (general category Cf, as of
-/// Unicode 15.1): it changes how text around it is laid out — joining,
-/// direction, word breaks — but has no shape of its own. The Rust standard
-/// library has no general-category lookup, and adding a crate for one table
-/// is not worth it, so the ranges are listed here.
+/// Unicode 18.0 — the list is unchanged since 15.1): it changes how text
+/// around it is laid out — joining, direction, word breaks — but has no
+/// shape of its own. The Rust standard library has no general-category
+/// lookup, and adding a crate for one table is not worth it, so the ranges
+/// are listed here.
 fn is_format_character(c: char) -> bool {
     matches!(
         c,
@@ -400,6 +420,37 @@ fn is_format_character(c: char) -> bool {
             | '\u{1D173}'..='\u{1D17A}' // musical symbol formatting
             | '\u{E0001}' // language tag
             | '\u{E0020}'..='\u{E007F}' // tag characters
+    )
+}
+
+/// Whether `c` has Unicode's `Default_Ignorable_Code_Point` property (as of
+/// Unicode 18.0, DerivedCoreProperties.txt): a character a reader shows
+/// nothing for unless it knows better. Most are format characters, which
+/// [`is_format_character`] already covers; listed here in full anyway, so
+/// this table can be checked line by line against Unicode's own. The ones
+/// that matter beyond that table are the combining grapheme joiner, the
+/// Hangul fillers, the Khmer inherent vowels, the variation selectors and
+/// the unassigned code points Unicode keeps for future such characters.
+fn is_default_ignorable(c: char) -> bool {
+    matches!(
+        c,
+        '\u{AD}' // soft hyphen
+            | '\u{34F}' // combining grapheme joiner
+            | '\u{61C}' // Arabic letter mark
+            | '\u{115F}'..='\u{1160}' // Hangul choseong and jungseong fillers
+            | '\u{17B4}'..='\u{17B5}' // Khmer inherent vowels
+            | '\u{180B}'..='\u{180F}' // Mongolian free variation selectors; vowel separator
+            | '\u{200B}'..='\u{200F}' // zero-width space, joiners; direction marks
+            | '\u{202A}'..='\u{202E}' // bidirectional embeddings and overrides
+            | '\u{2060}'..='\u{206F}' // word joiner, invisible operators, isolates, deprecated formats (and unassigned U+2065)
+            | '\u{3164}' // Hangul filler
+            | '\u{FE00}'..='\u{FE0F}' // variation selectors 1 to 16
+            | '\u{FEFF}' // byte-order mark / zero-width no-break space
+            | '\u{FFA0}' // halfwidth Hangul filler
+            | '\u{FFF0}'..='\u{FFF8}' // unassigned, kept for such characters
+            | '\u{1BCA0}'..='\u{1BCA3}' // shorthand format controls
+            | '\u{1D173}'..='\u{1D17A}' // musical symbol formatting
+            | '\u{E0000}'..='\u{E0FFF}' // tag characters, variation selectors 17 to 256, and unassigned
     )
 }
 
@@ -1780,6 +1831,17 @@ mod tests {
             ("en\u{2003}fr", "en\\u{2003}fr"),
             ("en\u{3000}fr", "en\\u{3000}fr"),
             ("en\u{202f}fr", "en\\u{202f}fr"),
+            // The stand-in review of round 7, L4: characters Unicode marks
+            // default-ignorable that are not format characters — the
+            // combining grapheme joiner, two variation selectors, a Hangul
+            // filler — and the Braille blank. Each was quoted raw.
+            ("en\u{34f}fr", "en\\u{34f}fr"),
+            ("en\u{fe0f}", "en\\u{fe0f}"),
+            ("en\u{e0100}", "en\\u{e0100}"),
+            ("\u{3164}en", "\\u{3164}en"),
+            ("en\u{2800}", "en\\u{2800}"),
+            ("\u{115f}en", "\\u{115f}en"),
+            ("en\u{ffa0}", "en\\u{ffa0}"),
         ] {
             let message = parse_language_input(input).unwrap_err().to_string();
             assert!(
