@@ -1873,6 +1873,78 @@ mod tests {
         }
     }
 
+    /// The stand-in review of round 7, L3 (its planted fault D3): the check
+    /// a run makes before saving reads the file the save would really
+    /// change — in Test Mode, the copy an earlier edit made — not the
+    /// original. The reviewer made `integrity::check_save` read the original
+    /// and no test turned red.
+    ///
+    /// The reviewer's sequence, on the WAV whose RIFF INFO title is Latin-1
+    /// "Café": with Test Mode on, `--remove title` makes the copy without the
+    /// title. On the ORIGINAL a language change is refused (it would lose
+    /// that title); on the COPY there is no such title, so `--set
+    /// language=en` must be accepted, dry run and real run alike, and the
+    /// real run must change the copy.
+    #[test]
+    fn in_test_mode_the_check_before_saving_reads_the_copy() {
+        let _guard = ConfigDirGuard::new();
+        mm_core::test_mode::enable().expect("Test Mode must switch on in the private config");
+        let dir = tempfile::tempdir().unwrap();
+        let path =
+            crate::test_support::copy_core_fixture("lang_riff_fre_title_latin1.wav", dir.path());
+        let original = std::fs::read(&path).unwrap();
+        let copy = mm_core::test_mode::test_mode_path(&path);
+        let args = |set: &[&str], remove: &[&str], dry_run: bool| EditArgs {
+            path: path.clone(),
+            set: set.iter().map(ToString::to_string).collect(),
+            remove: remove.iter().map(ToString::to_string).collect(),
+            cover: None,
+            remove_cover: false,
+            dry_run,
+        };
+
+        assert_eq!(
+            run(&test_ctx(), &args(&[], &["title"], false)).unwrap(),
+            ExitCode::SUCCESS,
+            "the first edit makes the copy, without the Latin-1 title"
+        );
+        assert!(copy.exists(), "the copy was made");
+        assert!(
+            mm_core::metadata::check_tag_write(&path, &{
+                let mut tags = mm_core::metadata::TagMap::new();
+                tags.insert("language".to_string(), vec!["en".to_string()]);
+                tags
+            })
+            .is_err(),
+            "setup: on the original, the language change would be refused"
+        );
+
+        for dry_run in [true, false] {
+            let a = args(&["language=en"], &[], dry_run);
+            if let Err(actions) = build_plan(&a) {
+                panic!("dry_run={dry_run}: the copy holds no Latin-1 title: {actions:?}");
+            }
+            assert_eq!(
+                run(&test_ctx(), &a).unwrap(),
+                ExitCode::SUCCESS,
+                "dry_run={dry_run}"
+            );
+        }
+        assert_eq!(
+            mm_core::metadata::extract_tags(&copy)
+                .unwrap()
+                .get("language")
+                .map(Vec::as_slice),
+            Some(&["en".to_string()][..]),
+            "the real run changed the copy"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            original,
+            "the original untouched"
+        );
+    }
+
     /// The stand-in review of round 7, L2: `--dry-run` checks `--cover` and
     /// `--remove-cover` too, so it gives the same answer and exit code as
     /// the real run. Reproduced with the binary built from `e4db8f8`: on a

@@ -2257,6 +2257,79 @@ fn a_wav_track_number_held_as_itrk_is_refused_with_the_true_reason() {
     );
 }
 
+/// The stand-in review of round 7, L3 (its planted fault D1): EVERY save of a
+/// WAV runs the RIFF INFO check — also a save that does not rewrite the list
+/// (a field the list does not hold, removing one it does not hold, cover
+/// art). The reviewer made the check return at once for those saves and no
+/// test turned red, though the changelog, `Dev_Notes.md` and the notes all
+/// say every save of a WAV is checked.
+///
+/// The file: `silence.wav` with a RIFF INFO list holding a title and a
+/// language, followed by 10,001 empty `junk` sections. The tag library
+/// reads it perfectly well; the check's own raw read gives up after 10,000
+/// sections (no real WAV has that many), so it cannot prove the list comes
+/// through — and every save must be refused, with the file left as it was.
+/// A save that skips the check would go ahead.
+#[test]
+fn every_save_of_a_wav_runs_the_riff_info_check() {
+    let _guard = ConfigDirGuard::new();
+    let (dir, path) = copy_fixture("lang_riff_fre_no_final_zero.wav");
+    let mut bytes = fs::read(&path).unwrap();
+    for _ in 0..10_001 {
+        bytes.extend(b"junk");
+        bytes.extend(0u32.to_le_bytes());
+    }
+    let riff_size = u32::try_from(bytes.len() - 8).unwrap();
+    bytes[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    fs::write(&path, &bytes).unwrap();
+    assert_eq!(
+        extract_tags(&path)
+            .unwrap()
+            .get(TAG_TITLE)
+            .map(Vec::as_slice),
+        Some(&["Song".to_string()][..]),
+        "sanity check: the tag library reads the file"
+    );
+
+    type Save = Box<dyn Fn(&Path) -> mm_core::integrity::IntegrityWriteResult>;
+    let saves: [(&str, Save); 5] = [
+        (
+            "set a field the list does not hold",
+            Box::new(|p| write_tags_safe(p, &build_tags(&[(TAG_ARTIST, "Someone")]))),
+        ),
+        (
+            "remove a field the list does not hold",
+            Box::new(|p| mm_core::integrity::remove_tag_safe(p, TAG_ARTIST)),
+        ),
+        (
+            "embed cover art",
+            Box::new(|p| {
+                mm_core::integrity::embed_cover_art_safe(p, b"\xff\xd8\xff", "image/jpeg")
+            }),
+        ),
+        ("remove cover art", Box::new(remove_cover_art_safe)),
+        (
+            "set the title the list holds",
+            Box::new(|p| write_tags_safe(p, &build_tags(&[(TAG_TITLE, "New")]))),
+        ),
+    ];
+    for (what, save) in saves {
+        let result = save(&path);
+        assert!(!result.success, "{what}: must be refused");
+        let message = result.error.unwrap_or_default();
+        assert!(
+            message.contains("its RIFF INFO list could not be read"),
+            "{what}: {message:?}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes, "{what}: file untouched");
+        assert_eq!(
+            file_names_in(dir.path()),
+            vec!["lang_riff_fre_no_final_zero.wav".to_string()],
+            "{what}: no temporary file left"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Several languages in ONE stored string (Codex's catch-up review, finding 4)
 // ---------------------------------------------------------------------------
