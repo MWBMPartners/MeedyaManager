@@ -299,3 +299,6 @@ This project is licensed under the **GPL-2.0-or-later** — see the [LICENSE](LI
 ---
 
 **(C) 2025–2026 MWBM Partners Ltd**
+## Media preservation planning
+
+See [the application media preservation requirements](docs/media-preservation-integration.md) for proposed responsibilities, native caption protection, timelines, metadata, track relationships and verification. These are development requirements, not claims of implemented support.
