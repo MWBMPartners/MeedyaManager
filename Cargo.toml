@@ -148,7 +148,12 @@ libc = "0.2"
 
 # Internationalisation — GNU gettext bindings for translatable strings
 # Package name on crates.io is "gettext-rs"; lib name is "gettextrs"
-gettextrs = { version = "0.8", package = "gettext-rs" }
+# `gettext-system`: link the gettext that glibc already provides instead of
+# compiling gettext-sys's bundled GNU gettext from C source. The bundled
+# gettext 0.26 source no longer compiles against newer glibc headers
+# (`wmemchr` / `_Generic` clash), which broke the ubuntu-latest Rust job.
+# mm-core only pulls gettextrs in on Linux, where glibc always has gettext.
+gettextrs = { version = "0.8", package = "gettext-rs", features = ["gettext-system"] }
 
 # Semantic version comparison (mm-update)
 semver = { version = "1", features = ["serde"] }

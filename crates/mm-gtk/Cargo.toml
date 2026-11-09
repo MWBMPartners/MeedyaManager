@@ -60,7 +60,9 @@ dirs = "6"
 
 # Internationalisation — initialise gettext locale at GTK startup
 # (cannot use `{ workspace = true }` because mm-gtk is excluded from the workspace)
-gettextrs = { version = "0.8", package = "gettext-rs" }
+# `gettext-system`: use glibc's gettext rather than building the bundled C
+# source (kept in step with the root workspace's declaration).
+gettextrs = { version = "0.8", package = "gettext-rs", features = ["gettext-system"] }
 
 # Error handling
 anyhow = "1"

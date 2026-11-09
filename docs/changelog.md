@@ -34,6 +34,13 @@ Format: `## [Version] — YYYY-MM-DD`
   (bundled SQLite in `libsqlite3-sys` 0.30.1, via `sqlx`) cannot be fixed yet — no `sqlx`
   release allows the patched `libsqlite3-sys` 0.39 — and is unreachable because `mm-export`
   never opens an SQLite connection; how to handle it is tracked on #266.
+- **🛠️ CI: the ubuntu-latest and windows-latest Rust jobs were red.** On Linux, `gettext-sys`
+  compiled its bundled GNU gettext 0.26 from C source, which no longer builds against the
+  runner's newer glibc headers; `gettext-rs` now uses its `gettext-system` feature and links the
+  gettext glibc already provides (root workspace and `crates/mm-gtk`). On Windows, clippy's
+  `needless_return` fired on the "service install is not available on Windows" branch of
+  `meedya service install`, which is the function's tail once the Linux/macOS branch is
+  compiled out.
 
 - **Two copies of MeedyaManager could move the same files at the same time (issue
   [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49)).** A write lock had been
