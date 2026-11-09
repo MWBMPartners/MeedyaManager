@@ -14,6 +14,39 @@
 
 ---
 
+## 2026-11-09 — both branches going into `alpha`; Security Audit fixed (#266)
+
+**Read this first if resuming after 2026-11-09.** Cloud session, at the owner's request:
+
+- **Pull requests opened (the owner asked for both):**
+  [#267](https://github.com/MWBMPartners/MeedyaManager/pull/267)
+  `claude/musicbrainz-api-migration-7jxszn` → `alpha`, and
+  [#268](https://github.com/MWBMPartners/MeedyaManager/pull/268)
+  `feature/bcp47-language-policy` → `alpha`. `feature/bcp47-language-policy` contains every
+  commit of the musicbrainz branch, so **#268 is the consolidated PR**: merging it lands both,
+  and #267 then shows as merged. The owner asked for #268 to be merged into `alpha` once every
+  check is green.
+- **Why the weekly Security Audit failed (runs #55–#57 on `main`):** RUSTSEC-2026-0381,
+  `webpki-roots` 1.0.6 trusted distrusted emSign certificates. A local `cargo deny check`
+  against the advisory database of 2026-11-09 found more. All fixed on
+  `feature/bcp47-language-policy`, in **both** lock files (root and `crates/mm-gtk`):
+  `webpki-roots` → 1.0.11, `rustls` → 0.23.46, `rustls-webpki` → 0.103.16, `tokio` → 1.54.1.
+  RUSTSEC-2026-0459 (bundled SQLite via `sqlx` 0.8 — no `sqlx` release can take the fix yet)
+  is **ignored in `deny.toml` with its reason, approved by the owner** in this session.
+  The `crates/mm-gtk` lock file was also missing `meedya-lang`; now added.
+- **CI fixes made along the way:** Linux — `gettext-rs` now uses `gettext-system` (glibc's own
+  gettext) because the bundled gettext 0.26 C source no longer compiles on the runner's newer
+  glibc. Windows — a `clippy::needless_return` in `meedya service install`, and two log
+  redaction tests that searched for `C:\Users\…` when the JSON log holds `C:\\Users\\…`.
+- **Still to do after the merge:** `main`'s scheduled audit stays red until these fixes are
+  promoted `alpha` → `beta` → `main`. Close #266 once that run is green.
+- **Pushing:** these commits were pushed because the owner asked for the PR checks to be fixed
+  as they appeared — that request covered this occasion only.
+- **Codex review owed:** none of this session's commits has been reviewed by Codex (not
+  available in the cloud session).
+
+---
+
 ## A separate piece of work, on a separate branch: the language policy (2026-09-28)
 
 **Everything below this note is about a different branch** — the organiser work on
