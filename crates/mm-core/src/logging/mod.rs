@@ -813,10 +813,16 @@ mod tests {
 
         let contents = std::fs::read_to_string(&log_path).unwrap();
         assert!(contents.contains("processing media file"));
-        assert!(
-            !contents.contains(home.to_string_lossy().as_ref()),
-            "home directory leaked into the log: {contents:?}"
-        );
+        // Check both spellings of the home path: the file sink writes JSON,
+        // which doubles every backslash, so on Windows `C:\Users\alice`
+        // appears as `C:\\Users\\alice`. Checking only the raw form would
+        // let a Windows leak through unnoticed.
+        for form in home_path_forms(&home) {
+            assert!(
+                !contents.contains(&form),
+                "home directory leaked into the log as {form:?}: {contents:?}"
+            );
+        }
         assert!(
             contents.contains('~'),
             "home was not replaced: {contents:?}"
@@ -859,10 +865,27 @@ mod tests {
         });
 
         let contents = std::fs::read_to_string(&log_path).unwrap();
+        // The JSON file sink doubles backslashes, so on Windows the home path
+        // is only present in its escaped spelling — accept either form.
         assert!(
-            contents.contains(home.to_string_lossy().as_ref()),
+            home_path_forms(&home)
+                .iter()
+                .any(|form| contents.contains(form)),
             "expected the un-redacted home path: {contents:?}"
         );
+    }
+
+    /// The ways a home directory can be spelled inside a log line: as-is
+    /// (console formatter) and JSON-escaped, where each backslash is doubled
+    /// (file sink). On Linux and macOS both are the same string.
+    fn home_path_forms(home: &std::path::Path) -> Vec<String> {
+        let raw = home.to_string_lossy().into_owned();
+        let escaped = raw.replace('\\', "\\\\");
+        if escaped == raw {
+            vec![raw]
+        } else {
+            vec![raw, escaped]
+        }
     }
 
     /// The record-level scrubber, exercised directly against a path built

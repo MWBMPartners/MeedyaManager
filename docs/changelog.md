@@ -41,7 +41,11 @@ Format: `## [Version] — YYYY-MM-DD`
   gettext glibc already provides (root workspace and `crates/mm-gtk`). On Windows, clippy's
   `needless_return` fired on the "service install is not available on Windows" branch of
   `meedya service install`, which is the function's tail once the Linux/macOS branch is
-  compiled out.
+  compiled out. With that fixed, a Windows-only test failure showed up behind it: the two log
+  redaction tests looked for the home folder exactly as written (`C:\Users\…`), but the log
+  file is JSON, which doubles every backslash (`C:\\Users\\…`). The redaction itself already
+  handled this; the tests now check both spellings, so the "nothing leaked" test also means
+  something on Windows instead of passing without checking.
 
 - **Two copies of MeedyaManager could move the same files at the same time (issue
   [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49)).** A write lock had been
