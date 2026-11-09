@@ -28,6 +28,12 @@ Format: `## [Version] — YYYY-MM-DD`
   are now public. Both lock files now resolve `webpki-roots` 1.0.11, including the 0.26.11
   compatibility shim that `sqlx-core` uses. The Linux app's lock file was also missing
   `meedya-lang`, which `mm-core` now depends on; it is now in step with the root lock file.
+  A local audit against the current advisory database also found, and this fixes in both lock
+  files: `rustls` → 0.23.46 (RUSTSEC-2026-0285, -0346, -0347, -0348, -0349), `rustls-webpki`
+  → 0.103.16 (RUSTSEC-2026-0382) and `tokio` → 1.54.1 (RUSTSEC-2026-0386). RUSTSEC-2026-0459
+  (bundled SQLite in `libsqlite3-sys` 0.30.1, via `sqlx`) cannot be fixed yet — no `sqlx`
+  release allows the patched `libsqlite3-sys` 0.39 — and is unreachable because `mm-export`
+  never opens an SQLite connection; how to handle it is tracked on #266.
 
 - **Two copies of MeedyaManager could move the same files at the same time (issue
   [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49)).** A write lock had been
