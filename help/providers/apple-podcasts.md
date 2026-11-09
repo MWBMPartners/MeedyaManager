@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide explains how to configure and use the **Apple Podcasts** metadata provider in MeedyaManager.
+This guide explains what the **Apple Podcasts** metadata provider actually does in MeedyaManager: a **show-level** iTunes Search API lookup, not an episode-level one.
 
 ---
 
@@ -19,28 +19,28 @@ This guide explains how to configure and use the **Apple Podcasts** metadata pro
 
 ---
 
+> ⚠️ **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`).
+> `ApplePodcastsProvider` is real and compiled, tested against canned JSON fixtures (no
+> wiremock/live-HTTP test exists for its `search()` beyond a `disabled` check), but nothing in the
+> shipped CLI or GUI constructs it.
+
+---
+
 ## Overview
 
-The Apple Podcasts provider retrieves podcast show and episode metadata from Apple's **iTunes Search API**. It searches the Apple Podcasts catalog — the same data that powers the Apple Podcasts app and the iTunes Store's podcast directory.
-
-This provider is useful for:
-
-- Identifying podcast episodes from audio files
-- Retrieving show-level metadata (show name, author, genre)
-- Downloading podcast artwork for embedding or saving alongside files
-- Matching episode titles and durations against the Apple Podcasts catalog
-
-The provider uses the public `https://itunes.apple.com/search` and `https://itunes.apple.com/lookup` endpoints with `media=podcast` and `entity=podcastEpisode` parameters.
+`ApplePodcastsProvider` (`crates/mm-providers/src/podcasts/mod.rs`) searches Apple's iTunes Search
+API with `media=podcast&entity=podcast` — **not** `entity=podcastEpisode`. This means it matches
+**podcast shows**, not individual episodes: every field it returns is show-level (show title,
+author, genre, episode count), never an episode title, episode number, or per-episode duration.
 
 ---
 
 ## Authentication
 
-**No authentication is required.** The Apple Podcasts provider uses Apple's public iTunes Search API, which does not require an API key, token, or any form of registration.
-
-The provider is available immediately after installation with no additional setup.
-
-> **Note:** Apple applies rate limiting to the iTunes Search API. MeedyaManager's built-in rate limiter automatically respects these limits (approximately 20 requests per minute). Under normal usage you will never hit the limit.
+**No authentication is required.** The endpoint is Apple's public iTunes Search API.
 
 ---
 
@@ -48,82 +48,52 @@ The provider is available immediately after installation with no additional setu
 
 ### Environment Variables (`.env`)
 
-No environment variables are required for this provider.
+None are required for this provider.
 
 ### Settings File (`settings.json5`)
 
-You can optionally configure the provider's behaviour in `config/settings.json5`:
-
-```json5
-{
-  providers: {
-    apple_podcasts: {
-      // Enable or disable this provider (default: true)
-      enabled: true,
-
-      // Preferred storefront/country code for regional catalog results
-      // Uses ISO 3166-1 alpha-2 codes (e.g., "US", "GB", "AU", "DE")
-      country: "GB",
-
-      // Maximum number of results to return per search (1-200, default: 10)
-      result_limit: 10,
-
-      // Whether to search episodes in addition to shows (default: true)
-      search_episodes: true,
-    }
-  }
-}
-```
-
-### Storefront / Region
-
-The `country` parameter determines which regional Apple Podcasts catalog is searched. Podcast availability varies by country. If a podcast is not found with one country code, try `"US"` as a fallback — the US catalog tends to have the broadest listing.
+There is no per-provider `settings.json5` schema for Apple Podcasts — `result_limit` and
+`search_episodes` are not real settings (there is no episode search to toggle in the first place).
+The only real input is the constructor's `country` argument (ISO 3166-1 alpha-2, e.g. `"US"`) and
+an optional `base_url` override used by the crate's own tests.
 
 ---
 
 ## Available Data
 
-The Apple Podcasts provider returns the following standard metadata fields:
+```text
+GET {base}/search?term=<title or artist>&media=podcast&entity=podcast&country=<country>&limit=<n>
+```
 
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Episode title | `"S2E5: The Great Escape"` |
-| `artist` | Podcast author / host | `"Jane Smith"` |
-| `album` | Podcast show name | `"True Crime Weekly"` |
-| `genre` | Podcast genre(s) | `"True Crime"` |
-| `year` | Release year of the episode | `"2025"` |
-| `track_num` | Episode number (when identifiable) | `"5"` |
-| `episode_title` | Episode title (same as title) | `"S2E5: The Great Escape"` |
-| `show` | Podcast show name | `"True Crime Weekly"` |
+| Field | Response field | Notes |
+| ----- | --------------- | ----- |
+| `title` | `collectionName` | the **podcast show name**, not an episode title |
+| `artist` | `artistName` | podcast author/network |
+| `genre` | `primaryGenreName` | |
+| `year` | first 4 digits of `releaseDate` | the show's release-date field as reported by iTunes, not a specific episode's air date |
+| cover art | `artworkUrl600` (primary), `artworkUrl100` (fallback) | both JPEG |
+| provider ID (metadata) | `collectionId` | |
+| feed URL (metadata) | `feedUrl` | |
+| podcast URL (metadata) | `collectionViewUrl` | |
+| episode count (metadata) | `trackCount` | total episodes in the show, not which one matched |
+
+There is **no `episode_title`, `track_num` (as an episode number), or `show` field distinct from
+`title`** — this provider has no concept of an individual episode at all.
 
 ---
 
 ## Custom Tags
 
-In addition to standard fields, the provider writes the following custom tags to media files:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_apple_podcast_id` | Apple Podcasts show or episode ID | `"1234567890"` |
-| `custom_apple_podcast_url` | Direct link to the show/episode on Apple Podcasts | `"https://podcasts.apple.com/gb/podcast/id1234567890"` |
-| `custom_apple_podcast_feed_url` | RSS feed URL for the podcast show | `"https://feeds.example.com/truecrime.xml"` |
-| `custom_apple_podcast_duration_ms` | Episode duration in milliseconds | `"2580000"` |
-
-These custom tags are stored in the file using the provider's `extra_tags` mechanism and can be referenced in rename rules using the `{custom_apple_podcast_feed_url}` syntax.
+Any `custom_apple_podcast_*` tag would come from the metadata fields above once tag-writing wiring
+exists for this provider (see the reachability banner). There is no
+`custom_apple_podcast_duration_ms` tag — episode duration is never returned by a show-level search.
 
 ---
 
 ## Cover Art
 
-The Apple Podcasts provider supplies **static JPEG cover art** at **600x600 pixels**.
-
-- The artwork URL is extracted from the API's `artworkUrl600` field
-- Image format: JPEG
-- Resolution: 600 x 600 pixels
-- The image is saved as `FrontCover.jpg` alongside the media file
-- If embedding is enabled, the image is also embedded in the file's tags
-
-> **Note:** Apple Podcasts artwork is typically lower resolution than music artwork from the iTunes Store. If you need higher-resolution podcast artwork, consider using the RSS feed URL (stored in `custom_apple_podcast_feed_url`) to fetch the original image from the podcast's own feed.
+- Primary: `artworkUrl600` (600×600 JPEG)
+- Fallback: `artworkUrl100` (100×100 JPEG), included alongside the primary when present
 
 ---
 
@@ -131,35 +101,29 @@ The Apple Podcasts provider supplies **static JPEG cover art** at **600x600 pixe
 
 ### Provider shows "Available" but returns no results
 
-- **Check the country code.** Some podcasts are region-restricted. Try setting `country: "US"` in your settings.
-- **Check your search query.** The iTunes Search API performs keyword matching — ensure your file's metadata or filename contains enough identifying information (show name, episode title).
-- **Check the genre.** The API only searches podcasts. If your file is classified as `"Music"` by MeedyaManager's media classifier, this provider will not be queried. Ensure the file is classified as `"Podcast"` or set `media_class` manually.
+- Check the `country` storefront — some podcasts are region-restricted.
+- The iTunes Search API does keyword matching against the search term (built from title and/or
+  artist); ensure the query has enough identifying text.
 
-### Rate limit warnings in logs
+### Expecting episode-level matching (episode title, episode number, duration)
 
-The iTunes Search API limits requests to approximately 20 per minute. If you see rate-limit warnings:
+**This is expected to be absent.** This provider only ever returns show-level results — see
+[Available Data](#available-data). There is no episode-matching feature in this codebase.
 
-1. MeedyaManager automatically queues and retries requests — no action needed
-2. If processing a large batch of podcast files, expect slower throughput
-3. You can reduce `result_limit` to minimise API calls per file
+### Rate limit warnings
 
-### Episode matching is inaccurate
-
-Episode matching relies on title similarity and duration comparison. For best results:
-
-- Ensure your podcast files have accurate title metadata
-- Files tagged with tools like MusicBrainz Picard or MP3tag will match more reliably
-- The `custom_apple_podcast_duration_ms` tag can help disambiguate episodes with similar titles
+**MeedyaManager's shared rate limiter is not consulted for Apple Podcasts** — only MusicBrainz,
+ISRC, and ISWC requests go through the shared `governor` limiter. A non-2xx response from iTunes
+is surfaced directly as `ProviderError::NetworkError`.
 
 ---
 
 ## Legal Notes
 
-- The Apple Podcasts provider uses Apple's **iTunes Search API**, which is publicly available and does not require a licence agreement for personal or non-commercial use.
+- This provider uses Apple's **iTunes Search API**, publicly available without a licence agreement for personal or non-commercial use.
 - Apple, iTunes, and Apple Podcasts are trademarks of Apple Inc.
 - Podcast metadata and artwork are the property of their respective owners and publishers.
 - MeedyaManager retrieves metadata solely for the purpose of organising the user's own media library. No content is redistributed.
-- For full terms, see: [Apple iTunes Affiliate Resources](https://affiliate.itunes.apple.com/resources/)
 
 ---
 

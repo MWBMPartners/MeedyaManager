@@ -258,18 +258,20 @@ impl SettingsBundle {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// Try to read the user override file at `<config_dir>/meedyamanager/<name>`.
+/// Try to read the user override file at `<config_dir>/<name>`.
 /// Returns `None` if the file does not exist or cannot be read.
 fn read_user_override(filename: &str) -> Option<String> {
     let path = user_override_path(filename).ok()?;
     std::fs::read_to_string(&path).ok()
 }
 
-/// Resolve `<config_dir>/meedyamanager/<filename>`.
-fn user_override_path(filename: &str) -> MmResult<PathBuf> {
-    let config_root = dirs::config_dir()
-        .ok_or_else(|| MmError::Config("cannot determine OS config directory".into()))?;
-    Ok(config_root.join("meedyamanager").join(filename))
+/// Resolve `<config_dir>/<filename>`.
+///
+/// `pub(crate)` (rather than private) so `config::tests::all_core_paths_share_one_directory`
+/// can assert this path shares a directory with every other module's
+/// state — see issue #212 (P0-CONFIGDIR).
+pub(crate) fn user_override_path(filename: &str) -> MmResult<PathBuf> {
+    Ok(crate::config::app_config_dir()?.join(filename))
 }
 
 /// Write `data` to `path` atomically (via a temp file + rename).
@@ -308,6 +310,7 @@ fn atomic_write(path: &Path, data: &[u8]) -> MmResult<()> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -417,5 +420,33 @@ mod tests {
         let parsed = SettingsBundle::from_json(&json).unwrap();
         assert_eq!(parsed.custom_filetypes, Some("{ \"audio\": [] }".into()));
         assert!(parsed.custom_tags.is_none());
+    }
+
+    // ── Config directory resolution — issue #212 (P0-CONFIGDIR) ──────────────
+
+    #[test]
+    fn user_override_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path = user_override_path("tags.json5")
+            .expect("user_override_path should resolve under override");
+        assert!(
+            path.starts_with(tmp.path()),
+            "settings_bundle override path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
     }
 }

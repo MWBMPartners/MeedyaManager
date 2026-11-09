@@ -17,10 +17,10 @@
 // All GTK4 widgets are constructed programmatically (no XML/GtkBuilder).
 // Uses adw::PreferencesGroup for consistent GNOME HIG layout.
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use crate::ui::accessibility;
 
@@ -57,14 +57,18 @@ impl ServerPanel {
         let bind_row = adw::EntryRow::new();
         bind_row.set_title("Bind address");
         bind_row.set_text("0.0.0.0");
-        bind_row.set_tooltip_text(Some("IP address to bind. Use 0.0.0.0 for all interfaces or 127.0.0.1 for loopback only."));
+        bind_row.set_tooltip_text(Some(
+            "IP address to bind. Use 0.0.0.0 for all interfaces or 127.0.0.1 for loopback only.",
+        ));
         net_group.add(&bind_row);
 
         // Port
         let port_row = adw::EntryRow::new();
         port_row.set_title("HTTPS port");
         port_row.set_text("8443");
-        port_row.set_tooltip_text(Some("TCP port for HTTPS connections. Ports below 1024 require elevated privileges."));
+        port_row.set_tooltip_text(Some(
+            "TCP port for HTTPS connections. Ports below 1024 require elevated privileges.",
+        ));
         net_group.add(&port_row);
 
         // ── TLS group ─────────────────────────────────────────────────────
@@ -75,13 +79,17 @@ impl ServerPanel {
         let cert_row = adw::EntryRow::new();
         cert_row.set_title("Certificate (PEM)");
         cert_row.set_text("");
-        cert_row.set_tooltip_text(Some("Path to PEM-encoded TLS certificate file (e.g. /etc/ssl/cert.pem)"));
+        cert_row.set_tooltip_text(Some(
+            "Path to PEM-encoded TLS certificate file (e.g. /etc/ssl/cert.pem)",
+        ));
         tls_group.add(&cert_row);
 
         let key_row = adw::EntryRow::new();
         key_row.set_title("Private key (PEM)");
         key_row.set_text("");
-        key_row.set_tooltip_text(Some("Path to PEM-encoded private key file (e.g. /etc/ssl/key.pem)"));
+        key_row.set_tooltip_text(Some(
+            "Path to PEM-encoded private key file (e.g. /etc/ssl/key.pem)",
+        ));
         tls_group.add(&key_row);
 
         // No-TLS toggle (dev mode)
@@ -98,19 +106,25 @@ impl ServerPanel {
 
         let secret_row = adw::PasswordEntryRow::new();
         secret_row.set_title("JWT secret");
-        secret_row.set_tooltip_text(Some("Secret key used to sign JWT tokens. Loaded from MM_JWT_SECRET env var if left empty."));
+        secret_row.set_tooltip_text(Some(
+            "Secret key used to sign JWT tokens. Loaded from MM_JWT_SECRET env var if left empty.",
+        ));
         auth_group.add(&secret_row);
 
         let expiry_row = adw::EntryRow::new();
         expiry_row.set_title("Token expiry (seconds)");
         expiry_row.set_text("86400");
-        expiry_row.set_tooltip_text(Some("How long issued JWTs remain valid. Default: 86400 (24 hours)"));
+        expiry_row.set_tooltip_text(Some(
+            "How long issued JWTs remain valid. Default: 86400 (24 hours)",
+        ));
         auth_group.add(&expiry_row);
 
         // ── CORS group ────────────────────────────────────────────────────
         let cors_group = adw::PreferencesGroup::new();
         cors_group.set_title("CORS");
-        cors_group.set_description(Some("Allowed cross-origin request origins (comma-separated)"));
+        cors_group.set_description(Some(
+            "Allowed cross-origin request origins (comma-separated)",
+        ));
 
         let cors_row = adw::EntryRow::new();
         cors_row.set_title("Allowed origins");
@@ -127,7 +141,10 @@ impl ServerPanel {
         status_label.set_halign(gtk::Align::Start);
         status_label.add_css_class("dim-label");
         accessibility::set_label(&status_label, "Server status: stopped");
-        accessibility::set_description(&status_label, "Displays whether the media server is stopped, starting, or running.");
+        accessibility::set_description(
+            &status_label,
+            "Displays whether the media server is stopped, starting, or running.",
+        );
 
         // Start / Stop button row
         let btn_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -135,9 +152,21 @@ impl ServerPanel {
 
         let start_btn = gtk::Button::with_label("Start Server");
         start_btn.add_css_class("suggested-action");
-        start_btn.set_tooltip_text(Some("Start the HTTPS media server"));
-        accessibility::set_label(&start_btn, "Start server");
-        accessibility::set_description(&start_btn, "Starts the MeedyaManager HTTPS media server with the current configuration.");
+        // Disabled in this alpha — mm-server does not yet build a real HTTP
+        // router, so starting the server would only simulate success. See the
+        // preview banner below and issue #205.
+        start_btn.set_sensitive(false);
+        start_btn.set_tooltip_text(Some(
+            "Disabled in this alpha — the media server is not yet implemented (issue #205)",
+        ));
+        accessibility::set_label(
+            &start_btn,
+            "Start server (disabled — not functional in this alpha)",
+        );
+        accessibility::set_description(
+            &start_btn,
+            "Starting the media server is disabled in this alpha; mm-server does not yet build a real HTTP router. See issue #205.",
+        );
 
         let stop_btn = gtk::Button::with_label("Stop Server");
         stop_btn.add_css_class("destructive-action");
@@ -153,7 +182,10 @@ impl ServerPanel {
         let routes_btn = gtk::Button::with_label("Show Routes");
         routes_btn.set_tooltip_text(Some("Display the HTTP route table for this server"));
         accessibility::set_label(&routes_btn, "Show routes");
-        accessibility::set_description(&routes_btn, "Displays the HTTP route table for the media server in the access log.");
+        accessibility::set_description(
+            &routes_btn,
+            "Displays the HTTP route table for the media server in the access log.",
+        );
 
         btn_row.append(&routes_btn);
         ctrl_group.add(&btn_row);
@@ -180,59 +212,35 @@ impl ServerPanel {
         clear_btn.set_halign(gtk::Align::End);
         clear_btn.set_tooltip_text(Some("Clear the access log"));
         accessibility::set_label(&clear_btn, "Clear access log");
-        accessibility::set_description(&clear_btn, "Removes all entries from the server access log.");
+        accessibility::set_description(
+            &clear_btn,
+            "Removes all entries from the server access log.",
+        );
 
         let log_buffer = log_view.buffer();
 
         // Clone refs for callbacks
-        let log_buf_for_start  = log_buffer.clone();
         let log_buf_for_routes = log_buffer.clone();
-        let log_buf_for_clear  = log_buffer.clone();
-        let status_for_start   = status_label.clone();
-        let stop_btn_ref       = stop_btn.clone();
-        let start_btn_ref      = start_btn.clone();
+        let log_buf_for_clear = log_buffer.clone();
 
-        // Start button callback
-        start_btn.connect_clicked(move |_| {
-            status_for_start.set_label("Status: starting…");
-            accessibility::set_label(&status_for_start, "Server status: starting");
-            let mut end_iter = log_buf_for_start.end_iter();
-            log_buf_for_start.insert(&mut end_iter, "[server] Starting MeedyaManager media server…\n");
-            log_buf_for_start.insert(&mut end_iter, "[server] Listening on https://0.0.0.0:8443\n");
-            status_for_start.set_label("Status: running — https://0.0.0.0:8443");
-            accessibility::set_label(&status_for_start, "Server status: running on https://0.0.0.0:8443");
-            start_btn_ref.set_sensitive(false);
-            stop_btn_ref.set_sensitive(true);
-        });
-
-        // Stop button callback
-        {
-            let log_buf = log_buffer.clone();
-            let status  = status_label.clone();
-            let start_b = start_btn.clone();
-            stop_btn.connect_clicked(move |btn| {
-                let mut end_iter = log_buf.end_iter();
-                log_buf.insert(&mut end_iter, "[server] Server stopped.\n");
-                status.set_label("Status: stopped");
-                accessibility::set_label(&status, "Server status: stopped");
-                start_b.set_sensitive(true);
-                btn.set_sensitive(false);
-            });
-        }
+        // Start/Stop are both disabled in this alpha (see the preview banner
+        // below) — mm-server never actually builds an HTTP router yet, so
+        // there is nothing to wire a click handler to. `stop_btn` was already
+        // created insensitive above and has no path to become enabled.
 
         // Show routes callback
         routes_btn.connect_clicked(move |_| {
             let mut end_iter = log_buf_for_routes.end_iter();
             log_buf_for_routes.insert(&mut end_iter, "Routes:\n");
             let routes = [
-                ("GET",  "/health",          "Liveness probe"),
-                ("POST", "/auth/login",       "Authenticate → JWT"),
-                ("GET",  "/api/library",      "List media files"),
-                ("GET",  "/api/library/:id",  "Single file metadata"),
-                ("GET",  "/api/search",       "Search by title/artist"),
-                ("GET",  "/stream/:id",       "Stream media (Range)"),
-                ("GET",  "/api/export/status","Export status (Admin)"),
-                ("GET",  "/api/server/info",  "Server info (Admin)"),
+                ("GET", "/health", "Liveness probe"),
+                ("POST", "/auth/login", "Authenticate → JWT"),
+                ("GET", "/api/library", "List media files"),
+                ("GET", "/api/library/:id", "Single file metadata"),
+                ("GET", "/api/search", "Search by title/artist"),
+                ("GET", "/stream/:id", "Stream media (Range)"),
+                ("GET", "/api/export/status", "Export status (Admin)"),
+                ("GET", "/api/server/info", "Server info (Admin)"),
             ];
             for (method, path, desc) in routes {
                 log_buf_for_routes.insert(
@@ -263,7 +271,23 @@ impl ServerPanel {
         scrolled.set_vexpand(true);
         scrolled.set_child(Some(&clamp));
 
-        Self { root: scrolled.upcast() }
+        // ── Alpha preview banner ─────────────────────────────────────────────
+        // mm-server does not yet build a real HTTP router, so the Start/Stop
+        // controls above are permanently disabled. This banner stays revealed
+        // for the lifetime of the tab so testers never mistake the form for a
+        // working server. See issue #205.
+        let preview_banner = adw::Banner::new(
+            "Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)",
+        );
+        preview_banner.set_revealed(true);
+
+        let root_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        root_box.append(&preview_banner);
+        root_box.append(&scrolled);
+
+        Self {
+            root: root_box.upcast(),
+        }
     }
 
     /// Returns the root widget for embedding in the main AdwTabView.
@@ -305,13 +329,13 @@ mod tests {
 
     fn make_valid_config() -> ServerConfig {
         ServerConfig {
-            bind_address:   "0.0.0.0".into(),
-            port:           8443,
-            tls_cert_path:  "/etc/ssl/cert.pem".into(),
-            tls_key_path:   "/etc/ssl/key.pem".into(),
-            jwt_secret:     "strong-secret-key-here".into(),
+            bind_address: "0.0.0.0".into(),
+            port: 8443,
+            tls_cert_path: "/etc/ssl/cert.pem".into(),
+            tls_key_path: "/etc/ssl/key.pem".into(),
+            jwt_secret: "strong-secret-key-here".into(),
             jwt_expiry_secs: 86_400,
-            cors_origins:   vec![],
+            cors_origins: vec![],
             max_connections: 1000,
             request_logging: true,
         }
@@ -335,7 +359,7 @@ mod tests {
     fn no_tls_mode_skips_cert_check() {
         let mut cfg = make_valid_config();
         cfg.tls_cert_path = String::new();
-        cfg.tls_key_path  = String::new();
+        cfg.tls_key_path = String::new();
         let errors = validate_config(&cfg, true);
         assert!(!errors.iter().any(|e| e.contains("certificate")));
     }

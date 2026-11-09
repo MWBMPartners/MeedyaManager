@@ -1,8 +1,38 @@
 # (C) 2025-2026 MWBM Partners Ltd
 # Pin the Rust toolchain version for reproducible builds across all developers
-
+#
+# WHY PINNED, NOT "stable" (#197): the clippy gate broke spontaneously twice
+# (manual_assert_eq, unused_async_trait_impl — both clippy::pedantic lints,
+# NOT clippy::nursery as issue #197 originally assumed; verified locally
+# against `clippy-driver -Whelp`'s own lint-group listing before writing this
+# comment). The root cause wasn't which lint groups are enabled in
+# [workspace.lints.clippy] in the root Cargo.toml — it was that `channel =
+# "stable"` here floated. Every new Rust release can add or sharpen a lint,
+# and with a floating channel that turns the gate red with zero changes to
+# our code. Pinning to an exact patch version makes lint-set changes opt-in.
+#
+# THIS IS EFFECTIVE IN CI WITHOUT TOUCHING ANY WORKFLOW FILE. All ~11
+# `dtolnay/rust-toolchain@stable` steps across .github/workflows/*.yml still
+# install "stable" and `rustup default` it — but rustup's directory-walk
+# toolchain-file override (this file) is checked BEFORE the `rustup default`
+# fallback (confirmed against rustup's own resolution order in
+# src/config.rs::find_override_config: +toolchain flag, then
+# RUSTUP_TOOLCHAIN env, then directory-walk override/rust-toolchain.toml,
+# and only then the default). So every `cargo`/`rustc` invocation inside this
+# checkout uses the channel pinned below regardless of what's set as
+# default, auto-installing it on first use if the runner doesn't already
+# have it (rustup's `auto_install` setting defaults to enabled). Do NOT
+# "fix" the dtolnay/rust-toolchain@stable usages to pin a version there too
+# — it would be redundant and would mean tracking the version in twelve
+# places instead of one.
+#
+# BUMP PROCEDURE: change the `channel` value below to the new version, run
+# the full gate locally (`cargo fmt --all --check && cargo clippy --workspace
+# --all-targets --exclude mm-gtk -- -D warnings && cargo test --workspace
+# --exclude mm-gtk`), review any newly-surfaced lints deliberately, then
+# commit. Never bump as a side effect of an unrelated change.
 [toolchain]
-channel = "stable"
+channel = "1.98.0"
 components = ["rustfmt", "clippy", "rust-src"]
 targets = [
     "aarch64-apple-darwin",

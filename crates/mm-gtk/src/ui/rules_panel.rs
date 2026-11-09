@@ -23,10 +23,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use mm_core::rule_engine;
 
@@ -53,7 +53,10 @@ impl RulesPanel {
             .hexpand(true)
             .build();
         accessibility::set_label(&template_entry, "Rename template");
-        accessibility::set_description(&template_entry, "Enter a MusicBee-style template using angle-bracket tags such as Artist, Title, Album.");
+        accessibility::set_description(
+            &template_entry,
+            "Enter a MusicBee-style template using angle-bracket tags such as Artist, Title, Album.",
+        );
 
         // Validation label (green on valid, red on error)
         let validation_label = gtk::Label::builder()
@@ -64,7 +67,7 @@ impl RulesPanel {
 
         // Validate on every keystroke and update preview
         {
-            let vl      = validation_label.clone();
+            let vl = validation_label.clone();
             let state_c = Rc::clone(&state);
 
             template_entry.connect_changed(move |entry| {
@@ -143,7 +146,7 @@ impl RulesPanel {
 
         // Keep preview updated when the template entry changes
         {
-            let pl      = preview_label.clone();
+            let pl = preview_label.clone();
             let state_c = Rc::clone(&state);
 
             template_entry.connect_changed(move |_| {
@@ -156,12 +159,33 @@ impl RulesPanel {
         // ------------------------------------------------------------------
 
         let known_tags = [
-            "Title", "Artist", "Album", "AlbumArtist", "Year", "Genre",
-            "TrackNumber", "TrackTotal", "DiscNumber", "DiscTotal",
-            "Composer", "Comment", "Lyrics", "ISRC", "Barcode",
-            "CatalogNumber", "Label", "Compilation", "BPM",
-            "Filename", "Extension", "Folder", "Duration",
-            "BitrateKbps", "SampleRateHz", "MediaClass", "MediaFormat",
+            "Title",
+            "Artist",
+            "Album",
+            "AlbumArtist",
+            "Year",
+            "Genre",
+            "TrackNumber",
+            "TrackTotal",
+            "DiscNumber",
+            "DiscTotal",
+            "Composer",
+            "Comment",
+            "Lyrics",
+            "ISRC",
+            "Barcode",
+            "CatalogNumber",
+            "Label",
+            "Compilation",
+            "BPM",
+            "Filename",
+            "Extension",
+            "Folder",
+            "Duration",
+            "BitrateKbps",
+            "SampleRateHz",
+            "MediaClass",
+            "MediaFormat",
         ];
 
         let tags_flow = gtk::FlowBox::builder()
@@ -181,7 +205,10 @@ impl RulesPanel {
                 .build();
             // Set accessible label so Orca announces intent, not just the angle-bracket text
             accessibility::set_label(&pill, &format!("Insert {tag} tag"));
-            accessibility::set_description(&pill, &format!("Appends <{tag}> to the rename template."));
+            accessibility::set_description(
+                &pill,
+                &format!("Appends <{tag}> to the rename template."),
+            );
 
             let entry_clone = template_entry.clone();
             let tag_text = format!("<{tag}>");
@@ -207,17 +234,30 @@ impl RulesPanel {
         ));
 
         // Display key sample tags as editable rows
-        let sample_keys = ["Title", "Artist", "Album", "Year", "TrackNumber", "Genre", "Composer"];
+        let sample_keys = [
+            "Title",
+            "Artist",
+            "Album",
+            "Year",
+            "TrackNumber",
+            "Genre",
+            "Composer",
+        ];
 
         for key in &sample_keys {
-            let initial = state.borrow().sample_tags.get(*key).cloned().unwrap_or_default();
+            let initial = state
+                .borrow()
+                .sample_tags
+                .get(*key)
+                .cloned()
+                .unwrap_or_default();
 
             let row = adw::EntryRow::new();
             row.set_title(*key);
             row.set_text(&initial);
 
             let state_c = Rc::clone(&state);
-            let pl      = preview_label.clone();
+            let pl = preview_label.clone();
             let key_owned = key.to_string();
 
             row.connect_changed(move |r| {

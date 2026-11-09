@@ -32,6 +32,13 @@ impl ExitCode {
     pub const ERROR: i32 = 1;
     /// Command completed with partial results (some items succeeded, some failed)
     pub const PARTIAL: i32 = 2;
+    /// The command was parsed and its arguments validated successfully, but the
+    /// underlying feature is not built yet in this release. Distinct from
+    /// `ERROR` (something went wrong) and `PARTIAL` (some work succeeded, some
+    /// failed) — `NOT_IMPLEMENTED` means no work was attempted at all, so
+    /// scripts calling `meedya` can tell "this failed" apart from "this isn't
+    /// ready yet" without scraping stdout text.
+    pub const NOT_IMPLEMENTED: i32 = 3;
 }
 
 // ─── Table output ───────────────────────────────────────────────────────────
@@ -186,6 +193,7 @@ mod tests {
         assert_eq!(ExitCode::SUCCESS, 0);
         assert_eq!(ExitCode::ERROR, 1);
         assert_eq!(ExitCode::PARTIAL, 2);
+        assert_eq!(ExitCode::NOT_IMPLEMENTED, 3);
     }
 
     /// Verify print_json produces valid JSON for a simple struct

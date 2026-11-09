@@ -72,19 +72,19 @@
 | 👁️ **Real-Time File Watching** | Monitors folders for new media files and processes them automatically (`notify` crate) |
 | 📐 **MusicBee-Inspired Rule Engine** | Template syntax with `<Tag>`, `$If()`, `$And()`, `$Or()`, 20+ functions, regex, deep nesting |
 | ✏️ **Metadata Editing** | Read/write tags across audio and video formats via `lofty` |
-| 🔍 **19+ Metadata Lookup Providers** | Music (10), Video (5), Podcasts (1), Identifiers (3) — with fuzzy matching and cover art |
+| 🔍 **19 Registered Metadata Providers** | 13 real HTTP clients (MusicBrainz, Spotify, Apple Music, Deezer, TMDb, TheTVDB, OMDb, Apple TV, iTunes Store, Apple Podcasts, ISRC, EIDR, ISWC) + 6 disabled stubs (YouTube Music, Amazon Music, Pandora, Tidal, Shazam, iHeart). **Partial:** `meedya lookup` (CLI) is still a stub (exits `3`, `NOT_IMPLEMENTED`); only MusicBrainz is wired into the GTK lookup panel today |
 | 🧠 **Smart Classification** | 4-level hierarchy: Media Group → Format → Class → Quality |
-| 🔄 **Companion File Tracking** | Moves subtitles, cover art, and disc images alongside media |
+| 🔄 **Companion File Detection** | Detects and groups subtitles, cover art, and disc images alongside their media file by shared filename/folder. **Status: detection and classification only — nothing actually moves yet** (issue [#217](https://github.com/MWBMPartners/MeedyaManager/issues/217) tracks the whole-folder move) |
 | 🗂️ **External JSON5 Config** | File types and metadata tags defined in `filetypes.json5` / `tags.json5` — editable without recompile, user-overridable |
-| 🔒 **File Integrity Checking** | SHA256 hash before/after every metadata write; atomic rename (`rename(2)`); rollback + corruption log on failure |
+| 🔒 **File Integrity Checking** | SHA256 hash before/after every metadata write; atomic rename (`rename(2)`); rollback + corruption log on failure — enforced on every real write path (`meedya edit`, the GTK metadata panel, the FFI layer) |
 | ⚙️ **Background Service Mode** | Runs as systemd user unit (Linux), launchd agent (macOS), or Windows Service; managed via `meedya service` CLI |
 | 📦 **Settings Export / Import** | Portable `.mmprofile` bundles for device migration and backup (`meedya config export/import`) |
-| 🧪 **Test Mode** | Safe editing — creates `_MeedyaManager` copies instead of modifying originals; commit or revert when done |
+| 🧪 **Test Mode** | Safe editing — creates `_MeedyaManager` copies instead of modifying originals; commit or revert when done; enforced on every real edit path (CLI, GTK, FFI) |
 | 🛡️ **Pre-release Safety** | Pre-release builds auto-enable Test Mode; stable upgrade prompts to disable |
 | 📜 **Privacy Policy** | No tracking, no analytics; full third-party provider disclosure |
-| ☁️ **Cloud Storage Sync** | OneDrive, Google Drive, Dropbox, MEGA, iCloud (planned) |
-| 🗄️ **Database Export** | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL |
-| 🌐 **Secure Media Server** | REST API with JWT auth, media streaming, web frontend |
+| ☁️ **Cloud Storage Sync** | **Status: not yet implemented — the Cloud UI tab is marked preview-only.** OneDrive, Google Drive, Dropbox, MEGA, iCloud have real trait definitions and a sync manager, but no provider makes a real network call yet — OAuth flows exist only as comments |
+| 🗄️ **Database Export** | **Status: not yet implemented — the Export UI tab is marked preview-only; `meedya export` exits `3` (`NOT_IMPLEMENTED`).** MySQL, MariaDB, SQL Server, SQLite, PostgreSQL have real schema/DDL generation and a CLI command (`--show-schema` genuinely works), but no backend ever opens a real database connection |
+| 🌐 **Secure Media Server** | **Status: not yet implemented — the Server UI tab is marked preview-only; `meedya serve` exits `3` (`NOT_IMPLEMENTED`).** `mm-server` has real JWT/range-parsing types, but never builds an HTTP router. There is no REST API you can call and no web frontend (zero `.html` files in the repo) |
 | 🎨 **Native Look & Feel** | SwiftUI + Liquid Glass on macOS, WinUI 3 + Mica on Windows, GTK4 + Libadwaita on Linux |
 
 ---
@@ -113,7 +113,9 @@
 git clone https://github.com/MWBMPartners/MeedyaManager.git
 cd MeedyaManager
 
-# Build all Rust crates (core, CLI, providers, GTK UI)
+# Build all workspace crates (core, CLI, providers, cloud, export, server, ffi, update)
+# Note: mm-gtk (the Linux GTK4 UI) is NOT a workspace member (needs Linux-only
+# gettextrs) — build it explicitly with: cargo build -p mm-gtk --release
 cargo build --workspace
 
 # Run all tests
@@ -129,11 +131,20 @@ cargo run -p mm-cli -- scan ~/Music
 # Build the Rust FFI library for macOS
 cargo build -p mm-ffi --release
 
-# Open in Xcode and build
-open macos/MeedyaManager.xcodeproj
-# Or build from command line:
+# macOS is a Swift Package Manager package — there is no .xcodeproj.
+# Build and run from the command line:
 cd macos && swift build
+# Or: open Package.swift in Xcode (26.3+ / Swift 6.3 toolchain required)
 ```
+
+> **The command above does not link the Rust library you just built.** `macos/Package.swift`'s
+> `MM_FFI_AVAILABLE` flag is commented out and set nowhere, so `swift build` always produces an
+> app that runs on stand-in code, not the engine — that is issue #66, still open. Running this
+> build is safe: as of issue #222, the app detects that the engine is missing and shows a plain
+> banner ("This build is running without the MeedyaManager engine…") instead of inventing scan
+> results or metadata, and disables Execute so it cannot rename anything. Do not read a
+> successful `swift build` as "the app works end-to-end" — it only proves the SwiftUI shell
+> compiles.
 
 ### Build the Windows App (WinUI 3)
 
@@ -163,36 +174,37 @@ MeedyaManager/
 ├── rust-toolchain.toml           # Pin Rust version
 ├── .rustfmt.toml / clippy.toml / deny.toml
 │
-├── crates/
+├── crates/                        # 9 crate directories, 8 workspace members
 │   ├── mm-core/                  # Core business logic
 │   │   └── src/ (config/, watcher/, classify/, rule_engine/,
 │   │            renamer/, companion/, metadata/, state/,
 │   │            logging/, health/, error.rs)
-│   ├── mm-providers/             # 19+ metadata lookup providers
+│   ├── mm-providers/             # 19 registered metadata lookup providers (13 real, 6 stubs)
 │   │   └── src/ (traits.rs, registry.rs, credentials.rs,
 │   │            rate_limiter.rs, match_scoring.rs, cover_art.rs,
 │   │            music/, video/, podcasts/, identifiers/)
-│   ├── mm-cloud/                 # Cloud storage (M7)
-│   ├── mm-export/                # Database export (M9)
-│   ├── mm-server/                # Media server (M10)
+│   ├── mm-cloud/                 # Cloud storage — scaffold only, see M7 below
+│   ├── mm-export/                # Database export — scaffold only, see M9 below
+│   ├── mm-server/                # Media server — scaffold only, see M10 below
 │   ├── mm-cli/                   # Cross-platform CLI (clap)
 │   ├── mm-ffi/                   # FFI bindings (UniFFI + cbindgen)
-│   └── mm-gtk/                   # Linux GTK4/Libadwaita UI
+│   ├── mm-update/                # Update-check client (semver, GitHub Releases API)
+│   └── mm-gtk/                   # Linux GTK4/Libadwaita UI — NOT a workspace member
 │
-├── macos/                        # Swift/SwiftUI app
-│   ├── MeedyaManager.xcodeproj/
+├── macos/                        # Swift/SwiftUI app (Swift Package Manager — no .xcodeproj)
 │   └── MeedyaManager/ (Views/, Models/, Bindings/, Resources/)
 │
 ├── windows/                      # WinUI 3 / C# app
 │   ├── MeedyaManager.sln
 │   └── MeedyaManager/ (Views/, ViewModels/, Interop/, Assets/)
 │
-├── config/settings.json5         # Shared default config
+├── config/settings.json5         # Shared default config — matches AppConfig field-for-field
+│                                  #   (issue #211, fixed); unknown keys now warn, not silently drop
 ├── assets/                       # Shared icons/branding
 ├── branding/                     # Logos
 ├── docs/                         # Developer docs
 ├── help/                         # User documentation
-├── .github/workflows/            # CI/CD (7 workflows)
+├── .github/workflows/            # CI/CD (10 workflows)
 ├── .claude/                      # Project context
 ├── Project_Plan.md / PROJECT_STATUS.md / README.md
 └── justfile                      # Task runner
@@ -204,19 +216,25 @@ MeedyaManager/
 
 | # | Milestone | Status | Description |
 | --- | ----------- | -------- | ------------- |
-| M0 | 🔧 Repository Setup & Scaffolding | ✅ **Complete** | Archive Python, init Cargo workspace, scaffold native apps, CI stubs |
-| M1 | 🧱 Core Engine (Rust) | ✅ **Complete** | Config, classification, metadata (`lofty`), watcher (`notify`), renamer, logging (217 tests) |
-| M2 | 📐 Rule Engine | ✅ **Complete** | Lexer, recursive descent parser, evaluator, 20+ template functions (182 tests) |
-| M3 | ⌨️ CLI | ✅ **Complete** | `clap`-based commands: scan, debug, watch, rule, edit, lookup, config (45 tests) |
-| M4 | 🖥️ FFI Layer & Native UI Shells | ✅ **Complete** | UniFFI + cbindgen, SwiftUI/WinUI 3/GTK4 app shells (20 tests) |
-| M5 | 🔍 Metadata Lookup Providers | ✅ **Complete** | 19+ providers, fuzzy matching, rate limiting, cover art (332 tests) |
-| M6 | 🎨 Full Native UI | ✅ **Complete** | Rule Builder, Metadata Editor, Lookup Panel on all platforms (~90 tests) |
-| M7 | ☁️ Cloud Storage Monitoring | ✅ **Complete** | OneDrive, Google Drive, Dropbox, MEGA stub, iCloud stub (~90 tests) |
-| M8 | 📦 Packaging & Public Release | ✅ **Complete** | App Store, Microsoft Store, Flatpak/Snap, auto-updater (~33 tests) |
-| M9 | 🗄️ Database Export | ✅ **Complete** | MySQL, MariaDB, SQL Server, SQLite, PostgreSQL (~90 tests) |
-| M10 | 🌐 Secure Media Server | ✅ **Complete** | `axum` HTTP server, REST API, JWT auth, media streaming — **v1.0.0 released** (~90 tests) |
-| — | 🔧 Post-Release Enhancements (v1.1.0) | ✅ **Complete** | Accessibility (AT-SPI2/VoiceOver/XAML), i18n (gettextrs/.xcstrings/.resw), external filetype registry, extended metadata tags |
-| — | 🔧 Post-Release Enhancements (v1.2.0) | ✅ **Complete** | External JSON5 tag registry, file integrity (SHA256 + atomic write), background service mode, settings export/import |
+| M0 | 🔧 Repository Setup & Scaffolding | ✅ **Complete** | Archive Python, init Cargo workspace, scaffold native apps, CI setup |
+| M1 | 🧱 Core Engine (Rust) | ✅ **Complete** | Config, classification, metadata (`lofty`), watcher (`notify`), renamer, logging |
+| M2 | 📐 Rule Engine | ✅ **Complete** | Lexer, recursive descent parser, evaluator, 24 template functions |
+| M3 | ⌨️ CLI | ✅ **Complete** (except `lookup`) | `clap`-based commands: scan, debug, watch, rule, edit, config — `meedya lookup` is still a stub, exiting `3` (`NOT_IMPLEMENTED`) rather than reporting success |
+| M4 | 🖥️ FFI Layer & Native UI Shells | ✅ **Complete** | UniFFI + cbindgen, SwiftUI/WinUI 3/GTK4 app shells |
+| M5 | 🔍 Metadata Lookup Providers | ✅ **Complete, partially reachable** | 19 registered providers (13 real HTTP clients, 6 disabled stubs); only MusicBrainz reachable from any UI today |
+| M6 | 🎨 Full Native UI | ✅ **Complete** | Rule Builder, Metadata Editor, Lookup Panel on all platforms |
+| M7 | ☁️ Cloud Storage Monitoring | ⚠️ **Preview / scaffold only** | Real traits + sync manager, but no provider makes a real network call — OAuth is comment-only |
+| M8 | 📦 Packaging & Public Release | ⚠️ **Tooling built, nothing published** | Store submissions, Flatpak/Snap manifests and auto-updater code exist, but no app has been submitted or released; Linux/WinGet manifest versions are out of sync with `Cargo.toml` |
+| M9 | 🗄️ Database Export | ⚠️ **Preview / scaffold only** | Schema/DDL generation and CLI plumbing exist for all 5 backends, but no backend opens a real database connection |
+| M10 | 🌐 Secure Media Server | ⚠️ **Preview / scaffold only** | JWT + range-parsing types exist, but no `axum` router is ever built; `meedya serve` prints a stub message and exits — no working REST API, streaming, or web frontend |
+| — | 🔧 Post-Release Enhancements (i18n, accessibility) | ⚠️ **Preview / scaffold only** | Translation catalogues (`.po`/`.xcstrings`/`.resw`) exist but there are **zero** `gettext()` call sites anywhere in the codebase — translating them has no runtime effect yet |
+| — | 🔧 Post-Release Enhancements (tags/integrity/service) | ⚠️ **Built, but switched off for safety** | External JSON5 tag registry, file integrity (SHA256 + atomic write) for metadata writes, background service mode built for Linux/macOS — but as of 2026-09-23 `meedya service install` and real (non-preview) `meedya watch --organize` both refuse and do nothing, because known data-loss bugs in the organiser are still being fixed (issue #180; see [background-service.md](help/background-service.md)), settings export/import |
+
+> **No version of MeedyaManager has ever been publicly released.** The version in `Cargo.toml` is
+> `1.4.0-alpha.1` — the first pre-release label the project has ever carried; the only GitHub
+> release is the pre-rename *"MetaMancer v1.0-M1"* (2025-06-16, pre-release), and no tag has been
+> pushed for `1.4.0-alpha.1` yet. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for the full, current
+> breakdown including test counts per crate and open issues.
 
 ---
 
@@ -249,7 +267,7 @@ MeedyaManager/
 
 | Platform | Language | Framework | Version |
 | ---------- | ---------- | ----------- | --------- |
-| macOS | Swift 6 | SwiftUI | Xcode 16+ |
+| macOS | Swift 6 | SwiftUI | Xcode 26.3+ (Swift 6.3 toolchain) |
 | Windows | C# | WinUI 3 / .NET 8 | Visual Studio 2022+ |
 | Linux | Rust | GTK4 + Libadwaita | gtk4-rs |
 
@@ -257,26 +275,33 @@ MeedyaManager/
 
 ## 🍎 Apple Platform Wishlist
 
-The following Apple-specific and Apple-enhanced features are planned for future releases on macOS (and potentially iOS/iPadOS). These extend MeedyaManager beyond cross-platform parity to take full advantage of the Apple ecosystem.
+The following Apple-specific and Apple-enhanced features are ideas for future releases on macOS (and potentially iOS/iPadOS). These extend MeedyaManager beyond cross-platform parity to take full advantage of the Apple ecosystem.
 
-| Feature | Description | GitHub Issue |
-| ------- | ----------- | ------------ |
-| 🎵 **Music.app Library Import** | Parse the macOS Music app library (`~/Music/Music/`) to bulk-import existing metadata, ratings, and play counts — zero re-tagging needed for existing collections | #134 |
-| 🎼 **MusicKit Framework** | Replace REST-based Apple Music lookups with the native `MusicKit` framework for on-device catalog search, richer metadata, and authenticated user-library access | #135 |
-| 🔭 **Quick Look Extension** | Register a `QLPreviewExtension` so Finder shows rich album-art previews with metadata for any media file managed by MeedyaManager | #136 |
-| 🗣️ **Siri Shortcuts / App Intents** | Expose MeedyaManager operations (scan folder, rename preview, metadata lookup) as `AppIntent` actions usable in the Shortcuts app and via Siri voice commands | #137 |
-| 🧠 **Core ML Audio Fingerprinting** | Use Apple's Neural Engine (Core ML / Sound Analysis) for on-device audio fingerprinting — identify tracks without an external API, works fully offline | #138 |
-| 🔍 **Spotlight Importer** | Publish library metadata to macOS Spotlight via `CoreSpotlight` so every track is searchable system-wide from Spotlight or Alfred | #139 |
-| 📡 **AirPlay 2 Streaming** | Stream media from the built-in MeedyaManager server to any AirPlay 2 receiver (HomePod, Apple TV, AirPlay-enabled speaker) | #140 |
-| ☁️ **CloudKit Settings Sync** | Sync rename rules, config, and preferences across all Apple devices via iCloud / CloudKit — rules set on Mac appear automatically on iPhone/iPad | #141 |
+> **No GitHub issues exist for these yet.** An earlier draft of this table cited issues #134-#141,
+> but those numbers belong to unrelated, already-filed issues (mm-core metadata migration, the
+> meedya-core dependency, upstream provider contribution, a `deny.toml` fix, FFmpeg packaging, a
+> lyrics-file feature, `update.mwbm.io`, and a post-PR cleanup task, respectively) — none of them
+> are about this wishlist. File real issues before referencing numbers here again.
 
-> These features are tracked as **wishlist GitHub Issues** and will be scheduled in a future milestone once core cross-platform parity is solid.
+| Feature | Description |
+| ------- | ----------- |
+| 🎵 **Music.app Library Import** | Parse the macOS Music app library (`~/Music/Music/`) to bulk-import existing metadata, ratings, and play counts — zero re-tagging needed for existing collections |
+| 🎼 **MusicKit Framework** | Replace the current unauthenticated iTunes Search API lookups with the native `MusicKit` framework for on-device catalog search, richer metadata, and authenticated user-library access |
+| 🔭 **Quick Look Extension** | Register a `QLPreviewExtension` so Finder shows rich album-art previews with metadata for any media file managed by MeedyaManager |
+| 🗣️ **Siri Shortcuts / App Intents** | Expose MeedyaManager operations (scan folder, rename preview, metadata lookup) as `AppIntent` actions usable in the Shortcuts app and via Siri voice commands |
+| 🧠 **Core ML Audio Fingerprinting** | Use Apple's Neural Engine (Core ML / Sound Analysis) for on-device audio fingerprinting — identify tracks without an external API, works fully offline |
+| 🔍 **Spotlight Importer** | Publish library metadata to macOS Spotlight via `CoreSpotlight` so every track is searchable system-wide from Spotlight or Alfred |
+| 📡 **AirPlay 2 Streaming** | Stream media from the (currently not-yet-implemented, see M10 above) MeedyaManager server to any AirPlay 2 receiver once that server exists |
+| ☁️ **CloudKit Settings Sync** | Sync rename rules, config, and preferences across all Apple devices via iCloud / CloudKit — rules set on Mac appear automatically on iPhone/iPad |
+
+> These are unscheduled ideas, not committed work. They will be filed as GitHub issues and
+> scheduled into a future milestone once core cross-platform parity is solid.
 
 ---
 
 ## ⚖️ License
 
-This project is licensed under the **GPL-2.0-or-later** — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GPL-2.0-or-later** — see the [`LICENSE`](LICENSE) file at the repository root (issue #207, fixed), staged into every platform package (Flatpak, Snap, `.deb`, AppImage, and the macOS app bundle's `Contents/Resources/`).
 
 ---
 
@@ -286,13 +311,14 @@ This project is licensed under the **GPL-2.0-or-later** — see the [LICENSE](LI
 | ---------- | ------------- |
 | 📋 [Project_Plan.md](Project_Plan.md) | Full project plan with architecture, milestones & tech stack |
 | 📊 [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current progress tracker |
-| 📍 [docs/ROADMAP.md](docs/ROADMAP.md) | Milestone timeline |
+| 📍 [docs/roadmap.md](docs/roadmap.md) | Milestone timeline |
 | 📦 [docs/changelog.md](docs/changelog.md) | Detailed change log |
+| 🔌 [docs/api/README.md](docs/api/README.md) | API documentation — Rust crates, C/UniFFI FFI, and the CLI as a scripting interface |
 | 📖 [help/getting-started.md](help/getting-started.md) | Getting started guide |
 | ⚙️ [help/configuration.md](help/configuration.md) | Configuration reference |
 | 📐 [help/rule-syntax.md](help/rule-syntax.md) | Rule template syntax guide |
 | 🎵 [help/supported-formats.md](help/supported-formats.md) | Supported file formats |
-| 🔍 [help/provider-setup.md](help/provider-setup.md) | Metadata lookup provider setup |
+| 🔍 [help/providers/](help/providers/) | Per-provider metadata lookup setup pages |
 | 🔧 [help/troubleshooting.md](help/troubleshooting.md) | Troubleshooting guide |
 | ❓ [help/faq.md](help/faq.md) | Frequently asked questions |
 

@@ -23,6 +23,15 @@
                        Opacity="0.7"
                        Margin="0,0,0,8"/>
 
+            <!-- Persistent alpha preview notice — mm-server does not yet build a
+                 real HTTP router, so nothing on this page can actually start,
+                 stop, or serve. See issue #205. -->
+            <InfoBar IsOpen="True"
+                     IsClosable="False"
+                     Severity="Informational"
+                     Title="Preview"
+                     Message="Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)"/>
+
             <!-- Network settings group -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -177,20 +186,21 @@
 
                     <!-- Buttons -->
                     <StackPanel Orientation="Horizontal" Spacing="8">
+                        <!-- Disabled in this alpha — mm-server does not yet build a
+                             real HTTP router. See the InfoBar above and issue #205. -->
                         <Button x:Name="StartBtn"
                                 Content="Start Server"
                                 Style="{StaticResource AccentButtonStyle}"
-                                Click="StartBtn_Click"
-                                ToolTipService.ToolTip="Start the HTTPS media server"
-                                AutomationProperties.Name="Start server"
-                                AutomationProperties.HelpText="Starts the HTTPS media server with the current configuration"/>
+                                IsEnabled="False"
+                                ToolTipService.ToolTip="Disabled in this alpha — the media server is not yet implemented (issue #205)"
+                                AutomationProperties.Name="Start server (disabled — not functional in this alpha)"
+                                AutomationProperties.HelpText="Starting the media server is disabled in this alpha; mm-server does not yet build a real HTTP router. See issue #205."/>
                         <Button x:Name="StopBtn"
                                 Content="Stop Server"
                                 IsEnabled="False"
-                                Click="StopBtn_Click"
-                                ToolTipService.ToolTip="Stop the running media server"
-                                AutomationProperties.Name="Stop server"
-                                AutomationProperties.HelpText="Stops the running media server"/>
+                                ToolTipService.ToolTip="Disabled in this alpha — the media server is not yet implemented (issue #205)"
+                                AutomationProperties.Name="Stop server (disabled — not functional in this alpha)"
+                                AutomationProperties.HelpText="Stopping the media server is disabled in this alpha; there is nothing running to stop. See issue #205."/>
                         <Button x:Name="RoutesBtn"
                                 Content="Show Routes"
                                 Click="RoutesBtn_Click"

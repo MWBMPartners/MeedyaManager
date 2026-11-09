@@ -13,6 +13,7 @@ Welcome to the MeedyaManager documentation. Choose a topic below to get started.
 | [getting-started.md](getting-started.md) | Install MeedyaManager, run your first scan, and configure watch folders |
 | [configuration.md](configuration.md) | Full reference for all settings in `settings.json5` |
 | [cli-reference.md](cli-reference.md) | Every `meedya` command, subcommand, and flag |
+| [../docs/api/README.md](../docs/api/README.md) | API documentation for developers — Rust crate APIs, the C/UniFFI FFI layer, and the CLI as a scripting interface |
 
 ---
 
@@ -86,13 +87,13 @@ meedya scan ~/Music --dry-run
 # Watch folders live
 meedya watch
 
-# Look up metadata online
-meedya lookup ~/Music/song.mp3
+# Look up metadata online (stub — not yet implemented, see cli-reference.md)
+meedya lookup "Rick Astley - Never Gonna Give You Up"
 
 # Edit tags
-meedya edit ~/Music/song.mp3 --tag "Artist=My Artist"
+meedya edit ~/Music/song.mp3 --set "Artist=My Artist"
 
-# Manage background service
+# Manage background service (install currently refuses — see note below)
 meedya service install
 meedya service start
 meedya service status
@@ -103,9 +104,19 @@ meedya config test-mode status
 meedya config test-mode commit
 
 # Export/import configuration
-meedya config export --out ~/my-settings.mmprofile
+meedya config export ~/my-settings.mmprofile
 meedya config import ~/my-settings.mmprofile
 
 # Generate a bug report
 meedya report-bug
 ```
+
+> **Note:** `meedya lookup` is still a stub — it prints a "coming" notice and does not query any
+> provider yet. See [cli-reference.md](cli-reference.md#meedya-lookup) for the current state.
+
+> **Note (2026-09-23, issue #180):** automatic organising is switched off in this build while
+> known problems with it are fixed. `meedya service install` refuses on every platform and
+> installs nothing; `meedya watch --organize` without the global `--dry-run` flag refuses and
+> moves nothing. Preview commands (`--dry-run`) still work. See
+> [background-service.md](background-service.md) and
+> [cli-reference.md](cli-reference.md#meedya-watch) for the details.

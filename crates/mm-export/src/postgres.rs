@@ -10,6 +10,8 @@
 // Upsert strategy: `INSERT INTO … ON CONFLICT (file_hash) DO UPDATE SET …`
 // Tags:            delete-then-reinsert in the same transaction.
 
+use std::future::Future;
+
 use crate::schema::SchemaBuilder;
 use crate::traits::{
     DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent,
@@ -87,31 +89,35 @@ impl DatabaseExporter for PostgresExporter {
         DbDialect::Postgres
     }
 
-    async fn ensure_schema(&self) -> Result<(), ExportError> {
+    fn ensure_schema(&self) -> impl Future<Output = Result<(), ExportError>> {
+        // No `.await` point in this stub — return an already-resolved
+        // `Future` via `std::future::ready()` rather than `async fn`, to
+        // satisfy clippy's `unused_async_trait_impl` while still matching
+        // the trait's `impl Future<...> + Send` signature.
         for stmt in self.schema_ddl() {
             if stmt.is_empty() {
-                return Err(ExportError::SchemaInitFailed("empty DDL".into()));
+                return std::future::ready(Err(ExportError::SchemaInitFailed("empty DDL".into())));
             }
         }
-        Ok(())
+        std::future::ready(Ok(()))
     }
 
-    async fn export_file(&self, row: &ExportRow) -> Result<(), ExportError> {
+    fn export_file(&self, row: &ExportRow) -> impl Future<Output = Result<(), ExportError>> {
         if row.file_hash.is_empty() {
-            return Err(ExportError::RowFailed {
+            return std::future::ready(Err(ExportError::RowFailed {
                 path: row.path.clone(),
                 message: "file_hash required".into(),
-            });
+            }));
         }
         if row.path.is_empty() {
-            return Err(ExportError::RowFailed {
+            return std::future::ready(Err(ExportError::RowFailed {
                 path: String::new(),
                 message: "path required".into(),
-            });
+            }));
         }
         let _ = self.upsert_file_sql();
         let _ = self.replace_tags_sql();
-        Ok(())
+        std::future::ready(Ok(()))
     }
 
     async fn export_batch(&self, rows: &[ExportRow]) -> Result<ExportStats, ExportError> {
@@ -125,16 +131,18 @@ impl DatabaseExporter for PostgresExporter {
         Ok(stats)
     }
 
-    async fn record_rename(&self, event: &RenameEvent) -> Result<(), ExportError> {
+    fn record_rename(&self, event: &RenameEvent) -> impl Future<Output = Result<(), ExportError>> {
         if event.file_hash.is_empty() {
-            return Err(ExportError::RenameEventFailed("file_hash required".into()));
+            return std::future::ready(Err(ExportError::RenameEventFailed(
+                "file_hash required".into(),
+            )));
         }
         let _ = self.insert_history_sql();
-        Ok(())
+        std::future::ready(Ok(()))
     }
 
-    async fn disconnect(self) -> Result<(), ExportError> {
-        Ok(())
+    fn disconnect(self) -> impl Future<Output = Result<(), ExportError>> {
+        std::future::ready(Ok(()))
     }
 }
 

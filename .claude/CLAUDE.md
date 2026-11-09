@@ -10,6 +10,33 @@
 - **Licence:** GPL-2.0-or-later
 - **Copyright:** MWBM Partners Ltd
 - **Platforms:** Windows (x64/ARM), macOS (Apple Silicon only), Linux (x64/ARM)
+- **Apple mobile platforms are out of scope.** iPhone, iPad, Vision Pro and Apple Watch were judged
+  unsuitable on 2026-09-15: they cannot reach a user's media library as files or run background
+  watch folders. The Apple app is **macOS-only** (#228 closed as not planned).
+- **Planned, not started:** a side-loadable **Android phone app** (#230), with foldable support
+  (#229) as a layer on top. No Android code exists, and none can be built on the current
+  development machine.
+
+## Session continuity
+
+- **`.claude/HANDOFF.md` is the session-resume document.** It records *verified* state only
+  (never aspirational state) — branch position, what's actually implemented vs. scaffolded,
+  owner decisions, and where to pick up. Read it first when resuming cold. **Keep it current**
+  — update it after every task, the same way this file's own rules require `.md` files to be
+  updated after every code change. The orchestrator/session owner maintains it; do not let it
+  go stale.
+- **Update it as you go, not only at the end** (owner, restated 2026-09-23). A session can be
+  cut off at any moment — a usage limit, a lost connection, or the owner restarting to update
+  Claude Code — and anything that lives only in the chat is lost when that happens. Anything
+  that took real effort to find out goes into the handoff as soon as it is known.
+- **Anything that exists only on one machine is at risk.** Temporary work folders
+  (`git worktree`s), scratchpad files and unpushed commits do not survive a new session,
+  especially a cloud one. On 2026-09-23 the stage (a) fixes for #233, #231 and #227 were found
+  to be lost for exactly this reason. Commit finished work (pushing only when the owner asks),
+  record anything still in progress in the handoff, and tell the owner how many commits are
+  waiting to be pushed.
+- **Cargo is not on the default `PATH`** in this environment. Run
+  `export PATH="$HOME/.cargo/bin:$PATH"` before any `cargo` command.
 
 ## Key Architecture Decisions
 
@@ -18,7 +45,7 @@
 - **macOS GUI:** SwiftUI with Liquid Glass on macOS 26+ (falls back to standard vibrancy on older versions)
 - **Windows GUI:** WinUI 3 (C# / WinAppSDK 1.6) with Mica backdrop
 - **Linux GUI:** GTK4 via `gtk4-rs` + `libadwaita` (direct Rust, no FFI needed)
-- **Cargo workspace:** 8 crates — `mm-core`, `mm-providers`, `mm-cloud`, `mm-export`, `mm-server`, `mm-cli`, `mm-ffi`, `mm-gtk`
+- **Cargo workspace:** 9 crate directories, 8 workspace members — `mm-core`, `mm-providers`, `mm-cloud`, `mm-export`, `mm-server`, `mm-cli`, `mm-ffi`, `mm-update` (workspace members) plus `mm-gtk` (9th crate directory, excluded from `members`/`default-members` — needs Linux-only `gettextrs`). `Cargo.toml` carries `exclude = ["crates/mm-gtk"]` so the crate also resolves standalone via `--manifest-path` (issue #199, fixed and closed 2026-09-03)
 - **Key Rust crates:**
   - `lofty` — Audio/video metadata read/write
   - `notify` — Cross-platform file system watcher
@@ -71,24 +98,59 @@
 
 ## Milestone Order
 
+Workspace-wide: **54,121 Rust lines and 1,467 test functions** in `crates/` (working tree,
+2026-09-15). `cargo test --workspace` reports **1,416 passing, 0 failed** at `6ab0c8d`
+(checked 2026-09-23). Older figures — 1,395 / 1,402, 44,183 / 1,392, or 217 / 399 / 444 tests
+— are stale; do not repeat them.
+
 1. M0 — Repository Setup & Scaffolding (Complete)
-2. M1 — Core Engine (Complete — 217 tests)
-3. M2 — Rule Engine (Complete — 182 tests, 399 total)
-4. M3 — CLI (Complete — 45 tests, 444 total)
+2. M1 — Core Engine (Complete)
+3. M2 — Rule Engine (Complete) — `scan --execute`'s data-loss bug and Test Mode's enforcement
+   gap (issues #201, #128) are fixed; see "Round 1/Round 2" below
+4. M3 — CLI (Complete) — `export`/`serve`/`lookup` now exit `3` (`NOT_IMPLEMENTED`) instead of
+   fabricating success (issue #205)
 5. M4 — FFI Layer & Native UI Shells (Issues #63-72)
-6. M5 — Metadata Lookup Providers (Issues #73-84)
+6. M5 — Metadata Lookup Providers (Issues #73-84) — **`meedya lookup` is still a stub**
+   (prints a not-implemented notice and exits `3`); no CLI/GUI command constructs a metadata
+   provider yet
 7. M6 — Full Native UI (Issues #85-93)
-8. M7 — Cloud Storage Monitoring (Issues #94-102)
-9. M8 — Packaging & Public Release (Issues #103-111)
-10. M9 — Database Export (Issues #112-119)
-11. M10 — Secure Media Server (Issues #120-127)
+8. M7 — Cloud Storage Monitoring (Issues #94-102) — **Status: architectural scaffolding
+   only.** No real network calls; OAuth flows exist only as comments. The Cloud UI tab now
+   shows a preview-only banner with its controls disabled (issue #205). Do not describe cloud
+   monitoring as working.
+9. M8 — Packaging & Public Release (Issues #103-111) — `release.yml` is now capable of
+   actually producing a usable alpha build (issue #202)
+10. M9 — Database Export (Issues #112-119) — **Status: architectural scaffolding only.**
+    `sqlx`/`tiberius` are declared dependencies but no connection pool is ever created and no
+    SQL is ever executed against a real database. The Export UI tab now shows a preview-only
+    banner with its controls disabled (issue #205).
+11. M10 — Secure Media Server (Issues #120-127) — **Status: architectural scaffolding
+    only.** `mm-server` never builds an axum router (no `.route(` call exists anywhere);
+    `meedya serve` now exits `3` (`NOT_IMPLEMENTED`) instead of printing a fabricated "stub
+    exiting cleanly" success message. There are zero `.html` files in the repo — the web
+    frontend has no deliverable. The Server UI tab now shows a preview-only banner with its
+    controls disabled (issue #205).
+
+M7/M9/M10 issues were previously closed as completed; they have been reopened to reflect
+this reality — see `.claude/HANDOFF.md` for the full reconciliation. A subsequent Round 1
+(alpha readiness: issues #207, #212, #205, #211, #128, #201, #206) and Round 2 (release
+readiness: issues #203, #204, #197, #200, #202, #214) fixed the correctness/CI/release-pipeline
+defects referenced above and cut the version to `1.4.0-alpha.1` — see `docs/changelog.md`.
 
 ## Version Management
 
 - **Single source of truth:** `Cargo.toml` `[workspace.package].version`
-- **Automated bumping:** `version-bump.yml` GitHub Actions workflow
-- **CI sync check:** `ci-rust.yml` verifies all platform files match
-- **Platform mapping:** semver → MSIX 4-part (2.0.0.0), CFBundle 3-part (2.0.0)
+- **Automated bumping:** `version-bump.yml` GitHub Actions workflow — also updates
+  `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` (exact match, pre-release suffix
+  included; issues #197/#204/#214)
+- **CI sync check:** `ci-rust.yml`'s `version-check` job verifies `Package.appxmanifest`,
+  `Info.plist`, `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` all match
+  `Cargo.toml`. Still does **not** cover `linux/deb/control`, the Flatpak metainfo/manifest, or
+  the WinGet manifest — those are manual.
+- **Platform mapping:** semver → MSIX 4-part (2.0.0.0, suffix stripped), CFBundle 3-part (2.0.0,
+  suffix stripped), Debian (`-` → `~`, e.g. `1.4.0~alpha.1`), `mm-gtk`/Snapcraft (exact match,
+  suffix included)
+- **Current version:** `1.4.0-alpha.1` — the project's first semver pre-release (issue #214)
 - See `Dev_Notes.md` for full details
 
 ## API Key Policy
@@ -100,6 +162,11 @@
 
 ## Important Context Files
 
+- `.claude/HANDOFF.md` — **Where things stand right now; read first when resuming**
+- `AGENTS.md` — The same rules for Codex and other AI coding tools
+- `.OpenAI/` — Codex's context and memory notes (`CONTEXT.md`, `MEMORY.md`)
+- `.claude/device-wide-rules.md` — Rules the owner wants on every project on their computer,
+  ready to copy into `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`
 - `.claude/ProjectBrief_Chat.claude` — Full project brief from user
 - `Project_Plan.md` — Comprehensive project plan
 - `PROJECT_STATUS.md` — Current progress
@@ -111,24 +178,364 @@
 - **Cargo** builds native Rust binaries (no runtime dependency)
 - **Swift Package Manager** builds macOS SwiftUI app
 - **MSBuild/.NET 8** builds Windows WinUI 3 app (MSIX package)
-- **Cargo** builds Linux GTK4 binary (Flatpak/Snap/AppImage/.deb)
+- **Cargo** builds the Linux GTK4 binary — **in practice `release.yml` builds only a `.deb` and a
+  tarball**; the Flatpak and Snap recipes point at tags, commits and binary names that do not
+  exist (#107)
 - App is fully self-contained — users need ZERO pre-installed software
 - All packages include SHA256 checksums
 - Release workflow generates draft GitHub Releases with artifacts
 
 ## Git & CI/CD
 
-- **8 GitHub Actions workflows:**
-  - `ci-rust.yml` — Cargo fmt + clippy + test + version-sync (3-OS matrix)
-  - `ci-macos.yml` — Build mm-ffi + SwiftUI app (macos-14)
-  - `ci-windows.yml` — Build mm-ffi + WinUI 3 app (windows-latest)
-  - `ci-linux.yml` — Build mm-gtk with GTK4/Libadwaita (ubuntu-latest)
-  - `version-bump.yml` — Automated version bumping across all files (manual trigger)
-  - `release.yml` — 5-platform release builds + checksums + GitHub Release (tag trigger)
-  - `audit.yml` — cargo-deny + cargo-audit (weekly + push)
+- **10 GitHub Actions workflows:**
+  - `pr-gate.yml` — **Umbrella for PR branch protection.** No path filter; runs on every PR to
+    `main`, `alpha` or `beta` (issue #204 — previously `main` only), detects changed paths,
+    conditionally invokes the 4 platform CIs as reusable workflows, aggregates results in a
+    `Gate` job. The `Gate` context is the single required check on `main` (branch protection
+    itself is still `main`-only). See "Branch protection" section below.
+  - `ci-rust.yml` — Cargo fmt + clippy + test + version-sync (3-OS matrix, Rust pinned to
+    `1.98.0` via `rust-toolchain.toml`, issue #197 — not a floating `stable` channel). **Reusable**
+    (`workflow_call:`) — invoked by `pr-gate.yml` for PRs; native `push:` trigger fires on direct
+    pushes to `main`, `alpha` or `beta`. `version-check` now also verifies `crates/mm-gtk/Cargo.toml`
+    and `linux/snap/snapcraft.yaml` match `Cargo.toml` **exactly**, including any pre-release
+    suffix (issues #197/#204/#214).
+  - `ci-macos.yml` — Build mm-ffi + SwiftUI app (macos-26, Xcode 26.4.1, Swift 6.3). **Reusable.** Runner is macos-26 (not macos-latest) because `Package.swift` requires `swift-tools-version: 6.3` which needs Xcode 26.3+. Push trigger covers `main`/`alpha`/`beta`.
+  - `ci-windows.yml` — Build mm-ffi + WinUI 3 app. **Reusable.** Runner is pinned `windows-2022`
+    (not `windows-latest`/`windows-2025`, whose .NET 10 SDK host breaks `XamlCompiler.exe` — see
+    issue #148). Push trigger covers `main`/`alpha`/`beta`.
+  - `ci-linux.yml` — Build mm-gtk with GTK4/Libadwaita (ubuntu-latest). **Reusable.** Push trigger covers `main`/`alpha`/`beta`.
+  - `lint.yml` — `actionlint` against every workflow file (push/PR touching `.github/workflows/**`, plus manual dispatch). Costs nothing on ordinary code pushes.
+  - `version-bump.yml` — Automated version bumping across all files (manual trigger); now also
+    updates `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` (issues #197/#204/#214) so
+    an automated bump can't reintroduce the version drift those two files previously had.
+  - `release.yml` — 5-platform release builds + checksums + GitHub Release (tag trigger, plus a
+    manual `workflow_dispatch` dry-run mode added by issue #202, which also fixed the pipeline
+    copying a nonexistent `mm-cli` binary instead of the real `meedya`/`meedya-gtk` binaries and
+    staged `LICENSE` into every package). Windows jobs are `continue-on-error` and excluded from
+    the release gate pending #148.
+  - `audit.yml` — cargo-deny only (weekly + push to `main`/`alpha`/`beta`, plus a path-filtered
+    PR trigger on `Cargo.lock`/`Cargo.toml`/`deny.toml`, issue #204 — must never become a
+    required check); a separate cargo-audit step was tried and removed (#156/#157) since
+    cargo-deny's `advisories` check is a superset. **Fixed** as of issue #203 — three RUSTSEC
+    advisories resolved, two more given dated justified ignores; do not assume it is still red.
   - `docs.yml` — cargo doc generation
-- Platform packages: Windows (MSIX), macOS (.dmg/.tar.gz), Linux (Flatpak/Snap/AppImage/.deb)
+- Platform packages: Windows (`.zip` staging today — `release.yml` has no MSIX packaging step
+  despite `Package.appxmanifest` existing), macOS (.dmg/.tar.gz), Linux (Flatpak/Snap/AppImage*/.deb
+  — *AppImage is deliberately not built by `release.yml`, see issue #202)
 - `.gitignore` covers OS files, Rust `target/`, IDE files, secrets, build artifacts
-- Python v1.x archived at tag `v1.5-M6-python-final`
+- **No Python archive tag exists.** `v1.5-M6-python-final` is NOT a real tag — the only tag
+  in the repo is `v1.0-M1`, and the only GitHub Release is *"MetaMancer v1.0-M1"* (2025-06-16,
+  the pre-rename project name). Issue #19 was reopened because of this false claim; do not
+  reintroduce it.
+- **Current version is `1.4.0-alpha.1`** (`[workspace.package].version`) — the project's first
+  semver pre-release, previously `1.3.0` (issue #214, fixed). Versions 1.3.1 and 1.3.2 were
+  never cut despite changelog entries claiming otherwise — both are folded into the
+  `[v1.4.0-alpha.1]` changelog entry, not treated as a release. No tag has been pushed for
+  `1.4.0-alpha.1` yet.
 - **Every task** must have a GitHub Issue created BEFORE work begins and closed AFTER verification
-- **Commit but do NOT push** — user pushes manually
+- **Commit each finished task, but do NOT push unless the owner asks** — the user pushes
+  manually, or asks for a push on a particular occasion. Settled by the owner, 2026-09-23: *"Previous 'do not push unless asked' still applies as per standing rules"*.
+  A request to push is for that occasion only, not a standing permission. (Exception, as
+  before: pushing a *new feature branch* is OK once the owner has explicitly asked for a PR.)
+  Commits go to the working branch, which will later be merged into `alpha` — today
+  `claude/musicbrainz-api-migration-7jxszn`. Never push to `main`, `alpha` or `beta` directly.
+  Because unpushed commits are lost if the machine goes away, **say in every report how many
+  commits are waiting to be pushed**, and record them in the handoff.
+
+## Branch protection on `main` — umbrella PR Gate pattern
+
+`main` is protected by the **"Protect main branch"** ruleset (id `14829223`). The required-status-check rule lists exactly one context: the `Gate` job from `pr-gate.yml` (verify the exact recorded name with `gh pr checks <PR#>` on a fresh PR; orphan contexts soft-lock every future PR — see global CLAUDE.md CI/CD lesson #1).
+
+**Why this pattern (do not regress):**
+
+- Per-platform CIs (`ci-rust`, `ci-macos`, `ci-windows`, `ci-linux`) have **path filters** to keep CI cheap. Making them directly required would soft-lock any PR that doesn't touch their paths (the check never reports = never passes = blocked forever).
+- The umbrella `pr-gate.yml` runs on every PR with **no path filter**. It detects which platform code changed (plain `git diff` against the PR base — no third-party action) and conditionally invokes the 4 platform workflows as reusable (`workflow_call:`) jobs. The final `Gate` job uses `if: always()` and treats `success` and `skipped` as OK, only failing if a platform job actually `failure`d/`cancelled`.
+- A docs-only PR → all platforms skip → Gate passes immediately, no CI cost.
+- A `crates/mm-gtk/` PR → only linux runs → Gate passes if linux passed.
+- A `crates/mm-ffi/` PR → rust + macos run → Gate passes if both passed. (Windows is currently de-scoped from the gate — see below.)
+
+**TEMPORARY: Windows is de-scoped from PR Gate** (see [#148](https://github.com/MWBMPartners/MeedyaManager/issues/148)). `pr-gate.yml`'s `changes` job hardcodes `WINDOWS=false` after the path-detection block. `ci-windows.yml` still runs on direct pushes to `main` and via its `paths:` filter, so Windows regressions on `main` are visible — they just don't block PRs. To re-enable Windows in the gate once #148 is resolved, delete the `WINDOWS=false` line in `pr-gate.yml`.
+
+**Safety-net paths** in `pr-gate.yml`'s `changes` job (do not remove):
+
+- Any change under `.github/workflows/` → **forces a full platform sweep** (all 4 platforms run). Workflow changes are meta-changes that can break CI for any platform; without this rule, a workflow-only PR merges green and breaks the next unrelated PR. Cost = at most one full CI run per workflow PR.
+- `rust-toolchain.toml`, `deny.toml`, `clippy.toml`, `.cargo/` → trigger the rust workflow (they change Rust build/lint behaviour for every crate).
+
+**Hard rules — do not violate without explicit user go-ahead:**
+
+1. **Never add another required status check context** without first running it on a real PR and capturing the exact recorded context name. New orphans = soft-lock.
+2. **Never add a `pull_request:` trigger to `ci-rust/macos/windows/linux.yml`.** They MUST be reached only via `workflow_call:` from `pr-gate.yml`, otherwise PR runs duplicate.
+3. **Keep `pr-gate.yml` without path filters.** Adding one would re-introduce the soft-lock problem.
+4. **Keep the path-detection logic in `pr-gate.yml`'s `changes` job in sync with each `ci-*.yml`'s `push:` `paths:`.** Drift means PR Gate triggers a platform whose own `push:` filter would've ignored the change, or vice versa.
+5. **Do not remove the `.github/workflows/` full-sweep rule** without first putting in place an equivalent safety net (e.g. an `actionlint` job). Without it, workflow changes go to main untested.
+6. **If a new platform CI is added** (e.g. `ci-android.yml`), it must follow the same template: `workflow_call:` trigger, no `pull_request:`, then add a corresponding `if`-gated job + a new `needs:` entry in `gate` inside `pr-gate.yml`.
+
+## Post-PR housekeeping — full dev-cache cleanup
+
+After a PR has been **successfully created** (URL returned), run a full dev-cache cleanup covering the workspace plus Rust global caches. Cache is fully regeneratable; the user accepts the cold-build cost (~5–15 min on next build for this 9-crate workspace) in exchange for disk-pressure relief.
+
+**When:** *after* the PR is created — never before or during, because the cleanup invalidates the `cargo check`/`cargo test` caches the PR flow itself relies on.
+
+**Commands (run from repo root, in order):**
+
+```bash
+# 1. Workspace Rust cache (all 9 crates' target/)
+cargo clean
+
+# 2. Swift Package Manager build dirs under macos/
+find macos -type d -name '.build' -prune -exec rm -rf {} +
+
+# 3. C# WinUI 3 build output (scoped to known dirs — do NOT bare-find bin/obj)
+rm -rf windows/MeedyaManager/bin windows/MeedyaManager/obj \
+       windows/MeedyaManager.Tests/bin windows/MeedyaManager.Tests/obj
+
+# 4. Rust global caches (affects ALL Rust projects on this machine — user accepts this)
+rm -rf ~/.cargo/registry/cache ~/.cargo/registry/src \
+       ~/.cargo/git/checkouts ~/.cargo/git/db
+```
+
+**Scope is fixed at "workspace + Rust global".** Do not silently extend to Xcode `DerivedData`, NuGet `~/.nuget/packages`, or other toolchain caches without re-confirming with the user — those were explicitly excluded on 2026-05-24.
+
+**If the C# project layout changes** (a new project added under `windows/`), update the `rm` list in step 3 rather than reaching for `find -name bin -o -name obj` — those names are too common to wildcard safely.
+
+**After cleanup,** briefly mention to the user that the next build will be cold so they're not surprised.
+
+## Standing rule — write in plain English
+
+Everything written for the user is in plain, everyday English: chat replies, progress
+reports, commit messages, issue comments, documentation and in-app help. No jargon. Where a
+technical term genuinely cannot be avoided (a file name, a function name, a standard such as
+WCAG), use it and then say in ordinary words what it means and why it matters.
+
+Restated by the owner as a **standing rule** on 2026-09-05, having already been set out in the
+global preferences. It was restated because jargon kept appearing, so treat it as
+under-applied rather than as a box already ticked.
+
+This does not lower the standard of the work. The code and the analysis stay exactly as
+rigorous — only the way they are explained changes. Prefer more words if they make the meaning
+clearer, use short sentences, and always explain *why* and not only *what*.
+
+When reporting on work done, be blunt about what is finished, what is not, what was not
+checked and what went wrong. "I could not test this because there is no database on this
+machine" is worth far more than an implication that something was verified.
+
+Restated again on 2026-09-23, in the owner's words: jargon *"can sometimes be confusing even
+for some technically proficient users/developers"*. So this applies to feedback and
+explanations given to developers too, not only to end users.
+
+## Standing tasks and working rules (owner, 2026-09-23)
+
+The owner set these out on 2026-09-23. They sit alongside every other rule in this file;
+none of the older rules was removed. `AGENTS.md` carries the same list for Codex — if you
+change one, change the other.
+
+### 1. Plain English
+
+See "Standing rule — write in plain English" above.
+
+### 2. Keep the handoff up to date as you go
+
+Update `.claude/HANDOFF.md` while working, not only at the end, so work can be picked up at
+any moment after an interruption. See "Session continuity" at the top of this file.
+
+### 3. Thinking, planning and which AI model does what
+
+The aim is **GIRFT — Get It Right First Time**: top-quality, correct code, without wasting
+usage credits.
+
+- **Think hard before acting.** Use workflows (scripted groups of AI helpers) to plan and to
+  carry out larger pieces of work.
+- **Deep analysis and deep planning: Opus agents, one after another — never in parallel.**
+  The owner's reasoning: Opus 5.5 costs less than Fable and is at least as good at this.
+  (This replaces the earlier habit of trying Fable first for planning.) Running them one at a
+  time also means each can build on the last one's findings.
+- **Building: Sonnet or Haiku**, whichever suits the job — Haiku for simple, mechanical edits;
+  Sonnet for ordinary code. **Use Opus to build only when the change is genuinely complex.**
+- The project's own helper definitions follow this: `.claude/agents/deep-architect.md` uses
+  Opus, `.claude/agents/quick-edits.md` uses Haiku.
+
+### 4. Use plugins, and check work with a different AI system
+
+- The owner's `dev-team-plugins` may be used for any of this work, and for suggesting fixes,
+  tweaks, improvements and new features.
+- **Cross-check with a different AI system.** Work planned and built with Claude Code is
+  reviewed with Codex, and work built with Codex is reviewed with Claude. Two different
+  systems rarely make the same mistake in the same place.
+- Note: these plugins and the Codex command-line tool are installed on the owner's computer.
+  A cloud session may not have them — check, and say so plainly if they are missing.
+
+### 5. After each finished task
+
+1. **Commit** it to the working branch (the one that will later be merged into `alpha`) —
+   **push only when the owner asks**, on that occasion (see "Git & CI/CD") — and update its
+   GitHub issue, each issue individually, one comment per task.
+2. Update Claude's memory and context files in `.claude/` (this file, `HANDOFF.md`).
+3. Update Codex's memory and context files in `.OpenAI/` (`CONTEXT.md`, `MEMORY.md`) and
+   `AGENTS.md`.
+4. Update the handoff so a fresh session can pick up exactly where this one stopped.
+
+### 6. Standing task — a thorough documentation update
+
+Keep every document accurate: all `.md` files, the in-app help and guides, and everything in
+`.claude/`. If the project offers an API, keep its OpenAPI/Swagger description (a
+machine-readable list of every web address the server answers and what it returns) up to
+date. If the project has web-based parts and no Swagger UI (a web page for browsing that
+description), add one, set up so it also works on ordinary shared web hosting without Docker.
+
+**Where this stands today:** MeedyaManager has **no working API and no website** — `mm-server`
+never builds a single web route, and there are no `.html` files (see M10 above and
+`.claude/HANDOFF.md` §12d). So there is nothing yet for OpenAPI or Swagger UI to describe.
+This part of the task applies once `mm-server` answers real requests. Do not publish an API
+description for routes that do not exist.
+
+### 7. Work efficiently
+
+Reorder or bundle tasks where that is quicker, as long as nothing is skipped.
+
+### 8. Work on your own; ask about decisions up front
+
+- Carry on without stopping unless a decision or approval genuinely has to come from the
+  owner.
+- When one is needed, say **what** you need and **why**, in the simplest words possible.
+- **Gather all such questions at the start**, not one at a time as they come up, so the owner
+  can answer them together and the work can then run on uninterrupted.
+- While waiting for an answer, carry on with every other queued task that does not depend
+  on it.
+
+### 9. Progress updates
+
+Give frequent progress updates as a **table of the queued tasks, with the status of each**.
+
+### 10. Code review — repeat until clean
+
+All code goes through review with **Codex**. Issues it finds are fixed automatically, then
+Codex reviews again — **round after round until a review finds nothing**. If Codex is
+unavailable, see rule 12, and record in the handoff that the Codex review is still owed.
+
+### 11. No stacked pull requests
+
+Do not open several pull requests. Every change is committed to the one working branch; a
+single pull request from that branch into `alpha` is opened later, when the owner says. Many
+open pull requests at once risk one merge undoing or clashing with another.
+
+### 12. When an AI service is unavailable — fall back, then switch back
+
+This rule is deliberately not tied to particular products.
+
+- If the main AI service for a project (for example Claude Code or Codex), or one of its
+  helpers, becomes unavailable or runs out of usage credits, **hand the work to another
+  suitable one** — provided that can be done without losing context or progress.
+- **Switch back to the main service as often as possible**, and once it is available again,
+  have it do a **full review** of everything done while it was away.
+- This is reasonably safe because every piece of work is also reviewed by a different AI
+  system (rule 4), which should catch differences in how each one works.
+- It makes keeping the handoff up to the minute **essential**: the handoff is the only thing
+  the stand-in service can rely on.
+- Record every switch in the handoff: which service stood in, for what, and what review is
+  owed as a result.
+- The owner also wants this rule on every project on their computer. The wording to copy is
+  in `.claude/device-wide-rules.md`.
+
+## Always check MeedyaSuite-core before saying a feature is missing
+
+**MeedyaSuite-core is where shared functionality lives for every "Meedya" application.** This
+repository is only half the picture. Never declare a feature missing, absent or unimplemented
+until you have checked upstream as well.
+
+MeedyaManager consumes it as a pinned git dependency in the workspace `Cargo.toml`:
+
+```
+meedya-core = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = "...", features = ["full"] }
+```
+
+The local checkout sits beside the app repositories at `../MeedyaSuite-core`. Sibling projects
+include MeedyaConverter, MeedyaDB, MeedyaDL, MeedyaPlayer and MeedyaSubtitler.
+
+**Why this rule exists.** On 2026-09-06 the `meedya-fingerprint` tool referenced by issue #182
+was reported as not existing. It did exist — in MeedyaSuite-core, already a dependency here, at
+the exact revision this project was pinned to. That revision was the merge of a branch named
+*"meedya-fingerprint-and-lyrics"*. The claim was wrong and had to be corrected publicly.
+
+**How to check, in order:**
+
+1. Search this repository. If it looks absent, **do not stop there.**
+2. Search the local MeedyaSuite-core checkout for the same terms.
+3. Check which upstream crates are actually pulled in **and which feature flags are enabled** —
+   a crate can be compiled in while the part you want sits behind a switch that is off by
+   default. That was precisely the case with the audio-decoding half of the fingerprinting.
+4. Only then state whether it exists, and say plainly **where** it lives.
+
+**This is a design rule too, not just a research habit.** Anything useful to more than one
+Meedya application belongs upstream in MeedyaSuite-core, not copied here. Prefer the upstream
+crate over a local equivalent, and push genuinely shared improvements upstream.
+
+## Languages — mandatory
+
+Any work touching BCP 47 language tags, languages, translations, audio or subtitle tracks,
+lyrics, language order or naming, language preferences, or accessibility roles MUST read and
+follow `docs/standards/media-language-bcp47-policy.md` (policy `MWBM-MEDIA-LANG`). It is
+normative and is not repeated here. Its conformance cases must pass. The copies are checked
+against the master in MWBMPartners/MeedyaSuite-core by `scripts/media-lang/check_copies.py` in
+CI; never edit the copies — change the master.
+
+## This application is about media — classify by meaning, not by file mechanics
+
+When deciding how to categorise, group or handle any file type, ask **"what does this mean to
+somebody's media library?"** Never ask only "what is this file technically?" That second
+question gives the wrong answer, and it has already caused a real defect.
+
+**In scope:** audio and video (the primary content); raw bit-for-bit disc images of original
+media discs; associated documents such as booklets and liner notes as PDFs, artwork as images
+and animated or motion artwork as MP4; and companion files such as subtitles, lyrics, cue
+sheets, rip logs, checksum files and playlists.
+
+**The mistake this rule exists to prevent.** On 2026-09-05 the owner asked why an `.iso` was
+being treated as software. It was added in commit `e80be51`, a bulk tidy-up that worked through
+a list of container formats and dropped `ISO` into the Archive group beside `ZIP`, `GZ`, `MSI`,
+`DEB` and `APK`. Nobody decided it — it was inherited from a checklist. Technically it was even
+defensible, because ISO 9660 really is a filesystem format, a way of packing many files into
+one, exactly like ZIP. But it answered the wrong question. **A bit-perfect copy of an Audio CD
+is a record, not an installer.**
+
+That same mistake then produced false documentation: `README.md` and `help/faq.md` both
+promised disc images move alongside their media, because whoever wrote them described what the
+product was *meant* to do while the code followed different logic entirely.
+
+**How to apply it.** Formats that genuinely are software — `DMG`, `MSI`, `DEB`, `RPM`, `PKG`,
+`APK`, `JAR` — stay archives; they are not media. Anything that can hold a recording, a
+performance, a booklet or artwork belongs in the media model with the tags and rules that
+implies. When a new format appears, decide from the library's point of view first and only then
+work out the technical handling. **Be suspicious of bulk "add all the formats" passes** — that
+is exactly how this slipped in.
+
+**Codex and other agents:** the repository root carries `AGENTS.md` with the same rules. If you
+change a rule in one file, change it in the other.
+
+## Disc images are first-class media, not archives
+
+The owner's requirement, confirmed on 2026-09-05: MeedyaManager manages **raw, bit-for-bit
+disc images** of original media discs — Audio CD, enhanced CD, mixed-mode CD, DTS CD, HDCD,
+DVD, HD DVD, Bluray and 3D Bluray. The formats in scope are:
+
+`.iso` `.nrg` `.mdx` `.mds` (with `.mdf`) `.cue` `.bin` `.cdr`
+
+**A `.cue` and its `.bin` must keep the same base name and stay side by side.** Separating
+them or renaming one of them destroys the disc image.
+
+Three owner decisions govern the behaviour:
+
+1. **The whole containing folder moves as one sealed unit.** A rip normally carries a log, a
+   checksum file and artwork that only make sense next to the image, so nothing inside the
+   folder is renamed, reordered or split off.
+2. **Naming is tried in this order:** read the `.cue` sheet (plain text, carries `PERFORMER`
+   and `TITLE`), then a disc fingerprint looked up online *offered as a suggestion rather than
+   applied automatically*, then the folder name. **If none of these gives a confident answer,
+   do not rename at all.**
+3. **Look inside the image** to tell an Audio CD from a DVD or a Bluray, so music discs follow
+   the music rules and film discs follow the film rules.
+
+**Known starting state (verified 2026-09-05, not inferred):** `ISO` was classified as
+`MediaGroup::Archive` beside ZIP/MSI/DEB/APK, so a CD copy was treated like an installer. The
+`companion` module recognised disc images but the renamer never called it — its only real
+consumer was the `debug` command. `.mdx` and `.cdr` did not appear anywhere. No whole-folder
+move existed. See issue #217.

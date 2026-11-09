@@ -154,10 +154,51 @@ public sealed partial class MetadataPage : Page
 
     // ── Save ────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Says why Save must refuse, or <see langword="null"/> when it is safe
+    /// to write tag changes to the real file. Checked at the top of
+    /// <see cref="SaveButton_Click"/> so the button being (mis-)enabled can
+    /// never be the only thing standing between a click and a real write —
+    /// mirrors <see cref="ScanPage.ExecuteRefusalReason"/>, added for the
+    /// same reason (issue #222). Test Mode matters here specifically because,
+    /// unlike the Rust engine's tag-write path, this Windows build's Test
+    /// Mode is only an in-app flag (see <see cref="MmCore.SetTestMode"/>'s
+    /// comment: no P/Invoke call exists yet) — it does NOT divert the write
+    /// to a safe copy, so leaving it on must stop the save outright rather
+    /// than let a tester believe their real file was never touched.
+    /// </summary>
+    /// <param name="engineAvailable">Whether mm_ffi.dll was found (<see cref="MmCore.IsEngineAvailable"/>).</param>
+    /// <param name="testModeEnabled">Whether Test Mode is currently on.</param>
+    /// <returns>A user-facing refusal message, or null when Save may proceed.</returns>
+    internal static string? SaveRefusalReason(bool engineAvailable, bool testModeEnabled)
+    {
+        if (!engineAvailable)
+        {
+            return "Save unavailable: this build is running without the MeedyaManager engine. (issue #222)";
+        }
+        if (testModeEnabled)
+        {
+            return "Nothing was saved. Test Mode is on, and in this Windows build Test Mode does not " +
+                   "make safe copies of files — turn it off in Settings to save tag changes.";
+        }
+        return null;
+    }
+
     /// <summary>Writes all edited tag values back to the file.</summary>
     private async void SaveButton_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_currentPath)) return;
+
+        // Refuse before any write is attempted, regardless of whether the
+        // button itself is (mis-)enabled — this is the last line of defence
+        // against saving for real while a tester believes Test Mode is
+        // protecting them (issue #222).
+        string? refusal = SaveRefusalReason(MmCore.IsEngineAvailable, MmCore.Instance.TestModeEnabled());
+        if (refusal is not null)
+        {
+            StatusText.Text = refusal;
+            return;
+        }
 
         SetLoading(true);
         StatusText.Text = "Saving…";
@@ -167,7 +208,15 @@ public sealed partial class MetadataPage : Page
 
         bool ok = await Task.Run(() => MmCore.Instance.WriteMetadata(_currentPath, tags));
 
-        StatusText.Text = ok ? "Saved successfully." : "Save failed — check permissions.";
+        // WriteMetadata now returns false (rather than pretending success)
+        // when the engine is missing, so distinguish that from a genuine
+        // write failure — otherwise "check permissions" sends the user
+        // hunting for a problem that isn't theirs (issue #222).
+        StatusText.Text = ok
+            ? "Saved successfully."
+            : !MmCore.IsEngineAvailable
+                ? "Save unavailable: this build is running without the MeedyaManager engine. (issue #222)"
+                : "Save failed — check permissions.";
         SetLoading(false);
     }
 

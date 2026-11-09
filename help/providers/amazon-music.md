@@ -6,6 +6,15 @@ This guide covers the **Amazon Music** metadata provider in MeedyaManager. Amazo
 
 ---
 
+> ⚠️ **Not reachable from the app even if it worked.** `meedya lookup` (the CLI command) is a
+> permanent stub that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`). So even a future,
+> real Amazon Music implementation would need new wiring in both places before a user could reach
+> it from the shipped application.
+
+---
+
 ## 📋 Table of Contents
 
 1. [Overview](#overview)
@@ -21,11 +30,22 @@ This guide covers the **Amazon Music** metadata provider in MeedyaManager. Amazo
 
 ## Overview
 
-The Amazon Music provider is designed to integrate with the **Amazon Music API** for track and album metadata searches. However, Amazon Music does **not currently provide a public API** — access is limited to closed beta participants who have been invited by Amazon.
+`AmazonMusicProvider` is one of six providers built from the same `stub_provider!` macro in
+`crates/mm-providers/src/music/mod.rs`. It has a correct `id()` ("`amazon_music`"),
+`display_name()` ("Amazon Music") and a declared `ProviderCapabilities` (music search, cover art
+flagged as supported), but its `search()` method makes **no HTTP request of any kind** — it always
+returns an error:
 
-MeedyaManager includes this provider as a framework stub that will become functional when Amazon opens their API to the public, or when a user gains access to the closed beta programme.
+- If the stub is disabled (the default) → `ProviderError::NotConfigured`.
+- If the stub is explicitly enabled → `ProviderError::NotSupported("amazon_music: Provider
+  implementation pending API review")`.
 
-**Current status:** Stub provider — returns no results for most users (no public API).
+There is no OAuth client and no Amazon Music-specific code anywhere in the codebase beyond the
+id/name/capabilities declaration. Amazon Music does **not currently provide a public API** — access
+is limited to closed beta participants who have been invited by Amazon — and no such integration
+has been implemented.
+
+**Current status:** Stub provider — always returns an error, never a result.
 
 **Planned features (when API becomes available):**
 
@@ -38,19 +58,19 @@ MeedyaManager includes this provider as a framework stub that will become functi
 
 ## Authentication
 
-### When the API becomes available
+### There is nothing to authenticate today
 
-Amazon Music is expected to use **OAuth2** authentication when their API launches publicly. The planned credential flow is:
+`search()` never sends a request, so no credential of any kind is read, checked, or required.
+There is no `AMAZON_MUSIC_AUTH` variable, no OAuth client, and no fallback to any community-maintained
+package — MeedyaManager does not depend on or bundle one.
 
-1. Register for the Amazon Music Developer programme
-2. Create an application and obtain OAuth tokens
-3. Configure the `AMAZON_MUSIC_AUTH` environment variable
+### If Amazon opens a public API in future
 
-### Current state
-
-Since the API is in closed beta, no authentication setup is possible for most users.
-
-> **Note:** A community-maintained Python package `amazon-music` exists that uses reverse-engineered endpoints. If installed, MeedyaManager may attempt to use it as a fallback. However, this is **not recommended** due to Terms of Service risks — see [Legal Notes](#legal-notes).
+The planned credential flow, when there is code behind it, would likely mirror the pattern used by
+Spotify elsewhere in this crate: register an application, obtain OAuth2 credentials, and resolve
+them through the generic 4-tier `CredentialStore` (env `MM_AMAZON_MUSIC_*` → config map → OS
+keyring → plaintext `credentials.json` — see `crates/mm-providers/src/credentials.rs`; note tier 4
+is a plain JSON file, not encrypted). None of that is wired up yet.
 
 ---
 
@@ -58,61 +78,33 @@ Since the API is in closed beta, no authentication setup is possible for most us
 
 ### Environment Variables (`.env`)
 
-```env
-# Amazon Music API credentials (when available)
-AMAZON_MUSIC_AUTH=your_oauth_token_here
-```
-
-| Variable | Description |
-| -------- | ----------- |
-| `AMAZON_MUSIC_AUTH` | OAuth authentication token (when API becomes publicly available) |
+None are read for Amazon Music today.
 
 ### Settings (`settings.json5`)
 
-```json5
-{
-  providers: {
-    amazon_music: {
-      enabled: false,                   // Disabled by default (API not publicly available)
-      priority: 8,                      // Provider priority (lower = higher priority)
-      accept_tos_risk: false,           // Must be explicitly set to true to enable unofficial access
-    }
-  }
-}
-```
-
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| `enabled` | `false` | Disabled by default — enable only when you have API access |
-| `priority` | `8` | Search priority relative to other providers |
-| `accept_tos_risk` | `false` | Must be explicitly set to `true` to use unofficial community packages |
-
-> **Important:** The `accept_tos_risk` flag exists as a safeguard. Using unofficial Amazon Music access methods may violate Amazon's Terms of Service. By setting this to `true`, you acknowledge this risk.
+`AmazonMusicProvider::new(enabled: bool)` takes a single boolean. There is no per-provider
+`settings.json5` schema for it — no `priority` or `accept_tos_risk` field exists anywhere in the
+codebase. The stub defaults to disabled (`enabled_default = false` in the macro invocation).
 
 ---
 
 ## Available Data
 
-When the API becomes available, the Amazon Music provider is expected to return:
+The provider returns no data — `search()` always errors, in both the disabled and enabled states.
 
-| Field | Source | Example |
-| ----- | ------ | ------- |
-| `title` | Track title | "Bohemian Rhapsody" |
-| `artist` | Artist name | "Queen" |
-| `album` | Album title | "A Night at the Opera" |
-| `year` | Release year | "1975" |
-| `asin` | Amazon Standard Identification Number | "B000002J0F" |
+| Field | Status |
+| ----- | ------ |
+| `title` | Not available |
+| `artist` | Not available |
+| `album` | Not available |
+| `asin` | Not available |
+| Cover art | Not available |
 
 ---
 
 ## Custom Tags
 
-The following custom tags will be stored when the provider becomes functional:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_amazon_music_asin` | Amazon Standard Identification Number | `"B000002J0F"` |
-| `custom_amazon_music_url` | Amazon Music URL for the track | `"https://music.amazon.com/albums/B000002J0F"` |
+No custom tags are produced. Nothing in the codebase writes a `custom_amazon_music_*` tag.
 
 ---
 
@@ -120,50 +112,44 @@ The following custom tags will be stored when the provider becomes functional:
 
 ### What works now
 
-- The provider is registered in MeedyaManager's provider framework
-- Status reporting is functional (shows "closed beta" message in logs and UI)
-- Manual reference URLs can be constructed for the Amazon Music web interface
-- The framework is ready to be activated when API access is granted
+- The provider registers with a correct `id()`, `display_name()`, and declared capabilities.
+- Calling `search()` reliably returns a typed error rather than panicking or hanging.
 
 ### What does not work
 
-- The provider returns empty results — it will not be used in searches
-- No cover art is available
+- No network request is ever made.
+- No metadata, cover art, or ASIN is ever returned.
+- `enabled: true` does not make it functional — it only changes which error variant comes back
+  (`NotSupported` instead of `NotConfigured`).
 
 ### When will it be available?
 
-Amazon has not announced a public release date for their music metadata API. MeedyaManager will update this provider when a public API becomes available.
+Amazon has not announced a public release date for their music metadata API, and no beta
+integration has been built here. This page will be updated if that changes.
 
 ---
 
 ## Troubleshooting
 
-### "Amazon Music API is in closed beta — provider unavailable"
+### `NotConfigured` error
 
-**This is expected behaviour.** The provider is intentionally disabled because Amazon has not released a public API.
+**This is expected.** The stub is disabled by default; this is the "not enabled" error, not a sign
+of a misconfiguration.
 
-**If you have closed beta access:**
-1. Set `AMAZON_MUSIC_AUTH` in your `.env` file with your OAuth token
-2. Set `enabled: true` in `settings.json5` under `providers.amazon_music`
-3. The provider will be updated in a future release to validate beta credentials
+### `NotSupported: Provider implementation pending API review`
 
-### "Amazon Music API not available — search skipped"
-
-**This is expected behaviour.** MeedyaManager logs this informational message when the Amazon Music provider is queried but unavailable. It does not indicate an error — the system gracefully falls back to other enabled providers.
-
-> **MeedyaManager does not officially support or endorse unofficial Amazon Music API access.** If Amazon opens their API publicly, this provider will be updated accordingly.
+**This is expected if you set `enabled: true`.** It confirms the stub is reachable but there is no
+real implementation behind it yet.
 
 ---
 
 ## Legal Notes
 
-- Amazon Music does **not** currently provide a public API for metadata search
-- Access to the Amazon Music API is restricted to **closed beta participants** invited by Amazon
-- Use of unofficial or reverse-engineered access methods may violate [Amazon's Conditions of Use](https://www.amazon.com/gp/help/customer/display.html?nodeId=508088)
-- MeedyaManager does not ship with or require any unofficial Amazon Music libraries
-- The `accept_tos_risk` configuration flag serves as an explicit user acknowledgement of potential Terms of Service violations when using unofficial methods
-- When the API becomes publicly available, this provider will be updated with official authentication flows
-- MeedyaManager stores ASINs and URLs as custom metadata tags for reference only
+- Amazon Music does **not** currently provide a public API for metadata search.
+- Access to the Amazon Music API is restricted to **closed beta participants** invited by Amazon.
+- MeedyaManager does not ship with, depend on, or require any unofficial Amazon Music libraries —
+  the provider is a placeholder only.
+- Any future implementation would need to consider [Amazon's Conditions of Use](https://www.amazon.com/gp/help/customer/display.html?nodeId=508088).
 
 ---
 

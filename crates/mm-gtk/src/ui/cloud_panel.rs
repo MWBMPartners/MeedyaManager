@@ -12,13 +12,10 @@
 //   GtkScrolledWindow  →  GtkTextView (event log)
 //   GtkButton "Clear Log"
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
-
-use std::cell::RefCell;
-use std::rc::Rc;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use crate::ui::accessibility;
 
@@ -29,20 +26,40 @@ use crate::ui::accessibility;
 /// Static metadata for one cloud provider row.
 struct ProviderInfo {
     /// Internal identifier (matches mm-cloud provider name).
-    id:      &'static str,
+    id: &'static str,
     /// Display name shown in the UI.
-    label:   &'static str,
+    label: &'static str,
     /// `true` for providers not yet implemented (MEGA, iCloud).
     is_stub: bool,
 }
 
 /// The ordered list of cloud providers.
 const PROVIDERS: &[ProviderInfo] = &[
-    ProviderInfo { id: "onedrive",    label: "OneDrive",     is_stub: false },
-    ProviderInfo { id: "googledrive", label: "Google Drive", is_stub: false },
-    ProviderInfo { id: "dropbox",     label: "Dropbox",      is_stub: false },
-    ProviderInfo { id: "mega",        label: "MEGA",         is_stub: true  },
-    ProviderInfo { id: "icloud",      label: "iCloud Drive", is_stub: true  },
+    ProviderInfo {
+        id: "onedrive",
+        label: "OneDrive",
+        is_stub: false,
+    },
+    ProviderInfo {
+        id: "googledrive",
+        label: "Google Drive",
+        is_stub: false,
+    },
+    ProviderInfo {
+        id: "dropbox",
+        label: "Dropbox",
+        is_stub: false,
+    },
+    ProviderInfo {
+        id: "mega",
+        label: "MEGA",
+        is_stub: true,
+    },
+    ProviderInfo {
+        id: "icloud",
+        label: "iCloud Drive",
+        is_stub: true,
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -75,6 +92,17 @@ impl CloudPanel {
             .build();
         root.append(&title_label);
 
+        // ── Alpha preview banner ──────────────────────────────────────────────
+        // mm-cloud does not yet make a real network call for any provider, so
+        // the Connect buttons below are permanently disabled. This banner
+        // stays revealed for the lifetime of the tab so testers never mistake
+        // the form for a working sync. See issue #205.
+        let preview_banner = adw::Banner::new(
+            "Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)",
+        );
+        preview_banner.set_revealed(true);
+        root.append(&preview_banner);
+
         // ── Provider preference group ──────────────────────────────────────
         let prefs_group = adw::PreferencesGroup::builder()
             .title("Connected Providers")
@@ -89,7 +117,7 @@ impl CloudPanel {
 
         // Build one row per provider.
         for info in PROVIDERS {
-            let row = build_provider_row(info, log_buf.clone());
+            let row = build_provider_row(info);
             prefs_group.add(&row);
         }
 
@@ -137,7 +165,10 @@ impl CloudPanel {
             .margin_bottom(12)
             .build();
         accessibility::set_label(&clear_btn, "Clear event log");
-        accessibility::set_description(&clear_btn, "Removes all cloud storage events from the log.");
+        accessibility::set_description(
+            &clear_btn,
+            "Removes all cloud storage events from the log.",
+        );
 
         {
             let lb = log_buf.clone();
@@ -161,82 +192,50 @@ impl CloudPanel {
 // ---------------------------------------------------------------------------
 
 /// Creates an `AdwActionRow` for a cloud provider with connect/disconnect button.
-fn build_provider_row(info: &ProviderInfo, log_buf: gtk::TextBuffer) -> adw::ActionRow {
+fn build_provider_row(info: &ProviderInfo) -> adw::ActionRow {
     let row = adw::ActionRow::builder()
         .title(info.label)
-        .subtitle(if info.is_stub { "Coming Soon" } else { "Not Connected" })
+        .subtitle(if info.is_stub {
+            "Coming Soon"
+        } else {
+            "Not Connected"
+        })
         .build();
 
     if info.is_stub {
         // Stub providers show a disabled label instead of a button.
-        let stub_label = gtk::Label::builder()
-            .label("—")
-            .sensitive(false)
-            .build();
+        let stub_label = gtk::Label::builder().label("—").sensitive(false).build();
         row.add_suffix(&stub_label);
         return row;
     }
 
-    // Connect / Disconnect toggle button.
+    // Connect / Disconnect toggle button — disabled in this alpha. mm-cloud
+    // does not yet make a real network call for any provider, so wiring up a
+    // click handler here would only simulate a successful connection. See the
+    // preview banner above and issue #205.
     let btn = gtk::Button::builder()
         .label("Connect")
         .valign(gtk::Align::Center)
         .css_classes(["suggested-action"])
+        .sensitive(false)
         .build();
-    // Set initial accessible label — updated dynamically on each toggle
-    accessibility::set_label(&btn, &format!("Connect {}", info.label));
-    accessibility::set_description(&btn, &format!("Connects your {} account and starts monitoring the configured folder.", info.label));
-
-    let provider_label = info.label.to_string();
-    let row_clone      = row.clone();
-    let connected      = Rc::new(RefCell::new(false));
-
-    btn.connect_clicked(move |b| {
-        let mut is_connected = connected.borrow_mut();
-        *is_connected = !*is_connected;
-
-        if *is_connected {
-            // Mark as connected
-            row_clone.set_subtitle("Syncing…");
-            b.set_label("Disconnect");
-            b.remove_css_class("suggested-action");
-            b.add_css_class("destructive-action");
-            // Update accessible label for the new state
-            accessibility::set_label(b, &format!("Disconnect {}", provider_label));
-            accessibility::set_description(b, &format!("Disconnects your {} account from MeedyaManager.", provider_label));
-            append_log(&log_buf, &format!("[{}] Connecting…", provider_label));
-            // Simulate successful sync (in production this calls mm-cloud FFI)
-            append_log(&log_buf, &format!("[{}] Connected — watching /Music", provider_label));
-            row_clone.set_subtitle("Synced");
-        } else {
-            // Mark as disconnected
-            row_clone.set_subtitle("Not Connected");
-            b.set_label("Connect");
-            b.remove_css_class("destructive-action");
-            b.add_css_class("suggested-action");
-            // Update accessible label for the new state
-            accessibility::set_label(b, &format!("Connect {}", provider_label));
-            accessibility::set_description(b, &format!("Connects your {} account and starts monitoring the configured folder.", provider_label));
-            append_log(&log_buf, &format!("[{}] Disconnected", provider_label));
-        }
-    });
+    accessibility::set_label(
+        &btn,
+        &format!(
+            "Connect {} (disabled — not functional in this alpha)",
+            info.label
+        ),
+    );
+    accessibility::set_description(
+        &btn,
+        &format!(
+            "Connecting {} is disabled in this alpha; mm-cloud does not yet make a real network call. See issue #205.",
+            info.label
+        ),
+    );
 
     row.add_suffix(&btn);
     row
-}
-
-/// Appends a timestamped message to the shared event log text buffer.
-fn append_log(buf: &gtk::TextBuffer, msg: &str) {
-    let mut end = buf.end_iter();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let h = (secs / 3600) % 24;
-    let m = (secs / 60) % 60;
-    let s = secs % 60;
-    let line = format!("[{h:02}:{m:02}:{s:02}] {msg}\n");
-    buf.insert(&mut end, &line);
 }
 
 // ---------------------------------------------------------------------------

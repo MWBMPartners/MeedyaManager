@@ -8,6 +8,7 @@
 //
 // API reference: https://developers.google.com/drive/api/v3/reference
 
+use std::future::Future;
 use std::path::Path;
 
 use crate::traits::{ChangeSet, CloudCapabilities, CloudError, CloudFile, CloudProvider};
@@ -98,88 +99,104 @@ impl CloudProvider for GoogleDriveProvider {
         CloudCapabilities::delta_only()
     }
 
-    async fn authenticate(&mut self) -> Result<(), CloudError> {
+    // Every method below is a no-op stub — no live HTTP client is wired up yet,
+    // so no `.await` point exists anywhere in this file. Clippy's
+    // `unused_async_trait_impl` therefore requires we drop `async fn` in
+    // favour of returning an already-resolved `Future` via
+    // `std::future::ready()`; this keeps the trait's `impl Future<...> + Send`
+    // contract satisfied without the (needless, for a stub) machinery of an
+    // async fn body. See `mm-export::sqlite::SqliteExporter` for the same
+    // pattern applied first.
+    fn authenticate(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         // Production implementation would:
         // 1. Generate a PKCE code_verifier + code_challenge.
         // 2. Open https://accounts.google.com/o/oauth2/v2/auth in browser.
         // 3. Start a local HTTP server to receive the redirect_uri callback.
         // 4. Exchange the code for tokens via https://oauth2.googleapis.com/token.
-        Err(CloudError::Unsupported(
+        std::future::ready(Err(CloudError::Unsupported(
             "OAuth PKCE flow requires user interaction — use the Cloud tab Connect button".into(),
-        ))
+        )))
     }
 
-    async fn refresh_token(&mut self) -> Result<(), CloudError> {
+    fn refresh_token(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         let Some(_rt) = &self.refresh_token else {
-            return Err(CloudError::Auth("no refresh token stored".into()));
+            return std::future::ready(Err(CloudError::Auth("no refresh token stored".into())));
         };
         // Production: POST https://oauth2.googleapis.com/token
         // with grant_type=refresh_token and client_id + refresh_token.
-        Err(CloudError::Unsupported(
+        std::future::ready(Err(CloudError::Unsupported(
             "token refresh requires live HTTP client".into(),
-        ))
+        )))
     }
 
-    async fn list_files(&self, _path: &str) -> Result<Vec<CloudFile>, CloudError> {
+    fn list_files(&self, _path: &str) -> impl Future<Output = Result<Vec<CloudFile>, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: resolve path to a folder ID via files.list with `q=name='...'`,
         // then GET {files_list_url(folder_id)} with Authorization header.
         let _url = self.files_list_url("root");
-        Ok(Vec::new())
+        std::future::ready(Ok(Vec::new()))
     }
 
-    async fn get_file(&self, id: &str) -> Result<CloudFile, CloudError> {
+    fn get_file(&self, id: &str) -> impl Future<Output = Result<CloudFile, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: GET /files/{id}?fields=id,name,size,modifiedTime,mimeType,md5Checksum
-        Err(CloudError::NotFound(id.to_string()))
+        std::future::ready(Err(CloudError::NotFound(id.to_string())))
     }
 
-    async fn download_file(&self, file: &CloudFile, _dest: &Path) -> Result<(), CloudError> {
+    fn download_file(
+        &self,
+        file: &CloudFile,
+        _dest: &Path,
+    ) -> impl Future<Output = Result<(), CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: GET /files/{id}?alt=media — streams response body to dest file.
-        Err(CloudError::Unsupported(format!(
+        std::future::ready(Err(CloudError::Unsupported(format!(
             "download not yet wired up for {}",
             file.name
-        )))
+        ))))
     }
 
-    async fn upload_file(&self, src: &Path, _dest_path: &str) -> Result<CloudFile, CloudError> {
+    fn upload_file(
+        &self,
+        src: &Path,
+        _dest_path: &str,
+    ) -> impl Future<Output = Result<CloudFile, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: POST https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable
-        Err(CloudError::Unsupported(format!(
+        std::future::ready(Err(CloudError::Unsupported(format!(
             "upload not yet wired up for {}",
             src.display()
-        )))
+        ))))
     }
 
-    async fn watch_changes(
+    fn watch_changes(
         &self,
         _path: &str,
         cursor: Option<&str>,
-    ) -> Result<ChangeSet, CloudError> {
+    ) -> impl Future<Output = Result<ChangeSet, CloudError>> {
         if !self.is_authenticated() {
-            return Err(CloudError::Auth("not authenticated".into()));
+            return std::future::ready(Err(CloudError::Auth("not authenticated".into())));
         }
         // Production: use cursor (or self.start_page_token) as the pageToken for
         // changes.list, collect all pages, return ChangeSet with newStartPageToken.
         let _page_token = cursor.or(self.start_page_token.as_deref()).unwrap_or("1");
-        Ok(ChangeSet::default())
+        std::future::ready(Ok(ChangeSet::default()))
     }
 
-    async fn disconnect(&mut self) -> Result<(), CloudError> {
+    fn disconnect(&mut self) -> impl Future<Output = Result<(), CloudError>> {
         self.access_token = None;
         self.refresh_token = None;
         self.start_page_token = None;
         self.authenticated = false;
-        Ok(())
+        std::future::ready(Ok(()))
     }
 }
 

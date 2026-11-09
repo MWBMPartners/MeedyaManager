@@ -4,14 +4,25 @@
 
 ## What is Test Mode?
 
-Test Mode is a safety feature that prevents MeedyaManager from modifying
-your original media files. When enabled, all edit and tagging operations
-create a **duplicate** file with a `_MeedyaManager` suffix instead of
-overwriting the original.
+Test Mode is a safety feature that prevents MeedyaManager from modifying your original media
+files. When enabled, edit and tagging operations create a **duplicate** file with a
+`_MeedyaManager` suffix instead of overwriting the original.
 
-For example, editing `track.mp3` in Test Mode creates
-`track_MeedyaManager.mp3` with your changes, while `track.mp3` remains
-untouched.
+For example, editing `track.mp3` in Test Mode creates `track_MeedyaManager.mp3` with your
+changes, while `track.mp3` remains untouched.
+
+> ✅ **Status: enforced on every real write path (issue [#128](https://github.com/MWBMPartners/MeedyaManager/issues/128), fixed).**
+> `meedya edit`, the Linux GTK metadata panel, and the FFI layer used by the macOS/Windows apps
+> all route their writes through `mm_core::integrity`'s guarded functions
+> (`write_tags_safe`, `remove_tag_safe`, `embed_cover_art_safe`, `remove_cover_art_safe`), which
+> are the single place Test Mode redirection happens. Turning Test Mode on now genuinely protects
+> your original files from every one of those call sites — this was not true before this fix,
+> when only the integrity module's own unit tests ever exercised the redirection.
+>
+> **Successive edits accumulate on the same copy.** Editing an already-tracked file a second time
+> (in the same Test Mode session) edits the existing `_MeedyaManager` copy in place rather than
+> replacing it with a fresh copy of the pristine original — so two separate edits to the same
+> file both end up in the one copy, instead of the second edit silently discarding the first.
 
 ---
 
@@ -30,9 +41,22 @@ untouched.
 
 ## Enabling and Disabling
 
-### GUI (macOS / Windows / Linux)
+### GUI (all three platforms)
 
-Navigate to **Settings** and toggle **Test Mode** on or off.
+Navigate to **Settings** and toggle **Test Mode** on or off. This control exists in all three
+native apps: the Linux GTK app (`crates/mm-gtk/src/ui/settings_panel.rs`), the macOS SwiftUI app
+(`macos/MeedyaManager/Views/SettingsView.swift`) and the Windows WinUI 3 app
+(`windows/MeedyaManager/Views/SettingsPage.xaml`). The FFI layer used by the macOS and Windows
+apps gained the five Test Mode entry points it was previously missing in commit `633f8e3`
+("Test Mode protection") — this section previously said, wrongly, that only Linux had a GUI
+toggle; that was true before `633f8e3` and stopped being true afterwards, but the text here was
+never updated. The CLI below works everywhere too, if you prefer it.
+
+**Important — Test Mode does not cover renames, on any platform (issue #222).** It protects
+tag edits and cover art only, by writing to a `_MeedyaManager` copy instead of the original.
+Renaming a file has never gone through a staging step anywhere in the codebase — the renamer
+calls the operating system's rename directly. The macOS app enforces this by disabling Execute
+in the Library tab while Test Mode is on, rather than implying it stages the rename safely.
 
 ### CLI
 
@@ -99,20 +123,23 @@ meedya config test-mode revert
 
 ### Manifest Location
 
-The test-mode manifest is stored at:
+The test-mode manifest is stored at `<config_dir>/testmode_manifest.json`, where `<config_dir>`
+is the single directory resolved by `mm_core::config::app_config_dir()` (issue #212) — the same
+directory `settings.json5` lives in, and the same one `MM_CONFIG_DIR` overrides (see
+[configuration.md](configuration.md#configuration-file-location)):
 
 | Platform | Path |
 | -------- | ---- |
-| Linux | `~/.config/meedyamanager/testmode_manifest.json` |
-| macOS | `~/Library/Application Support/meedyamanager/testmode_manifest.json` |
-| Windows | `%APPDATA%\meedyamanager\testmode_manifest.json` |
+| Linux | `~/.config/MeedyaManager/testmode_manifest.json` |
+| macOS | `~/Library/Application Support/MeedyaManager/testmode_manifest.json` |
+| Windows | `%APPDATA%\MeedyaManager\testmode_manifest.json` |
 
 ---
 
 ## Pre-release Version Behaviour
 
-When you launch a **pre-release** version of MeedyaManager (e.g.
-`1.3.0-beta.1`, `2.0.0-alpha`):
+When you launch a **pre-release** version of MeedyaManager (e.g. the current
+`1.4.0-alpha.1`, or `2.0.0-beta.1`):
 
 1. A notice appears: *"You are using a pre-release version of MeedyaManager"*
 2. If a stable version is available, you are offered the option to update

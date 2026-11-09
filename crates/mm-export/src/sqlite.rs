@@ -12,6 +12,8 @@
 // For tags:        delete-then-reinsert within the same transaction so the
 //                  unique constraint is never violated.
 
+use std::future::Future;
+
 use crate::schema::SchemaBuilder;
 use crate::traits::{
     DatabaseExporter, DbDialect, ExportConfig, ExportError, ExportRow, ExportStats, RenameEvent,
@@ -100,38 +102,44 @@ impl DatabaseExporter for SqliteExporter {
         DbDialect::Sqlite
     }
 
-    async fn ensure_schema(&self) -> Result<(), ExportError> {
+    fn ensure_schema(&self) -> impl Future<Output = Result<(), ExportError>> {
         // Production: execute self.schema_ddl() statements against the pool.
         // Stub: validate the DDL strings are well-formed (non-empty).
+        //
+        // No `.await` point exists in this stub, so clippy's
+        // `unused_async_trait_impl` requires we drop `async fn` in favour of
+        // returning an already-resolved `Future` via `std::future::ready()` —
+        // this keeps the trait's `impl Future<...> + Send` contract satisfied
+        // without the (needless, for a stub) machinery of an async fn body.
         for stmt in self.schema_ddl() {
             if stmt.is_empty() {
-                return Err(ExportError::SchemaInitFailed(
+                return std::future::ready(Err(ExportError::SchemaInitFailed(
                     "generated empty DDL statement".into(),
-                ));
+                )));
             }
         }
-        Ok(())
+        std::future::ready(Ok(()))
     }
 
-    async fn export_file(&self, row: &ExportRow) -> Result<(), ExportError> {
+    fn export_file(&self, row: &ExportRow) -> impl Future<Output = Result<(), ExportError>> {
         // Production: execute self.upsert_file_sql() then replace_tags_sql().
         // Stub: validate that required fields are present.
         if row.file_hash.is_empty() {
-            return Err(ExportError::RowFailed {
+            return std::future::ready(Err(ExportError::RowFailed {
                 path: row.path.clone(),
                 message: "file_hash must not be empty".into(),
-            });
+            }));
         }
         if row.path.is_empty() {
-            return Err(ExportError::RowFailed {
+            return std::future::ready(Err(ExportError::RowFailed {
                 path: String::new(),
                 message: "path must not be empty".into(),
-            });
+            }));
         }
         // Validate SQL strings are well-formed (no empty placeholders)
         let _ = self.upsert_file_sql();
         let _ = self.replace_tags_sql();
-        Ok(())
+        std::future::ready(Ok(()))
     }
 
     async fn export_batch(&self, rows: &[ExportRow]) -> Result<ExportStats, ExportError> {
@@ -150,21 +158,23 @@ impl DatabaseExporter for SqliteExporter {
         Ok(stats)
     }
 
-    async fn record_rename(&self, event: &RenameEvent) -> Result<(), ExportError> {
+    fn record_rename(&self, event: &RenameEvent) -> impl Future<Output = Result<(), ExportError>> {
         // Production: execute insert_history_sql() with event fields.
         // Stub: validate that the SQL template is non-empty.
         if self.insert_history_sql().is_empty() {
-            return Err(ExportError::RenameEventFailed("empty SQL".into()));
+            return std::future::ready(Err(ExportError::RenameEventFailed("empty SQL".into())));
         }
         if event.file_hash.is_empty() {
-            return Err(ExportError::RenameEventFailed("file_hash required".into()));
+            return std::future::ready(Err(ExportError::RenameEventFailed(
+                "file_hash required".into(),
+            )));
         }
-        Ok(())
+        std::future::ready(Ok(()))
     }
 
-    async fn disconnect(self) -> Result<(), ExportError> {
+    fn disconnect(self) -> impl Future<Output = Result<(), ExportError>> {
         // Production: self.pool.close().await;
-        Ok(())
+        std::future::ready(Ok(()))
     }
 }
 

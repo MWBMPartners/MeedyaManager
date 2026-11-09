@@ -21,8 +21,27 @@
 // The platform string is resolved at compile time using `std::env::consts` so
 // there is zero runtime overhead and the string is inlined into the binary.
 //
+// Some third-party APIs (notably MusicBrainz — see crates/mm-providers/src/
+// musicbrainz.rs) require the User-Agent to also carry a contact address so
+// the API operator can reach us if our traffic misbehaves. For those callers,
+// use `build_user_agent_with_contact()` instead, which produces:
+//
+//   Format: `<build_user_agent()> ( <contact> )`
+//
+// Example:
+//   MeedyaManager/1.2.0 (macOS; Apple Silicon) ( support@mwbmpartners.ltd )
+//
+// The contact segment defaults to a compiled-in support email + homepage URL
+// (`DEFAULT_CONTACT_EMAIL` / `DEFAULT_CONTACT_URL`), but can be overridden at
+// runtime by setting the `MUSICBRAINZ_CONTACT_EMAIL` environment variable —
+// useful for self-hosters who want MusicBrainz to contact *them* directly
+// rather than MWBM Partners Ltd.
+//
 // Public API:
-//   build_user_agent() → String     — full UA string for this build
+//   build_user_agent() → String              — full UA string for this build
+//   build_user_agent_with_contact() → String — UA string + contact segment
+//   contact_string() → String                — just the contact segment
+//   contact_from(Option<&str>) → String      — pure helper (unit-testable)
 
 // ---------------------------------------------------------------------------
 // Platform constants (compile-time, zero overhead)
@@ -58,6 +77,62 @@ pub fn build_user_agent() -> String {
     // Platform descriptor — OS + architecture detail
     let platform = platform_string();
     format!("MeedyaManager/{version} ({platform})")
+}
+
+// ---------------------------------------------------------------------------
+// Contact-bearing User-Agent (for APIs requiring a contact address)
+// ---------------------------------------------------------------------------
+
+/// Default contact e-mail baked into the binary when no runtime override is
+/// present. Used to populate the contact segment of `build_user_agent_with_contact()`.
+pub const DEFAULT_CONTACT_EMAIL: &str = "support@mwbmpartners.ltd";
+
+/// Default contact homepage URL baked into the binary when no runtime override
+/// is present. Paired with `DEFAULT_CONTACT_EMAIL` in the default contact string.
+pub const DEFAULT_CONTACT_URL: &str = "https://www.mwbmpartners.ltd";
+
+/// Pure helper that resolves the contact segment from an optional environment
+/// value. Kept free of `std::env` access so it is trivially unit-testable
+/// without mutating process-wide state (edition 2024 makes `env::set_var`
+/// `unsafe`, and tests must never touch it).
+///
+/// Behaviour:
+///   - `Some(value)` where `value` is non-empty after trimming whitespace →
+///     the trimmed value is used verbatim as the contact string.
+///   - `None`, `Some("")`, or an all-whitespace value → falls back to the
+///     compiled-in default `"<DEFAULT_CONTACT_EMAIL> <DEFAULT_CONTACT_URL>"`.
+fn contact_from(env_value: Option<&str>) -> String {
+    // Trim the candidate (if any) and treat an empty result as "not set".
+    match env_value.map(str::trim) {
+        // A real, non-empty override — use it exactly as provided (trimmed).
+        Some(trimmed) if !trimmed.is_empty() => trimmed.to_owned(),
+        // Absent, empty, or whitespace-only — fall back to the compiled default.
+        _ => format!("{DEFAULT_CONTACT_EMAIL} {DEFAULT_CONTACT_URL}"),
+    }
+}
+
+/// Resolve the contact string for this run, reading the `MUSICBRAINZ_CONTACT_EMAIL`
+/// environment variable at call time and delegating the fallback logic to the
+/// pure `contact_from()` helper.
+///
+/// This is a thin, side-effecting wrapper — all interesting logic lives in
+/// `contact_from()` so it can be unit-tested without touching the environment.
+pub fn contact_string() -> String {
+    // Read the runtime override, if any. `std::env::var` returns `Err` when
+    // the variable is unset, which we collapse to `None` via `.ok()`.
+    let override_value = std::env::var("MUSICBRAINZ_CONTACT_EMAIL").ok();
+    contact_from(override_value.as_deref())
+}
+
+/// Build the full contact-bearing User-Agent string used by providers that
+/// require a way to reach the application operator (e.g. MusicBrainz).
+///
+/// Format: `<build_user_agent()> ( <contact_string()> )`
+pub fn build_user_agent_with_contact() -> String {
+    // Start from the standard UA string, then append the parenthesised
+    // contact segment with a leading space, matching MusicBrainz's documented
+    // convention of "AppName/Version ( contact-info )".
+    format!("{} ( {} )", build_user_agent(), contact_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -173,5 +248,78 @@ mod tests {
         assert!(ua.contains(" ("));
         // Ends with closing paren
         assert!(ua.ends_with(')'), "UA must end with ')': {ua}");
+    }
+
+    // -----------------------------------------------------------------------
+    // contact_from() — pure fallback logic (no env access, safe under edition
+    // 2024's `unsafe fn env::set_var`)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn contact_from_none_uses_default() {
+        // No override at all — must fall back to the compiled-in default,
+        // which contains both the default email and default URL.
+        let contact = contact_from(None);
+        assert!(
+            contact.contains(DEFAULT_CONTACT_EMAIL),
+            "default contact must contain the default email: {contact}"
+        );
+        assert!(
+            contact.contains(DEFAULT_CONTACT_URL),
+            "default contact must contain the default URL: {contact}"
+        );
+    }
+
+    #[test]
+    fn contact_from_empty_string_uses_default() {
+        // An empty override string is treated as "not set".
+        let contact = contact_from(Some(""));
+        assert!(contact.contains(DEFAULT_CONTACT_EMAIL));
+        assert!(contact.contains(DEFAULT_CONTACT_URL));
+    }
+
+    #[test]
+    fn contact_from_whitespace_only_uses_default() {
+        // Whitespace-only override is also treated as "not set" after trimming.
+        let contact = contact_from(Some("  "));
+        assert!(contact.contains(DEFAULT_CONTACT_EMAIL));
+        assert!(contact.contains(DEFAULT_CONTACT_URL));
+    }
+
+    #[test]
+    fn contact_from_some_value_used_verbatim() {
+        // A real override is returned exactly as the trimmed value — no
+        // defaults mixed in.
+        let contact = contact_from(Some("me@example.com"));
+        assert_eq!(contact, "me@example.com");
+    }
+
+    // -----------------------------------------------------------------------
+    // build_user_agent_with_contact()
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn user_agent_with_contact_starts_with_base_ua() {
+        let full = build_user_agent_with_contact();
+        let base = build_user_agent();
+        assert!(
+            full.starts_with(&base),
+            "contact UA must start with the base UA: {full}"
+        );
+    }
+
+    #[test]
+    fn user_agent_with_contact_contains_separator() {
+        let full = build_user_agent_with_contact();
+        assert!(
+            full.contains(" ( "),
+            "contact UA must contain the ' ( ' separator: {full}"
+        );
+    }
+
+    #[test]
+    fn user_agent_with_contact_ends_with_closing_paren() {
+        let full = build_user_agent_with_contact();
+        assert!(full.ends_with(')'), "contact UA must end with ')': {full}");
     }
 }

@@ -26,6 +26,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MmError, MmResult};
+use crate::metadata::{TAG_LANGUAGE, language};
 
 // ───────────────────────────────────────────────────────────────────────────
 // Submodules
@@ -142,19 +143,79 @@ pub enum ConditionMode {
 /// Resolves the condition's field from the context (using the tag registry)
 /// and applies the comparison operator.
 fn evaluate_condition(condition: &Condition, ctx: &EvalContext<'_>) -> MmResult<bool> {
-    // Resolve the tag value from the context
+    // Resolve the tag value from the context — already the STANDARD form
+    // for `language` (see `EvalContext::resolve_metadata_tag`).
     let tag_value = ctx.resolve_tag(&condition.field)?;
     let tag_lower = tag_value.to_lowercase();
-    let expected_lower = condition.value.to_lowercase();
+
+    // Policy MWBM-MEDIA-LANG 1.0.0: a rule's own configured value for
+    // `language` is put through the same standardisation the file's value
+    // already went through above, so `language Equals eng` and
+    // `language Equals en` match the identical set of files — a rule
+    // written against whichever form one file happened to use must not
+    // silently stop matching once this crate starts writing the correct
+    // per-format form elsewhere (see `language::standardise_for_comparison`
+    // for the concrete case that was found and reproduced). Only the
+    // plain-value operators are standardised — `Matches`'s `value` is a
+    // regular expression, not a language, and `IsEmpty`/`IsNotEmpty` never
+    // read `value` at all.
+    let expected = if condition.field.eq_ignore_ascii_case(TAG_LANGUAGE)
+        && matches!(
+            condition.operator,
+            ConditionOp::Equals
+                | ConditionOp::NotEquals
+                | ConditionOp::Contains
+                | ConditionOp::NotContains
+                | ConditionOp::StartsWith
+                | ConditionOp::EndsWith
+        ) {
+        language::standardise_for_comparison(&condition.value)
+    } else {
+        condition.value.clone()
+    };
+    let expected_lower = expected.to_lowercase();
+
+    // Third review round, items 6 and 7: for `language`, the text the file
+    // actually STORES is tried as well as the standard form, by `Matches`,
+    // `Contains`, `StartsWith`, `EndsWith` and `NotContains` alike — a rule
+    // written against what an MP3 stores (`eng`) must keep matching now
+    // that the standard form (`en`) is compared too. Which stored values
+    // are tried (see `stored_language_forms`): when building a path — the
+    // only mode rules run in today — the first one, just as the standard
+    // form is the first one; otherwise each one on its own. Never all of
+    // them run together, which is what `Matches` used to try (`"eng;
+    // fra"`), so an unanchored `Matches "fra"` wrongly matched a file whose
+    // FIRST language is English while building its path.
+    //
+    // Corrected by the fourth review round (item M2): this said the stored
+    // side "mirrors the standard-form side exactly" in both modes. Only in
+    // path mode. In display mode the standard form is every value joined
+    // together (`"en; fr"` — see `EvalContext::resolve_metadata_tag`), while
+    // the stored side still tries one value at a time.
+    // Empty for every other field, so none of this changes anything else.
+    let stored_forms = stored_language_forms(condition, ctx);
+    let raw_expected_lower = condition.value.to_lowercase();
+    let any_stored_form = |test: &dyn Fn(&str) -> bool| {
+        stored_forms
+            .iter()
+            .any(|stored| test(&stored.to_lowercase()))
+    };
 
     // Apply the operator
     match condition.operator {
         ConditionOp::Equals => Ok(tag_lower == expected_lower),
         ConditionOp::NotEquals => Ok(tag_lower != expected_lower),
-        ConditionOp::Contains => Ok(tag_lower.contains(&expected_lower)),
-        ConditionOp::NotContains => Ok(!tag_lower.contains(&expected_lower)),
-        ConditionOp::StartsWith => Ok(tag_lower.starts_with(&expected_lower)),
-        ConditionOp::EndsWith => Ok(tag_lower.ends_with(&expected_lower)),
+        ConditionOp::Contains => Ok(tag_lower.contains(&expected_lower)
+            || any_stored_form(&|stored| stored.contains(&raw_expected_lower))),
+        // A `Not` form is true only when NEITHER form contains the text —
+        // the exact opposite of `Contains`, so the two can never both be
+        // true (or both false) for the same file.
+        ConditionOp::NotContains => Ok(!(tag_lower.contains(&expected_lower)
+            || any_stored_form(&|stored| stored.contains(&raw_expected_lower)))),
+        ConditionOp::StartsWith => Ok(tag_lower.starts_with(&expected_lower)
+            || any_stored_form(&|stored| stored.starts_with(&raw_expected_lower))),
+        ConditionOp::EndsWith => Ok(tag_lower.ends_with(&expected_lower)
+            || any_stored_form(&|stored| stored.ends_with(&raw_expected_lower))),
         ConditionOp::Matches => {
             // Compile regex (cached) and test against the tag value
             let re = regex::Regex::new(&condition.value).map_err(|e| {
@@ -163,10 +224,73 @@ fn evaluate_condition(condition: &Condition, ctx: &EvalContext<'_>) -> MmResult<
                     condition.field
                 ))
             })?;
-            Ok(re.is_match(&tag_value))
+            let matches_standard_form = re.is_match(&tag_value);
+
+            // Review item 6 of the second language-policy review round:
+            // `tag_value` for `language` is already the STANDARD form (see
+            // the comment on `expected` above), which is new behaviour —
+            // a pattern written against the file's own STORED text before
+            // this crate started standardising it (`Matches "^eng$"`,
+            // written when an MP3 genuinely stored "eng") must keep
+            // matching too, or every existing pattern rule for `language`
+            // silently changes meaning the moment a file gets rewritten in
+            // its correct per-format form. So a pattern is tried against
+            // BOTH the standard form and the raw stored text, matching if
+            // EITHER does — never just the standardised one. This is a
+            // no-op, not just harmless, for every field other than
+            // `language`: the standard form and the raw stored text are
+            // identical whenever standardisation does not apply.
+            //
+            // Third review round, item 6: this used to try the file's
+            // stored values all joined together ("eng; fra"), which the
+            // standard-form side never does. It now tries the same stored
+            // values the other operators do — see `stored_language_forms`.
+            let matches_stored_form = stored_forms.iter().any(|stored| re.is_match(stored));
+
+            Ok(matches_standard_form || matches_stored_form)
         }
         ConditionOp::IsEmpty => Ok(tag_value.is_empty()),
         ConditionOp::IsNotEmpty => Ok(!tag_value.is_empty()),
+    }
+}
+
+/// The text a file actually stores for `language`, in the shape a rule
+/// condition should compare it in — or nothing, for any other field.
+///
+/// When building a path — the only mode rules run in today (the renamer and
+/// `meedya scan` both build paths) — only the FIRST stored value counts,
+/// just as only the first standard form does (see
+/// `EvalContext::resolve_metadata_tag`). Otherwise, in display mode, each
+/// stored value is tried on its own. The stored values are never run
+/// together into one string, because that is not text any file stores
+/// (third review round, item 6).
+///
+/// Corrected by the fourth review round (item M2): this used to say it
+/// mirrors the standard form in both modes, and that "the standard-form
+/// side never compares" the values run together. In display mode it does:
+/// there the standard form is every value joined with "; " (`"en; fr"`).
+/// So only path mode is a mirror. Nothing runs a rule in display mode
+/// today, so nothing a person sees is affected.
+///
+/// Codex's catch-up review, finding 4: each stored value is split at its
+/// zero characters first (`language::split_stored_values`), so several
+/// languages held in one stored string count as several values here too,
+/// and path mode really does look at the first language alone — before,
+/// an APE item holding `eng`, zero, `fra` was one "stored value", and
+/// `Matches "fra"` found French inside it while a path was being built from
+/// English.
+fn stored_language_forms(condition: &Condition, ctx: &EvalContext<'_>) -> Vec<String> {
+    if !condition.field.eq_ignore_ascii_case(TAG_LANGUAGE) {
+        return Vec::new();
+    }
+    let Some(values) = ctx.tags.get(TAG_LANGUAGE) else {
+        return Vec::new();
+    };
+    let split = values.iter().flat_map(|v| language::split_stored_values(v));
+    if ctx.path_mode {
+        split.take(1).collect()
+    } else {
+        split.collect()
     }
 }
 
@@ -418,6 +542,339 @@ mod tests {
             value: r"[invalid".into(),
         };
         assert!(evaluate_condition(&cond, &ctx).is_err());
+    }
+
+    // ── Language standardisation (policy MWBM-MEDIA-LANG 1.0.0) ─────
+    //
+    // None of these existed before the second language-policy review
+    // round. An independent review's own mutation testing found that
+    // disabling `expected`'s standardisation of the rule's own configured
+    // `language` value still passed every test in this crate, because
+    // there was no test anywhere that would have noticed.
+
+    /// The exact case the first review round found and fixed: a rule
+    /// written against the short form must still match a file whose tag
+    /// container actually stores the old three-letter form.
+    #[test]
+    fn language_equals_matches_regardless_of_which_form_the_rule_uses() {
+        // The FILE stores the three-letter form (what `resolve_metadata_tag`
+        // standardises down to "en" before comparison).
+        let tags = make_tags(&[("language", "eng")]);
+        let ctx = EvalContext::new(&tags);
+
+        for rule_value in ["en", "eng"] {
+            let cond = Condition {
+                field: "language".into(),
+                operator: ConditionOp::Equals,
+                value: rule_value.into(),
+            };
+            assert!(
+                evaluate_condition(&cond, &ctx).unwrap(),
+                "language Equals {rule_value:?} must match a file storing \"eng\""
+            );
+        }
+    }
+
+    /// Review item 6 of the second review round: `Matches` compares
+    /// against the STANDARD form now (since `resolve_tag` standardises
+    /// `language` for every consumer), which changed the meaning of any
+    /// existing pattern written against the file's own STORED text — a
+    /// pattern is now tried against BOTH forms, so neither kind of rule
+    /// silently stops working.
+    #[test]
+    fn language_matches_pattern_matches_both_the_standard_and_stored_form() {
+        // The FILE stores "eng"; the standard form is "en".
+        let tags = make_tags(&[("language", "eng")]);
+        let ctx = EvalContext::new(&tags);
+
+        let matches_stored = Condition {
+            field: "language".into(),
+            operator: ConditionOp::Matches,
+            value: "^eng$".into(),
+        };
+        assert!(
+            evaluate_condition(&matches_stored, &ctx).unwrap(),
+            "a pattern written against the file's own stored text (\"eng\") must still match"
+        );
+
+        let matches_standard = Condition {
+            field: "language".into(),
+            operator: ConditionOp::Matches,
+            value: "^en$".into(),
+        };
+        assert!(
+            evaluate_condition(&matches_standard, &ctx).unwrap(),
+            "a pattern written against the standard form (\"en\") must also match"
+        );
+
+        let matches_neither = Condition {
+            field: "language".into(),
+            operator: ConditionOp::Matches,
+            value: "^fr$".into(),
+        };
+        assert!(
+            !evaluate_condition(&matches_neither, &ctx).unwrap(),
+            "a pattern matching neither form must still not match"
+        );
+    }
+
+    /// The OR-both-forms behaviour is specific to `language`: for any
+    /// other field, the standard and stored forms are the same text, so
+    /// this must not accidentally start matching a pattern against
+    /// anything but the field's own value.
+    #[test]
+    fn matches_pattern_is_unaffected_for_a_non_language_field() {
+        let tags = make_tags(&[("genre", "Rock"), ("language", "eng")]);
+        let ctx = EvalContext::new(&tags);
+        let cond = Condition {
+            field: "genre".into(),
+            operator: ConditionOp::Matches,
+            // This pattern matches the FILE's language value, not its own
+            // field — must not match just because `language` happens to
+            // satisfy it somewhere else in the same tag map.
+            value: "^eng$".into(),
+        };
+        assert!(!evaluate_condition(&cond, &ctx).unwrap());
+    }
+
+    // ── Third review round, items 6 and 7 ───────────────────────────
+    //
+    // Item 6: `Matches` tried a file's stored languages all joined together
+    // ("eng; fra"), which the standard-form side never compares — so a
+    // pattern could match the SECOND language while a path was being built
+    // from the first, and an anchored pattern for either language could
+    // never match at all. Item 7: `Contains`, `StartsWith`, `EndsWith` and
+    // `NotContains` only ever looked at the standard form.
+
+    /// A condition on `language` with the given operator and value.
+    fn language_condition(operator: ConditionOp, value: &str) -> Condition {
+        Condition {
+            field: "language".into(),
+            operator,
+            value: value.into(),
+        }
+    }
+
+    /// Evaluate `condition` against a file storing `values`, building a
+    /// path (`path_mode`) or not.
+    fn evaluate_on(values: &[&str], path_mode: bool, condition: &Condition) -> bool {
+        let mut tags = TagMap::new();
+        tags.insert(
+            "language".to_string(),
+            values.iter().map(|v| (*v).to_string()).collect(),
+        );
+        let ctx = EvalContext::new(&tags).with_path_mode(path_mode);
+        evaluate_condition(condition, &ctx).unwrap()
+    }
+
+    /// Item 6, building a path: only the FIRST stored language counts, as
+    /// only the first standard form does. An ID3 tag holding "eng" and
+    /// "fra" is English for this purpose.
+    #[test]
+    fn language_matches_uses_only_the_first_stored_value_when_building_a_path() {
+        let stored = ["eng", "fra"];
+        assert!(
+            !evaluate_on(
+                &stored,
+                true,
+                &language_condition(ConditionOp::Matches, "fra")
+            ),
+            "the second language must not match while a path is built from the first"
+        );
+        assert!(
+            evaluate_on(
+                &stored,
+                true,
+                &language_condition(ConditionOp::Matches, "^eng$")
+            ),
+            "a pattern for the first stored value must match"
+        );
+    }
+
+    /// The stand-in review of round 6 (L3, its planted fault F4a): rule
+    /// CONDITIONS split a stored value at its zero characters, as an APE
+    /// item keeps several languages in one string. Nothing tested that on
+    /// its own — the reviewer changed `stored_language_forms` to use the
+    /// values unsplit and every rule-engine test still passed (the existing
+    /// split tests covered templates). Given `"eng\u{0}fra"` unsplit: while
+    /// building a path, only the first language, English, counts, so
+    /// `Matches "fra"` must not match; otherwise each language is tried on
+    /// its own, so `Matches "^fra$"` must.
+    #[test]
+    fn language_conditions_split_one_stored_string_holding_two_languages() {
+        let unsplit = ["eng\u{0}fra"];
+        assert!(
+            !evaluate_on(
+                &unsplit,
+                true,
+                &language_condition(ConditionOp::Matches, "fra")
+            ),
+            "building a path from the first language: French must not match"
+        );
+        assert!(evaluate_on(
+            &unsplit,
+            true,
+            &language_condition(ConditionOp::Matches, "^eng$")
+        ));
+        assert!(
+            evaluate_on(
+                &unsplit,
+                false,
+                &language_condition(ConditionOp::Matches, "^fra$")
+            ),
+            "not building a path: the second language is tried on its own"
+        );
+    }
+
+    /// Item 6, not building a path: each stored language is tried on its
+    /// own, never all of them run together.
+    #[test]
+    fn language_matches_tries_each_stored_value_on_its_own_otherwise() {
+        let stored = ["eng", "fra"];
+        assert!(evaluate_on(
+            &stored,
+            false,
+            &language_condition(ConditionOp::Matches, "^fra$")
+        ));
+        assert!(evaluate_on(
+            &stored,
+            false,
+            &language_condition(ConditionOp::Matches, "^eng$")
+        ));
+        assert!(
+            !evaluate_on(
+                &stored,
+                false,
+                &language_condition(ConditionOp::Matches, "^eng; fra$")
+            ),
+            "the values run together are not something the file stores"
+        );
+    }
+
+    /// Item 7: each of these matches a file storing "eng" through the
+    /// STORED text only — the standard form, "en", does not contain "ng",
+    /// or end in it.
+    #[test]
+    fn language_contains_and_ends_with_also_try_the_stored_text() {
+        assert!(evaluate_on(
+            &["eng"],
+            true,
+            &language_condition(ConditionOp::Contains, "ng")
+        ));
+        assert!(evaluate_on(
+            &["eng"],
+            true,
+            &language_condition(ConditionOp::EndsWith, "ng")
+        ));
+        // The standard form still works on its own, as before.
+        assert!(evaluate_on(
+            &["eng"],
+            true,
+            &language_condition(ConditionOp::Contains, "en")
+        ));
+        assert!(!evaluate_on(
+            &["eng"],
+            true,
+            &language_condition(ConditionOp::Contains, "fr")
+        ));
+    }
+
+    /// Item 7: `StartsWith`. Every prefix of "eng" is also a prefix of the
+    /// standard form "en" once the rule's own value is standardised, so the
+    /// stored side is shown with German instead: "ger" is stored, "de" is
+    /// its standard form, and "ge" only begins the stored text.
+    #[test]
+    fn language_starts_with_also_tries_the_stored_text() {
+        assert!(evaluate_on(
+            &["eng"],
+            true,
+            &language_condition(ConditionOp::StartsWith, "eng")
+        ));
+        assert!(evaluate_on(
+            &["ger"],
+            true,
+            &language_condition(ConditionOp::StartsWith, "ge")
+        ));
+        assert!(evaluate_on(
+            &["ger"],
+            true,
+            &language_condition(ConditionOp::StartsWith, "de")
+        ));
+        assert!(!evaluate_on(
+            &["ger"],
+            true,
+            &language_condition(ConditionOp::StartsWith, "fr")
+        ));
+    }
+
+    /// Item 7: a `Not` form is true only when NEITHER form matches.
+    #[test]
+    fn language_not_contains_is_true_only_when_neither_form_contains_the_text() {
+        assert!(
+            !evaluate_on(
+                &["eng"],
+                true,
+                &language_condition(ConditionOp::NotContains, "ng")
+            ),
+            "the stored text contains \"ng\", so NotContains must be false"
+        );
+        assert!(
+            !evaluate_on(
+                &["eng"],
+                true,
+                &language_condition(ConditionOp::NotContains, "en")
+            ),
+            "the standard form contains \"en\""
+        );
+        assert!(evaluate_on(
+            &["eng"],
+            true,
+            &language_condition(ConditionOp::NotContains, "fr")
+        ));
+    }
+
+    /// The stored-text side is for `language` only: another field's
+    /// `Contains` must not start matching because the FILE's language
+    /// happens to contain the text.
+    /// Fourth review round, item M3: the help page now warns that text
+    /// conditions compare language CODES, so they match languages a person
+    /// did not mean, and recommends `Equals`. This pins every example it
+    /// gives, so the page cannot drift from what the engine does:
+    /// `Contains "en"` matches Bengali stored as `ben`; `StartsWith "fr"`
+    /// matches Western Frisian stored as `fry`; `Contains "ger"` looks for
+    /// `de` and matches Makonde, `kde`. `Equals` matches none of them.
+    #[test]
+    fn language_text_conditions_compare_codes_as_the_help_page_warns() {
+        for (stored, operator, value) in [
+            ("ben", ConditionOp::Contains, "en"),
+            ("fry", ConditionOp::StartsWith, "fr"),
+            ("kde", ConditionOp::Contains, "ger"),
+        ] {
+            assert!(
+                evaluate_on(&[stored], true, &language_condition(operator, value)),
+                "{operator:?} {value:?} matches a file storing {stored:?}"
+            );
+            assert!(
+                !evaluate_on(
+                    &[stored],
+                    true,
+                    &language_condition(ConditionOp::Equals, value)
+                ),
+                "Equals {value:?} must not match a file storing {stored:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn contains_is_unaffected_for_a_non_language_field() {
+        let tags = make_tags(&[("genre", "Rock"), ("language", "eng")]);
+        let ctx = EvalContext::new(&tags);
+        let cond = Condition {
+            field: "genre".into(),
+            operator: ConditionOp::Contains,
+            value: "ng".into(),
+        };
+        assert!(!evaluate_condition(&cond, &ctx).unwrap());
     }
 
     /// ConditionOp::IsEmpty

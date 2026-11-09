@@ -88,25 +88,21 @@ pub struct ExportArgs {
 
 // ─── JSON output structures ─────────────────────────────────────────────────
 
-/// JSON-serialisable export result summary.
+/// JSON-serialisable export result.
+///
+/// The export pipeline itself (scan → `mm-export` backend I/O) is not wired
+/// up yet — see issues #113 and #118 — so this always reports
+/// `"not_implemented"` rather than fabricating row counts nothing produced.
 #[derive(Serialize)]
 struct ExportOutput {
-    /// Backend that was used (or would be used)
+    /// Always `"not_implemented"` until the export pipeline lands.
+    status: String,
+    /// Backend that would be used, once implemented
     backend: String,
     /// Connection string (redacted — shows scheme + host only)
     connection: String,
-    /// Whether this was a dry-run
-    dry_run: bool,
-    /// Total rows inserted
-    inserted: u64,
-    /// Total rows updated
-    updated: u64,
-    /// Total rows skipped (no change)
-    skipped: u64,
-    /// Total rows with errors
-    errors: u64,
-    /// Elapsed milliseconds (stub: 0)
-    elapsed_ms: u64,
+    /// Explanation of why nothing was scanned or written
+    message: String,
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -131,29 +127,51 @@ fn redact_dsn(dsn: &str) -> String {
     format!("{}…", &dsn[..dsn.len().min(30)])
 }
 
-/// Auto-detect the backend from the DSN prefix.
+/// Auto-detect the backend from the DSN scheme.
+///
+/// Deliberately matches on the DSN's *scheme* (its `xxx://` prefix, or the
+/// ADO-style `server=` prefix used by SQL Server connection strings) rather
+/// than scanning the whole string for a magic substring. The previous
+/// implementation matched any DSN containing the literal text `"1433"` (the
+/// SQL Server default port) as SQL Server — which misrouted a perfectly
+/// ordinary SQLite path such as `sqlite:///data/1433.db` (a file merely
+/// *named* after the port) to the wrong backend entirely.
 pub fn detect_backend(dsn: &str) -> BackendChoice {
-    if dsn.starts_with("postgres://") || dsn.starts_with("postgresql://") {
-        BackendChoice::Postgres
-    } else if dsn.starts_with("mysql://") {
-        BackendChoice::Mysql
-    } else if dsn.starts_with("mariadb://") {
-        BackendChoice::Mariadb
-    } else if dsn.starts_with("server=") || dsn.contains("1433") {
-        BackendChoice::Mssql
-    } else {
-        BackendChoice::Sqlite
+    let trimmed = dsn.trim();
+
+    // SQL Server: either an ADO-style `server=...` connection string, or an
+    // explicit `sqlserver://` / `mssql://` URI scheme.
+    if trimmed.starts_with("server=")
+        || trimmed.starts_with("sqlserver://")
+        || trimmed.starts_with("mssql://")
+    {
+        return BackendChoice::Mssql;
     }
+
+    if trimmed.starts_with("postgres://") || trimmed.starts_with("postgresql://") {
+        return BackendChoice::Postgres;
+    }
+    if trimmed.starts_with("mysql://") {
+        return BackendChoice::Mysql;
+    }
+    if trimmed.starts_with("mariadb://") {
+        return BackendChoice::Mariadb;
+    }
+
+    // Everything else — an explicit `sqlite:`/`sqlite://` scheme, or a bare
+    // filesystem path with no scheme at all — defaults to SQLite.
+    BackendChoice::Sqlite
 }
 
 // ─── Command execution ─────────────────────────────────────────────────────
 
 /// Execute the `meedya export` command.
 ///
-/// For M9 this scans the target path for media files and performs an export
-/// using the configured database backend. The actual database I/O is performed
-/// via the `mm-export` crate; this function handles CLI argument parsing,
-/// progress reporting, and error display.
+/// `--show-schema` is fully functional — it renders the real DDL for the
+/// selected backend via `mm-export::SchemaBuilder`. Everything else (the
+/// actual scan-then-write pipeline) is not implemented yet: this reports
+/// `NOT_IMPLEMENTED` rather than pretending an export ran. See issues #113
+/// and #118.
 pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
     // Validate the DSN is non-empty
     if args.db.trim().is_empty() {
@@ -195,7 +213,8 @@ pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    // Determine the scan path
+    // Determine the scan path — reported in the settings table below so the
+    // user can see what *would* be scanned, even though nothing is scanned.
     let scan_path = args.path.clone().unwrap_or_else(|| {
         ctx.config
             .watch
@@ -204,58 +223,28 @@ pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
             .map_or_else(|| ".".to_string(), |p| p.to_string_lossy().into_owned())
     });
 
-    // For M9 the actual DB write is behind the ExportConfig + backend structs.
-    // The CLI runs synchronously in the scan phase, then delegates to the
-    // async export — here we provide the full stubbed flow for M9 acceptance:
-    //   1. Print intent (or JSON)
-    //   2. Simulate scan → ExportRow collection
-    //   3. Run export_batch via a fresh tokio runtime
-    //   4. Print summary
-    //
-    // In dry-run mode no database connection is attempted.
-
-    use mm_export::{ExportConfig, ExportStats};
-
-    let mut cfg = ExportConfig::with_dsn(&args.db);
-    args.prefix.clone_into(&mut cfg.table_prefix);
-    cfg.batch_size = args.batch_size;
-    cfg.skip_schema_init = args.skip_schema;
-
-    // Stub: simulate a scan of `scan_path` producing a fixed set of stats.
-    // Real integration (scan → ExportRow → backend) is wired in full M9 CI.
-    let stats = if ctx.dry_run {
-        // Dry-run: no actual database work; pretend 0 rows processed
-        ExportStats::default()
-    } else {
-        // M9 stub: simulate one successful batch
-        ExportStats {
-            inserted: 0,
-            updated: 0,
-            skipped: 0,
-            errors: 0,
-            elapsed_ms: 0,
-        }
-    };
+    // The export pipeline is not wired up in this release: no scan is run,
+    // and `mm-export` never opens a database connection (SQLite, MySQL,
+    // MariaDB, PostgreSQL, and SQL Server backends all exist as crates, but
+    // nothing here calls into them). Rather than fabricate row counts for
+    // work that never happened, report the resolved settings and say plainly
+    // that nothing ran. A `--dry-run` request gets the identical answer — a
+    // dry run of nothing is still nothing. Tracked by issues #113 (scan →
+    // export wiring) and #118 (backend connection).
+    const NOT_IMPLEMENTED_MESSAGE: &str = "`meedya export` is not implemented in this release — \
+        nothing was scanned or written (see issues #113 and #118).";
 
     match ctx.output {
         OutputFormat::Json => {
             output::print_json(&ExportOutput {
+                status: "not_implemented".into(),
                 backend: backend.to_string(),
                 connection: redacted,
-                dry_run: ctx.dry_run,
-                inserted: stats.inserted,
-                updated: stats.updated,
-                skipped: stats.skipped,
-                errors: stats.errors,
-                elapsed_ms: stats.elapsed_ms,
+                message: NOT_IMPLEMENTED_MESSAGE.into(),
             });
         }
         OutputFormat::Human => {
             output::print_header(&format!("Export — {scan_path} → {backend}"));
-
-            if ctx.dry_run {
-                output::print_warning("Dry-run mode: no database writes will occur.");
-            }
 
             let rows = vec![
                 vec!["Backend".into(), backend.to_string()],
@@ -267,30 +256,11 @@ pub fn run(ctx: &CliContext, args: &ExportArgs) -> anyhow::Result<i32> {
             ];
             output::print_table(&["Setting", "Value"], &rows);
 
-            if !ctx.dry_run {
-                println!();
-                let result_rows = vec![
-                    vec!["Inserted".into(), stats.inserted.to_string()],
-                    vec!["Updated".into(), stats.updated.to_string()],
-                    vec!["Skipped".into(), stats.skipped.to_string()],
-                    vec!["Errors".into(), stats.errors.to_string()],
-                    vec!["Elapsed".into(), format!("{} ms", stats.elapsed_ms)],
-                ];
-                output::print_table(&["Metric", "Value"], &result_rows);
-
-                if stats.is_clean() {
-                    output::print_success("Export completed successfully.");
-                } else {
-                    output::print_warning(&format!(
-                        "Export completed with {} error(s). Check logs for details.",
-                        stats.errors
-                    ));
-                }
-            }
+            output::print_error(NOT_IMPLEMENTED_MESSAGE);
         }
     }
 
-    Ok(ExitCode::SUCCESS)
+    Ok(ExitCode::NOT_IMPLEMENTED)
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -361,6 +331,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn detect_mssql_scheme_prefix() {
+        // Explicit URI-style schemes, not just the ADO `server=` form, must
+        // also route to SQL Server.
+        assert_eq!(
+            detect_backend("sqlserver://sa:pass@host/meedya"),
+            BackendChoice::Mssql
+        );
+        assert_eq!(
+            detect_backend("mssql://sa:pass@host/meedya"),
+            BackendChoice::Mssql
+        );
+    }
+
+    #[test]
+    fn detect_sqlite_path_containing_1433() {
+        // Regression: the old detector matched on `dsn.contains("1433")`, so a
+        // perfectly ordinary SQLite path that happens to contain the SQL
+        // Server default port digits was misrouted to SQL Server.
+        assert_eq!(
+            detect_backend("sqlite:///data/1433.db"),
+            BackendChoice::Sqlite
+        );
+    }
+
     // --- redact_dsn ---
 
     #[test]
@@ -400,21 +395,31 @@ mod tests {
     }
 
     #[test]
-    fn run_sqlite_human_succeeds() {
+    fn run_sqlite_human_reports_not_implemented() {
         let ctx = test_ctx(false, false);
-        assert_eq!(run(&ctx, &sqlite_args()).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(
+            run(&ctx, &sqlite_args()).unwrap(),
+            ExitCode::NOT_IMPLEMENTED
+        );
     }
 
     #[test]
-    fn run_sqlite_json_succeeds() {
+    fn run_sqlite_json_reports_not_implemented() {
         let ctx = test_ctx(true, false);
-        assert_eq!(run(&ctx, &sqlite_args()).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(
+            run(&ctx, &sqlite_args()).unwrap(),
+            ExitCode::NOT_IMPLEMENTED
+        );
     }
 
     #[test]
-    fn run_dry_run_succeeds() {
+    fn run_dry_run_reports_not_implemented() {
+        // A dry run of nothing is still nothing — same outcome as a real run.
         let ctx = test_ctx(false, true);
-        assert_eq!(run(&ctx, &sqlite_args()).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(
+            run(&ctx, &sqlite_args()).unwrap(),
+            ExitCode::NOT_IMPLEMENTED
+        );
     }
 
     #[test]
@@ -426,13 +431,13 @@ mod tests {
     }
 
     #[test]
-    fn run_postgres_backend_succeeds() {
+    fn run_postgres_backend_reports_not_implemented() {
         let ctx = test_ctx(false, false);
         let args = ExportArgs {
             db: "postgres://admin:pass@localhost/meedya".into(),
             backend: BackendChoice::Postgres,
             ..sqlite_args()
         };
-        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::NOT_IMPLEMENTED);
     }
 }

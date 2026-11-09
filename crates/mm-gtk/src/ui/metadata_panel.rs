@@ -30,10 +30,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use mm_core::metadata::{self, TagMap};
 
@@ -64,9 +64,7 @@ impl MetadataPanel {
             .editable(false) // read-only — path is set by dialog only
             .build();
 
-        let open_btn = gtk::Button::builder()
-            .label("Open…")
-            .build();
+        let open_btn = gtk::Button::builder().label("Open…").build();
 
         let file_row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -77,7 +75,13 @@ impl MetadataPanel {
             .margin_bottom(8)
             .build();
 
-        file_row.append(&gtk::Label::builder().label("File").width_chars(8).xalign(0.0).build());
+        file_row.append(
+            &gtk::Label::builder()
+                .label("File")
+                .width_chars(8)
+                .xalign(0.0)
+                .build(),
+        );
         file_row.append(&file_entry);
         file_row.append(&open_btn);
 
@@ -212,13 +216,25 @@ impl MetadataPanel {
         // AT-SPI2 accessibility labels (Issue #128)
         // ------------------------------------------------------------------
         accessibility::set_label(&file_entry, "Selected file path");
-        accessibility::set_description(&file_entry, "Shows the path of the currently loaded media file.");
+        accessibility::set_description(
+            &file_entry,
+            "Shows the path of the currently loaded media file.",
+        );
         accessibility::set_label(&open_btn, "Open media file");
-        accessibility::set_description(&open_btn, "Opens a file picker to choose a media file for tag editing.");
+        accessibility::set_description(
+            &open_btn,
+            "Opens a file picker to choose a media file for tag editing.",
+        );
         accessibility::set_label(&revert_btn, "Revert changes");
-        accessibility::set_description(&revert_btn, "Discards all unsaved tag edits and reloads the file.");
+        accessibility::set_description(
+            &revert_btn,
+            "Discards all unsaved tag edits and reloads the file.",
+        );
         accessibility::set_label(&save_btn, "Save metadata tags");
-        accessibility::set_description(&save_btn, "Writes all edited tags back to the media file on disk.");
+        accessibility::set_description(
+            &save_btn,
+            "Writes all edited tags back to the media file on disk.",
+        );
         accessibility::set_label(&status_label, "Metadata status");
 
         // ------------------------------------------------------------------
@@ -253,8 +269,10 @@ impl MetadataPanel {
                     let filter = gtk::FileFilter::new();
                     filter.set_name(Some("Media files"));
                     // Common audio extensions
-                    for ext in &["mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "aiff",
-                                  "wv", "ape", "mp4", "mkv", "avi", "mov"] {
+                    for ext in &[
+                        "mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "aiff", "wv", "ape",
+                        "mp4", "mkv", "avi", "mov",
+                    ] {
                         filter.add_suffix(ext);
                     }
 
@@ -294,7 +312,24 @@ impl MetadataPanel {
                     None => return,
                 };
 
-                // Build TagMap from the current entry widget values
+                // Build TagMap from the current entry widget values.
+                //
+                // This resends EVERY field shown in the editor, changed or not —
+                // including `language`, if the file has one. That matters because
+                // `write_tags` (`mm-core/src/metadata/mod.rs`) used to refuse the
+                // WHOLE save whenever `language` came back unchanged, since it
+                // re-validated the value as if it were freshly typed rather than
+                // recognising it as already-stored (policy rule COMPAT-030; issue
+                // #251 review item 1). A FLAC whose LANGUAGE comment already said
+                // "English" would have its entire save rejected the moment this
+                // button resent "English" unchanged — not just the language field,
+                // every field in the batch, because `write_tags` is all-or-nothing.
+                // `write_tags` now compares the incoming value against what the
+                // file already stores and leaves it alone when the two match, so
+                // this panel needs no special case of its own — it is called out
+                // here only so nobody "simplifies" this button into sending just
+                // the changed fields and unknowingly removes the case that made
+                // the bug reproducible in the first place.
                 let tag_map: TagMap = entry_map_clone
                     .borrow()
                     .iter()
@@ -306,21 +341,43 @@ impl MetadataPanel {
                             .filter(|s| !s.is_empty())
                             .map(|s| s.to_owned())
                             .collect::<Vec<_>>();
-                        (key.clone(), if values.is_empty() { vec![val] } else { values })
+                        (
+                            key.clone(),
+                            if values.is_empty() { vec![val] } else { values },
+                        )
                     })
                     .collect();
 
-                match metadata::write_tags(&file_path, &tag_map) {
-                    Ok(()) => {
-                        // Commit edits to state
-                        state_clone.borrow_mut().commit_edits();
+                // Route through the integrity guard, never the raw metadata layer
+                // directly: the guard is the only place Test Mode is enforced
+                // (issue #128), so a direct call would overwrite the user's
+                // original even with "don't touch my files" switched on.
+                let result = mm_core::integrity::write_tags_safe(&file_path, &tag_map);
+
+                if result.success {
+                    // Commit edits to state
+                    state_clone.borrow_mut().commit_edits();
+
+                    // The guard reports the file it actually wrote.  A different
+                    // path means Test Mode diverted us to a `_MeedyaManager`
+                    // copy — tell the user where their edits went, otherwise a
+                    // bare "saved" implies their own file changed.
+                    if result.path == file_path {
                         status_label_clone.set_text("✓ Tags saved successfully.");
-                        save_btn_clone.set_sensitive(false);
-                        revert_btn_clone.set_sensitive(false);
+                    } else {
+                        status_label_clone.set_text(&format!(
+                            "✓ Tags saved to {} (Test Mode — original untouched).",
+                            result.path.display()
+                        ));
                     }
-                    Err(e) => {
-                        status_label_clone.set_text(&format!("⚠ Save failed: {e}"));
-                    }
+
+                    save_btn_clone.set_sensitive(false);
+                    revert_btn_clone.set_sensitive(false);
+                } else {
+                    status_label_clone.set_text(&format!(
+                        "⚠ Save failed: {}",
+                        result.error.as_deref().unwrap_or("unknown error")
+                    ));
                 }
             });
         }
@@ -400,13 +457,17 @@ fn load_file(
         s.file_path = Some(path.clone());
         s.tags = flat.clone();
         s.pending_edits.clear();
-        s.status = format!("Loaded: {}", path.file_name().unwrap_or_default().to_string_lossy());
+        s.status = format!(
+            "Loaded: {}",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        );
     }
     status_label.set_text(&state.borrow().status);
 
     // Load audio properties for the info bar
     if let Ok(props) = metadata::extract_audio_properties(path) {
-        let codec = path.extension()
+        let codec = path
+            .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("?")
             .to_ascii_uppercase();
@@ -429,14 +490,7 @@ fn load_file(
     sorted_tags.sort_by(|a, b| a.0.cmp(&b.0));
 
     for (key, value) in &sorted_tags {
-        let row = build_tag_row(
-            key,
-            value,
-            state,
-            entry_map,
-            save_btn,
-            revert_btn,
-        );
+        let row = build_tag_row(key, value, state, entry_map, save_btn, revert_btn);
         tags_list.append(&row);
     }
 
@@ -465,27 +519,25 @@ fn build_tag_row(
         .build();
 
     // Editable value entry (right column)
-    let entry = gtk::Entry::builder()
-        .text(value)
-        .hexpand(true)
-        .build();
+    let entry = gtk::Entry::builder().text(value).hexpand(true).build();
 
     // Register this entry in the map
-    entry_map.borrow_mut().insert(key.to_string(), entry.clone());
+    entry_map
+        .borrow_mut()
+        .insert(key.to_string(), entry.clone());
 
     // Mark edits as pending when the entry changes
     {
         let key_owned = key.to_string();
         let state_clone = Rc::clone(state);
-        let entry_map_clone = Rc::clone(entry_map);
         let save_btn_clone = save_btn.clone();
         let revert_btn_clone = revert_btn.clone();
 
         entry.connect_changed(move |e| {
-            state_clone.borrow_mut().pending_edits.insert(
-                key_owned.clone(),
-                e.text().to_string(),
-            );
+            state_clone
+                .borrow_mut()
+                .pending_edits
+                .insert(key_owned.clone(), e.text().to_string());
             save_btn_clone.set_sensitive(true);
             revert_btn_clone.set_sensitive(true);
         });

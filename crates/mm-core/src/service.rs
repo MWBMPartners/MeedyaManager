@@ -5,13 +5,37 @@
 // This module provides cross-platform helpers to install, uninstall, start,
 // stop, and query the status of the MeedyaManager background service.
 //
-// The service runs `meedya watch --organize` continuously in the background,
-// monitoring configured library folders and auto-organising new media.
+// The service runs `meedya watch --organize --yes` continuously in the
+// background, monitoring configured library folders and organising new media
+// as it arrives.
+//
+// `--yes` is not decoration. `watch --organize` asks an attended terminal to
+// confirm once before it starts moving files. A service has no terminal and
+// nobody to answer, so without `--yes` it would sit forever waiting for an
+// answer that can never come.
 //
 // Platform implementations:
 //   Linux   — systemd user unit  (~/.config/systemd/user/meedyamanager.service)
 //   macOS   — launchd user agent (~/Library/LaunchAgents/com.mwbm.meedyamanager.plist)
 //   Windows — Windows Service via `sc.exe` (registered as "MeedyaManager")
+//
+// Caveat, Windows only — the `sc.exe` path below is written but is NOT usable,
+// and `meedya service install` refuses to run it. Two reasons, both real:
+//
+//   1. A Windows Service has to report back to the Service Control Manager
+//      within roughly thirty seconds of starting, and accept stop requests
+//      through it afterwards. `meedya` is an ordinary console program; it does
+//      not speak that protocol, so Windows decides it has hung and stops it.
+//   2. A service registered this way runs as the LocalSystem account, which
+//      has its own home directory. It would therefore read a completely
+//      different `settings.json5` from the one the person installing it edited,
+//      and may have no access to their media folders at all.
+//
+// The supported way to run this in the background on Windows is Task
+// Scheduler, running `meedya watch --organize --yes` at logon — that runs as
+// the person themselves, with their settings and their file access. (While
+// real organising is switched off in this build — #180 — that command refuses
+// with exit code 3, so there is nothing useful to schedule yet.)
 //
 // Service defaults: ENABLED, auto-start on login.
 //
@@ -23,7 +47,12 @@
 //   - service_status()           — query running / stopped / not-installed
 //   - is_service_running()       — quick boolean check
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+// PathBuf is only used by the linux and macos platform modules below; Windows
+// uses sc.exe via run_cmd and doesn't need it. Gate the import so clippy
+// doesn't flag it as unused on Windows builds.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::path::PathBuf;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
@@ -186,7 +215,7 @@ mod platform {
              \n\
              [Service]\n\
              Type=simple\n\
-             ExecStart={bin} watch --organize\n\
+             ExecStart={bin} watch --organize --yes\n\
              Restart=on-failure\n\
              RestartSec=5s\n\
              # Limit resource usage so background monitoring is lightweight\n\
@@ -308,6 +337,9 @@ mod platform {
         <string>{bin}</string>
         <string>watch</string>
         <string>--organize</string>
+        <!-- A service has no terminal, so it can never answer the one-off
+             confirmation prompt that `--organize` shows an attended user. -->
+        <string>--yes</string>
     </array>
 
     <!-- Auto-start on login -->
@@ -427,7 +459,12 @@ mod platform {
     pub fn install(bin_path: &Path) -> MmResult<()> {
         // Register using `sc.exe create` (requires Administrator or elevated token)
         let bin_str = bin_path.to_string_lossy();
-        let bin_cmd = format!("{bin_str} watch --organize");
+        // See the caveat at the top of this file: this command line is
+        // correct as far as it goes, but a program started this way is stopped
+        // by Windows after about thirty seconds because it does not speak the
+        // Service Control Manager protocol. `meedya service install` refuses
+        // to call this on Windows for that reason.
+        let bin_cmd = format!("{bin_str} watch --organize --yes");
 
         run_cmd(
             "sc",

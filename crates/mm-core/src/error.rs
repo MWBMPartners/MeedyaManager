@@ -40,6 +40,10 @@ pub enum MmError {
     #[error("Companion error: {0}")]
     Companion(String),
 
+    /// Disc image error (reading/identifying an optical disc image, e.g. ISO/NRG/MDS)
+    #[error("Disc image error: {0}")]
+    Disc(String),
+
     /// Application state persistence error
     #[error("State error: {0}")]
     State(String),
@@ -96,6 +100,9 @@ mod tests {
 
         let err = MmError::Rename("destination exists".into());
         assert_eq!(err.to_string(), "Rename error: destination exists");
+
+        let err = MmError::Disc("unreadable sector".into());
+        assert_eq!(err.to_string(), "Disc image error: unreadable sector");
 
         let err = MmError::Health("disk full".into());
         assert_eq!(err.to_string(), "Health check failed: disk full");

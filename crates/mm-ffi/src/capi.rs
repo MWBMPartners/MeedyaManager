@@ -23,7 +23,7 @@
 
 use std::ffi::{CStr, CString, c_char};
 
-use crate::types::{MmFfiError, TagEntry};
+use crate::types::{MmFfiError, TagEntry, WriteMetadataResult};
 use crate::uniffi_api;
 
 // ---------------------------------------------------------------------------
@@ -138,7 +138,12 @@ pub unsafe extern "C" fn mm_ffi_scan_directory(
 
 /// Read all metadata tags from a file and return them as a JSON array.
 ///
-/// On success: `[{"key":"title","value":"Track Name"},...]`
+/// On success: `[{"key":"title","value":"Track Name"},...]`. The `language`
+/// entry may also carry `"note":"<plain-English text>"` when the file's tags
+/// disagree about the language (for example a WAV whose RIFF INFO chunk says
+/// `fre` and whose ID3 tag says `ger`) — text for the app to show beside the
+/// value. The `note` key is left out entirely when there is nothing to say,
+/// and never appears on any other entry.
 /// On failure: `{"error":"<message>"}`
 /// Caller must free with `mm_ffi_free_string`.
 ///
@@ -163,7 +168,22 @@ pub unsafe extern "C" fn mm_ffi_get_metadata(path: *const c_char) -> *const c_ch
 
 /// Write metadata tags to a file from a JSON array of `{key, value}` objects.
 ///
-/// On success: `{"ok":true}`
+/// Each object may also carry a `note` (as `mm_ffi_get_metadata` returns
+/// them); it is ignored, so that JSON can be sent straight back.
+///
+/// Each key may appear once: two or more objects with the same key are
+/// refused, naming the key and each value, and the file is left untouched.
+///
+/// A `language` value must be ONE value: one holding a zero character
+/// (written `\u0000` in the JSON — several values, the way a tag separates
+/// them) or any other control character is refused, and the file is left
+/// untouched.
+///
+/// On success: `{"ok":true}`, or, when a person should be told something
+/// about what was stored, `{"ok":true,"notes":[{"key":"language",
+/// "value":"pt-BR","note":"<plain-English text>"}]}` — for example that an
+/// MP3 can only store `por` for `pt-BR`, losing the region. The `notes` key
+/// is left out entirely when there is nothing to say.
 /// On failure: `{"error":"<message>"}`
 /// Caller must free with `mm_ffi_free_string`.
 ///
@@ -190,9 +210,27 @@ pub unsafe extern "C" fn mm_ffi_write_metadata(
     };
 
     match uniffi_api::write_metadata(p, tags) {
-        Ok(()) => alloc_cstring(r#"{"ok":true}"#),
+        Ok(result) => alloc_cstring(&write_ok_json(&result)),
         Err(e) => alloc_error_json(&e.to_string()),
     }
+}
+
+/// `{"ok":true}`, with the write result's `notes` added when there are any
+/// (Codex's catch-up review of the language-policy branch, finding 6).
+fn write_ok_json(result: &WriteMetadataResult) -> String {
+    #[derive(serde::Serialize)]
+    struct WriteOk<'a> {
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        notes: Option<&'a Vec<TagEntry>>,
+    }
+    serde_json::to_string(&WriteOk {
+        ok: true,
+        notes: result.notes.as_ref(),
+    })
+    // Serialising two plain fields cannot fail; if it ever did, the write
+    // still happened, so say so rather than report an error.
+    .unwrap_or_else(|_| r#"{"ok":true}"#.to_string())
 }
 
 /// Remove a single tag field from a file.

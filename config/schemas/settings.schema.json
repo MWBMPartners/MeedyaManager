@@ -2,211 +2,220 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/MWBMPartners/MeedyaManager/config/schemas/settings.schema.json",
   "title": "MeedyaManager Settings",
-  "description": "User-editable configuration for MeedyaManager. (C) 2025-2026 MWBM Partners Ltd",
+  "description": "User-editable configuration for MeedyaManager, matching crates/mm-core/src/config/mod.rs::AppConfig field-for-field (regenerated for issue #211 — see settings_schema_properties_match_appconfig in that module's test suite). (C) 2025-2026 MWBM Partners Ltd",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "watch_paths": {
-      "type": "array",
-      "description": "Directories to monitor for new media files",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "valid_extensions": {
-      "type": "array",
-      "description": "File extensions to process (auto-lowercased)",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9]{1,12}$"
-      }
-    },
-    "rename_format": {
+    "app_name": {
       "type": "string",
-      "description": "Rename template using MusicBee-style syntax (e.g. '<Artist>/<Album>/<Title>.<Ext>')",
-      "minLength": 1
+      "default": "MeedyaManager",
+      "description": "Human-readable application name (informational only)"
     },
-    "fallback_metadata": {
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to run the application in dry-run / preview mode globally"
+    },
+    "test_mode": {
+      "type": "boolean",
+      "default": false,
+      "description": "Test Mode — when enabled, edit/tag operations create _MeedyaManager suffixed copies instead of modifying originals"
+    },
+    "watch": {
       "type": "object",
-      "description": "Default fallback values when metadata is unavailable",
+      "description": "File-system watching settings",
       "additionalProperties": false,
       "properties": {
-        "media_group": {
-          "type": "string",
-          "description": "Default media group (e.g. 'Audio')"
+        "folders": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "description": "Directories to watch for new/changed media files"
         },
-        "format_class": {
-          "type": "string",
-          "description": "Default format class (e.g. 'unknown')"
+        "recursive": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to watch subdirectories recursively"
         },
-        "media_class": {
-          "type": "string",
-          "description": "Default media class (e.g. 'Music')"
+        "poll_interval_secs": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 5,
+          "description": "Polling interval in seconds (used when native FS events are unavailable)"
         },
-        "quality_type": {
-          "type": "string",
-          "enum": ["Lossy", "Lossless"],
-          "description": "Default quality classification"
+        "debounce_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 200,
+          "description": "Debounce window in milliseconds — events within this window are merged"
+        },
+        "include_extensions": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-zA-Z0-9]{1,12}$" },
+          "default": [],
+          "description": "File extensions to include (empty = all supported media types)"
+        },
+        "exclude_extensions": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-zA-Z0-9]{1,12}$" },
+          "default": [],
+          "description": "File extensions to explicitly exclude"
         }
       }
     },
-    "filename_replacements": {
+    "rename": {
       "type": "object",
-      "description": "Character replacement map for unsafe filename characters",
-      "additionalProperties": {
-        "type": "string"
+      "description": "Rename / organise settings",
+      "additionalProperties": false,
+      "properties": {
+        "template": {
+          "type": "string",
+          "minLength": 1,
+          "default": "<Artist>/<Album>/<Title>",
+          "description": "MusicBee-style template for building the destination file path"
+        },
+        "output_dir": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Root output directory where organised files are placed (null = same directory as the source file)"
+        },
+        "conflict_strategy": {
+          "type": "string",
+          "enum": ["skip", "overwrite", "rename", "ask"],
+          "default": "skip",
+          "description": "Strategy when a destination file already exists"
+        },
+        "create_dirs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to create missing directories in the output path"
+        },
+        "copy_mode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to preserve the original file (copy) instead of moving"
+        },
+        "rules": {
+          "type": "array",
+          "default": [],
+          "description": "Named rules for conditional template selection (crate::rule_engine::Rule); evaluated in priority order, first match wins. Not modelled field-by-field here — see help/rule-syntax.md."
+        },
+        "missing_tag_mode": {
+          "type": "string",
+          "enum": ["empty", "literal", "error"],
+          "default": "empty",
+          "description": "Behaviour when a tag is missing during template evaluation"
+        }
       }
     },
     "logging": {
       "type": "object",
-      "description": "Logging configuration",
+      "description": "Logging and diagnostics settings",
       "additionalProperties": false,
       "properties": {
         "level": {
           "type": "string",
-          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-          "default": "INFO",
+          "enum": ["trace", "debug", "info", "warn", "error"],
+          "default": "info",
           "description": "Minimum log level"
         },
-        "max_log_days": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 365,
-          "default": 30,
-          "description": "Days to keep rotated log files"
+        "console": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to emit logs to the console (stdout/stderr)"
         },
-        "max_log_size_mb": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1024,
-          "default": 10,
-          "description": "Maximum size per log file (MB) before rotation"
+        "file": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Optional path to a log file (null = no file logging)"
         },
-        "console_level": {
-          "type": "string",
-          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-          "default": "WARNING",
-          "description": "Minimum level for console/terminal output"
+        "max_file_size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10485760,
+          "description": "Maximum log file size in bytes before rotation (default 10 MB)"
+        },
+        "max_rotated_files": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3,
+          "description": "Number of rotated log files to keep"
         },
         "redact_pii": {
           "type": "boolean",
           "default": true,
-          "description": "Redact user paths in log output"
+          "description": "Whether to redact personally-identifiable information (PII) in logs"
         }
       }
     },
     "providers": {
       "type": "object",
-      "description": "Metadata lookup provider configuration",
+      "description": "Metadata provider settings (API keys, enabled providers, etc.)",
       "additionalProperties": false,
       "properties": {
-        "apple_music": { "$ref": "#/$defs/providerConfig" },
-        "spotify": { "$ref": "#/$defs/providerConfig" },
-        "musicbrainz": { "$ref": "#/$defs/providerConfig" },
-        "deezer": { "$ref": "#/$defs/providerConfig" },
-        "tidal": { "$ref": "#/$defs/providerConfig" },
-        "youtube_music": { "$ref": "#/$defs/providerConfig" },
-        "amazon_music": { "$ref": "#/$defs/providerConfig" },
-        "pandora": { "$ref": "#/$defs/providerConfig" },
-        "shazam": { "$ref": "#/$defs/providerConfig" },
-        "iheart": { "$ref": "#/$defs/providerConfig" },
-        "apple_podcasts": { "$ref": "#/$defs/providerConfig" },
-        "apple_tv": { "$ref": "#/$defs/providerConfig" },
-        "itunes_store": { "$ref": "#/$defs/providerConfig" },
-        "tmdb": { "$ref": "#/$defs/providerConfig" },
-        "tvdb": { "$ref": "#/$defs/providerConfig" },
-        "imdb": { "$ref": "#/$defs/providerConfig" },
-        "isrc": { "$ref": "#/$defs/providerConfig" },
-        "eidr": { "$ref": "#/$defs/providerConfig" },
-        "iswc": { "$ref": "#/$defs/providerConfig" }
-      }
-    },
-    "cover_art": {
-      "type": "object",
-      "description": "Cover art download and embedding preferences",
-      "additionalProperties": false,
-      "properties": {
-        "download_static": {
+        "musicbrainz_enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Download static cover art (JPEG/PNG)"
+          "description": "Enable MusicBrainz lookups"
         },
-        "download_animated_square": {
-          "type": "boolean",
-          "default": true,
-          "description": "Download animated square art (MP4)"
-        },
-        "download_animated_portrait": {
-          "type": "boolean",
-          "default": true,
-          "description": "Download animated portrait art (MP4)"
-        },
-        "download_artist_spotlight": {
-          "type": "boolean",
-          "default": true,
-          "description": "Download artist spotlight video (MP4)"
-        },
-        "embed_in_tags": {
-          "type": "boolean",
-          "default": true,
-          "description": "Embed static cover art in file tags"
-        },
-        "max_static_resolution": {
-          "type": "integer",
-          "minimum": 100,
-          "maximum": 10000,
-          "default": 3000,
-          "description": "Maximum static cover art resolution (pixels)"
-        },
-        "preferred_format": {
-          "type": "string",
-          "enum": ["jpeg", "png"],
-          "default": "jpeg",
-          "description": "Preferred static format"
-        },
-        "overwrite_existing": {
+        "discogs_enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Overwrite existing cover art files"
+          "description": "Enable Discogs lookups"
+        },
+        "discogs_token": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Discogs personal access token (prefer MM_DISCOGS_TOKEN env var)"
+        },
+        "spotify_enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Spotify metadata lookups"
+        },
+        "spotify_client_id": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Spotify client ID (prefer MM_SPOTIFY_CLIENT_ID env var)"
+        },
+        "spotify_client_secret": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Spotify client secret (prefer MM_SPOTIFY_CLIENT_SECRET env var)"
+        },
+        "tmdb_enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable TMDb (The Movie Database) lookups"
+        },
+        "tmdb_api_key": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "TMDb API key (prefer MM_TMDB_API_KEY env var)"
+        },
+        "acoustid_enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable AcoustID fingerprint lookups"
+        },
+        "acoustid_api_key": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "AcoustID API key (prefer MM_ACOUSTID_API_KEY env var)"
+        },
+        "request_timeout_secs": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 30,
+          "description": "Global request timeout for provider API calls, in seconds"
+        },
+        "max_concurrent_requests": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 4,
+          "description": "Maximum concurrent provider requests"
         }
       }
-    }
-  },
-  "$defs": {
-    "providerConfig": {
-      "type": "object",
-      "description": "Provider-specific configuration",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enable or disable this provider"
-        },
-        "storefront": {
-          "type": "string",
-          "pattern": "^[a-z]{2}$",
-          "description": "ISO 3166-1 alpha-2 country code (e.g. 'gb', 'us')"
-        },
-        "language": {
-          "type": "string",
-          "description": "Preferred language for results (e.g. 'en-GB')"
-        },
-        "fetch_audio_features": {
-          "type": "boolean",
-          "description": "Fetch extended audio features (Spotify)"
-        },
-        "quality_indicators": {
-          "type": "boolean",
-          "description": "Fetch quality flags like HiFi/Atmos (Tidal)"
-        },
-        "fingerprint_seconds": {
-          "type": "integer",
-          "minimum": 5,
-          "maximum": 30,
-          "description": "Seconds of audio to fingerprint (Shazam)"
-        }
-      },
-      "additionalProperties": true
     }
   }
 }

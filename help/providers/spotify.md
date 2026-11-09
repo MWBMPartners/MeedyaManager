@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide covers setting up the **Spotify** metadata provider in MeedyaManager, including obtaining API credentials, configuring environment variables, and understanding the rich audio feature data returned.
+This guide covers the **Spotify** metadata provider in MeedyaManager: a real OAuth2 client-credentials client against the Spotify Web API's `/v1/search` endpoint. It does **not** fetch Spotify's audio-features data (energy, danceability, tempo, valence, key, mode) — no such request exists in this codebase.
 
 ---
 
@@ -19,50 +19,73 @@ This guide covers setting up the **Spotify** metadata provider in MeedyaManager,
 
 ---
 
+> ⚠️ **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`). `SpotifyProvider`
+> is real and compiled, but nothing in the shipped CLI or GUI constructs it. Setting
+> `MM_SPOTIFY_CLIENT_ID` / `MM_SPOTIFY_CLIENT_SECRET` is parsed into `mm_core::config::AppConfig`
+> at startup and will drive an "enabled but no credential configured" warning there, but **no
+> CLI/GUI command currently constructs a `SpotifyProvider` with those values** — setting them has
+> no effect on a lookup today.
+
+---
+
 ## Overview
 
-The Spotify provider uses the **Spotify Web API** to search the Spotify catalog for track and album metadata. In addition to standard metadata, Spotify is the only provider that offers **audio features** — algorithmically computed attributes like energy, danceability, tempo, and valence (positiveness) — making it especially useful for intelligent playlist organisation and mood-based sorting rules.
+`SpotifyProvider` (`crates/mm-providers/src/music/mod.rs`) obtains a bearer token via the
+Client Credentials OAuth2 flow, then calls `GET {base}/v1/search?type=track`. It is a genuine HTTP
+client with real request/response handling — but its own test suite covers only response *parsing*
+against canned JSON, not a full request/response cycle: the OAuth token endpoint is
+**hard-coded to `https://accounts.spotify.com/api/token`** rather than derived from the
+provider's configurable `base_url`, so a test that points `base_url` at a mock server still hits
+the real Spotify accounts server for the token step. There is no end-to-end (wiremock) test for
+Spotify's `search()`, unlike MusicBrainz/ISRC/ISWC.
 
-**Key features:**
+**Key features actually implemented:**
 
-- Track and album search via the Spotify catalog
-- ISRC code retrieval for precise track identification
-- Audio features: energy, danceability, tempo, valence, key, and mode
-- Popularity scores (0-100) and explicit content flags
-- Static cover art up to 640x640 pixels (JPEG)
+- Track search via the Spotify catalogue, with an ISRC-first query (`isrc:<code>`) when an ISRC is
+  supplied, otherwise `track:"<title>" artist:"<artist>"` field-prefixed terms
+- ISRC retrieval from the track's `external_ids.isrc`
+- A popularity score (0-100, normalised to 0.0-1.0) and an explicit-content flag
+- Static cover art up to whatever resolution `album.images[]` returns (Spotify typically serves up
+  to 640×640)
+
+**Not implemented — do not expect these:**
+
+- Audio features (energy, danceability, tempo, valence, key, mode) — there is no call to Spotify's
+  audio-features endpoint anywhere in this codebase (this was tracked as issue #172, parked
+  upstream; it has not been built)
+- Any endpoint beyond `/v1/search` and the token endpoint
 
 ---
 
 ## Authentication
 
-Spotify uses **OAuth2 Client Credentials** flow. You need a free Spotify Developer account and a registered application.
+Spotify uses OAuth2 **Client Credentials** flow, which needs only a Client ID and Client Secret
+(no user login, no Spotify Premium required).
 
 ### Step-by-step setup
 
-1. **Create a Spotify account** (if you don't have one)
-   - Go to [spotify.com](https://www.spotify.com/) and sign up (free tier is sufficient)
+1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and log in
+   with a free Spotify account.
+2. **Create an app**, tick the Web API checkbox, and save.
+3. Copy the **Client ID** and **Client Secret** from the app's settings page.
 
-2. **Access the Spotify Developer Dashboard**
-   - Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
-   - Log in with your Spotify account
-   - Accept the Developer Terms of Service
+### How MeedyaManager reads them today
 
-3. **Create an application**
-   - Click **Create App**
-   - Fill in the details:
-     - **App name:** MeedyaManager (or any name you prefer)
-     - **App description:** Media metadata enrichment
-     - **Redirect URI:** `http://localhost:8888/callback` (not used for Client Credentials, but required)
-   - Tick the **Web API** checkbox
-   - Click **Save**
+`SpotifyProvider::new(client_id: Option<String>, client_secret: Option<String>)` takes both
+values directly as constructor arguments. Separately, `MM_SPOTIFY_CLIENT_ID` and
+`MM_SPOTIFY_CLIENT_SECRET` **are** read into `mm_core::config::AppConfig` at startup
+(`crates/mm-core/src/config/mod.rs`) — but as the banner above explains, nothing currently threads
+that config into a constructed `SpotifyProvider`. If you want to use Spotify lookups before that
+wiring lands, pass the values directly to `SpotifyProvider::new(...)` in your own code.
 
-4. **Copy your credentials**
-   - On your app's dashboard page, click **Settings**
-   - Note the **Client ID** (visible immediately)
-   - Click **View client secret** to reveal the **Client Secret**
-   - Copy both values to your `.env` file
-
-> **Note:** The Client Credentials flow does not require a Spotify Premium subscription. A free Spotify account is sufficient for API access.
+The generic 4-tier `CredentialStore` in `crates/mm-providers/src/credentials.rs` (env
+`MM_<PROVIDER>_<KEY>` → in-memory config map → OS keyring → local `credentials.json`) also exists
+and would resolve `MM_SPOTIFY_*` values if something called it — nothing does yet. Its tier 4 is a
+**plain JSON file on disk**, not the AES-256-GCM-encrypted bundle earlier project plans described
+(issue #209).
 
 ---
 
@@ -70,156 +93,87 @@ Spotify uses **OAuth2 Client Credentials** flow. You need a free Spotify Develop
 
 ### Environment Variables (`.env`)
 
-Add the following to your `.env` file:
-
 ```env
-# Spotify API credentials (OAuth2 Client Credentials)
-SPOTIFY_CLIENT_ID=your_client_id_here
-SPOTIFY_CLIENT_SECRET=your_client_secret_here
+MM_SPOTIFY_CLIENT_ID=your_client_id_here
+MM_SPOTIFY_CLIENT_SECRET=your_client_secret_here
 ```
 
-| Variable | Description |
-| -------- | ----------- |
-| `SPOTIFY_CLIENT_ID` | Your Spotify application's Client ID |
-| `SPOTIFY_CLIENT_SECRET` | Your Spotify application's Client Secret |
+These are parsed into `AppConfig` (see above) but not yet used to construct a working provider.
 
 ### Settings (`settings.json5`)
 
-```json5
-{
-  providers: {
-    spotify: {
-      enabled: true,                    // Enable or disable this provider
-      priority: 1,                      // Provider priority (lower = higher priority)
-      fetch_audio_features: true,       // Whether to fetch audio features (extra API call per track)
-    }
-  }
-}
-```
-
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| `enabled` | `true` | Whether this provider is active |
-| `priority` | `1` | Search priority relative to other providers |
-| `fetch_audio_features` | `true` | Fetch audio features (energy, danceability, etc.) — requires one additional API call per matched track |
+There is no per-provider `settings.json5` schema — `priority` and `fetch_audio_features` are not
+real settings; nothing reads them (and there is no audio-features fetch to toggle in the first
+place). The only real inputs are the constructor's `client_id`/`client_secret` and an optional
+`base_url` override used by the crate's own tests.
 
 ---
 
 ## Available Data
 
-The Spotify provider returns the following standard metadata fields:
-
 | Field | Source | Example |
 | ----- | ------ | ------- |
 | `title` | `track.name` | "Bohemian Rhapsody" |
-| `artist` | `track.artists[0].name` | "Queen" |
+| `artist` | `track.artists[].name` joined with `"; "` | "Queen" |
 | `album` | `track.album.name` | "A Night at the Opera" |
-| `year` | `track.album.release_date` | "1975" |
-| `track_num` | `track.track_number` | "11" |
-| `disc_num` | `track.disc_number` | "1" |
+| `year` | first 4 digits of `track.album.release_date` | "1975" |
 | `isrc` | `track.external_ids.isrc` | "GBUM71029604" |
+| score | `track.popularity` (0-100) normalised to 0.0-1.0 | 0.85 |
+| content advisory (metadata) | `track.explicit` mapped to `"explicit"`/`"clean"` | "clean" |
+| duration (metadata) | `track.duration_ms` / 1000 | 354.0 |
+| provider ID (metadata) | `track.id` | "4u7EnebtmKWzUH433cf5Qv" |
 
-### Audio Features
-
-When `fetch_audio_features` is enabled, the following additional data is retrieved:
-
-| Feature | Range | Description |
-| ------- | ----- | ----------- |
-| `energy` | 0.0 - 1.0 | Perceptual intensity and activity |
-| `danceability` | 0.0 - 1.0 | How suitable the track is for dancing |
-| `tempo` | BPM | Estimated tempo in beats per minute |
-| `valence` | 0.0 - 1.0 | Musical positiveness (higher = happier) |
-| `key` | 0-11 | Musical key (0 = C, 1 = C#, ... 11 = B) |
-| `mode` | 0 or 1 | Major (1) or Minor (0) |
+There is **no `track_num`/`disc_num` field populated** (the parser doesn't read
+`track_number`/`disc_number` from the Spotify response) and **no audio-features block of any
+kind** — no energy, danceability, tempo, valence, key, or mode.
 
 ---
 
 ## Custom Tags
 
-The following custom tags are stored in the file's metadata when matched:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_spotify_id` | Spotify track ID | `"4u7EnebtmKWzUH433cf5Qv"` |
-| `custom_spotify_url` | Spotify URL for the track | `"https://open.spotify.com/track/4u7E..."` |
-| `custom_spotify_isrc` | ISRC code from Spotify | `"GBUM71029604"` |
-| `custom_spotify_popularity` | Popularity score (0-100) | `"85"` |
-| `custom_spotify_energy` | Energy level (0.0-1.0) | `"0.567"` |
-| `custom_spotify_danceability` | Danceability score (0.0-1.0) | `"0.432"` |
-| `custom_spotify_tempo` | Tempo in BPM | `"143.5"` |
-| `custom_spotify_valence` | Valence / positiveness (0.0-1.0) | `"0.234"` |
-
-These tags can be used in sorting rules. For example, to sort music by mood:
-
-```json5
-// Sort high-energy tracks into a separate folder
-rules: [
-  {
-    condition: { tag: "custom_spotify_energy", operator: ">", value: "0.8" },
-    destination: "{media_class}/High Energy/{artist}/{album}/"
-  }
-]
-```
+Any `custom_spotify_*` tag would come from the fields above once tag-writing wiring exists for
+this provider (see the reachability banner). There is **no** `custom_spotify_energy`,
+`custom_spotify_danceability`, `custom_spotify_tempo`, or `custom_spotify_valence` — those would
+require the audio-features fetch that does not exist.
 
 ---
 
 ## Cover Art
 
-Spotify provides static cover art only:
-
-| Type | Format | Resolution | Source |
-| ---- | ------ | ---------- | ------ |
-| **Static (front cover)** | JPEG | 640x640 | `track.album.images[0]` (largest) |
-
-MeedyaManager saves this as `FrontCover.jpg`.
-
-> **Note:** Spotify does not provide animated cover art. For animated covers, use the Apple Music provider.
+Every image in `track.album.images[]` is mapped through as-is (URL, width, height, `image/jpeg`) —
+Spotify itself determines the sizes returned; MeedyaManager does not request a specific size or
+upscale anything.
 
 ---
 
 ## Troubleshooting
 
-### "Spotify: failed to obtain OAuth2 access token"
+### "Spotify: failed to obtain OAuth2 access token" / `AuthenticationFailed`
 
-**Cause:** Invalid or missing credentials.
+- Verify both `client_id` and `client_secret` were passed to `SpotifyProvider::new(...)`.
+- A non-2xx response from the token endpoint raises this error with the HTTP status included.
 
-**Solutions:**
-1. Verify `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set correctly in `.env`
-2. Ensure you copied the full Client Secret (it is not partially masked)
-3. Check that your Spotify app has not been rate-limited or disabled
+### HTTP 429 from `/v1/search`
 
-### "Spotify search returned 0 results"
+- Mapped directly to `ProviderError::RateLimited("spotify")`. MeedyaManager's shared rate limiter
+  (`governor`) is **not** consulted before this request — only MusicBrainz, ISRC, and ISWC go
+  through the shared limiter. A burst of Spotify searches can hit this with no client-side
+  throttling.
 
-**Possible causes:**
-- The track may not be available in the Spotify catalog
-- Search query may be too specific or have unusual characters
-- MeedyaManager constructs queries with field prefixes (`track:`, `artist:`, `album:`) for precision — if results are sparse, ensure metadata is reasonably accurate
+### Expecting audio features (energy, danceability, tempo, valence)
 
-### HTTP 429 — Rate limit exceeded
-
-**Cause:** Too many API requests in a short period.
-
-**Solution:**
-- MeedyaManager includes built-in rate limiting for all providers
-- If you encounter this in development, wait 30 seconds and retry
-- Spotify's rate limits are generous for Client Credentials flow but can be hit during bulk operations
-
-### Audio features returning `None`
-
-**Cause:** Spotify's Audio Features endpoint may not have data for all tracks. Podcasts, audiobooks, and some regional tracks lack audio feature data.
-
-**Solution:** This is expected behaviour. MeedyaManager will skip audio feature tags for tracks where data is unavailable.
+**This is expected to be absent.** No code in this provider calls Spotify's audio-features
+endpoint — see [Available Data](#available-data).
 
 ---
 
 ## Legal Notes
 
-- The Spotify Web API is provided under the [Spotify Developer Terms of Service](https://developer.spotify.com/terms/)
-- A free Spotify account is sufficient for API access (no Premium required)
-- Client Credentials tokens are cached for 1 hour and refreshed automatically
-- Audio features are computed by Spotify's algorithms and may not always align with human perception
-- Cover art and metadata are the property of their respective rights holders
-- MeedyaManager stores provider IDs and URLs as custom metadata tags for reference and linking; this does not imply endorsement by Spotify AB
+- The Spotify Web API is provided under the [Spotify Developer Terms of Service](https://developer.spotify.com/terms/).
+- A free Spotify account is sufficient for Client Credentials access (no Premium required).
+- Cover art and metadata are the property of their respective rights holders.
+- MeedyaManager retrieves metadata solely for the purpose of organising the user's own media
+  library; this does not imply endorsement by Spotify AB.
 
 ---
 

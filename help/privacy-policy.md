@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 >
-> Last updated: 2026-03-06
+> Last updated: 2026-09-03
 
 ## Overview
 
@@ -18,9 +18,11 @@ how it is used, and what is sent to third-party services.
   crash reports, or behavioural analytics.
 - **No user accounts** — There is no sign-up, login, or registration.
 - **No tracking** — No cookies, fingerprinting, or advertising identifiers.
-- **No cloud storage** — All configuration and media files remain on your
-  device unless you explicitly enable cloud monitoring (which only reads
-  file metadata from services you connect).
+- **No cloud storage** — All configuration and media files remain on your device. Cloud
+  storage monitoring (OneDrive, Google Drive, Dropbox, MEGA, iCloud) is architectural
+  scaffolding only right now: `mm-cloud` makes no real network calls and no OAuth flow
+  actually runs, so there is nothing to disclose here yet (issues #94 through #102, reopened
+  as stubs).
 
 ---
 
@@ -32,7 +34,7 @@ MeedyaManager stores the following data on your device:
 | ---- | -------- | ------- |
 | Settings | `settings.json5` in your platform config directory | Application preferences |
 | Test Mode manifest | `testmode_manifest.json` in config directory | Tracks test-mode file pairs |
-| Corruption log | `corruption.log` in config directory | Records failed write operations |
+| Corruption log | `corruption.log` in config directory | Records failed tag-write operations (see [File Integrity](file-integrity.md) — this log is not currently populated by any real edit path) |
 | API credentials | OS keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service) | Authentication for metadata providers |
 
 None of this data is transmitted to MWBM Partners Ltd or any third party.
@@ -53,25 +55,28 @@ identifiable information to these services.
 
 ### Provider Privacy Policies
 
-Each provider has its own privacy policy governing how they handle your
-queries. MeedyaManager does not control these services.
+This list is exactly the set of providers that have a real, network-calling implementation in
+`crates/mm-providers` (verified by checking each provider's `impl MetadataProvider` for an
+actual HTTP call). Several other provider names appear in the codebase (YouTube Music, Amazon
+Music, Pandora, Tidal, Shazam, iHeart) but are `stub_provider!` placeholders that make no
+network calls at all and are disabled by default — nothing you do can cause them to transmit
+your data today, so they are intentionally omitted here. Discogs and AcoustID do not exist in
+the codebase in any form.
 
-| Provider | Privacy Policy |
-| -------- | -------------- |
-| MusicBrainz | <https://musicbrainz.org/doc/MusicBrainz_Privacy_Policy> |
-| Discogs | <https://www.discogs.com/privacy> |
-| Spotify | <https://www.spotify.com/legal/privacy-policy/> |
-| TMDb | <https://www.themoviedb.org/privacy-policy> |
-| TVDb | <https://thetvdb.com/privacy-policy> |
-| AcoustID | <https://acoustid.org/privacy> |
-| Deezer | <https://www.deezer.com/legal/personal-datas> |
-| Tidal | <https://tidal.com/privacy> |
-| Shazam | <https://www.shazam.com/privacy> |
-| IMDb | <https://www.imdb.com/privacy> |
-| ISRC | <https://isrc.ifpi.org/en/privacy-policy> |
-| ISWC | <https://www.iswc.org/privacy> |
-| iHeartRadio | <https://www.iheart.com/privacy/> |
-| Pandora | <https://www.pandora.com/privacy> |
+| Provider | Used For | Privacy Policy |
+| -------- | -------- | -------------- |
+| MusicBrainz | Music metadata; also backs ISRC and ISWC lookups | <https://musicbrainz.org/doc/MusicBrainz_Privacy_Policy> |
+| Spotify | Music metadata | <https://www.spotify.com/legal/privacy-policy/> |
+| Deezer | Music metadata | <https://www.deezer.com/legal/personal-datas> |
+| Apple (iTunes Search API) | Apple Music, Apple TV, iTunes Store, and Apple Podcasts metadata | <https://www.apple.com/legal/privacy/> |
+| TMDb | Movie/TV metadata | <https://www.themoviedb.org/privacy-policy> |
+| TheTVDB | TV metadata | <https://thetvdb.com/privacy-policy> |
+| OMDb (IMDb data) | Movie/TV metadata — requires your own API key | <https://www.omdbapi.com/legal.htm> |
+| EIDR | Identifier (EIDR) lookups | <https://eidr.org/privacy-policy/> |
+
+ISRC and ISWC lookups are performed against MusicBrainz's own API
+(`musicbrainz.org/ws/2/recording` and `/ws/2/work`), so they share MusicBrainz's privacy
+policy rather than having one of their own.
 
 ### Enabling Providers is Opt-In
 
@@ -101,10 +106,15 @@ MeedyaManager requires outbound network access (`internetClient` /
 1. Metadata provider API calls (only when you perform a lookup)
 2. Cover art downloads (from provider CDNs)
 3. Update checks (GitHub Releases API)
-4. Media server mode (local network only, user-initiated)
 
 MeedyaManager does **not** make any network requests at idle. All network
 activity is user-initiated.
+
+There is no media server mode to disclose here yet: `meedya serve` currently exits immediately
+after printing a stub message and never opens a network listener
+(`crates/mm-cli/src/commands/serve.rs`) — no axum router is ever built. This page will be
+updated with a real network-access disclosure once M10 (Secure Media Server) delivers a
+working server.
 
 ---
 

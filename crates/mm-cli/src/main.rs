@@ -12,7 +12,7 @@
 //   meedya edit <file>        — Edit metadata tags and cover art
 //   meedya rule <action>      — Validate templates and list tags
 //   meedya watch [paths]      — Watch directories for changes
-//   meedya lookup <query>     — Search metadata providers (stub — M5)
+//   meedya lookup <query>     — Search metadata providers
 //   meedya config <action>    — Manage configuration
 //   meedya report-bug         — Generate a bug report
 //   meedya export             — Export library to database (M9)
@@ -25,6 +25,12 @@ mod commands;
 mod context;
 // Output formatting helpers (tables, JSON, colours)
 mod output;
+// Helpers shared by the unit tests of several command modules — chiefly the
+// single process-wide lock that guards the `MM_CONFIG_DIR` environment
+// variable. Compiled only when running tests; see `test_support.rs` for why
+// it has to be shared rather than duplicated per module.
+#[cfg(test)]
+mod test_support;
 
 use clap::Parser;
 use context::CliContext;
@@ -32,8 +38,7 @@ use output::ExitCode;
 
 /// MeedyaManager — Cross-platform media file manager and auto-organizer.
 ///
-/// A powerful CLI for scanning, organising, and enriching your media library
-/// with metadata from 19+ providers.
+/// A powerful CLI for scanning, organising, and enriching your media library.
 #[derive(Parser, Debug)]
 #[command(
     name = "meedya",
@@ -81,7 +86,7 @@ enum Commands {
     /// Watch directories for media file changes
     Watch(commands::watch::WatchArgs),
 
-    /// Search metadata providers for a query (coming in M5)
+    /// Search metadata providers for a query (not available in this alpha)
     Lookup(commands::lookup::LookupArgs),
 
     /// Manage MeedyaManager configuration
@@ -91,10 +96,10 @@ enum Commands {
     #[command(name = "report-bug")]
     ReportBug(commands::report_bug::ReportBugArgs),
 
-    /// Export media library metadata to a database (M9)
+    /// Export media library metadata to a database (preview — not functional in this alpha)
     Export(commands::export::ExportArgs),
 
-    /// Start the HTTPS media server with JWT authentication (M10)
+    /// Start the HTTPS media server with JWT authentication (preview — not functional in this alpha)
     Serve(commands::serve::ServeArgs),
 
     /// Manage the MeedyaManager background service (install/start/stop/status)
@@ -111,23 +116,50 @@ async fn main() {
     // Initialise i18n — must run before any user-visible strings are produced
     mm_core::i18n::init();
 
-    // Parse command-line arguments using clap derive
-    let cli = Cli::parse();
+    // Parse command-line arguments using clap derive. The matches are kept
+    // (rather than calling `Cli::parse()`, which drops them) because
+    // `meedya edit` needs to know where each of its options came on the
+    // command line, to name them in that order when it refuses a field given
+    // twice (the stand-in review of round 7, L5) — `Cli` itself only keeps
+    // the values.
+    let matches = <Cli as clap::CommandFactory>::command().get_matches();
+    let cli =
+        <Cli as clap::FromArgMatches>::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    let edit_order = matches
+        .subcommand_matches("edit")
+        .map(commands::edit::TypedOrder::from_matches)
+        .unwrap_or_default();
 
-    // Initialise tracing subscriber with verbosity level
-    let filter_level = match cli.verbose {
+    // Console verbosity comes from the -v count, never from settings.json5.
+    // The CLI is user-facing, so its terminal output stays quiet by default
+    // even when the config asks for a chatty *file* log.
+    let console_level = match cli.verbose {
         0 => "warn", // Default: warnings only (CLI is user-facing)
         1 => "info",
         2 => "debug",
         _ => "trace",
     };
-    // Ignore subscriber init errors (e.g. if already initialised in tests)
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter_level)
-        .try_init();
+
+    // ── Bootstrap subscriber ────────────────────────────────────────────
+    //
+    // Chicken-and-egg: the real subscriber needs `logging.file` and
+    // `logging.level` from the config, but loading the config itself emits
+    // tracing events (which file it read, why it fell back to defaults) that
+    // are exactly what a user debugging a bad settings.json5 needs to see.
+    //
+    // Solved with a THREAD-LOCAL default that covers only the config load.
+    // `with_default` does not claim the process-global subscriber slot, so
+    // the real subscriber installed below is still the first and only global
+    // one — installing a global here would permanently block the file sink.
+    let bootstrap = tracing_subscriber::fmt()
+        .with_env_filter(console_level)
+        .finish();
 
     // Build the shared CLI context (loads config, sets output format)
-    let ctx = match CliContext::build(cli.config.as_deref(), cli.verbose, cli.json, cli.dry_run) {
+    let ctx_result = tracing::subscriber::with_default(bootstrap, || {
+        CliContext::build(cli.config.as_deref(), cli.verbose, cli.json, cli.dry_run)
+    });
+    let ctx = match ctx_result {
         Ok(ctx) => ctx,
         Err(e) => {
             output::print_error(&format!("Failed to initialise: {e}"));
@@ -135,11 +167,40 @@ async fn main() {
         }
     };
 
+    // ── Real subscriber ─────────────────────────────────────────────────
+    //
+    // Issue #50: `init_logging` had zero callers, so the whole `[logging]`
+    // section of settings.json5 — file path, level, PII redaction — did
+    // nothing. Wire it up now that the config is in hand.
+    let mut log_config = mm_core::logging::LogConfig::from_settings(&ctx.config.logging);
+    // The -v flags own the console; settings.json5 owns the file.
+    log_config.console_level = console_level.to_string();
+    match mm_core::logging::init_logging(&log_config) {
+        Ok(Some(path)) => {
+            tracing::debug!(log_file = %path.display(), "File logging active");
+        }
+        Ok(None) => {
+            // File logging is off — console only. Nothing to announce.
+        }
+        Err(e) => {
+            // A logging failure (unwritable log directory, say) must never
+            // stop the command the user actually asked for. Fall back to a
+            // console-only subscriber so the run is not silent, and tell them
+            // plainly why their configured log file is not being written.
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(console_level)
+                .try_init();
+            output::print_warning(&format!(
+                "Could not initialise file logging: {e} — continuing with console output only"
+            ));
+        }
+    }
+
     // Dispatch to the appropriate subcommand handler
     let exit_code = match cli.command {
         Some(Commands::Scan(ref args)) => commands::scan::run(&ctx, args),
         Some(Commands::Debug(ref args)) => commands::debug::run(&ctx, args),
-        Some(Commands::Edit(ref args)) => commands::edit::run(&ctx, args),
+        Some(Commands::Edit(ref args)) => commands::edit::run_as_typed(&ctx, args, &edit_order),
         Some(Commands::Rule(ref args)) => commands::rule::run(&ctx, args),
         Some(Commands::Watch(ref args)) => commands::watch::run(&ctx, args).await,
         Some(Commands::Lookup(ref args)) => commands::lookup::run(&ctx, args),
@@ -168,5 +229,24 @@ async fn main() {
             output::print_error(&format!("{e}"));
             std::process::exit(ExitCode::ERROR);
         }
+    }
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// `clap`'s own structural sanity check for the derived `Cli` definition
+    /// — catches duplicate/conflicting short or long flags, malformed
+    /// argument groups, and similar mistakes across every subcommand. These
+    /// bugs would otherwise only surface at runtime (and only for whichever
+    /// subcommand happens to get exercised), so this test panics loudly at
+    /// `cargo test` time instead of waiting for a user to trip over it.
+    #[test]
+    fn cli_definition_is_valid() {
+        Cli::command().debug_assert();
     }
 }

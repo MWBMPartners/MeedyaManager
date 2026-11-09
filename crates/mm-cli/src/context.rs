@@ -15,7 +15,14 @@ use std::path::Path;
 ///
 /// Created once at startup from global CLI flags and the loaded configuration.
 /// Each command receives an immutable reference to this struct.
-#[derive(Debug)]
+///
+/// `Clone` is here for one specific reason. `meedya watch --organize` hands a
+/// context to a background thread that outlives the borrow the command was
+/// given, and it also has to change one setting for its own use (see
+/// `watch::force_skip_conflicts`) without touching the context every other
+/// command is reading. Cloning is cheap enough — this is a configuration
+/// struct built once at start-up, not something copied in a loop.
+#[derive(Debug, Clone)]
 pub struct CliContext {
     /// Loaded application configuration (from file or defaults)
     pub config: mm_core::config::AppConfig,

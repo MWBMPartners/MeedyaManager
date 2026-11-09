@@ -8,7 +8,7 @@
 // time via `include_str!` and can be overridden at runtime by placing a
 // modified copy at:
 //
-//   Linux/macOS:  ~/.config/meedyamanager/tags.json5
+//   Linux/macOS:  ~/.config/MeedyaManager/tags.json5 (or ~/Library/Application Support/MeedyaManager on macOS)
 //   Windows:      %APPDATA%\MeedyaManager\tags.json5
 //
 // HOW TO ADD A STANDARD TAG
@@ -119,6 +119,11 @@
       "id3": "TSRC",  "vorbis": "ISRC",          "mp4": null,     "ape": "ISRC"
     },
     {
+      "id": "iswc",         "name": "ISWC",        "category": "core",   "multi": false,
+      "desc": "International Standard Musical Work Code (composition identifier, e.g. \"T-034.524.680-1\")",
+      "id3": "TXXX:ISWC", "vorbis": "ISWC",        "mp4": null,     "ape": "ISWC"
+    },
+    {
       "id": "barcode",      "name": "Barcode",     "category": "core",   "multi": false,
       "desc": "Product barcode / UPC / EAN",
       "id3": "TXXX:BARCODE", "vorbis": "BARCODE", "mp4": null,     "ape": "Barcode"
@@ -190,9 +195,17 @@
       "id3": "TEXT",  "vorbis": "LYRICIST",   "mp4": null,     "ape": "Lyricist"
     },
     {
+      // Policy MWBM-MEDIA-LANG 1.0.0 (docs/standards/media-language-bcp47-policy.md):
+      // the value is a BCP 47 tag, not an ISO 639-1 code — the two look
+      // alike for a two-letter language such as "en", but BCP 47 also
+      // covers "pt-BR", "zh-Hant" and so on, which ISO 639-1 alone cannot
+      // say. mp4 was wrongly "null" here: lofty 0.22.4 does map this tag
+      // on MP4/M4A files, onto the freeform iTunes atom
+      // "----:com.apple.iTunes:LANGUAGE" (verified by reading lofty's own
+      // mapping table, src/tag/item.rs's ILST_MAP, rather than guessed at).
       "id": "language",  "name": "Language",  "category": "extended", "multi": false,
-      "desc": "Language of the lyrics (ISO 639-1, e.g. \"en\", \"fr\", \"ja\")",
-      "id3": "TLAN",  "vorbis": "LANGUAGE",   "mp4": null,     "ape": "Language"
+      "desc": "Language of the lyrics as a BCP 47 tag, e.g. \"en\", \"pt-BR\", \"zh-Hant\"; ID3 stores the three-letter form",
+      "id3": "TLAN",  "vorbis": "LANGUAGE",   "mp4": "----:com.apple.iTunes:LANGUAGE",  "ape": "Language"
     },
     {
       "id": "mood",      "name": "Mood",      "category": "extended", "multi": false,

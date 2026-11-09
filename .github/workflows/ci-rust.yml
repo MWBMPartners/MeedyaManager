@@ -4,36 +4,72 @@
 name: Rust Core CI
 
 on:
+  # Direct pushes to main, alpha or beta still trigger native runs.
   push:
-    branches: [main]
+    branches: [main, alpha, beta]
+    # Keep in sync with the `rust` detection regex in pr-gate.yml's `changes`
+    # job (hard rule — see .claude/CLAUDE.md branch-protection section).
+    # rust-toolchain.toml, deny.toml, clippy.toml and .cargo/ were previously
+    # missing here even though pr-gate.yml's regex already covered them —
+    # fixed as part of #204/#197 so a direct push touching only, say, the
+    # toolchain pin actually triggers this workflow instead of silently
+    # skipping it.
     paths:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
-  pull_request:
-    branches: [main]
-    paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "deny.toml"
+      - "clippy.toml"
+      - ".cargo/**"
+      # MWBM-MEDIA-LANG policy copies (kept in sync with pr-gate.yml's own
+      # `rust` detection regex — see the comment there) — checked by the
+      # media-language-policy job below.
+      - "docs/standards/**"
+      - "tests/fixtures/**"
+      - "scripts/media-lang/**"
+  # PRs reach this workflow via pr-gate.yml (the umbrella). pr-gate decides
+  # whether to call it based on changed paths; do NOT add a pull_request:
+  # trigger here or runs will duplicate.
+  workflow_call:
+
+# Every job here only reads the checkout and (for media-language-policy)
+# public data on github.com — nothing here ever needs to write anything.
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   rust-ci:
-    name: Rust ${{ matrix.rust }} on ${{ matrix.os }}
+    name: Rust (${{ matrix.rust }}) on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable]
+        # This label is cosmetic, not a second toolchain under test (#197).
+        # The actual compiler version is pinned by rust-toolchain.toml
+        # (channel = "1.98.0") at the repo root: rustup's toolchain-file
+        # override takes precedence over whatever `dtolnay/rust-toolchain@stable`
+        # sets as the rustup default below, so every job here really builds
+        # with 1.98.0 regardless of this label. Renamed from "stable" so the
+        # matrix doesn't imply a floating/second toolchain is being exercised.
+        rust: [pinned]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # NOTE (#197): this installs and `rustup default`s the *actual* latest
+      # "stable" release, but that default is overridden the moment cargo/
+      # rustc runs inside this checkout, because rustup's directory-walk
+      # toolchain-file override (rust-toolchain.toml) outranks `rustup
+      # default` (verified against rustup's own src/config.rs
+      # find_override_config resolution order). So leaving this action as
+      # `@stable` — across all ~11 workflow usages — is correct and does NOT
+      # defeat the pin; do not "fix" this by pinning the action itself.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -48,11 +84,28 @@ jobs:
       - name: Run Clippy lints
         # mm-gtk requires GTK4 system libraries (only available in ci-linux.yml).
         # Exclude it here so the 3-OS matrix stays clean on macOS and Windows.
-        run: cargo clippy --workspace --all-targets --exclude mm-gtk -- -D warnings
+        # No `--exclude mm-gtk` needed: the root Cargo.toml carries
+        # `exclude = ["crates/mm-gtk"]`, so the crate is not a workspace member
+        # and `--workspace` never selects it.  Passing --exclude for a
+        # non-member makes cargo emit
+        #   warning: excluded package(s) `mm-gtk` not found in workspace
+        # on every run, which is noise in the log for no benefit.
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
         # mm-gtk is exercised in ci-linux.yml where GTK4 is installed via apt.
-        run: cargo test --workspace --exclude mm-gtk
+        # See the note on the clippy step above — mm-gtk is excluded at the
+        # workspace level, so --exclude here only produces a warning.
+        run: cargo test --workspace
+
+      - name: Build documentation with warnings-as-errors
+        # Gate rustdoc builds: ensure no warnings remain. This catches broken
+        # intra-doc links, malformed HTML tags, unresolved references, etc.
+        # The build is skipped on macOS and Windows (mm-gtk GTK4 deps), but
+        # a ubuntu-latest job is sufficient to catch rustdoc issues that are
+        # platform-independent.
+        if: runner.os == 'Linux'
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
   # ---------------------------------------------------------------------------
   # Version Sync — verify all platform version files match Cargo.toml
@@ -93,6 +146,31 @@ jobs:
             FAILED=1
           fi
 
+          # Check crates/mm-gtk/Cargo.toml. mm-gtk is `exclude`d from the
+          # workspace (gettextrs needs Linux system libs), so it CANNOT use
+          # `version.workspace = true` — its version is a hand-maintained
+          # literal and had silently drifted to 1.3.0 (#197). Unlike the
+          # plist/MSIX checks above, this compares the FULL version string
+          # including any pre-release suffix (e.g. "1.4.0-alpha.1") — mm-gtk
+          # is a dev/CI-only crate, not a versioned platform bundle with its
+          # own numbering scheme, so there is no reason to strip it here.
+          GTK_VER=$(grep '^version' crates/mm-gtk/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "mm-gtk Cargo.toml version: $GTK_VER (expected: $CARGO_VER)"
+          if [ "$GTK_VER" != "$CARGO_VER" ]; then
+            echo "::error file=crates/mm-gtk/Cargo.toml::mm-gtk version ($GTK_VER) does not match Cargo.toml ($CARGO_VER)"
+            FAILED=1
+          fi
+
+          # Check linux/snap/snapcraft.yaml. Same rationale as mm-gtk above:
+          # exact match against the full Cargo.toml semver, pre-release
+          # suffix included — it had silently drifted to 0.9.0 (#197).
+          SNAP_VER=$(grep '^version:' linux/snap/snapcraft.yaml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "snapcraft.yaml version: $SNAP_VER (expected: $CARGO_VER)"
+          if [ "$SNAP_VER" != "$CARGO_VER" ]; then
+            echo "::error file=linux/snap/snapcraft.yaml::snapcraft.yaml version ($SNAP_VER) does not match Cargo.toml ($CARGO_VER)"
+            FAILED=1
+          fi
+
           if [ -n "$FAILED" ]; then
             echo ""
             echo "Version files are out of sync!"
@@ -101,3 +179,30 @@ jobs:
           fi
 
           echo "All platform versions in sync with Cargo.toml ($CARGO_VER)"
+
+  # ---------------------------------------------------------------------------
+  # Media Language Policy — verify the local copies of MWBM-MEDIA-LANG are
+  # byte-for-byte identical to the master files in MWBMPartners/MeedyaSuite-core
+  # (docs/standards/media-language-bcp47-policy.md, section 8.3). The checker
+  # itself is one of the six files it checks (scripts/media-lang/check_copies.py)
+  # — see the mandatory pointer in AGENTS.md / .claude/CLAUDE.md / .OpenAI/CONTEXT.md
+  # for what this policy covers and why editing a copy here is always wrong
+  # (change the master in MeedyaSuite-core, then run --update).
+  media-language-policy:
+    name: Media Language Policy — copy check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check MWBM-MEDIA-LANG policy copies against the master
+        # GITHUB_TOKEN raises the GitHub API rate limit for the commit
+        # lookup this check makes (github.com/…/compare/…) from 60/hour
+        # (unauthenticated, shared by every runner on this network range)
+        # to several thousand — without it, this step fails intermittently
+        # for a reason that has nothing to do with whether the copies are
+        # actually correct.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/media-lang/check_copies.py

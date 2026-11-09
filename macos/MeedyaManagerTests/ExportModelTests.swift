@@ -6,7 +6,9 @@
 // running SwiftUI host (Swift Testing framework, no @MainActor needed).
 
 import Testing
-@testable import MeedyaManager   // excluded types replicated below
+// No @testable import: tests use local type replicas per the test target's
+// "standalone tests" design (see Package.swift). The previous comment on
+// the next line is still accurate.
 
 // ── Replicas (SPM executableTarget cannot be @testable-imported) ─────────────
 

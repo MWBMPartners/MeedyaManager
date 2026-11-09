@@ -47,7 +47,7 @@ uniffi::setup_scaffolding!("mm_ffi");
 /// Async callback interfaces for event delivery from Rust to native UIs
 pub mod callbacks;
 
-/// C API: #[no_mangle] extern "C" functions for Windows P/Invoke
+/// C API: \[no_mangle\] extern "C" functions for Windows P/Invoke
 pub mod capi;
 
 /// FFI-safe shared data types (TagEntry, RenamePreviewFfi, MmFfiError, etc.)
@@ -129,6 +129,7 @@ mod tests {
         let entry = TagEntry {
             key: "artist".into(),
             value: "Pink Floyd".into(),
+            note: None,
         };
         assert_eq!(entry.key, "artist");
         assert_eq!(entry.value, "Pink Floyd");
@@ -140,6 +141,7 @@ mod tests {
         let entry = TagEntry {
             key: "title".into(),
             value: "The Wall".into(),
+            note: None,
         };
         let cloned = entry.clone();
         assert_eq!(entry, cloned);

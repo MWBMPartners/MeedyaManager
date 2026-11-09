@@ -5,9 +5,10 @@
 // Provides a lazy-initialised, process-global registry of all metadata tag
 // definitions that MeedyaManager recognises.  Data is sourced from
 // `config/tags.json5` (embedded at compile time) with an optional user
-// override at:
+// override at `<config_dir>/tags.json5` (see `mm_core::config::app_config_dir()`
+// for exactly how `<config_dir>` is resolved on each platform), e.g.:
 //
-//   Linux/macOS:  ~/.config/meedyamanager/tags.json5
+//   Linux/macOS:  ~/.config/MeedyaManager/tags.json5 (or ~/Library/Application Support/MeedyaManager on macOS)
 //   Windows:      %APPDATA%\MeedyaManager\tags.json5
 //
 // Public API:
@@ -18,9 +19,49 @@
 //   - known_template_tags()     — sorted list of template names (for template
 //                                 validation and UI pickers)
 //   - known_template_tags_for_category(cat) — filtered by category
+//
+// ## Relationship to upstream `meedya_core::metadata::tag_registry`
+//
+// MeedyaManager's local registry is a **UI / template** registry: it maps
+// template display names like `<Artist>` to internal MM string IDs plus
+// per-format frame hints (id3, vorbis, mp4, ape) and a category for the
+// rename builder UI.  It is populated from `config/tags.json5`.
+//
+// The upstream registry (`meedya_core::metadata::TagRegistry`) is a
+// **provider / API-JSON** registry: it maps tag IDs to JSON-extraction
+// paths plus target atom namespaces, and is populated from a TOML file
+// shipped by the consuming MeedyaSuite tool.  It serves the
+// MeedyaDL-style "API response → atom write" flow.
+//
+// These two registries solve different problems and are not interchangeable.
+// We keep the local UI registry as-is, and additionally re-export the
+// upstream provider-registry types under `provider::*` for future use by
+// MeedyaManager's metadata-provider integration (M5+).
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::LazyLock;
+
+// ---------------------------------------------------------------------------
+// Upstream provider-registry re-exports
+// ---------------------------------------------------------------------------
+
+/// Re-exports of the upstream config-driven provider tag registry.
+///
+/// Use these types when wiring metadata providers that emit raw JSON
+/// responses needing to be mapped to file-level atoms via a TOML config
+/// (the MeedyaDL flow).  They are distinct from the local UI-facing
+/// [`TagDefinition`] / [`TagCategory`] / [`CustomTagDefinition`] types
+/// declared below, which drive the rename rule engine and tag pickers.
+pub mod provider {
+    pub use meedya_core::metadata::tag_registry::{
+        AtomTarget, TagDefinition, TagRegistry, TagScope, TagValueType,
+    };
+
+    /// Upstream JSON-path extraction helper — used by `write_registry_tags`
+    /// and other provider-side functions to dig into raw API responses.
+    pub use meedya_core::metadata::json_path::{extract_json_value, value_to_string};
+}
 
 // ---------------------------------------------------------------------------
 // Embedded default registry — compiled into every binary build
@@ -180,10 +221,18 @@ static REGISTRY: LazyLock<TagRegistryData> = LazyLock::new(|| {
         .expect("built-in config/tags.json5 is malformed — this is a compile-time defect")
 });
 
+/// Resolve the path to the user's `tags.json5` override file.
+///
+/// `pub(crate)` (rather than private) so `config::tests::all_core_paths_share_one_directory`
+/// can assert this path shares a directory with every other module's
+/// state — see issue #212 (P0-CONFIGDIR).
+pub(crate) fn user_override_path() -> Option<PathBuf> {
+    Some(crate::config::app_config_dir().ok()?.join("tags.json5"))
+}
+
 /// Try to read the user's custom `tags.json5` from the OS config directory.
 fn load_user_override() -> Option<String> {
-    let config_root = dirs::config_dir()?;
-    let path = config_root.join("meedyamanager").join("tags.json5");
+    let path = user_override_path()?;
     std::fs::read_to_string(&path).ok()
 }
 
@@ -296,6 +345,7 @@ pub fn all_known_template_tags() -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
 
@@ -329,6 +379,18 @@ mod tests {
         let t = tag_by_id("artist").expect("'artist' tag must be in registry");
         assert_eq!(t.name, "Artist");
         assert!(t.multi, "artist is multi-value");
+    }
+
+    /// #196: the ISWC identifier tag is registered and matches core's
+    /// CommonTag::Iswc frame mappings (id3 TXXX:ISWC / vorbis ISWC).
+    #[test]
+    fn tag_by_id_iswc() {
+        let t = tag_by_id("iswc").expect("'iswc' tag must be in registry (#196)");
+        assert_eq!(t.name, "ISWC");
+        assert_eq!(t.category, TagCategory::Core);
+        assert!(!t.multi);
+        assert_eq!(t.id3.as_deref(), Some("TXXX:ISWC"));
+        assert_eq!(t.vorbis.as_deref(), Some("ISWC"));
     }
 
     #[test]
@@ -474,5 +536,71 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(all, sorted);
+    }
+
+    // ── Upstream provider-registry re-export smoke tests ────────────────────
+
+    #[test]
+    fn upstream_provider_registry_resolves() {
+        // Build a trivial upstream registry from inline TOML to confirm
+        // the re-exported types are usable from MM code without referencing
+        // the meedya_metadata crate directly.
+        let toml = r#"
+[album.upc]
+json_path = "attributes.upc"
+value_type = "string"
+atoms = [ { namespace = "itunes", name = "UPC" } ]
+
+[track.isrc]
+json_path = "attributes.isrc"
+value_type = "string"
+atoms = [ { namespace = "itunes", name = "ISRC" } ]
+"#;
+        let registry = provider::TagRegistry::from_toml(toml).expect("parse TOML");
+        assert_eq!(registry.album_tags.len(), 1);
+        assert_eq!(registry.track_tags.len(), 1);
+
+        // Verify TagScope round-trips and find_tag works.
+        let (def, scope) = registry.find_tag("isrc").expect("find isrc");
+        assert_eq!(scope, provider::TagScope::Track);
+        assert_eq!(def.value_type, provider::TagValueType::String);
+        assert_eq!(def.atoms[0].namespace, "com.apple.iTunes");
+    }
+
+    #[test]
+    fn upstream_json_path_helpers_resolve() {
+        // Smoke test for the re-exported extract_json_value / value_to_string
+        let j = serde_json::json!({"attributes": {"name": "Midnights"}});
+        let v = provider::extract_json_value(&j, "attributes.name").expect("path resolves");
+        let s = provider::value_to_string(&v, &provider::TagValueType::String)
+            .expect("string conversion");
+        assert_eq!(s, "Midnights");
+    }
+
+    // ── Config directory resolution — issue #212 (P0-CONFIGDIR) ──────────────
+
+    #[test]
+    fn user_override_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path = user_override_path().expect("user_override_path should resolve under override");
+        assert!(
+            path.starts_with(tmp.path()),
+            "tag override path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
     }
 }

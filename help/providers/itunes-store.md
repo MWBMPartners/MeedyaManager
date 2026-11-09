@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide explains how to configure and use the **iTunes Store** metadata provider in MeedyaManager.
+This guide explains what the **iTunes Store** metadata provider actually does in MeedyaManager. **This is a video (TV season) provider, not a music provider** — earlier documentation describing music track/album lookups, ISRC, track numbers, or disc numbers was describing a different provider entirely.
 
 ---
 
@@ -19,28 +19,39 @@ This guide explains how to configure and use the **iTunes Store** metadata provi
 
 ---
 
+> ⚠️ **This provider searches TV seasons, not music.** `ItunesStoreProvider`
+> (`crates/mm-providers/src/video/mod.rs`) is registered under `video_caps()` (`video_search:
+> true`, `music_search: false`) and its own doc comment says: "Uses the same iTunes Search API as
+> AppleTvProvider but with the `tvShow` entity to fetch TV series." It queries
+> `media=tvShow&entity=tvSeason` and reuses `AppleTvProvider`'s exact response parser
+> (`parse_itunes_video`) — the same minimal field set as the [Apple TV provider](apple-tv.md), not
+> the music-catalogue fields (album artist, track/disc numbers, ISRC) an older version of this page
+> described.
+>
+> **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub that
+> prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`).
+
+---
+
 ## Overview
 
-The iTunes Store provider retrieves music track and album metadata from Apple's **iTunes Search API**. It searches the same catalog that powers the iTunes Store and Apple Music, covering millions of tracks, albums, and artists across all genres.
+`ItunesStoreProvider` sends:
 
-This provider is useful for:
+```text
+GET {base}/search?term=<title>&media=tvShow&entity=tvSeason&country=<country>&limit=<n>
+```
 
-- Looking up music track metadata (title, artist, album, genre, year)
-- Retrieving high-resolution album artwork (up to 3000x3000 pixels)
-- Cross-referencing tracks by artist and title against Apple's catalog
-- Supplementing metadata from other providers (MusicBrainz, Spotify, etc.)
-
-The provider uses the public `https://itunes.apple.com/search` endpoint with `media=music` and `entity=song` (or `entity=album`) parameters.
+and parses the response with the identical `ItunesVideoResult` struct `AppleTvProvider` uses (see
+[apple-tv.md](apple-tv.md)) — so its fields, limitations, and cover-art behaviour are the same as
+that provider's, just scoped to TV-season-shaped results from iTunes rather than movies.
 
 ---
 
 ## Authentication
 
-**No authentication is required.** The iTunes Store provider uses Apple's public iTunes Search API, which is freely accessible without any API key, token, or developer account.
-
-The provider is available immediately after installation with no additional setup.
-
-> **Note:** Apple applies rate limiting to the iTunes Search API (approximately 20 requests per minute). MeedyaManager's built-in rate limiter handles this automatically.
+**No authentication is required.** No API key, token, or developer account is used.
 
 ---
 
@@ -48,90 +59,50 @@ The provider is available immediately after installation with no additional setu
 
 ### Environment Variables (`.env`)
 
-No environment variables are required for this provider.
+None are required for this provider.
 
 ### Settings File (`settings.json5`)
 
-You can optionally configure the provider's behaviour in `config/settings.json5`:
-
-```json5
-{
-  providers: {
-    itunes_store: {
-      // Enable or disable this provider (default: true)
-      enabled: true,
-
-      // Preferred storefront/country code for regional catalog results
-      // Uses ISO 3166-1 alpha-2 codes (e.g., "US", "GB", "JP", "DE")
-      country: "GB",
-
-      // Maximum number of results to return per search (1-200, default: 10)
-      result_limit: 10,
-
-      // Whether to also search albums (not just tracks) (default: true)
-      search_albums: true,
-
-      // Preferred artwork resolution in pixels (default: 3000)
-      // The API returns artworkUrl100; MeedyaManager scales the URL
-      // to the requested size (common values: 600, 1200, 3000)
-      artwork_size: 3000,
-    }
-  }
-}
-```
-
-### Storefront / Region
-
-The `country` parameter controls which regional iTunes Store catalog is searched. Music availability and pricing vary by country. The US catalog (`"US"`) typically has the broadest selection, but using your local country code ensures you see region-specific releases and correct release dates.
+There is no per-provider `settings.json5` schema for iTunes Store — `result_limit`,
+`search_albums`, and `artwork_size` are not real settings; nothing reads them (and "search
+albums" describes a music feature this provider does not have, since it queries TV seasons). The
+only real inputs are the constructor's `country` argument (ISO 3166-1 alpha-2, e.g. `"US"`) and an
+optional `base_url` override used by the crate's own tests.
 
 ---
 
 ## Available Data
 
-The iTunes Store provider returns the following standard metadata fields:
+| Field | Response field | Notes |
+| ----- | --------------- | ----- |
+| `title` | `trackName` | |
+| `artist` | `artistName` | |
+| `album` | `collectionName` | |
+| `genre` | `primaryGenreName` | |
+| `year` | first 4 digits of `releaseDate` | |
+| cover art | `artworkUrl100`, rescaled to 600×600 plus the original 100×100 | both JPEG |
+| content advisory (metadata) | `contentAdvisoryRating` | |
+| duration (metadata) | `trackTimeMillis` / 1000 | |
+| provider ID (metadata) | `trackId` | |
 
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Track title | `"Bohemian Rhapsody"` |
-| `artist` | Artist name | `"Queen"` |
-| `album` | Album name | `"A Night at the Opera"` |
-| `album_artist` | Album-level artist | `"Queen"` |
-| `genre` | Primary genre | `"Rock"` |
-| `year` | Release year | `"1975"` |
-| `track_num` | Track number on the album | `"11"` |
-| `total_tracks` | Total tracks on the album | `"12"` |
-| `disc_num` | Disc number | `"1"` |
-| `total_discs` | Total discs | `"1"` |
+There is **no `album_artist`, `track_num`, `total_tracks`, `disc_num`, `total_discs`, or `isrc`
+field** — none of these appear anywhere in the shared parser this provider uses. Those fields
+belong to a music catalogue lookup, and this provider does not perform one.
 
 ---
 
 ## Custom Tags
 
-In addition to standard fields, the provider writes the following custom tags to media files:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_itunes_store_id` | iTunes Store track or album ID | `"1440833098"` |
-| `custom_itunes_store_url` | Direct link on the iTunes Store | `"https://music.apple.com/gb/album/bohemian-rhapsody/1440833098?i=1440833491"` |
-| `custom_itunes_collection_id` | iTunes collection (album) ID | `"1440833098"` |
-
-The `custom_itunes_collection_id` is particularly useful for grouping tracks that belong to the same album across your library. It provides a unique, stable identifier that persists even if album names vary slightly between files.
+Any custom tag here would come from the metadata fields above once tag-writing wiring exists for
+this provider (see the reachability banner). There is no `custom_itunes_collection_id` distinct
+from the generic provider-ID metadata slot.
 
 ---
 
 ## Cover Art
 
-The iTunes Store provider supplies **high-resolution static JPEG cover art** at up to **3000x3000 pixels**.
-
-- The API returns an `artworkUrl100` field (100x100 thumbnail URL)
-- MeedyaManager automatically scales this URL to the configured `artwork_size` (default: 3000x3000)
-  - URL transformation: `artworkUrl100` value has `100x100bb` replaced with `3000x3000bb`
-- Image format: JPEG
-- Resolution: Up to 3000 x 3000 pixels (actual size depends on what Apple has available)
-- The image is saved as `FrontCover.jpg` alongside the media file
-- If embedding is enabled, the image is also embedded in the file's tags (APIC for ID3, covr for MP4)
-
-> **Tip:** The iTunes Store typically provides the highest-resolution album artwork of any free provider. If you only enable one provider for cover art, this is an excellent choice for music files.
+Identical mechanism to [Apple TV](apple-tv.md#cover-art): `artworkUrl100` rescaled to 600×600, plus
+the original 100×100 image, both JPEG — **not** 3000×3000.
 
 ---
 
@@ -139,44 +110,31 @@ The iTunes Store provider supplies **high-resolution static JPEG cover art** at 
 
 ### Provider shows "Available" but returns no results
 
-- **Check the country code.** Music catalog availability varies by region. Try `country: "US"` for the broadest catalog.
-- **Check the search terms.** The API performs keyword matching on artist + track title. Ensure your file has at least a title and artist tag.
-- **Verify the media class.** This provider only searches music. If your file is classified as `"Podcast"` or `"Movie"`, this provider will not be queried.
+- TV licensing/availability is region-dependent — try a different `country`.
+- Only `tvShow`/`tvSeason` results are searched; a music track or album title will never match
+  here.
 
-### Artwork is lower resolution than expected
+### Expecting music metadata (ISRC, track number, disc number, album artist)
 
-- Not all albums have 3000x3000 artwork in Apple's catalog. Older or obscure releases may only have 600x600 or 1200x1200 images.
-- The URL transformation always requests the configured size, but Apple may serve a smaller image if the original is not available at that resolution.
-- Check the saved `FrontCover.jpg` dimensions to verify what was actually downloaded.
+**This is expected to be absent.** This provider searches TV seasons, not music — see the banner
+at the top of this page and [Available Data](#available-data). If you were looking for a
+music-catalogue lookup against Apple's iTunes Search API, that is
+[apple-music.md](apple-music.md)'s `AppleMusicProvider` (`media=music&entity=song`).
 
-### Duplicate results for the same track
+### Rate limit warnings
 
-The iTunes Store often lists the same track across multiple releases (original album, greatest hits, deluxe edition, etc.). MeedyaManager's match scoring system ranks results by confidence, preferring:
-
-1. Exact title matches
-2. Matching album name (if your file has album metadata)
-3. Matching year
-4. Track number consistency
-
-If duplicates are still an issue, ensure your files have album metadata populated.
-
-### Rate limit warnings in logs
-
-If you are processing a large batch of music files simultaneously:
-
-1. MeedyaManager automatically queues and retries rate-limited requests
-2. Reduce `result_limit` to minimise API calls per file
-3. The rate limiter spaces requests to stay within Apple's limits
+**MeedyaManager's shared rate limiter is not consulted for iTunes Store** — only MusicBrainz,
+ISRC, and ISWC requests go through the shared `governor` limiter. A non-2xx response from iTunes
+is surfaced directly as `ProviderError::NetworkError`.
 
 ---
 
 ## Legal Notes
 
-- The iTunes Store provider uses Apple's **iTunes Search API**, which is publicly available and does not require a licence agreement for personal, non-commercial use.
-- Apple, iTunes, and Apple Music are trademarks of Apple Inc.
-- Album artwork and music metadata are the property of their respective rights holders (artists, labels, publishers).
+- This provider uses Apple's **iTunes Search API**, publicly available without a licence agreement for personal, non-commercial use.
+- Apple and iTunes are trademarks of Apple Inc.
+- TV metadata and artwork are the property of their respective rights holders (studios, networks, distributors).
 - MeedyaManager retrieves metadata solely for the purpose of organising the user's own media library. No content is redistributed or made available to third parties.
-- For full terms, see: [Apple iTunes Affiliate Resources](https://affiliate.itunes.apple.com/resources/)
 
 ---
 

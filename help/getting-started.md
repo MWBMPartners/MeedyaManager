@@ -2,14 +2,20 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-Welcome to MeedyaManager — a cross-platform media file manager and auto-organizer. This guide walks you through installation, first run, and basic configuration.
+Welcome to MeedyaManager — a cross-platform media file manager and auto-organizer. This guide
+walks you through building it, running your first scan, and basic configuration.
+
+> **No installers exist yet.** MeedyaManager has not had a public release — the only GitHub
+> release is the pre-rename "MetaMancer v1.0-M1" pre-release from 2025-06-16, and there is no
+> `.msix`, `.dmg`, `.deb`, `.rpm`, Flatpak, Snap, or AppImage artefact you can download today.
+> Everything below is build-from-source instructions.
 
 ---
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Installation](#installation)
+2. [Building From Source](#building-from-source)
 3. [First Run](#first-run)
 4. [Basic Configuration](#basic-configuration)
 5. [Metadata Lookup](#metadata-lookup)
@@ -19,57 +25,58 @@ Welcome to MeedyaManager — a cross-platform media file manager and auto-organi
 
 ## Prerequisites
 
-**No prerequisites required for end users.** MeedyaManager is a self-contained native binary — no runtime, no interpreter, no external libraries to install.
-
 | Component | Requirement |
 | --------- | ----------- |
-| **OS** | Windows 10/11 (x64 or ARM64), macOS 13+ (Apple Silicon), or Linux (x64 or ARM64) |
-| **Disk Space** | ~20 MB |
-| **RAM** | ~30 MB at idle; lightweight background watcher |
-
-### For Developers (Building from Source)
-
-| Component | Requirement |
-| --------- | ----------- |
-| **Rust** | 1.85+ — [rustup.rs](https://rustup.rs) |
-| **Platform tools** | Linux: `libgtk-4-dev`, `libadwaita-1-dev`; macOS/Windows: none |
-| **OS** | Windows (x64/ARM64), macOS (Apple Silicon), or Linux (x64/ARM64) |
+| **Rust** | 1.85+ (declared `rust-version` / MSRV in `Cargo.toml`) — [rustup.rs](https://rustup.rs). CI and this repo's own `rust-toolchain.toml` pin exactly **1.98.0** (issue #197); `rustup` auto-installs it on first build inside the checkout, so building from source picks it up automatically |
+| **Platform tools** | Linux: `libgtk-4-dev`, `libadwaita-1-dev` (only needed for the `mm-gtk` UI, which is not a workspace member by default — see below); macOS/Windows: none extra for the CLI |
+| **OS** | Windows (x64/ARM64), macOS (Apple Silicon only), or Linux (x64/ARM64) |
 
 ---
 
-## Installation
-
-### From a Release Package (Recommended)
-
-1. Download the latest release for your platform from [GitHub Releases](https://github.com/MWBMPartners/MeedyaManager/releases)
-2. Install:
-   - **Windows:** Run the `.msix` installer (or double-click from File Explorer)
-   - **macOS:** Open the `.dmg` and drag MeedyaManager to Applications
-   - **Linux:** Install via `.deb`, `.rpm`, Flatpak, Snap, or run the `.AppImage` directly
-3. Launch MeedyaManager. No additional setup required.
-
-> The `meedya` CLI binary is added to your PATH by the installer on all platforms.
-
-### From Source (Development)
+## Building From Source
 
 ```bash
 # Clone the repository
 git clone https://github.com/MWBMPartners/MeedyaManager.git
 cd MeedyaManager
 
-# Build all crates
+# Build the 8-crate Rust workspace (mm-core, mm-cli, mm-providers, mm-cloud,
+# mm-export, mm-server, mm-ffi, mm-update)
 cargo build --release
-
-# The CLI binary is at:
-#   target/release/meedya           (macOS / Linux)
-#   target\release\meedya.exe       (Windows)
 ```
 
-To install the CLI binary system-wide:
+> **`cargo build --workspace` does NOT build the Linux GTK4 UI.** `mm-gtk` is deliberately
+> excluded from the workspace `members` list (it needs the Linux-only `gettextrs` crate), so a
+> plain workspace build produces the CLI and libraries only. To build the GTK4 UI on Linux:
+>
+> ```bash
+> cargo build --release -p mm-gtk
+> ```
+>
+> Standalone building of `mm-gtk` outside a full workspace checkout is currently broken — see
+> issue [#199](https://github.com/MWBMPartners/MeedyaManager/issues/199).
+
+The CLI binary is produced at:
+
+```text
+target/release/meedya           (macOS / Linux)
+target\release\meedya.exe       (Windows)
+```
+
+To install the CLI binary on your `PATH`:
 
 ```bash
 cargo install --path crates/mm-cli
 ```
+
+### Building the platform GUIs
+
+- **macOS:** `macos/Package.swift` is a Swift Package (there is no `.xcodeproj`). It targets
+  macOS 15 and needs Xcode 26.3+ / Swift 6.3 to build. Open the folder in Xcode, or run
+  `swift build -c release` from `macos/`.
+- **Windows:** `windows/MeedyaManager` is a WinUI 3 / .NET project — open the solution in Visual
+  Studio 2022+ with the Windows App SDK workload, or build with `dotnet build`.
+- **Linux:** see the `mm-gtk` note above.
 
 ---
 
@@ -94,42 +101,74 @@ This displays all detected metadata, including:
 For JSON output (useful for scripting):
 
 ```bash
-meedya debug path/to/song.mp3 --json
+meedya --json debug path/to/song.mp3
 ```
 
 ### Preview Renames for a Directory
 
-Scan a directory and preview what MeedyaManager would rename each file to, without touching anything:
+Scan a directory and preview what MeedyaManager would rename each file to, without touching
+anything:
 
 ```bash
 meedya scan ~/Music --dry-run
 ```
 
+> ### Before you pass `--execute`
+>
+> `meedya scan --execute` performs the renames for real. The data-loss bug tracked as issue
+> [#201](https://github.com/MWBMPartners/MeedyaManager/issues/201) — where two different source
+> files resolving to the same destination path caused a silent overwrite — is fixed: destinations
+> claimed within the same batch are now tracked, and a collision is handled per
+> `conflict_strategy` (skipped by default, or renamed with a counter under
+> `conflict_strategy = "rename"`), with the command exiting `2` (`PARTIAL`) if anything is left
+> unresolved. It's still good practice to run `meedya scan` in preview mode first (the default —
+> no `--execute`, or explicit `--dry-run`) before running for real. See
+> [cli-reference.md](cli-reference.md#meedya-scan) for the full detail.
+
 ### Start the Folder Watcher
 
-Watch directories for new media files and process them automatically:
+Watch directories for new media files and log what happens. `watch` on its own only **logs**
+file-system events — it does not rename or move anything unless you add `--organize`.
+
+> **⚠️ Real organising is switched off in this build (2026-09-23, issue #180).** Moving files
+> automatically as they arrive is built, but switched off until known problems with it are
+> fixed — it could, for example, separate a disc image's cue sheet from the disc image itself.
+> `meedya watch --organize` without the global `--dry-run` flag now prints an error, exits with
+> code `3`, and moves nothing, even if you add `--yes`. **Previews still work as normal** —
+> `meedya watch --organize --dry-run` shows you what it would do without touching any files.
 
 ```bash
-# Preview mode — logs what would happen, no files moved
-meedya watch --dry-run
-
-# Live mode — renames/moves files according to your rules
+# Log-only — nothing is moved, regardless of --dry-run
 meedya watch
+
+# Preview what --organize would do, without moving files (this works)
+meedya watch --organize --dry-run
+
+# Actually organise files as they arrive — currently refuses, see the notice above
+meedya watch --organize
 ```
 
-> **Tip:** Always run with `--dry-run` first to verify your rules produce the expected results before enabling live file operations.
+Once real organising is switched back on, a new file will not be touched the instant it
+appears — MeedyaManager waits for it to go two seconds without any further change first
+(`--settle-secs`, default `2`), so it never organises a file that is still being copied in. An
+attended terminal will be asked to confirm once before it starts moving anything; `--yes` skips
+that (this is what the background service does, since it has nobody to answer the question).
+
+> **Tip:** Get into the habit of running with `--organize --dry-run` first, to check your rules
+> produce the results you expect, before ever enabling live file operations.
+
+To run this continuously in the background instead of in a terminal you keep open, see
+[background-service.md](background-service.md) for how it is meant to work on Linux and macOS
+(Windows is not supported, with a Task Scheduler alternative given there) — the settle window,
+why it always uses the safer "skip" behaviour for conflicting files, and the same switched-off
+notice, because installing the service is switched off for the same reason right now.
 
 ### Launch the GUI
 
-**Linux (GTK4):**
+**Linux (GTK4):** build and run `mm-gtk` as shown above (`cargo run --release -p mm-gtk`).
 
-```bash
-meedya-gtk
-```
-
-**macOS:** Open MeedyaManager from Launchpad or Spotlight.
-
-**Windows:** Open MeedyaManager from the Start menu.
+**macOS / Windows:** build the platform app as shown above and launch it from Xcode / Visual
+Studio, or the built app bundle, until a packaged release exists.
 
 ---
 
@@ -143,7 +182,8 @@ MeedyaManager stores its configuration in a JSON5 file. The location is:
 | **Linux** | `~/.config/MeedyaManager/settings.json5` |
 | **Windows** | `%APPDATA%\MeedyaManager\settings.json5` |
 
-A default configuration is created automatically on first run. To open it:
+A default configuration is created automatically on first run (or via `meedya config init`). To
+view it:
 
 ```bash
 meedya config show
@@ -169,44 +209,38 @@ meedya config show
     // Rename template using MusicBee-style <Tag> syntax
     template: "<Media Class>/<Artist>/<Album>/<$Pad(<Track #>,2)> - <Title>.<Ext>",
 
-    // What to do when a destination file already exists
-    conflict_strategy: "rename"   // "rename", "skip", or "overwrite"
+    // What to do when a destination file already exists.
+    // "skip" and "rename" are implemented; "overwrite" and "ask" currently
+    // warn once and fall back to "skip" (see help/configuration.md).
+    conflict_strategy: "rename"
   }
 }
 ```
 
-See [configuration.md](configuration.md) for the full settings reference.
+See [configuration.md](configuration.md) for the full settings reference. The example config
+file shipped in this repo's `config/settings.json5` now matches `AppConfig` field-for-field
+(issue #211, fixed) and is a reasonable starting point to copy from.
 
 ---
 
 ## Metadata Lookup
 
-MeedyaManager can look up and enrich your media files with metadata from 19+ online providers including Spotify, Apple Music, MusicBrainz, TMDB, TVDB, and more.
-
-### Quick Examples
+> **⚠️ Status: not yet implemented.** `meedya lookup` is still a stub (see
+> [cli-reference.md](cli-reference.md#meedya-lookup)). It parses its arguments, prints "Metadata
+> lookup is not available in this alpha (see issue #83)." and exits `3` (`NOT_IMPLEMENTED`); it
+> does not query any provider or write any tag yet, even though the M5 milestone issues are
+> closed on GitHub. The examples below show the intended future syntax, not working commands.
 
 ```bash
-# Look up metadata for a single file
-meedya lookup path/to/song.mp3
-
-# Restrict to specific providers
-meedya lookup song.mp3 --providers spotify,musicbrainz
-
-# Auto-apply the best match (confidence >= 80%)
-meedya lookup song.mp3 --auto
-
-# Preview changes without writing tags
-meedya lookup song.mp3 --dry-run
-
-# List all configured providers and their status
-meedya lookup --list-providers
+# Not yet functional — prints a not-implemented notice and exits 3 today
+meedya lookup "Never Gonna Give You Up"
+meedya lookup "Never Gonna Give You Up" --provider musicbrainz
+meedya lookup "Never Gonna Give You Up" --auto
 ```
 
-### GUI Lookup
-
-In the native GUI, the **Lookup** panel provides the same functionality with a visual match-comparison view, side-by-side tag diffs, and one-click apply. Files can be dragged and dropped directly onto the panel.
-
-See the [providers/](providers/) directory for setup guides for each provider.
+The `mm-providers` library underneath already implements 13 working metadata providers (plus 6
+disabled stub providers) across music, video, and podcasts — see [providers/](providers/) for
+what each one actually does — but nothing in the CLI or GUI wires them up yet.
 
 ---
 
@@ -217,6 +251,6 @@ See the [providers/](providers/) directory for setup guides for each provider.
 - **Configuration reference:** [configuration.md](configuration.md) — all settings explained
 - **Supported formats:** [supported-formats.md](supported-formats.md)
 - **Background service:** [background-service.md](background-service.md) — run MeedyaManager at startup
-- **Metadata providers:** [providers/](providers/) — setup guides for all 19+ providers
+- **Metadata providers:** [providers/](providers/) — what's real and what's a stub, provider by provider
 - **Troubleshooting:** [troubleshooting.md](troubleshooting.md)
 - **FAQ:** [faq.md](faq.md)

@@ -46,8 +46,16 @@ struct MeedyaManagerApp: App {
                         )
                     }
                 } message: {
-                    // Informative message explaining what happened and why
-                    Text("You are running a pre-release build (\(appState.coreVersion)). Test mode has been automatically enabled to protect your media files. You can disable it in Settings.")
+                    // Informative message explaining what happened and why.
+                    //
+                    // Corrected for issue #222: Test Mode only ever protects
+                    // tag edits (it copies the file to a "_MeedyaManager"
+                    // sibling before writing), never renames — the renamer
+                    // calls std::fs::rename directly and has no Test Mode
+                    // awareness. The previous wording ("to protect your
+                    // media files") was too broad and implied a guarantee
+                    // that did not exist for renaming.
+                    Text("You are running a pre-release build (\(appState.coreVersion)). Test mode has been automatically enabled to protect your tag edits (it does not cover renames). You can disable it in Settings.")
                 }
         }
         .windowStyle(.titleBar)
@@ -99,7 +107,7 @@ struct MeedyaManagerApp: App {
     /// A version is considered pre-release if it contains a hyphen
     /// (e.g. "1.3.0-beta.1", "2.0.0-rc.2").  When detected:
     ///   1. Mark the app state as pre-release
-    ///   2. Auto-enable test mode to protect the user's real files
+    ///   2. Auto-enable test mode to protect the user's tag edits (not renames — issue #222)
     ///   3. Show an informational alert offering to check for a stable update
     ///
     /// This check runs once per launch via `.onAppear` on the main window.
@@ -116,7 +124,7 @@ struct MeedyaManagerApp: App {
             // Mark the app state as a pre-release build
             appState.isPreRelease = true
 
-            // Auto-enable test mode to protect real media files
+            // Auto-enable test mode to protect tag edits (does not cover renames — issue #222)
             MmCore.shared.setTestMode(enabled: true)
             appState.testModeEnabled = true
 

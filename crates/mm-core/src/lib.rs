@@ -10,7 +10,7 @@
 // - Rename simulation and execution
 // - Metadata extraction and writing (lofty)
 // - Companion file tracking
-// - Application state management
+// - The write lock that keeps two copies from moving files at once
 // - Structured logging with PII redaction
 // - Health checks
 //
@@ -34,10 +34,14 @@ pub mod renamer;
 /// Companion file detection and grouping
 pub mod companion;
 
+/// Disc image handling
+pub mod disc;
+
 /// Metadata extraction and tag writing
 pub mod metadata;
 
-/// Application state persistence and crash recovery
+/// The write lock — stops two copies of MeedyaManager moving the same
+/// files at the same time while a batch of renames is being carried out
 pub mod state;
 
 /// Structured logging with PII redaction

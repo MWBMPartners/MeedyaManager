@@ -6,6 +6,13 @@ This guide covers the **Pandora** metadata provider in MeedyaManager. Pandora cu
 
 ---
 
+> ⚠️ **Not reachable from the app even if it worked.** `meedya lookup` (the CLI command) is a
+> permanent stub that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`).
+
+---
+
 ## 📋 Table of Contents
 
 1. [Overview](#overview)
@@ -21,17 +28,20 @@ This guide covers the **Pandora** metadata provider in MeedyaManager. Pandora cu
 
 ## Overview
 
-The Pandora provider exists as a **stub** in MeedyaManager's provider framework. Pandora does not provide a public API for music metadata lookup or search. Unlike Amazon Music (which has a closed beta API), Pandora has no known developer programme or API offering for metadata access.
+`PandoraProvider` is one of six providers built from the same `stub_provider!` macro in
+`crates/mm-providers/src/music/mod.rs`. It has a correct `id()` ("`pandora`"), `display_name()`
+("Pandora") and a declared `ProviderCapabilities` (music search, cover art flagged as supported),
+but its `search()` method makes **no HTTP request of any kind** — it always returns an error:
 
-This provider is included in the framework for completeness and to construct reference URLs for the Pandora web interface, allowing users to manually look up tracks on Pandora when needed.
+- If the stub is disabled (the default) → `ProviderError::NotConfigured`.
+- If the stub is explicitly enabled → `ProviderError::NotSupported("pandora: Provider
+  implementation pending API review")`.
 
-**Current status:** Stub provider — always returns no results.
+Pandora does not provide a public API for music metadata lookup or search, and no unofficial
+integration or URL-construction helper exists in the codebase — there is no code that builds a
+Pandora search URL, and nothing writes a Pandora-related tag.
 
-**What this provider can do:**
-
-- Construct Pandora web search URLs for manual reference
-- Store Pandora URLs as custom tags (when manually entered or imported)
-- Provide clear status messages in logs and the provider dashboard
+**Current status:** Stub provider — always returns an error, never a result.
 
 **What this provider cannot do:**
 
@@ -59,23 +69,13 @@ No environment variables are required or used for Pandora.
 
 ### Settings (`settings.json5`)
 
-```json5
-{
-  providers: {
-    pandora: {
-      enabled: false,                   // Disabled by default (no API available)
-      priority: 99,                     // Lowest priority (stub provider)
-    }
-  }
-}
-```
+`PandoraProvider::new(enabled: bool)` takes a single boolean. There is no per-provider
+`settings.json5` schema for it — no `priority` field exists anywhere in the codebase. The stub
+defaults to disabled (`enabled_default = false` in the macro invocation).
 
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| `enabled` | `false` | Disabled by default — no functional API available |
-| `priority` | `99` | Lowest priority (will never be used for searching) |
-
-> **Note:** Even if `enabled` is set to `true`, the provider will return empty results for all searches. Enabling it has no negative effect but provides no benefit.
+> **Note:** Even if `enabled` is set to `true`, the provider still returns an error for every
+> search — it changes only which error variant comes back (`NotSupported` instead of
+> `NotConfigured`).
 
 ---
 
@@ -96,29 +96,8 @@ The Pandora provider does **not** return any metadata fields. All searches retur
 
 ## Custom Tags
 
-The following custom tag is available for manual use (e.g. when importing metadata from other tools):
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_pandora_url` | Pandora web search URL (manually constructed) | `"https://www.pandora.com/search/Queen"` |
-
-This tag can be populated manually or through metadata import, but will **not** be populated automatically by the Pandora provider.
-
-### URL Construction
-
-The provider includes a helper for constructing Pandora web search URLs:
-
-```text
-https://www.pandora.com/search/{url_encoded_query}
-```
-
-For example, searching for "Queen Bohemian Rhapsody" generates:
-
-```text
-https://www.pandora.com/search/Queen%20Bohemian%20Rhapsody
-```
-
-These URLs are for **manual reference only** — opening them in a browser will take you to the Pandora web interface where you can search for the track.
+No custom tags are produced. Nothing in the codebase writes a `custom_pandora_*` tag, and there is
+no URL-construction helper of any kind for Pandora's web interface.
 
 ---
 
@@ -130,15 +109,13 @@ Pandora (owned by SiriusXM) has never offered a public metadata API. Their platf
 
 ### What works
 
-- The provider is registered in MeedyaManager's provider framework
-- Status reporting shows "no public API" in logs and the provider dashboard
-- Manual Pandora web search URLs can be constructed
-- The `custom_pandora_url` tag can be stored manually
+- The provider registers with a correct `id()`, `display_name()`, and declared capabilities.
+- Calling `search()` reliably returns a typed error rather than panicking or hanging.
 
 ### What does not work
 
-- The provider is disabled (returns empty results for all searches)
-- No automated metadata or cover art retrieval
+- No network request is ever made.
+- No metadata, cover art, or identifier is ever returned.
 
 ### Will this change?
 
@@ -148,28 +125,31 @@ There are no known plans for Pandora to release a public metadata API. If Pandor
 
 ## Troubleshooting
 
-### "Pandora does not provide a public API"
+### `NotConfigured` error
 
-**This is expected behaviour.** The provider logs this message to confirm that it is correctly recognising the absence of an API. No action is needed.
+**This is expected.** The stub is disabled by default; this is the "not enabled" error, not a sign
+of a misconfiguration.
 
-### "Pandora has no public API — search skipped"
+### `NotSupported: Provider implementation pending API review`
 
-**This is expected behaviour.** MeedyaManager logs this informational message when the Pandora provider is queried during a multi-provider search. The system gracefully falls back to other enabled providers.
+**This is expected if you set `enabled: true`.** It confirms the stub is reachable but there is no
+real implementation behind it yet.
 
 ### Can I use a third-party Pandora library?
 
-There are no known public APIs or community projects for Pandora metadata access. If Pandora opens their API in the future, MeedyaManager will update this provider to support it.
+There are no known public APIs or community projects for Pandora metadata access, and MeedyaManager
+does not bundle or depend on one. If Pandora opens their API in the future, this page will be
+updated.
 
 ---
 
 ## Legal Notes
 
-- Pandora does **not** provide a public API for metadata lookup
+- Pandora does **not** provide a public API for metadata lookup.
 - Pandora is a registered trademark of Pandora Media, LLC (a subsidiary of Sirius XM Holdings Inc.)
-- Any reverse-engineering of Pandora's services would likely violate their [Terms of Use](https://www.pandora.com/legal)
-- MeedyaManager does not attempt to access Pandora's services programmatically
-- The Pandora provider stub constructs web URLs for manual reference only — no automated requests are made to Pandora's servers
-- MeedyaManager includes this provider for framework completeness and to support the `custom_pandora_url` tag for metadata imported from other tools
+- MeedyaManager does not attempt to access Pandora's services in any way — the provider is a
+  placeholder only. Any future integration would need to consider Pandora's
+  [Terms of Use](https://www.pandora.com/legal).
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide explains how to configure and use the **EIDR** (Entertainment Identifier Registry) metadata provider in MeedyaManager.
+This guide explains what the **EIDR** (Entertainment Identifier Registry) metadata provider actually does in MeedyaManager — including why its response parsing is **unverified against a real EIDR response**.
 
 ---
 
@@ -19,18 +19,37 @@ This guide explains how to configure and use the **EIDR** (Entertainment Identif
 
 ---
 
+> ⚠️ **Untested against a real EIDR response.** `EidrProvider`'s JSON parser
+> (`crates/mm-providers/src/identifiers/mod.rs`) expects a shape (`ResourceName.value`,
+> `ExtraObjectMetadata.movie.directors`) that is a **best-effort guess**, not something verified
+> against a live or recorded EIDR response. EIDR's documented registry format is XML; this
+> provider requests `Accept: application/json` and assumes EIDR honours that, but there is no
+> wiremock or fixture test in this codebase that exercises `parse_eidr_json()` against anything
+> resembling a real registry payload — only a hand-written JSON fixture the developer believes is
+> representative. Treat this provider as unverified until someone tests it against a real EIDR
+> account.
+>
+> **Not reachable from the app regardless.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`).
+
+---
+
 ## Overview
 
 The EIDR provider looks up metadata from the **Entertainment Identifier Registry** — an industry-standard, globally unique identification system for audiovisual content (movies, TV shows, episodes, edits, distributions). EIDR IDs are used by major studios, broadcasters, and distributors for supply chain management and rights tracking.
 
-This provider is useful for:
+`EidrProvider::search()` requires an EIDR ID already present in the query (there is no title/artist
+search path for EIDR) and sends:
 
-- Resolving EIDR content IDs to movie/TV show metadata
-- Cross-referencing EIDR IDs with other identifiers (ISAN, IMDB, etc.)
-- Identifying specific edits or distributions of a title (e.g., theatrical cut vs. director's cut)
-- Professional media asset management workflows
+```text
+GET {base}/EIDR/object/<DOI>
+Authorization: Basic <base64(username:password)>
+Accept: application/json
+```
 
-> **Important:** EIDR membership is **paid** and requires an application process. Most home users will not have EIDR access. This provider is included for professional media workflows and will gracefully report itself as unavailable if credentials are not configured.
+> **Important:** EIDR membership is **paid** and requires an application process. Most home users will not have EIDR access. This provider is included for professional media workflows and will report itself as unconfigured if credentials are not supplied.
 
 ---
 
@@ -40,34 +59,26 @@ This provider is useful for:
 
 ### Who Needs EIDR Access?
 
-EIDR is primarily used by:
+EIDR is primarily used by film/TV studios, broadcast networks, distribution platforms, post-production companies, and rights management organisations. If you are managing a personal media library, you likely do not need this provider — TMDb and TheTVDB provide equivalent metadata for personal use.
 
-- Film and TV studios
-- Broadcast networks
-- Distribution platforms (streaming services, VOD providers)
-- Post-production companies
-- Rights management organisations
+### Getting EIDR Credentials
 
-If you are managing a personal media library, you likely do not need this provider. TMDB and TVDB provide equivalent metadata for personal use.
+1. Apply for EIDR membership at [eidr.org/join](https://www.eidr.org/join/).
+2. After approval, EIDR provides a username and password for HTTP Basic Auth.
 
-### Step-by-Step: Getting EIDR Credentials
+### How MeedyaManager uses them (and how it doesn't, yet)
 
-1. **Apply for EIDR membership** at [eidr.org/join](https://www.eidr.org/join/)
-   - Membership tiers include: Full Member, Associate Member, and Registered User
-   - Pricing varies by organisation type and size
-2. **Receive your credentials** — after approval, EIDR will provide:
-   - A **Client ID** (also called Party ID or User ID)
-   - A **Client Secret** (password/token)
-3. **Configure MeedyaManager** with these credentials (see [Configuration](#configuration) below)
+`EidrProvider::new(username: Option<String>, password: Option<String>)` takes both directly as
+constructor arguments and sends them via `.basic_auth(...)` on every request. **There is no
+environment variable or `settings.json5` field read for EIDR anywhere in the codebase** —
+`mm_core::config::ProviderConfig` has no EIDR field, and no CLI/GUI call site constructs
+`EidrProvider` with a credential today. If you want to use this provider, you would pass the
+username/password directly to `EidrProvider::new(...)` in your own code.
 
-### Authentication Flow
-
-The EIDR API uses **HTTP Basic Authentication**:
-
-1. MeedyaManager encodes your Client ID and Client Secret as a Base64 `Authorization` header
-2. Each API request includes this header
-3. EIDR validates the credentials against its member database
-4. No token refresh is needed — credentials are sent with every request
+The generic 4-tier `CredentialStore` in `crates/mm-providers/src/credentials.rs` (env
+`MM_EIDR_*` → in-memory config map → OS keyring → local `credentials.json`) would resolve those
+values if something called it for this provider — nothing does. Its tier 4 is a **plain JSON
+file on disk**, not the AES-256-GCM-encrypted bundle earlier project plans described (issue #209).
 
 ---
 
@@ -75,106 +86,44 @@ The EIDR API uses **HTTP Basic Authentication**:
 
 ### Environment Variables (`.env`)
 
-Add your EIDR credentials to the `.env` file in the project root:
-
-```env
-# EIDR credentials — requires paid EIDR membership
-# Get your credentials from your EIDR member dashboard
-EIDR_CLIENT_ID=your_eidr_client_id_here
-EIDR_CLIENT_SECRET=your_eidr_client_secret_here
-```
+None are read. `EIDR_CLIENT_ID` / `EIDR_CLIENT_SECRET` (or any `MM_EIDR_*` name) are not consulted
+anywhere in the codebase today.
 
 ### Settings File (`settings.json5`)
 
-You can optionally configure the provider's behaviour in `config/settings.json5`:
-
-```json5
-{
-  providers: {
-    eidr: {
-      // Enable or disable this provider (default: true)
-      // Even if enabled, provider will report unavailable without valid credentials
-      enabled: true,
-
-      // EIDR API endpoint (default: production registry)
-      // Do not change unless EIDR directs you to a different endpoint
-      api_endpoint: "https://resolve.eidr.org/EIDR/",
-
-      // Maximum number of search results to evaluate (1-20, default: 5)
-      result_limit: 5,
-
-      // Whether to resolve full metadata for matched IDs (default: true)
-      // When false, only the EIDR ID is stored without additional lookups
-      resolve_full_metadata: true,
-
-      // Request timeout in seconds (default: 30)
-      request_timeout: 30,
-    }
-  }
-}
-```
-
-### Alternative: Credentials in Settings
-
-If you prefer not to use a `.env` file:
-
-```json5
-{
-  providers: {
-    eidr: {
-      client_id: "your_eidr_client_id_here",
-      client_secret: "your_eidr_client_secret_here",
-    }
-  }
-}
-```
-
-> **Security note:** The `.env` approach is strongly preferred because `.env` is git-ignored by default. EIDR credentials represent paid access and should be kept secure.
+There is no per-provider `settings.json5` schema for EIDR — `result_limit`,
+`resolve_full_metadata`, and `request_timeout` are not real settings; nothing reads them. The only
+real inputs are the constructor's `username`/`password` and an optional `base_url` override used
+by the crate's own tests (default: `https://id.eidr.org`).
 
 ---
 
 ## Available Data
 
-The EIDR provider returns the following standard metadata fields when resolving an EIDR ID:
+`parse_eidr_json()` maps a single EIDR record into one `ProviderResult`:
 
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Title of the content | `"Inception"` |
-| `year` | Release year | `"2010"` |
-| `director` | Director name (for movies) | `"Christopher Nolan"` |
-| `show` | Series title (for TV episodes) | `"Breaking Bad"` |
-| `season` | Season number (for TV episodes) | `"5"` |
-| `episode` | Episode number (for TV episodes) | `"14"` |
+| Field | Response path (as guessed by this parser) | Notes |
+| ----- | ------------------------------------------ | ----- |
+| `title` | `ResourceName.value` | |
+| `artist` | `ExtraObjectMetadata.movie.directors[0]` | first director only, mapped into the generic `artist` field |
+| `year` | first 4 digits of `ReleaseDate` | |
+| provider ID / EIDR ID (metadata) | `ID` | stored in both the generic provider-ID slot and a dedicated EIDR metadata key |
 
-EIDR's data model is hierarchical:
-
-```text
-Abstraction (concept of the work)
-  └── Edit (specific version: theatrical, director's cut, etc.)
-       └── Distribution (specific release: Blu-ray, streaming, etc.)
-```
-
-MeedyaManager resolves the highest-level metadata available for the given EIDR ID.
+There is **no** `show`, `season`, or `episode` field — this parser only ever returns a single flat
+result, not the Abstraction/Edit/Distribution hierarchy EIDR's data model actually has. Because
+the response shape itself is an unverified guess (see the banner above), treat every field in this
+table as "what the code currently assumes", not "what EIDR is documented to return".
 
 ---
 
 ## Custom Tags
 
-The provider writes the following custom tag to media files:
+| Value | Description | Example |
+| ----- | ----------- | ------- |
+| EIDR ID | Full EIDR Content ID, stored in a dedicated metadata key | `"10.5240/7EC7-228A-510A-053E-2B96-C"` |
 
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_eidr_id` | Full EIDR Content ID | `"10.5240/7EC7-228A-510A-053E-2B96-C"` |
-
-The EIDR ID is the primary value this provider contributes. It serves as a permanent, globally unique identifier for the content that is recognised across the entertainment industry.
-
-Since EIDR IDs are long and contain special characters (`.` and `/`), they are stored as custom tags rather than being used in file paths. If you need to reference an EIDR ID in a rename rule, use the custom tag syntax:
-
-```json5
-// Not recommended for file paths due to special characters,
-// but useful in logs or JSON export:
-// {custom_eidr_id}
-```
+Since EIDR IDs contain special characters (`.` and `/`), using them directly in a file-path rename
+template is not recommended.
 
 ---
 
@@ -191,67 +140,47 @@ An EIDR Content ID follows the DOI (Digital Object Identifier) format:
 | `10.5240` | EIDR's DOI prefix (always the same for EIDR) |
 | `/` | Separator between prefix and suffix |
 | `XXXX-XXXX-XXXX-XXXX-XXXX` | 20 hexadecimal characters in 5 groups of 4, separated by hyphens |
-| `-C` | Check character (single hex digit for validation) |
+| `-C` | Check character (single hex digit) |
 
 **Full example:** `10.5240/7EC7-228A-510A-053E-2B96-C`
 
 ### Validation Rules
 
-MeedyaManager validates EIDR IDs against these rules:
-
-- Starts with `10.5240/`
-- Followed by 5 groups of 4 hexadecimal characters, separated by hyphens
-- Ends with a hyphen and a single check character
-- The regex pattern: `^10\.5240/[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]$`
+`validate_eidr()` is a **loose** check: it only confirms the value starts with `10.5240/` and is
+longer than 10 characters. It does **not** verify the 5-groups-of-4-hex-digits structure or the
+check character shown above, despite that structure being documented — a malformed suffix will
+still pass this validator.
 
 ---
 
 ## Troubleshooting
 
-### Provider shows "Missing credentials" or "Unavailable"
+### Provider errors with `NotConfigured`
 
-This is **expected** for most users. EIDR requires paid membership. If you do have credentials:
+No username/password was supplied when the provider was constructed — expected for most users, as
+this is a paid, invite-only registry with no wiring into `settings.json5` today (see
+[Authentication](#authentication)).
 
-- Ensure `EIDR_CLIENT_ID` and `EIDR_CLIENT_SECRET` are set in your `.env` file
-- Verify there are no extra spaces or newline characters in the values
-- Check that your `.env` file is next to `settings.json5`
-- Run `meedya lookup --list-providers` to verify provider status
+### "401 Unauthorized" errors
 
-### "401 Unauthorized" errors in logs
+Your EIDR credentials are invalid, expired, or your membership tier lacks API access. Contact EIDR
+support to verify your account.
 
-- Your EIDR credentials are invalid or have expired
-- Contact EIDR support to verify your account status
-- Ensure you are using the correct Client ID and Secret pair
-- Check if your EIDR membership has been renewed
+### Results look wrong or fields are missing
 
-### "403 Forbidden" errors
-
-- Your EIDR membership tier may not include API access
-- Some content in the registry may be restricted to certain member tiers
-- Contact EIDR to verify your API access permissions
-
-### Slow responses or timeouts
-
-The EIDR API can be slower than consumer-facing APIs. If you experience timeouts:
-
-1. Increase `request_timeout` in your settings (default: 30 seconds)
-2. The EIDR registry may be undergoing maintenance — check [eidr.org/status](https://www.eidr.org)
-3. Ensure your network allows outbound HTTPS connections to `resolve.eidr.org`
-
-### EIDR ID not found
-
-- Verify the EIDR ID format matches the pattern described above
-- Not all content has been registered with EIDR — the registry primarily covers commercially distributed content
-- Check the EIDR registry directly at [ui.eidr.org](https://ui.eidr.org) to confirm the ID exists
+**This is expected given the banner at the top of this page** — the JSON shape this provider
+parses is a guess, never verified against a real EIDR response. If your account returns a
+differently-shaped payload, this provider will likely parse it incorrectly or return mostly-empty
+results rather than erroring loudly.
 
 ---
 
 ## Legal Notes
 
 - **EIDR** is operated by the Entertainment Identifier Registry Association, a joint venture of industry organisations.
-- EIDR API access requires a **paid membership agreement** with the EIDR Association. Terms are governed by the EIDR Membership Agreement.
-- EIDR Content IDs are DOI-based identifiers. The identifier strings themselves are factual references and not subject to copyright.
-- Metadata retrieved from EIDR is subject to the terms of your EIDR membership agreement. Redistribution of EIDR data may require additional licensing.
+- EIDR API access requires a **paid membership agreement** with the EIDR Association.
+- EIDR Content IDs are DOI-based identifiers; the identifier strings themselves are factual references and not subject to copyright.
+- Metadata retrieved from EIDR is subject to the terms of your EIDR membership agreement.
 - MeedyaManager stores EIDR IDs in media file tags solely for the purpose of organising the user's own media library.
 - For more information: [eidr.org](https://www.eidr.org)
 

@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide explains how to configure and use the **Apple TV** metadata provider in MeedyaManager.
+This guide explains what the **Apple TV** metadata provider actually does in MeedyaManager: it searches **movies only** — it never queries TV shows, despite its name and earlier documentation.
 
 ---
 
@@ -19,29 +19,33 @@ This guide explains how to configure and use the **Apple TV** metadata provider 
 
 ---
 
+> ⚠️ **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`). `AppleTvProvider`
+> is real and compiled, tested against canned JSON fixtures (no wiremock/live-HTTP test exists for
+> it), but nothing in the shipped CLI or GUI constructs it.
+
+---
+
 ## Overview
 
-The Apple TV provider retrieves movie and TV show metadata from Apple's **iTunes Search API**, using the `media=movie` and `media=tvShow` parameters. It searches the same catalog available through the Apple TV app and the iTunes Store's video section.
+`AppleTvProvider` (`crates/mm-providers/src/video/mod.rs`) queries Apple's public iTunes Search API
+with:
 
-This provider is useful for:
+```text
+GET {base}/search?term=<title>&media=movie&country=<country>&limit=<n>
+```
 
-- Identifying movies and TV episodes from video files
-- Retrieving show, season, and episode metadata for TV series
-- Downloading high-resolution movie/TV poster artwork
-- Matching video files against Apple's extensive movie and TV catalog
-- Obtaining content ratings and descriptions
-
-The provider queries `https://itunes.apple.com/search` with `media=movie` for films and `media=tvShow` with `entity=tvEpisode` for television content.
+**Only `media=movie` is ever sent** — there is no `entity=tvEpisode` (or any TV-related) parameter
+anywhere in this provider's request. Despite its name and the doc comment's mention of
+`media=tvEpisode`, this provider never searches or matches TV shows, seasons, or episodes.
 
 ---
 
 ## Authentication
 
-**No authentication is required.** The Apple TV provider uses Apple's public iTunes Search API with video-specific media type parameters. No API key, token, or developer account is needed.
-
-The provider is available immediately after installation with no additional setup.
-
-> **Note:** Apple applies rate limiting to the iTunes Search API (approximately 20 requests per minute). MeedyaManager's built-in rate limiter handles this automatically.
+**No authentication is required.** No API key, token, or developer account is used.
 
 ---
 
@@ -49,106 +53,53 @@ The provider is available immediately after installation with no additional setu
 
 ### Environment Variables (`.env`)
 
-No environment variables are required for this provider.
+None are required for this provider.
 
 ### Settings File (`settings.json5`)
 
-You can optionally configure the provider's behaviour in `config/settings.json5`:
-
-```json5
-{
-  providers: {
-    apple_tv: {
-      // Enable or disable this provider (default: true)
-      enabled: true,
-
-      // Preferred storefront/country code for regional catalog results
-      // Uses ISO 3166-1 alpha-2 codes (e.g., "US", "GB", "AU", "DE")
-      country: "GB",
-
-      // Maximum number of results to return per search (1-200, default: 10)
-      result_limit: 10,
-
-      // Whether to search for both movies and TV shows (default: true)
-      // Set to false to only search the media type matching the file's classification
-      search_both_types: true,
-
-      // Preferred artwork resolution in pixels (default: 3000)
-      artwork_size: 3000,
-    }
-  }
-}
-```
-
-### Storefront / Region
-
-The `country` parameter determines which regional catalog is searched. Movie and TV show availability varies significantly by country due to licensing restrictions. If a title is not found:
-
-1. Try `country: "US"` — the US catalog typically has the broadest selection
-2. Check that the movie/show has been released in your configured region
-3. Some content may only appear under a different regional storefront
+There is no per-provider `settings.json5` schema for Apple TV — `result_limit`,
+`search_both_types`, and `artwork_size` are not real settings; nothing reads them, and there is no
+"search both movies and TV" toggle because TV is never searched at all. The only real inputs are
+the constructor's `country` argument (ISO 3166-1 alpha-2, e.g. `"US"`) and an optional `base_url`
+override used by the crate's own tests.
 
 ---
 
 ## Available Data
 
-The Apple TV provider returns the following standard metadata fields:
+| Field | Response field | Notes |
+| ----- | --------------- | ----- |
+| `title` | `trackName` | |
+| `artist` | `artistName` | labelled "director" in the source's own comment, but this is whatever iTunes returns in `artistName` for a movie — not a verified director field |
+| `album` | `collectionName` | |
+| `genre` | `primaryGenreName` | |
+| `year` | first 4 digits of `releaseDate` | |
+| cover art | `artworkUrl100`, rescaled to 600×600 plus the original 100×100 | both JPEG |
+| content advisory (metadata) | `contentAdvisoryRating` | e.g. `"PG-13"` |
+| duration (metadata) | `trackTimeMillis` / 1000 | |
+| provider ID (metadata) | `trackId` | |
 
-### For Movies
-
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Movie title | `"Inception"` |
-| `artist` | Director name | `"Christopher Nolan"` |
-| `director` | Director name | `"Christopher Nolan"` |
-| `genre` | Primary genre | `"Science Fiction"` |
-| `year` | Release year | `"2010"` |
-
-### For TV Shows
-
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Episode title | `"Ozymandias"` |
-| `show` | TV show name | `"Breaking Bad"` |
-| `season` | Season number | `"5"` |
-| `episode` | Episode number | `"14"` |
-| `episode_title` | Episode title | `"Ozymandias"` |
-| `artist` | Show creator / network | `"Vince Gilligan"` |
-| `genre` | Primary genre | `"Drama"` |
-| `year` | Episode air year | `"2013"` |
+There is **no `show`, `season`, `episode`, or `episode_title` field** — this provider has no
+concept of a TV episode at all, and there is **no separate `director` field** distinct from the
+generic `artist` mapping described above.
 
 ---
 
 ## Custom Tags
 
-In addition to standard fields, the provider writes the following custom tags to media files:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_apple_tv_id` | Apple TV movie or episode ID | `"533654256"` |
-| `custom_apple_tv_url` | Direct link on Apple TV / iTunes Store | `"https://tv.apple.com/gb/movie/inception/umc.cmc.12345"` |
-| `custom_apple_tv_description` | Short description / synopsis of the movie or episode | `"A thief who steals corporate secrets..."` |
-| `custom_apple_tv_rating` | Content rating (e.g., PG-13, TV-MA) | `"PG-13"` |
-
-The `custom_apple_tv_description` is stored as a custom tag rather than a standard field because description/synopsis is not part of MeedyaManager's standard tag map. It can still be referenced in rename rules using `{custom_apple_tv_description}`.
-
-The `custom_apple_tv_rating` provides the content advisory rating, useful for sorting media by age-appropriateness or creating parental-control-aware folder structures.
+Any `custom_apple_tv_*` tag would come from the metadata fields above once tag-writing wiring
+exists for this provider (see the reachability banner). There is no
+`custom_apple_tv_description` tag — no synopsis/overview field is ever read by this parser.
 
 ---
 
 ## Cover Art
 
-The Apple TV provider supplies **high-resolution static JPEG cover art** at up to **3000x3000 pixels**.
-
-- The API returns an `artworkUrl100` field (100x100 thumbnail URL)
-- MeedyaManager automatically scales this URL to the configured `artwork_size` (default: 3000x3000)
-  - URL transformation: `100x100bb` is replaced with `3000x3000bb` in the artwork URL
-- Image format: JPEG
-- Resolution: Up to 3000 x 3000 pixels (actual resolution depends on Apple's available assets)
-- The image is saved as `FrontCover.jpg` alongside the media file
-- If embedding is enabled, the image is also embedded in the video file's metadata
-
-> **Note:** Movie posters are typically in portrait orientation (approximately 2:3 aspect ratio) while the artwork URL returns a square crop. The actual image served by Apple may be padded or cropped to fit the requested dimensions.
+- Source field: `artworkUrl100` (a 100×100 thumbnail URL).
+- The parser replaces `100x100` with `600x600` in that URL and returns both the upscaled 600×600
+  image and the original 100×100 image, both JPEG.
+- This is **not** 3000×3000 — that resolution is what `AppleMusicProvider`'s cover-art scaling
+  uses; Apple TV's scaling targets 600×600.
 
 ---
 
@@ -156,45 +107,28 @@ The Apple TV provider supplies **high-resolution static JPEG cover art** at up t
 
 ### Provider shows "Available" but returns no results
 
-- **Check the country code.** Movie and TV licensing is heavily region-dependent. Try `country: "US"` for the broadest catalog.
-- **Check your search query.** Ensure your video file has at least a title tag or a descriptive filename. For TV episodes, having the show name significantly improves matching.
-- **Verify the media class.** This provider only searches movies and TV shows. If your file is classified as `"Music"`, this provider will not be queried.
+- Movie licensing is region-dependent — try a different `country`.
+- Only movies are searched; a TV show title will never match here regardless of configuration.
 
-### Wrong movie or TV show matched
+### Expecting TV show / season / episode matching
 
-The iTunes Search API returns results based on keyword relevance. Common causes of mismatches:
+**This is expected to be absent.** `AppleTvProvider` only ever sends `media=movie` — see
+[Overview](#overview). There is no code path that searches TV content in this provider.
 
-- **Generic titles** (e.g., "Crash", "The Gift") match multiple movies. Adding a year helps disambiguate.
-- **TV episodes** with titles matching movie names. Ensure your file has `show` and `season` metadata.
-- Review the confidence scores in MeedyaManager's logs — the match scoring system penalises mismatches on year, show name, and season/episode numbers.
+### Rate limit warnings
 
-### TV episode numbers not matching
-
-The iTunes Search API uses its own episode numbering which may differ from other databases (TMDB, TVDB). This is particularly common for:
-
-- Shows with specials or bonus episodes
-- Shows where seasons were split (e.g., Season 5A / 5B)
-- Regional episode numbering differences
-
-If you need authoritative episode numbering, consider using the TMDB or TVDB providers as your primary source and Apple TV as a supplementary provider.
-
-### Rate limit warnings in logs
-
-The same rate limits apply as for the Apple Podcasts and iTunes Store providers (shared API endpoint):
-
-1. MeedyaManager automatically queues and retries rate-limited requests
-2. Processing large video libraries will proceed at a throttled pace
-3. No manual intervention is needed
+**MeedyaManager's shared rate limiter is not consulted for Apple TV** — only MusicBrainz, ISRC,
+and ISWC requests go through the shared `governor` limiter. A non-2xx response from iTunes is
+surfaced directly as `ProviderError::NetworkError`.
 
 ---
 
 ## Legal Notes
 
-- The Apple TV provider uses Apple's **iTunes Search API**, which is publicly available and does not require a licence agreement for personal, non-commercial use.
+- This provider uses Apple's **iTunes Search API**, publicly available without a licence agreement for personal, non-commercial use.
 - Apple, Apple TV, iTunes, and related marks are trademarks of Apple Inc.
-- Movie and TV show metadata, artwork, and descriptions are the property of their respective rights holders (studios, networks, distributors).
+- Movie metadata and artwork are the property of their respective rights holders (studios, distributors).
 - MeedyaManager retrieves metadata solely for the purpose of organising the user's own media library. No content is redistributed.
-- For full terms, see: [Apple iTunes Affiliate Resources](https://affiliate.itunes.apple.com/resources/)
 
 ---
 

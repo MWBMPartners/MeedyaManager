@@ -21,6 +21,8 @@
         <Grid.RowDefinitions>
             <!-- Title -->
             <RowDefinition Height="Auto" />
+            <!-- Preview notice -->
+            <RowDefinition Height="Auto" />
             <!-- Provider list -->
             <RowDefinition Height="Auto" />
             <!-- Separator -->
@@ -42,9 +44,20 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
 
+        <!-- ── Persistent alpha preview notice ──────────────────────────────
+             mm-cloud does not yet make a real network call for any provider,
+             so nothing on this page can actually connect or sync. See #205. -->
+        <InfoBar Grid.Row="1"
+                 IsOpen="True"
+                 IsClosable="False"
+                 Severity="Informational"
+                 Title="Preview"
+                 Message="Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)"
+                 Margin="0,0,0,8" />
+
         <!-- ── Provider list ─────────────────────────────────────────────── -->
         <ListView x:Name="ProviderList"
-                  Grid.Row="1"
+                  Grid.Row="2"
                   SelectionMode="None"
                   IsItemClickEnabled="False"
                   Margin="0,0,0,8">
@@ -52,19 +65,19 @@
         </ListView>
 
         <!-- ── Separator ─────────────────────────────────────────────────── -->
-        <Rectangle Grid.Row="2"
+        <Rectangle Grid.Row="3"
                    Height="1"
                    Fill="{ThemeResource DividerStrokeColorDefaultBrush}"
                    Margin="0,4,0,8" />
 
         <!-- ── Event log label ───────────────────────────────────────────── -->
-        <TextBlock Grid.Row="3"
+        <TextBlock Grid.Row="4"
                    Text="Event Log"
                    Style="{StaticResource BodyStrongTextBlockStyle}"
                    Margin="0,0,0,6" />
 
         <!-- ── Event log text box ────────────────────────────────────────── -->
-        <ScrollViewer Grid.Row="4"
+        <ScrollViewer Grid.Row="5"
                       VerticalScrollBarVisibility="Auto"
                       Margin="0,0,0,8">
             <TextBox x:Name="EventLogBox"
@@ -82,7 +95,7 @@
         </ScrollViewer>
 
         <!-- ── Clear log button ──────────────────────────────────────────── -->
-        <Button Grid.Row="5"
+        <Button Grid.Row="6"
                 x:Name="ClearLogButton"
                 Content="Clear Log"
                 HorizontalAlignment="Right"

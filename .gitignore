@@ -156,6 +156,12 @@ assets/*.iconset/
 # ============================================================
 .claude/*.jsonl
 .claude/plans/
+# Per-developer Claude Code permissions. Machine-local and personal — the
+# shared, reviewed configuration belongs in .claude/settings.json instead.
+# (The copy on the old chore/claude-config-recovery-2026-07-20 branch had
+# accumulated permissions for an unrelated Python-era project, which is
+# exactly why this must not be tracked.)
+.claude/settings.local.json
 
 # ============================================================
 # Node (if web frontend added later for mm-server)
@@ -177,3 +183,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.spec
+
+# Temporary git worktrees created by Claude Code agents working in isolation.
+# Each is a complete checkout with its own build folder — often several
+# gigabytes — so it must never be picked up by `git add`. Added 2026-09-15,
+# when one sat untracked inside the repository at 8.2 GB.
+.claude/worktrees/

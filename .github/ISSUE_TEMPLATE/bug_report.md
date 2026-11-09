@@ -22,5 +22,5 @@ Attach logs, screenshots or error messages.
 
 ### 🧰 Environment Details
 - OS: [e.g. Windows 11, macOS 14.3]
-- MeedyaManager version: [e.g. v1.0-M2]
+- MeedyaManager version: [e.g. 1.3.0]
 - File format: [e.g. MP4, FLAC]

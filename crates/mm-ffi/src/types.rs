@@ -31,6 +31,63 @@ pub struct TagEntry {
     pub key: String,
     /// Tag value encoded as a UTF-8 string (numeric tags are string-encoded)
     pub value: String,
+    /// Something a person should be told about this value, in plain
+    /// English, for an app to show beside it — or `None` (almost always).
+    ///
+    /// Filled in by `get_metadata` for the `language` entry only, when the
+    /// file's tags disagree about the language: the value shown comes from
+    /// the tag that can hold the full language code, and the file's ID3 tag
+    /// says something different (third review round of the language-policy
+    /// work, item 3 — before, the other answer was hidden from the apps
+    /// entirely). Ignored by `write_metadata`: it is a report about the
+    /// file, never something to write into it.
+    ///
+    /// Optional in every direction, so nothing that already builds or reads
+    /// a `TagEntry` has to change: UniFFI gives the Swift initialiser a
+    /// default of `nil`; the C API leaves the field out of the JSON when it
+    /// is empty, and accepts JSON that does not mention it.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// What a successful metadata write reports
+// ---------------------------------------------------------------------------
+
+/// What `write_metadata` reports when the save succeeded.
+///
+/// Codex's catch-up review of the language-policy branch, finding 6: an app
+/// writing `language` = `pt-BR` to an MP3 got `{"ok":true}` back while the
+/// file stored only `por` — an ID3 tag can hold just the three-letter code,
+/// so the region is lost — and nothing told it. The command line has said so
+/// since the first review round; the apps had no way to. This carries the
+/// same note the command line shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct WriteMetadataResult {
+    /// One `TagEntry` for each field written that a person should be told
+    /// something about: the key and the value as given, and `note` — the
+    /// same facts `meedya edit --set` prints, worked out by the same code
+    /// (`mm_core::metadata::language::conversion_note`), before the save,
+    /// from the file the save starts from, and worded as what happened ("it
+    /// was stored there as \"por\"") rather than as the command line's
+    /// preview (the stand-in review of round 6, N4).
+    ///
+    /// Only the `language` field has notes today: when what is stored loses
+    /// something that was asked for (an ID3 tag keeping only `por` for
+    /// `pt-BR`), when the shared code has something to say about the value
+    /// itself, or when the value is already the file's and one of its tags
+    /// disagrees and is left alone. `None` — not an empty list — when there
+    /// is nothing to say, so the C API's JSON stays exactly `{"ok":true}`.
+    ///
+    /// A write holding the same key more than once is refused, so there is
+    /// at most one note per key (the stand-in review of round 6,
+    /// carry-over 2).
+    ///
+    /// The apps do not show these notes yet (#256).
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<Vec<TagEntry>>,
 }
 
 // ---------------------------------------------------------------------------

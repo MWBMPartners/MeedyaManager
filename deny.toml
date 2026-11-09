@@ -1,19 +1,67 @@
 # (C) 2025-2026 MWBM Partners Ltd
 # cargo-deny configuration — license, advisory, and dependency auditing
 # Run with: cargo deny check
+# Compatible with cargo-deny 0.19.x
 
+# Schema v2 (default in cargo-deny 0.16+). See #149/#150/#152 for migration
+# history and #153 for the SPDX/advisory-ignores port from the
+# feature/MeedyaManager_MeedyaSuite-core_integration branch.
 [advisories]
-# Check RustSec advisory database for known vulnerabilities
+version = 2
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# Scope: check all crates (workspace + transitive dependencies)
-vulnerability = "deny"
-unmaintained = "warn"
+# `unmaintained` is a SCOPE (not severity): "workspace" = only fail when a
+# workspace crate is unmaintained; transitive deps are skipped.
+unmaintained = "workspace"
 yanked = "warn"
+# Ignore unfixable advisories on transitive dependencies. Each entry must
+# document WHY the advisory can't be addressed and what triggered it.
+ignore = [
+    # rsa timing sidechannel (Marvin Attack) — no upstream fix yet.
+    "RUSTSEC-2023-0071", # rsa — used transitively by sqlx / oauth2
+
+    # quick-xml DoS pair (quadratic attribute-dup check / unbounded namespace
+    # allocation), fixed upstream in quick-xml >=0.41.0. Reaches us on two
+    # paths, both transitive through the meedya-core git dependency, neither
+    # bumpable from this repo alone:
+    #   - RUSTSEC-2026-0194 + RUSTSEC-2026-0195 via quick-xml 0.36.2 ←
+    #     meedya-lyrics ← meedya-core. meedya-core's own workspace manifest
+    #     pins `quick-xml = "0.36"` — true both at our pinned rev (222ca7590493)
+    #     and on meedya-core's current main (29eef388 as of 2026-09-01) — so
+    #     re-pointing our git rev would not pick up a fix.
+    #   - RUSTSEC-2026-0194 + RUSTSEC-2026-0195 via quick-xml 0.38.4 ← plist ←
+    #     meedya-library-import ← meedya-core. The fix needs plist >=1.9.0,
+    #     which declares `rust-version = "1.88.0"` — above our workspace MSRV
+    #     of 1.85 (Cargo.toml [workspace.package].rust-version) — so bumping
+    #     plist alone would break our MSRV even though plist isn't pinned by
+    #     meedya-core.
+    # Revisit trigger: re-check on the next meedya-core rev bump (watch for
+    # meedya-core moving to quick-xml >=0.41, or our MSRV moving to >=1.88).
+    "RUSTSEC-2026-0194", # quick-xml — quadratic attribute-dup check (DoS)
+    "RUSTSEC-2026-0195", # quick-xml — unbounded namespace-decl allocation (DoS)
+
+    # Bundled SQLite < 3.54.0 can return uninitialised page-cache memory when a
+    # process opens a database together with a crafted `-wal` file of a
+    # different page size (C SQLite CVE-2026-119375). Fixed in libsqlite3-sys
+    # >=0.39.0, but reaches us only as libsqlite3-sys 0.30.1 ← sqlx-sqlite
+    # 0.8.6 ← sqlx 0.8 ← mm-export (root and mm-gtk lock files), and no sqlx
+    # release can take the fix: even sqlx-sqlite 0.9.0 requires
+    # libsqlite3-sys <0.38. Not reachable today: mm-export's SqliteExporter
+    # is scaffolding that never opens a connection (#113–#118), and nothing
+    # else links SQLite. Exposure would also need an attacker-written
+    # database + `-wal` pair (local vector). (#266)
+    # Revisit trigger: an sqlx release allowing libsqlite3-sys >=0.39, or
+    # mm-export starting to open real SQLite connections — whichever is first.
+    "RUSTSEC-2026-0459", # libsqlite3-sys — bundled SQLite WAL page-size mismatch
+]
 
 [licenses]
-# Only allow licenses compatible with GPL-2.0-or-later
-unlicensed = "deny"
+# Only allow licenses compatible with GPL-2.0-or-later.
+# v2 schema removed `unlicensed` and `copyleft` (see #151 / cargo-deny PR 611):
+# - Anything not in `allow = [...]` is rejected by default.
+# - Copyleft licenses go in `allow` like any other.
+# SPDX identifiers are validated strictly in 0.19.x: GPL-2.0 must be
+# `GPL-2.0-or-later`, GPL-3.0 must be `GPL-3.0-or-later`.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -23,15 +71,17 @@ allow = [
     "ISC",
     "Zlib",
     "MPL-2.0",
-    "GPL-2.0",
-    "GPL-3.0",
+    "GPL-2.0-or-later",
+    "GPL-3.0-or-later",
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "BSL-1.0",
     "OpenSSL",
     "CC0-1.0",
+    "0BSD",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
 ]
-copyleft = "allow"
 
 # Some crates don't have license info in Cargo.toml — allow known-good ones
 [[licenses.clarify]]
@@ -42,9 +92,17 @@ license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 [bans]
 # Warn on multiple versions of the same crate (dependency duplication)
 multiple-versions = "warn"
-wildcards = "deny"
+# Workspace crates use path dependencies which appear as wildcards. Without
+# this, every internal `mm-*` crate triggers a wildcard-deny error.
+wildcards = "allow"
 
 [sources]
 # Only allow crates from crates.io (no unknown registries)
 unknown-registry = "deny"
 unknown-git = "warn"
+
+# Allow all git dependencies from the MWBMPartners GitHub organisation.
+# Covers MeedyaSuite-core (and any future internal crates) regardless of
+# branch, tag, or rev qualifiers in the Cargo.toml git URL.
+[sources.allow-org]
+github = ["MWBMPartners"]

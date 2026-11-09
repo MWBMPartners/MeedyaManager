@@ -3,9 +3,157 @@
  * Used by the Windows WinUI 3 C# project via P/Invoke.
  */
 
-/* Generated with cbindgen:0.27.0 */
+/* Generated with cbindgen:0.29.4 */
 
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
+
+/**
+ * Free a string pointer previously returned by any `mm_ffi_*` function.
+ *
+ * Passing a null pointer is safe (no-op).
+ * Passing a non-mm_ffi-allocated pointer results in undefined behaviour.
+ *
+ * # Safety
+ * `ptr` must be null or a pointer returned by an `mm_ffi_*` function.
+ */
+void mm_ffi_free_string(char *ptr);
+
+/**
+ * Return the MeedyaManager version string as a C string.
+ *
+ * Caller must free the returned pointer with `mm_ffi_free_string`.
+ *
+ * Example return value: `"0.5.0"`
+ */
+const char *mm_ffi_version(void);
+
+/**
+ * Return the platform-specific path to `settings.json5` as a C string.
+ *
+ * Caller must free with `mm_ffi_free_string`.
+ */
+const char *mm_ffi_config_path(void);
+
+/**
+ * Load the configuration and return it as a JSON-encoded C string.
+ *
+ * On success: JSON object of the config.
+ * On failure: `{"error":"<message>"}`.
+ * Caller must free with `mm_ffi_free_string`.
+ */
+const char *mm_ffi_config_load(void);
+
+/**
+ * Scan a directory and return rename previews as a JSON array.
+ *
+ * - `directory`  — UTF-8 null-terminated absolute path
+ * - `template`   — UTF-8 null-terminated rename template string
+ * - `recursive`  — 1 to descend into sub-directories, 0 for flat scan
+ *
+ * On success: `[{"source":"...","destination":"...","conflict":false,...},...]`
+ * On failure: `{"error":"<message>"}`
+ * Caller must free with `mm_ffi_free_string`.
+ *
+ * # Safety
+ * `directory` and `template` must be non-null, valid UTF-8 C strings.
+ */
+const char *mm_ffi_scan_directory(const char *directory, const char *template_, bool recursive);
+
+/**
+ * Read all metadata tags from a file and return them as a JSON array.
+ *
+ * On success: `[{"key":"title","value":"Track Name"},...]`. The `language`
+ * entry may also carry `"note":"<plain-English text>"` when the file's tags
+ * disagree about the language (for example a WAV whose RIFF INFO chunk says
+ * `fre` and whose ID3 tag says `ger`) — text for the app to show beside the
+ * value. The `note` key is left out entirely when there is nothing to say,
+ * and never appears on any other entry.
+ * On failure: `{"error":"<message>"}`
+ * Caller must free with `mm_ffi_free_string`.
+ *
+ * # Safety
+ * `path` must be a non-null, valid UTF-8 C string.
+ */
+const char *mm_ffi_get_metadata(const char *path);
+
+/**
+ * Write metadata tags to a file from a JSON array of `{key, value}` objects.
+ *
+ * Each object may also carry a `note` (as `mm_ffi_get_metadata` returns
+ * them); it is ignored, so that JSON can be sent straight back.
+ *
+ * Each key may appear once: two or more objects with the same key are
+ * refused, naming the key and each value, and the file is left untouched.
+ *
+ * A `language` value must be ONE value: one holding a zero character
+ * (written `\u0000` in the JSON — several values, the way a tag separates
+ * them) or any other control character is refused, and the file is left
+ * untouched.
+ *
+ * On success: `{"ok":true}`, or, when a person should be told something
+ * about what was stored, `{"ok":true,"notes":[{"key":"language",
+ * "value":"pt-BR","note":"<plain-English text>"}]}` — for example that an
+ * MP3 can only store `por` for `pt-BR`, losing the region. The `notes` key
+ * is left out entirely when there is nothing to say.
+ * On failure: `{"error":"<message>"}`
+ * Caller must free with `mm_ffi_free_string`.
+ *
+ * # Safety
+ * `path` and `tags_json` must be non-null, valid UTF-8 C strings.
+ */
+const char *mm_ffi_write_metadata(const char *path, const char *tags_json);
+
+/**
+ * Remove a single tag field from a file.
+ *
+ * On success: `{"ok":true}`
+ * On failure: `{"error":"<message>"}`
+ * Caller must free with `mm_ffi_free_string`.
+ *
+ * # Safety
+ * `path` and `tag_key` must be non-null, valid UTF-8 C strings.
+ */
+const char *mm_ffi_remove_tag(const char *path, const char *tag_key);
+
+/**
+ * Validate a rename template and return the result as JSON.
+ *
+ * On success: `{"is_valid":true,"error_message":"","warnings":[]}`
+ * On failure: `{"is_valid":false,"error_message":"...","warnings":[]}`
+ * Caller must free with `mm_ffi_free_string`.
+ *
+ * # Safety
+ * `template` must be a non-null, valid UTF-8 C string.
+ */
+const char *mm_ffi_validate_template(const char *template_);
+
+/**
+ * Apply a template to a JSON array of `{key,value}` tags and return the result.
+ *
+ * On success: `"Artist - Title"` (the computed filename as a JSON string)
+ * On failure: `{"error":"<message>"}`
+ * Caller must free with `mm_ffi_free_string`.
+ *
+ * # Safety
+ * `template` and `tags_json` must be non-null, valid UTF-8 C strings.
+ */
+const char *mm_ffi_apply_template(const char *template_, const char *tags_json);
+
+/**
+ * Return all known tag names as a JSON array of strings.
+ *
+ * Example: `["Artist","Title","Album","Year",...]`
+ * Caller must free with `mm_ffi_free_string`.
+ */
+const char *mm_ffi_list_known_tags(void);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus

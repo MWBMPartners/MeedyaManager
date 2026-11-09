@@ -47,7 +47,7 @@ struct LookupStubOutput {
 
 // ─── Planned providers list ─────────────────────────────────────────────────
 
-/// List of providers planned for M5.
+/// List of providers planned for future implementation.
 const PLANNED_PROVIDERS: &[&str] = &[
     // Music (10)
     "MusicBrainz",
@@ -79,17 +79,17 @@ const PLANNED_PROVIDERS: &[&str] = &[
 /// Execute the `meedya lookup` command (stub).
 ///
 /// Displays a notice that providers are not yet implemented and lists the
-/// planned providers coming in M5.
-pub fn run(ctx: &CliContext, args: &LookupArgs) -> anyhow::Result<i32> {
-    let message = format!(
-        "Metadata lookup for '{}' is not yet available. Provider support is coming in M5.",
-        args.query
-    );
+/// planned providers.
+pub fn run(ctx: &CliContext, _args: &LookupArgs) -> anyhow::Result<i32> {
+    // The query and provider/auto/apply/batch flags are deliberately not
+    // echoed back as if a search were attempted — no provider is queried at
+    // all, so naming the query would imply work happened that didn't.
+    let message = "Metadata lookup is not available in this alpha (see issue #83).".to_string();
 
     match ctx.output {
         OutputFormat::Json => {
             output::print_json(&LookupStubOutput {
-                status: "stub".to_string(),
+                status: "not_implemented".to_string(),
                 message,
                 planned_providers: PLANNED_PROVIDERS
                     .iter()
@@ -98,8 +98,8 @@ pub fn run(ctx: &CliContext, args: &LookupArgs) -> anyhow::Result<i32> {
             });
         }
         OutputFormat::Human => {
-            output::print_warning(&message);
-            output::print_header("Planned Providers (M5)");
+            output::print_error(&message);
+            output::print_header("Planned providers");
             let rows: Vec<Vec<String>> = PLANNED_PROVIDERS
                 .iter()
                 .enumerate()
@@ -109,7 +109,7 @@ pub fn run(ctx: &CliContext, args: &LookupArgs) -> anyhow::Result<i32> {
         }
     }
 
-    Ok(ExitCode::SUCCESS)
+    Ok(ExitCode::NOT_IMPLEMENTED)
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -132,9 +132,9 @@ mod tests {
         }
     }
 
-    /// Lookup stub displays message and succeeds
+    /// Lookup stub displays message and reports NOT_IMPLEMENTED, not SUCCESS
     #[test]
-    fn lookup_stub_message() {
+    fn lookup_stub_reports_not_implemented() {
         let ctx = test_ctx(false);
         let args = LookupArgs {
             query: "Beatles Abbey Road".to_string(),
@@ -143,12 +143,12 @@ mod tests {
             apply: false,
             batch: false,
         };
-        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::NOT_IMPLEMENTED);
     }
 
-    /// Lookup stub in JSON mode
+    /// Lookup stub in JSON mode reports NOT_IMPLEMENTED, not SUCCESS
     #[test]
-    fn lookup_stub_json() {
+    fn lookup_stub_json_reports_not_implemented() {
         let ctx = test_ctx(true);
         let args = LookupArgs {
             query: "test query".to_string(),
@@ -157,6 +157,6 @@ mod tests {
             apply: false,
             batch: false,
         };
-        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::SUCCESS);
+        assert_eq!(run(&ctx, &args).unwrap(), ExitCode::NOT_IMPLEMENTED);
     }
 }

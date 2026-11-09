@@ -1,0 +1,228 @@
+# MeedyaManager — instructions for AI coding agents
+
+> **(C) 2025-2026 MWBM Partners Ltd**
+>
+> Read by Codex and other agents that look for `AGENTS.md`. Claude Code reads
+> `.claude/CLAUDE.md`, which carries the same rules in more detail. **Keep the two in step —
+> if you change a rule in one, change it in the other.**
+
+## The first thing to understand: this application is about media
+
+MeedyaManager manages **media files and everything that belongs with them**. When you decide
+how to categorise, group or handle any file type, ask:
+
+> *"What does this mean to somebody's media library?"*
+
+**Never** ask only *"what is this file technically?"* That question gives the wrong answer, and
+it has already caused a real defect.
+
+### What is in scope
+
+- **Audio and video** — the primary content.
+- **Raw, bit-for-bit disc images** of original media discs — Audio CD, enhanced CD, mixed-mode
+  CD, DTS CD, HDCD, DVD, HD DVD, Bluray, 3D Bluray:
+  `.iso` `.nrg` `.mdx` `.mds` (with `.mdf`) `.cue` `.bin` `.cdr`.
+  These are **recordings**, not containers.
+- **Associated documents** — booklets and liner notes as PDFs, artwork as images, and animated
+  or motion artwork as MP4.
+- **Companion files** — subtitles, lyrics, cue sheets, rip logs, checksum files, playlists.
+
+### The mistake this rule exists to prevent
+
+On 2026-09-05 the owner asked why an `.iso` was being treated as software. The answer: it was
+added in commit `e80be51`, a bulk tidy-up that worked through a list of container formats and
+dropped `ISO` into the Archive group beside `ZIP`, `GZ`, `MSI`, `DEB` and `APK`. Nobody decided
+it — it was inherited from a checklist.
+
+Technically it was even defensible. ISO 9660 really is a filesystem format, a way of packing
+many files into one, exactly like ZIP. But it answered the wrong question. **A bit-perfect copy
+of an Audio CD is a record, not an installer.**
+
+The same mistake then produced false documentation: `README.md` and `help/faq.md` both promised
+that disc images move alongside their media, because whoever wrote them described what the
+product was *meant* to do while the code followed different logic entirely.
+
+### How to apply it
+
+- Formats that genuinely are software — `DMG`, `MSI`, `DEB`, `RPM`, `PKG`, `APK`, `JAR` — stay
+  archives. They are not media.
+- Anything that can hold a recording, a performance, a booklet or artwork belongs in the media
+  model, with the tags and rules that implies.
+- When a new format appears, decide from the library's point of view **first**, then work out
+  the technical handling.
+- **Be suspicious of bulk "add all the formats" passes.** That is exactly how this slipped in.
+
+### Disc image handling rules (owner decisions, 2026-09-05)
+
+1. **The whole containing folder moves as one sealed unit.** A rip normally carries a log, a
+   checksum file and artwork that only make sense beside the image, so nothing inside is
+   renamed, reordered or split off.
+2. **Naming order:** read the `.cue` sheet (plain text, carries `PERFORMER` and `TITLE`) → a
+   disc fingerprint looked up online, **offered as a suggestion, never applied automatically**
+   → the folder name. **If none is confident, do not rename at all.**
+3. **Look inside the image** to tell an audio disc from a film disc, so each follows its own
+   rules.
+
+**A `.cue` and its `.bin` must keep the same base name and stay side by side.** Separating or
+renaming either one destroys the disc image. See issues #217 and #218.
+
+## Write in plain, everyday English
+
+Everything written for the owner — replies, progress reports, commit messages, issue comments,
+documentation and in-app help — is in plain English with no jargon. Where a technical term
+genuinely cannot be avoided, use it and then say in ordinary words what it means and why it
+matters.
+
+This does not lower the standard of the work. The code and the analysis stay exactly as
+rigorous; only the explanation changes. Prefer more words if they make the meaning clearer.
+Explain *why*, not only *what*.
+
+When reporting on work done, be blunt about what is finished, what is not, what was not checked
+and what went wrong. "I could not test this because there is no database on this machine" is
+worth far more than implying something was verified.
+
+## Always check MeedyaSuite-core before saying a feature is missing
+
+**MeedyaSuite-core is where shared functionality lives for every "Meedya" application.** This
+repository is only half the picture. Never declare a feature missing, absent or unimplemented
+until you have checked upstream as well.
+
+MeedyaManager consumes it as a pinned git dependency in the workspace `Cargo.toml`:
+
+```
+meedya-core = { git = "https://github.com/MWBMPartners/MeedyaSuite-core", rev = "...", features = ["full"] }
+```
+
+The local checkout sits beside the app repositories at `../MeedyaSuite-core`. Sibling projects
+include MeedyaConverter, MeedyaDB, MeedyaDL, MeedyaPlayer and MeedyaSubtitler.
+
+**Why this rule exists.** On 2026-09-06 the `meedya-fingerprint` tool referenced by issue #182
+was reported as not existing. It did exist — in MeedyaSuite-core, already a dependency here, at
+the exact revision this project was pinned to. That revision was the merge of a branch named
+*"meedya-fingerprint-and-lyrics"*. The claim was wrong and had to be corrected publicly.
+
+**How to check, in order:**
+
+1. Search this repository. If it looks absent, **do not stop there.**
+2. Search the local MeedyaSuite-core checkout for the same terms.
+3. Check which upstream crates are actually pulled in **and which feature flags are enabled** —
+   a crate can be compiled in while the part you want sits behind a switch that is off by
+   default. That was precisely the case with the audio-decoding half of the fingerprinting.
+4. Only then state whether it exists, and say plainly **where** it lives.
+
+**This is a design rule too, not just a research habit.** Anything useful to more than one
+Meedya application belongs upstream in MeedyaSuite-core, not copied here. Prefer the upstream
+crate over a local equivalent, and push genuinely shared improvements upstream.
+
+## Languages — mandatory
+
+Any work touching BCP 47 language tags, languages, translations, audio or
+subtitle tracks, lyrics, language order or naming, language preferences, or
+accessibility roles MUST read and follow
+`docs/standards/media-language-bcp47-policy.md` (policy `MWBM-MEDIA-LANG`).
+It is normative and is not repeated here. Its conformance cases must pass.
+The copies are checked against the master in MWBMPartners/MeedyaSuite-core
+by `scripts/media-lang/check_copies.py` in CI; never edit the copies —
+change the master.
+
+## Verify against the code, never against the documents
+
+This project has a documented history of its own documentation and commit messages overstating
+what is finished. Three milestones were closed as complete and had to be reopened because they
+were scaffolding with no working implementation.
+
+**Assume nothing. Cite a file and line you have actually read.**
+
+Watch especially for this pattern: **a module that is fully written, well tested, and has zero
+callers.** Real examples from this repository — the logging system had no callers at all while
+the command-line tool used a different one; the code that strips usernames out of logs was
+tested but never once invoked; the module that recognises disc images is never called by the
+code that moves files. A feature nobody can reach is not finished.
+
+## Platforms
+
+Windows, macOS and Linux. **The Apple app is macOS-only by decision** — iPhone, iPad, Vision Pro
+and Apple Watch were judged unsuitable (#228 closed). **An Android phone app is planned** (#230,
+side-loadable, with foldable support in #229), but no Android code exists yet. The macOS app does not
+link the Rust engine yet (#66). See `.claude/HANDOFF.md` §0 and §2 for what actually exists.
+
+## Build and test
+
+Cargo is not on the default `PATH`. Run `export PATH="$HOME/.cargo/bin:$PATH"` first.
+
+    cargo test --workspace                              # see .claude/HANDOFF.md §0 for the latest count
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo deny check
+    cd macos && swift build                             # baseline is 1 error line
+
+For the macOS build, ignore `#Preview` / `PreviewsMacros` / "external macro" errors — those
+need full Xcode rather than the Command Line Tools and only happen on a developer machine.
+
+`crates/mm-gtk` is excluded from the workspace and **cannot be compiled on this machine** (no
+GTK4). Treat it as read-only and do not change its public interface.
+
+## House rules
+
+- Every source file carries `// (C) 2025-2026 MWBM Partners Ltd`.
+- Dense comments explaining **why**, not what.
+- British English.
+- Never weaken a test or silence a warning to make something pass.
+- **No new dependencies without asking.** A lock-file change forces a cold rebuild on three
+  operating systems, and this branch has never been through CI, so any failure would be
+  impossible to attribute.
+
+## Start here when resuming
+
+1. `.claude/HANDOFF.md` §0 — where things stand right now. It records only what has been
+   checked, never what was hoped for.
+2. `.OpenAI/CONTEXT.md` and `.OpenAI/MEMORY.md` — Codex's own short notes on this project.
+3. `.claude/CLAUDE.md` — the full project rules. This file and that one must say the same
+   thing; if you change a rule in one, change it in the other.
+
+## Standing tasks and working rules (owner, 2026-09-23)
+
+These sit alongside every rule above; none was removed. The fuller version is in
+`.claude/CLAUDE.md` under the same heading.
+
+1. **Plain English.** No jargon in anything written for people — not even for developers, who
+   can find it confusing too. If a technical term cannot be avoided, explain it.
+2. **Keep the handoff current as you go.** Update `.claude/HANDOFF.md` while working, not only
+   at the end. A session can be cut off at any moment, and anything that exists only in the
+   chat, in a temporary work folder or in an unpushed commit is then lost — so always say how many
+   commits are waiting for the owner to push. (On 2026-09-23 the
+   fixes for #233, #231 and #227 were found lost for exactly that reason.)
+3. **Get It Right First Time, without wasting credits.** Think hard first; use workflows for
+   larger pieces of work. Deep analysis and planning: Opus agents, **one after another, never
+   in parallel** (Opus 5.5 is cheaper than Fable and at least as good). Building: Sonnet or
+   Haiku, whichever suits; Opus only for genuinely complex changes. When Codex is the one
+   working, use its strongest reasoning setting for planning and a lighter one for simple
+   edits, in the same spirit.
+4. **Check work with a different AI system.** Work built with Claude Code is reviewed by Codex;
+   work built with Codex is reviewed by Claude. The owner's `dev-team-plugins` may be used for
+   any of this, and for suggesting fixes and new features.
+5. **After each finished task:** commit it — **do not push unless the owner asks**, and a
+   request to push covers that occasion only (owner, 2026-09-23) — to the working branch (today
+   `claude/musicbrainz-api-migration-7jxszn`, later merged into `alpha`); comment on each
+   related GitHub issue individually; update `.claude/` (Claude's context), `.OpenAI/` and
+   this file (Codex's context); update the handoff.
+6. **Standing task — thorough documentation.** Keep every `.md` file, the in-app help and the
+   `.claude/` and `.OpenAI/` notes accurate. If the project offers an API, keep its
+   OpenAPI/Swagger description current, and add a Swagger UI page that also works on shared
+   web hosting without Docker. **Today there is no working API or website** (`mm-server`
+   builds no web routes), so there is nothing to describe yet — never publish a description
+   of routes that do not exist.
+7. **Work efficiently.** Reorder or bundle tasks where that helps; skip nothing.
+8. **Work on your own.** Stop only for a decision that must come from the owner. Gather those
+   questions at the start, ask them simply with the reason, and carry on with everything else
+   while waiting.
+9. **Progress updates** as a table of queued tasks with the status of each.
+10. **Review until clean.** Code is reviewed by Codex, the problems found are fixed, and it is
+    reviewed again, round after round, until a review finds nothing. If you *are* Codex and
+    built the code, a Claude review stands in the other direction.
+11. **No stacked pull requests.** Everything goes on the one working branch; a single pull
+    request into `alpha` is opened later, when the owner says.
+12. **When an AI service is unavailable, fall back — then switch back.** If the main service
+    or one of its helpers is unavailable or out of credit, hand the work to another suitable
+    one, provided no context or progress is lost. Switch back as soon as possible, and have
+    the main service do a full review of everything done while it was away. Record every
+    switch in the handoff. This rule is deliberately not tied to particular products.

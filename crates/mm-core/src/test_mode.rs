@@ -17,7 +17,7 @@
 //    - **No (revert):**  keep both originals and copies
 // 5. Manifest is cleared after commit or revert
 //
-// The manifest persists at `<config_dir>/meedyamanager/testmode_manifest.json`
+// The manifest persists at `<config_dir>/testmode_manifest.json`
 // and survives application restarts.
 //
 // ## Pre-release Safety
@@ -64,7 +64,7 @@ pub struct TestModeEntry {
 
 /// The persistent test-mode manifest.
 ///
-/// Stored as JSON at `<config_dir>/meedyamanager/testmode_manifest.json`.
+/// Stored as JSON at `<config_dir>/testmode_manifest.json`.
 /// Tracks whether test mode is currently active and all files that have
 /// been written in test mode across all sessions.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -143,10 +143,13 @@ pub fn original_path_from_copy(copy_path: &Path) -> Option<PathBuf> {
 // ---------------------------------------------------------------------------
 
 /// Resolve the path to the test-mode manifest file.
-fn manifest_path() -> MmResult<PathBuf> {
-    let config_root = dirs::config_dir()
-        .ok_or_else(|| MmError::Config("cannot determine platform config directory".into()))?;
-    Ok(config_root.join("meedyamanager").join(MANIFEST_FILENAME))
+///
+/// `pub(crate)` (rather than private) so `config::tests::all_core_paths_share_one_directory`
+/// can assert this path shares a directory with every other module's state —
+/// see issue #212 (P0-CONFIGDIR), the case-sensitive-filesystem directory-name
+/// mismatch this resolver was introduced to fix.
+pub(crate) fn manifest_path() -> MmResult<PathBuf> {
+    Ok(crate::config::app_config_dir()?.join(MANIFEST_FILENAME))
 }
 
 /// Load the test-mode manifest from disk.
@@ -206,8 +209,72 @@ fn save_manifest(manifest: &TestModeManifest) -> MmResult<()> {
 // ---------------------------------------------------------------------------
 
 /// Return `true` if test mode is currently enabled.
+///
+/// ## Failure policy: fail **open**
+///
+/// If the manifest cannot be loaded (missing permissions, truncated file,
+/// hand-edited JSON) this logs an `error!` naming the manifest path and
+/// returns `false` — i.e. Test Mode is treated as OFF and writes go to the
+/// user's real files.
+///
+/// Failing *closed* was considered and rejected: `is_enabled` shares
+/// `load_manifest` with [`enable`] and [`disable`], so a manifest that cannot
+/// be parsed would also make those two error out.  The user would then be
+/// stuck in a Test Mode they cannot turn off without hand-deleting the file,
+/// with no message telling them where it lives.  The loud `error!` is the
+/// compensating control: the corrupt manifest is impossible to miss in the
+/// logs, and the path to delete is right there in the message.
 pub fn is_enabled() -> bool {
-    load_manifest().map(|m| m.enabled).unwrap_or(false)
+    match load_manifest() {
+        Ok(manifest) => manifest.enabled,
+        Err(e) => {
+            // Resolve the path for the message on a best-effort basis — if
+            // even the config dir cannot be resolved we still want to log.
+            let where_ = manifest_path().map_or_else(
+                |_| "<config dir unresolved>".to_string(),
+                |p| p.display().to_string(),
+            );
+            error!(
+                manifest = %where_,
+                %e,
+                "test mode: manifest unreadable — assuming DISABLED (writes will \
+                 touch your original files).  Delete or repair the manifest to \
+                 restore Test Mode."
+            );
+            false
+        }
+    }
+}
+
+/// Return the enabled flag from the manifest, propagating a load failure.
+///
+/// This is the fallible counterpart to [`is_enabled`]: it lets a caller that
+/// *can* show the user an error (a CLI status command, say) distinguish
+/// "Test Mode is off" from "the manifest is broken", which the fail-open
+/// `is_enabled` deliberately conflates.
+///
+/// # Errors
+/// Returns `MmError::Config` if the manifest cannot be read or parsed.
+pub fn manifest_status() -> MmResult<bool> {
+    Ok(load_manifest()?.enabled)
+}
+
+/// Return the tracked Test Mode copy for `original`, if the manifest has one.
+///
+/// Keyed exactly as [`record_file`] writes it — `original.to_string_lossy()` —
+/// so the lookup and the insert can never disagree about the key shape.
+///
+/// The integrity layer uses this to *accumulate* successive edits on one copy.
+/// Without it, a second edit in Test Mode re-copied the pristine original over
+/// the copy and silently discarded the first edit (issue #128).
+///
+/// Returns `None` when the file is untracked, and also when the manifest
+/// cannot be loaded — the caller's correct response in both cases is to make
+/// a fresh copy.
+pub fn tracked_copy_for(original: &Path) -> Option<PathBuf> {
+    let manifest = load_manifest().ok()?;
+    let key = original.to_string_lossy().to_string();
+    manifest.files.get(&key).map(|entry| entry.copy.clone())
 }
 
 /// Enable test mode.  Records the enable timestamp in the manifest.
@@ -277,34 +344,82 @@ pub fn tracked_files() -> Vec<TestModeEntry> {
 ///
 /// This is the "Yes" path when the user disables test mode.
 /// Returns the number of files successfully committed.
+///
+/// # Fabricated-success guard (SCAN-HYGIENE)
+///
+/// A previous version of this function skipped any entry whose copy was
+/// missing from disk (warning and `continue`-ing), but then unconditionally
+/// cleared the *entire* manifest — including the skipped entries — and
+/// returned `Ok(committed)` regardless. A caller (`meedya config test-mode
+/// commit`) that lost every copy to, say, an unguarded `scan --execute`
+/// renaming them out from under the manifest would therefore print
+/// `"✓ Committed 0 … originals deleted"` and exit `0`: success, reported
+/// while the user's edits were silently discarded and the manifest's only
+/// record of them wiped. This is the same fabricated-success pattern issue
+/// #205 removed elsewhere.
+///
+/// Now: only entries that are *actually* committed (copy existed, original
+/// deleted, copy renamed — all three succeeded) are removed from the
+/// manifest. Anything that could not be committed — most importantly a
+/// missing copy — stays tracked, so `status`/`revert` can still find it and
+/// nothing is lost from the manifest even if the file itself already is. And
+/// this function returns `Err` naming every affected file whenever anything
+/// was left uncommitted, so the caller cannot mistake "0 committed" for
+/// success.
+///
+/// # Errors
+/// Returns `MmError::Config` if the manifest cannot be read/written, or if
+/// one or more tracked entries could not be committed (missing copy, or a
+/// filesystem error deleting the original / renaming the copy). The error
+/// message names every affected original.
 pub fn commit_files() -> MmResult<usize> {
     let mut manifest = load_manifest()?;
     let mut committed = 0usize;
+    // Human-readable descriptions of everything that did NOT commit, for the
+    // final error message.
+    let mut problems: Vec<String> = Vec::new();
+    // Entries that must remain tracked because they were not committed.
+    let mut remaining: BTreeMap<String, TestModeEntry> = BTreeMap::new();
 
-    for entry in manifest.files.values() {
-        // Skip entries where the copy no longer exists (user may have
-        // deleted it manually)
+    for (key, entry) in &manifest.files {
+        // The copy no longer exists — the user may have deleted it by hand,
+        // or (the bug this guards against) something else renamed/moved it
+        // out from under the manifest. Either way the edit it held may be
+        // gone, so this is reported as a problem rather than swept aside,
+        // and the entry is kept tracked in case the file turns up again.
         if !entry.copy.exists() {
             warn!(
                 copy = %entry.copy.display(),
-                "test mode copy not found — skipping"
+                original = %entry.original.display(),
+                "test mode copy not found — the edit may be lost; leaving entry tracked"
             );
+            problems.push(format!(
+                "copy missing for '{}' (expected at '{}')",
+                entry.original.display(),
+                entry.copy.display()
+            ));
+            remaining.insert(key.clone(), entry.clone());
             continue;
         }
 
-        // Delete the original if it still exists
-        if entry.original.exists() {
-            if let Err(e) = std::fs::remove_file(&entry.original) {
-                error!(
-                    path = %entry.original.display(),
-                    %e,
-                    "failed to delete original file during commit"
-                );
-                continue;
-            }
+        // Delete the original if it still exists.
+        if entry.original.exists()
+            && let Err(e) = std::fs::remove_file(&entry.original)
+        {
+            error!(
+                path = %entry.original.display(),
+                %e,
+                "failed to delete original file during commit"
+            );
+            problems.push(format!(
+                "failed to delete original '{}': {e}",
+                entry.original.display()
+            ));
+            remaining.insert(key.clone(), entry.clone());
+            continue;
         }
 
-        // Rename the copy to the original's name (removing the suffix)
+        // Rename the copy to the original's name (removing the suffix).
         if let Err(e) = std::fs::rename(&entry.copy, &entry.original) {
             error!(
                 from = %entry.copy.display(),
@@ -312,6 +427,12 @@ pub fn commit_files() -> MmResult<usize> {
                 %e,
                 "failed to rename test mode copy during commit"
             );
+            problems.push(format!(
+                "failed to rename copy '{}' to '{}': {e}",
+                entry.copy.display(),
+                entry.original.display()
+            ));
+            remaining.insert(key.clone(), entry.clone());
             continue;
         }
 
@@ -322,9 +443,20 @@ pub fn commit_files() -> MmResult<usize> {
         );
     }
 
-    // Clear the manifest
-    manifest.files.clear();
+    // Only entries that genuinely committed are dropped — everything else
+    // stays tracked so it is not lost from the manifest as well as the disk.
+    manifest.files = remaining;
     save_manifest(&manifest)?;
+
+    if !problems.is_empty() {
+        let message = format!(
+            "committed {committed} file(s); {} could not be committed and remain tracked — {}",
+            problems.len(),
+            problems.join("; ")
+        );
+        error!("{message}");
+        return Err(MmError::Config(message));
+    }
 
     info!(committed, "test mode commit complete");
     Ok(committed)
@@ -369,6 +501,7 @@ pub fn is_current_prerelease() -> bool {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Tests use set_var/remove_var which require unsafe in Edition 2024
 mod tests {
     use super::*;
     use std::fs;
@@ -521,9 +654,20 @@ mod tests {
     }
 
     #[test]
-    fn is_current_prerelease_returns_false_for_stable() {
-        // The workspace version is 1.3.0 (stable) — no pre-release label.
-        assert!(!is_current_prerelease());
+    fn is_prerelease_version_detects_alpha_dot_one() {
+        // Literal coverage for the pre-release detection logic itself,
+        // independent of whatever CARGO_PKG_VERSION happens to be right now.
+        assert!(is_prerelease_version("1.4.0-alpha.1"));
+    }
+
+    #[test]
+    fn is_current_prerelease_matches_cargo_pkg_version() {
+        // Derive the expectation from CARGO_PKG_VERSION itself (a semver
+        // pre-release label is introduced by a hyphen) rather than hardcoding
+        // a boolean, so this assertion never needs touching again on a
+        // future version bump — stable or pre-release.
+        let expected = env!("CARGO_PKG_VERSION").contains('-');
+        assert_eq!(is_current_prerelease(), expected);
     }
 
     // ── File operations (integration-style) ─────────────────────────────────
@@ -564,5 +708,199 @@ mod tests {
         // Revert = keep both, just clear manifest
         assert!(original.exists());
         assert!(copy.exists());
+    }
+
+    // ── Config directory resolution — issue #212 (P0-CONFIGDIR) ─────────────
+
+    #[test]
+    fn manifest_path_shares_the_mm_config_dir_override() {
+        // Guard against other test modules racing on the same env var.
+        let _guard = crate::config::ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let tmp = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("MM_CONFIG_DIR", tmp.path());
+        }
+
+        let path = manifest_path().expect("manifest_path should resolve under override");
+        assert!(
+            path.starts_with(tmp.path()),
+            "manifest path {} does not start with override dir {}",
+            path.display(),
+            tmp.path().display()
+        );
+
+        unsafe {
+            std::env::remove_var("MM_CONFIG_DIR");
+        }
+    }
+
+    // ── tracked_copy_for / manifest_status — issue #128 ─────────────────────
+
+    /// RAII guard pointing `MM_CONFIG_DIR` at a private tempdir.
+    ///
+    /// Restoring on `Drop` (rather than a trailing `remove_var`) means an
+    /// assertion panic cannot leak the override into sibling tests.
+    struct ConfigDirGuard {
+        // Dropped top-to-bottom: tempdir removed before the lock is released.
+        dir: TempDir,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl ConfigDirGuard {
+        fn new() -> Self {
+            let lock = crate::config::ENV_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let dir = TempDir::new().unwrap();
+            unsafe {
+                std::env::set_var("MM_CONFIG_DIR", dir.path());
+            }
+            Self { dir, _lock: lock }
+        }
+
+        fn path(&self) -> &Path {
+            self.dir.path()
+        }
+    }
+
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            unsafe {
+                std::env::remove_var("MM_CONFIG_DIR");
+            }
+        }
+    }
+
+    #[test]
+    fn tracked_copy_for_returns_none_when_untracked() {
+        let _guard = ConfigDirGuard::new();
+
+        // Nothing recorded yet, so nothing to find.
+        assert_eq!(tracked_copy_for(Path::new("/music/never_seen.mp3")), None);
+    }
+
+    #[test]
+    fn tracked_copy_for_finds_a_recorded_copy() {
+        let _guard = ConfigDirGuard::new();
+
+        let original = Path::new("/music/track.mp3");
+        let copy = test_mode_path(original);
+        record_file(original, &copy).unwrap();
+
+        assert_eq!(
+            tracked_copy_for(original),
+            Some(copy),
+            "the lookup must use the same key shape `record_file` writes"
+        );
+        // A different file is still untracked.
+        assert_eq!(tracked_copy_for(Path::new("/music/other.mp3")), None);
+    }
+
+    #[test]
+    fn is_enabled_corrupt_manifest_returns_false_without_panic() {
+        let guard = ConfigDirGuard::new();
+
+        // Hand-mangled manifest: valid UTF-8, invalid JSON.
+        let manifest = guard.path().join(MANIFEST_FILENAME);
+        fs::write(&manifest, b"{ this is not json").unwrap();
+
+        // Fail OPEN: unreadable manifest is reported as "Test Mode off" rather
+        // than propagating, so `enable()`/`disable()` stay reachable.  The
+        // compensating control is the `error!` log naming the manifest path.
+        assert!(
+            !is_enabled(),
+            "a corrupt manifest must fail open (false), not panic"
+        );
+
+        // The fallible counterpart must, by contrast, surface the problem.
+        assert!(
+            manifest_status().is_err(),
+            "manifest_status must propagate what is_enabled swallows"
+        );
+    }
+
+    #[test]
+    fn manifest_status_reports_the_enabled_flag() {
+        let _guard = ConfigDirGuard::new();
+
+        assert!(!manifest_status().unwrap(), "a fresh manifest is disabled");
+        enable().unwrap();
+        assert!(manifest_status().unwrap());
+        disable().unwrap();
+        assert!(!manifest_status().unwrap());
+    }
+
+    // ── commit_files — SCAN-HYGIENE (fabricated-success guard) ─────────────
+
+    /// The ordinary path still works: copy exists, gets promoted over the
+    /// original, and the manifest entry is cleared.
+    #[test]
+    fn commit_files_moves_copy_over_original_and_clears_manifest() {
+        let guard = ConfigDirGuard::new();
+
+        let original = guard.path().join("song.flac");
+        fs::write(&original, b"original bytes").unwrap();
+        let copy = test_mode_path(&original);
+        fs::write(&copy, b"edited bytes").unwrap();
+
+        record_file(&original, &copy).unwrap();
+
+        let committed = commit_files().expect("commit should succeed when the copy exists");
+        assert_eq!(committed, 1);
+        assert_eq!(tracked_file_count(), 0, "committed entry must be cleared");
+        assert!(original.exists());
+        assert!(!copy.exists());
+        assert_eq!(fs::read_to_string(&original).unwrap(), "edited bytes");
+    }
+
+    /// **Regression — fabricated success.**
+    ///
+    /// Reproduces the SCAN-HYGIENE report: the tracked copy is missing (as if
+    /// something had renamed it out from under the manifest). The old
+    /// implementation warned, skipped the entry, then unconditionally wiped
+    /// the whole manifest and returned `Ok(0)` — reported as success while
+    /// the edit was lost with no trace left to investigate.
+    ///
+    /// `commit_files` is exactly what `meedya config test-mode commit`
+    /// (`mm-cli`'s `config_cmd.rs`) calls: its "commit" branch does
+    /// `commit_files().map_err(...)?`, and `main.rs` maps any `Err` an
+    /// `anyhow::Result<i32>` command handler returns to
+    /// `std::process::exit(ExitCode::ERROR)` — so an `Err` here is exactly
+    /// what turns into the CLI's non-zero exit code. This is asserted at the
+    /// mm-core level (rather than by actually invoking the CLI binary)
+    /// because it needs no `MM_CONFIG_DIR` coordination with any other test
+    /// process — mm-core's and mm-cli's test suites already run as separate
+    /// binaries — and mm-cli's own test binary has no crate-wide lock for
+    /// the handful of files that redirect that global environment variable.
+    #[test]
+    fn test_mode_commit_reports_missing_copy_and_exits_non_zero() {
+        let guard = ConfigDirGuard::new();
+
+        let original = guard.path().join("song.flac");
+        fs::write(&original, b"original bytes").unwrap();
+        // The copy this entry names is never created on disk.
+        let copy = test_mode_path(&original);
+        record_file(&original, &copy).unwrap();
+
+        let result = commit_files();
+        assert!(
+            result.is_err(),
+            "a missing tracked copy must fail the commit, not report success"
+        );
+
+        // The entry must still be tracked — silently discarding it here is
+        // exactly how the lost edit went unreported.
+        assert_eq!(
+            tracked_file_count(),
+            1,
+            "the manifest must not be wiped when a copy could not be committed"
+        );
+        assert!(
+            original.exists(),
+            "the original must not be deleted when its copy is missing"
+        );
     }
 }

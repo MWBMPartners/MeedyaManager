@@ -30,7 +30,21 @@ The MusicBrainz provider uses the **MusicBrainz Web Service API (v2)** to search
 - MusicBrainz IDs (MBIDs): unique UUIDs for recordings, releases, and artists
 - Cover art via the **Cover Art Archive** — a companion service providing album artwork
 - No API key required — only a User-Agent header
-- Strict 1 request per second rate limit (enforced automatically)
+- 60 requests/minute (1 request/second, burst 1), enforced automatically by a shared limiter covering the MusicBrainz, ISRC and ISWC providers
+
+---
+
+> ⚠️ **Upcoming MusicBrainz API changes (2026-11-30)** — MusicBrainz has announced breaking changes to its search API, effective **30 November 2026**. The replacement specification has not been published yet, so this project cannot describe the deltas in advance. Every piece of MusicBrainz-specific knowledge — endpoint URLs, query parameters, Lucene query syntax, and response parsing — is centralised in one file, [`crates/mm-providers/src/musicbrainz.rs`](../../crates/mm-providers/src/musicbrainz.rs), so that when the new spec lands, the update can be applied in a single place instead of a hunt-and-peck across the codebase. This guide will be updated once the new behaviour ships.
+
+---
+
+> ℹ️ **The one provider that's actually reachable today.** `meedya lookup` (the CLI command) is
+> still a permanent stub that prints "Provider support is coming in M5" and never calls any
+> provider (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. But the
+> GTK lookup panel (`crates/mm-gtk/src/ui/lookup_panel.rs`) does construct a real, working
+> `MusicBrainzProvider` for its background search — MusicBrainz is the **only** one of the 19
+> providers documented in `help/providers/` that a user can actually reach from the shipped
+> application today.
 
 ---
 
@@ -41,10 +55,21 @@ MusicBrainz does **not** require an API key or account. The only requirement is 
 ### What MeedyaManager sends
 
 ```text
-User-Agent: MeedyaManager/1.4 (lance.manasse@mwbmpartners.com)
+User-Agent: MeedyaManager/1.3.0 (Linux; x86_64) ( support@mwbmpartners.ltd https://www.mwbmpartners.ltd )
 ```
 
-This header follows MusicBrainz's mandatory format: `AppName/Version (contact_email)`.
+This follows MusicBrainz's documented `"AppName/Version ( contact-info )"` convention: the standard MeedyaManager User-Agent (name, version, platform), followed by a parenthesised contact segment so the MusicBrainz operators can reach us if our traffic ever misbehaves.
+
+### Customising the contact address
+
+The contact segment defaults to MWBM Partners Ltd's support address, but self-hosters who would rather MusicBrainz contact *them* directly can override it at runtime with the `MUSICBRAINZ_CONTACT_EMAIL` environment variable — no rebuild required:
+
+```env
+# .env
+MUSICBRAINZ_CONTACT_EMAIL=you@example.com
+```
+
+With that set, MeedyaManager sends `User-Agent: MeedyaManager/1.3.0 (Linux; x86_64) ( you@example.com )` instead. Leaving it unset (or empty) falls back to the compiled-in default shown above.
 
 ### No setup required
 
@@ -62,21 +87,28 @@ No environment variables are required for MusicBrainz.
 
 ### Settings (`settings.json5`)
 
+`mm_core::config::ProviderConfig` does have a real `musicbrainz_enabled` field
+(`crates/mm-core/src/config/mod.rs:309`, defaulting to `true`) — unlike most of the other 18
+provider pages, this one is not a complete config no-op. But nothing currently *reads* it to gate
+provider construction: the GTK lookup panel (`crates/mm-gtk/src/ui/lookup_panel.rs:566`)
+registers `MusicBrainzProvider` unconditionally regardless of this flag, and the CLI's
+`meedya lookup` command is still the permanent stub described above, which never constructs any
+provider at all. So setting `musicbrainz_enabled: false` today has no observable effect — the
+flat field name matches the real code shape (`providers.musicbrainz_enabled`, not the old
+`providers: { musicbrainz: { enabled: ... } }` map this page used to document), it is simply not
+wired to anything yet.
+
 ```json5
-{
-  providers: {
-    musicbrainz: {
-      enabled: true,                    // Enable or disable this provider
-      priority: 3,                      // Provider priority (lower = higher priority)
-    }
-  }
+providers: {
+  // Present on AppConfig (defaults to true) — not yet read by any
+  // provider-construction code path (see note above)
+  musicbrainz_enabled: true,
 }
 ```
 
 | Setting | Default | Description |
 | ------- | ------- | ----------- |
-| `enabled` | `true` | Whether this provider is active |
-| `priority` | `3` | Search priority relative to other providers |
+| `musicbrainz_enabled` | `true` | Exists on `ProviderConfig`; not yet wired to gate MusicBrainz lookups |
 
 ---
 
@@ -100,7 +132,36 @@ When an ISRC code is already present in the file's metadata, MusicBrainz can per
 GET https://musicbrainz.org/ws/2/isrc/GBUM71029604?fmt=json&inc=artist-credits+releases
 ```
 
-MeedyaManager automatically uses ISRC lookup when an ISRC tag is available.
+MeedyaManager automatically uses ISRC lookup when an ISRC tag is available. See [isrc.md](isrc.md) for the dedicated ISRC provider's full lookup-plus-fallback behaviour.
+
+### Search Query Building
+
+When title and/or artist are known, MeedyaManager builds a Lucene query with each value **phrase-quoted** (e.g. `recording:"Bohemian Rhapsody" AND artistname:"Queen"`), so punctuation and Lucene operators that legitimately appear in a title or artist name (`AC/DC`, `Wait & See`, a track titled literally `Rock (Live)`) are treated as literal text rather than query syntax.
+
+A free-text fallback path exists in `crate::musicbrainz::recording_query()` for the case where neither title nor artist is known — it would character-escape the free-text term instead of phrase-quoting it. In practice this path is **not reachable with meaningful content today**: the upstream `SearchQuery` struct (from `meedya-core`) has no generic free-text `query` field, only `title`/`artist`/`album`/`year`/identifiers. `MusicBrainzProvider` derives its "free text" candidate by concatenating `title` and `artist` (`search_term()`), which is only ever non-empty when at least one of them is already set — and whenever either is set, `recording_query()` takes the phrase-quoted branch instead, never the free-text one. So the free-text branch is only ever invoked with an empty string. Wiring up genuine free-text search would need an upstream change to `SearchQuery` (tracked on issue #198).
+
+### Zero-Result Loosened Retry
+
+A phrase-quoted query is an **exact, ordered-token match** — it requires the title/artist to appear verbatim, in that order, with nothing in between. Real-world file tags often carry decorations a MusicBrainz title doesn't have (`Comfortably Numb (Remastered 2011)`, `Track Name (Live)`, `Song feat. Someone Else`), so a phrase query built from such a tag can legitimately come back with zero results even though a close match exists in the database.
+
+When that happens — and ONLY when the original query actually used phrase-quoting, i.e. a title and/or artist were supplied — MeedyaManager retries **exactly once** with a loosened query built from the same inputs: the same `recording:`/`artistname:` fields, but with each value character-escaped (`lucene_escape()`) instead of phrase-quoted. Escaping still keeps Lucene operators neutered (the whole point of the original phrase-quoting fix), but no longer requires the tokens to appear as one exact contiguous phrase, giving MusicBrainz's own relevance ranking a chance to find a near-match the strict phrase query couldn't.
+
+This retry is skipped for:
+
+- a **free-text-only** query (no title/artist) — it already went through character-escaping on the first attempt, so there is nothing left to loosen;
+- an **ISRC** query — an exact-identifier match has nothing to "loosen".
+
+The retry costs one extra request against the shared rate-limit budget, but only in the miss case — a query that finds something on the first try never triggers it.
+
+### Pagination — not currently reachable
+
+`crate::musicbrainz::search_params()` accepts an `offset` argument and omits it from the wire only
+when it is zero, so the low-level plumbing for pagination exists and is unit-tested. However,
+**no caller can actually request a non-zero offset today**: `MusicBrainzProvider::search()`,
+`IsrcProvider`, and `IswcProvider` all hard-code `offset` to `0` when calling `search_params()`,
+because the upstream `SearchQuery` struct — the only way a caller communicates a query to this
+provider — has no `offset` field at all. Paginated MusicBrainz search is blocked on an upstream
+change to `SearchQuery` and is tracked on issue #198.
 
 ---
 
@@ -149,21 +210,26 @@ MeedyaManager automatically constructs cover art URLs when a release MBID is ava
 ### "MusicBrainz search returned 0 results"
 
 **Possible causes:**
+
 - The recording may not be in the MusicBrainz database (community-contributed)
 - Search terms may be too specific or contain special characters
-- MusicBrainz uses Lucene query syntax — MeedyaManager escapes special characters automatically, but unusual metadata may still cause issues
+- MusicBrainz uses Lucene query syntax — MeedyaManager phrase-quotes title and artist automatically (see [Search Query Building](#search-query-building) above) and character-escapes free-text fallback queries, but unusual metadata may still cause issues
+- A phrase-quoted query that finds nothing is automatically retried once with a loosened query (see [Zero-Result Loosened Retry](#zero-result-loosened-retry) above) — if you still see zero results after that, the recording genuinely isn't a close match for anything in the database under either query shape
 
 **Solutions:**
+
 1. Try searching on [musicbrainz.org](https://musicbrainz.org/) directly to verify the recording exists
 2. Consider tagging your files with MusicBrainz Picard first, which adds MBIDs and ISRCs
 3. ISRC lookup is more accurate than text search — ensure ISRC tags are present where possible
 
-### HTTP 503 — Rate limit exceeded
+### HTTP 429 / HTTP 503 — Rate limit exceeded
 
-**Cause:** MusicBrainz strictly enforces **1 request per second**. Exceeding this results in temporary IP blocks.
+**Cause:** MusicBrainz strictly enforces **60 requests/minute (1 request/second, burst 1)** across all traffic, not per feature. Exceeding this results in a `429 Too Many Requests` or `503 Service Unavailable` response, and repeat offenders risk temporary IP blocks.
 
 **Solution:**
-- MeedyaManager's built-in rate limiter should prevent this
+
+- MeedyaManager's built-in rate limiter should prevent this — it is a single shared budget covering the MusicBrainz, ISRC, and ISWC providers together, so a search and an ISRC/ISWC lookup running back-to-back still serialise to 1 request/second rather than each getting their own allowance
+- A `429`/`503` that does get through is retried automatically ONCE, honouring the server's `Retry-After` header (capped at 10 seconds) — a second consecutive throttle, or a `Retry-After` that is absent or too large, is surfaced as a rate-limit error rather than retried further
 - If you see this error, it may be caused by another application also accessing MusicBrainz from the same IP address
 - Wait a few minutes for the block to expire (typically 1-5 minutes)
 
@@ -172,8 +238,9 @@ MeedyaManager automatically constructs cover art URLs when a release MBID is ava
 **Cause:** Missing or invalid User-Agent header.
 
 **Solution:**
-- This should not occur during normal MeedyaManager operation (the header is hardcoded)
-- If you see this after modifying the source code, ensure the User-Agent follows the format: `AppName/Version (contact_email)`
+
+- This should not occur during normal MeedyaManager operation (the contact-bearing header is applied automatically — see [Authentication](#authentication) above)
+- If you see this after modifying the source code, ensure the User-Agent follows the format: `AppName/Version ( contact-info )`
 
 ### Cover art not found (HTTP 404 from Cover Art Archive)
 
@@ -188,7 +255,7 @@ MeedyaManager automatically constructs cover art URLs when a release MBID is ava
 - MusicBrainz is a project of the [MetaBrainz Foundation](https://metabrainz.org/), a non-profit organisation
 - The MusicBrainz database is licensed under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (public domain)
 - The Cover Art Archive is a joint project of MusicBrainz and the Internet Archive
-- Rate limits (1 request/second) must be respected — excessive requests may result in IP bans
+- Rate limits (60 requests/minute — 1 request/second, burst 1) must be respected — excessive requests may result in IP bans
 - There are no API key requirements, fees, or registration processes
 - MeedyaManager stores MBIDs as custom metadata tags; these are open identifiers and freely usable
 

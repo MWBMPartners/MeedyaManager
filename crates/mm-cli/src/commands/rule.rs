@@ -27,7 +27,7 @@ pub struct RuleArgs {
 pub enum RuleAction {
     /// Validate a template string (check syntax without evaluating)
     Validate {
-        /// The template string to validate (e.g. "<Artist>\\<Album>\\<Title>")
+        /// The template string to validate (e.g. `` `<Artist>\<Album>\<Title>` ``)
         template: String,
     },
 

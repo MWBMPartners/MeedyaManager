@@ -14,10 +14,10 @@
 // the `mm-export` crate.  For M9 the database write is stubbed; the UI
 // skeleton is fully wired.
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use crate::ui::accessibility;
 
@@ -26,20 +26,40 @@ use crate::ui::accessibility;
 /// A single database backend option displayed in the backend picker.
 struct BackendOption {
     /// Identifier used when building the DSN
-    id:      &'static str,
+    id: &'static str,
     /// Human-readable label
-    label:   &'static str,
+    label: &'static str,
     /// DSN placeholder shown in the connection field
     example: &'static str,
 }
 
 /// All five supported backends.
 const BACKENDS: &[BackendOption] = &[
-    BackendOption { id: "sqlite",   label: "SQLite",       example: "sqlite:///home/user/library.db" },
-    BackendOption { id: "mysql",    label: "MySQL",        example: "mysql://user:pass@localhost/meedya" },
-    BackendOption { id: "mariadb",  label: "MariaDB",      example: "mysql://user:pass@localhost/meedya" },
-    BackendOption { id: "postgres", label: "PostgreSQL",   example: "postgres://user:pass@localhost/meedya" },
-    BackendOption { id: "mssql",    label: "SQL Server",   example: "server=tcp:host,1433;database=meedya;user=sa;password=P" },
+    BackendOption {
+        id: "sqlite",
+        label: "SQLite",
+        example: "sqlite:///home/user/library.db",
+    },
+    BackendOption {
+        id: "mysql",
+        label: "MySQL",
+        example: "mysql://user:pass@localhost/meedya",
+    },
+    BackendOption {
+        id: "mariadb",
+        label: "MariaDB",
+        example: "mysql://user:pass@localhost/meedya",
+    },
+    BackendOption {
+        id: "postgres",
+        label: "PostgreSQL",
+        example: "postgres://user:pass@localhost/meedya",
+    },
+    BackendOption {
+        id: "mssql",
+        label: "SQL Server",
+        example: "server=tcp:host,1433;database=meedya;user=sa;password=P",
+    },
 ];
 
 // ─── ExportPanel ─────────────────────────────────────────────────────────────
@@ -79,7 +99,7 @@ impl ExportPanel {
         let backend_group = adw::PreferencesGroup::new();
         backend_group.set_title("Database Backend");
         backend_group.set_description(Some(
-            "Choose the target database engine for your media library export."
+            "Choose the target database engine for your media library export.",
         ));
 
         // Backend picker — ComboBoxText with one entry per supported backend
@@ -89,7 +109,10 @@ impl ExportPanel {
         }
         backend_combo.set_active_id(Some("sqlite")); // default to SQLite
         accessibility::set_label(&backend_combo, "Database backend");
-        accessibility::set_description(&backend_combo, "Select the database engine to export your media library to.");
+        accessibility::set_description(
+            &backend_combo,
+            "Select the database engine to export your media library to.",
+        );
 
         let backend_row = adw::ActionRow::builder()
             .title("Backend")
@@ -110,7 +133,10 @@ impl ExportPanel {
             .hexpand(true)
             .build();
         accessibility::set_label(&dsn_entry, "Connection string");
-        accessibility::set_description(&dsn_entry, "Enter the DSN connection string for the selected database backend.");
+        accessibility::set_description(
+            &dsn_entry,
+            "Enter the DSN connection string for the selected database backend.",
+        );
 
         // Update placeholder when backend changes
         {
@@ -132,12 +158,12 @@ impl ExportPanel {
         conn_group.add(&dsn_row);
 
         // Table prefix entry
-        let prefix_entry = gtk::Entry::builder()
-            .text("mm_")
-            .max_length(32)
-            .build();
+        let prefix_entry = gtk::Entry::builder().text("mm_").max_length(32).build();
         accessibility::set_label(&prefix_entry, "Table prefix");
-        accessibility::set_description(&prefix_entry, "Prefix applied to all created database tables.");
+        accessibility::set_description(
+            &prefix_entry,
+            "Prefix applied to all created database tables.",
+        );
 
         let prefix_row = adw::ActionRow::builder()
             .title("Table prefix")
@@ -161,16 +187,29 @@ impl ExportPanel {
             .build();
         schema_btn.add_css_class("pill");
         accessibility::set_label(&schema_btn, "Show schema DDL");
-        accessibility::set_description(&schema_btn, "Displays the database schema SQL statements in the export log.");
+        accessibility::set_description(
+            &schema_btn,
+            "Displays the database schema SQL statements in the export log.",
+        );
 
         let export_btn = gtk::Button::builder()
             .label("Export Library")
-            .tooltip_text("Export scanned media metadata to the configured database")
+            // Disabled in this alpha — mm-export does not yet open a real
+            // database connection, so exporting would only simulate success.
+            // See the preview banner above and issue #205.
+            .tooltip_text("Disabled in this alpha — mm-export does not yet open a database connection (issue #205)")
+            .sensitive(false)
             .build();
         export_btn.add_css_class("pill");
         export_btn.add_css_class("suggested-action");
-        accessibility::set_label(&export_btn, "Export library");
-        accessibility::set_description(&export_btn, "Exports your media library to the configured database backend.");
+        accessibility::set_label(
+            &export_btn,
+            "Export library (disabled — not functional in this alpha)",
+        );
+        accessibility::set_description(
+            &export_btn,
+            "Exporting is disabled in this alpha; mm-export does not yet open a real database connection. See issue #205.",
+        );
 
         btn_box.append(&schema_btn);
         btn_box.append(&export_btn);
@@ -178,7 +217,7 @@ impl ExportPanel {
 
         // ── Status label ─────────────────────────────────────────────────────
         let status_label = gtk::Label::builder()
-            .label("Ready. Configure a connection string and click Export Library.")
+            .label("Preview only — exporting is disabled in this alpha (issue #205). Use Show Schema DDL to preview the generated SQL.")
             .wrap(true)
             .xalign(0.0)
             .build();
@@ -218,7 +257,10 @@ impl ExportPanel {
             .build();
         clear_btn.add_css_class("flat");
         accessibility::set_label(&clear_btn, "Clear export log");
-        accessibility::set_description(&clear_btn, "Removes all log entries and resets the export status.");
+        accessibility::set_description(
+            &clear_btn,
+            "Removes all log entries and resets the export status.",
+        );
         {
             let buf = log_buffer.clone();
             clear_btn.connect_clicked(move |_| {
@@ -227,56 +269,30 @@ impl ExportPanel {
         }
         outer_box.append(&clear_btn);
 
-        // ── Wire up Export button ─────────────────────────────────────────────
-        {
-            let dsn    = dsn_entry.clone();
-            let prefix = prefix_entry.clone();
-            let combo  = backend_combo.clone();
-            let status = status_label.clone();
-            let buf    = log_buffer.clone();
-
-            export_btn.connect_clicked(move |_| {
-                let dsn_val    = dsn.text().to_string();
-                let prefix_val = prefix.text().to_string();
-                let backend_id = combo.active_id().map(|s| s.to_string())
-                    .unwrap_or_else(|| "sqlite".to_string());
-
-                if dsn_val.trim().is_empty() {
-                    status.set_text("⚠ Please enter a connection string before exporting.");
-                    return;
-                }
-
-                // Append to log
-                let entry = format!(
-                    "[Export] backend={backend_id} prefix={prefix_val} dsn_len={}\n",
-                    dsn_val.len()
-                );
-                let mut end = buf.end_iter();
-                buf.insert(&mut end, &entry);
-
-                // M9 stub: real export dispatched via mm-export backend
-                status.set_text("✓ Export completed (stub — no DB writes in M9 UI). Check log for details.");
-            });
-        }
+        // Export is disabled in this alpha — mm-export does not yet open a
+        // real database connection, so there is no click handler to wire up
+        // here. See the preview banner above and issue #205.
 
         // ── Wire up Schema DDL button ─────────────────────────────────────────
         {
             let prefix = prefix_entry.clone();
-            let combo  = backend_combo.clone();
-            let buf    = log_buffer.clone();
+            let combo = backend_combo.clone();
+            let buf = log_buffer.clone();
             let status = status_label.clone();
 
             schema_btn.connect_clicked(move |_| {
-                use mm_export::{ExportConfig, SchemaBuilder, DbDialect};
+                use mm_export::{DbDialect, ExportConfig, SchemaBuilder};
 
-                let backend_id = combo.active_id().map(|s| s.to_string())
+                let backend_id = combo
+                    .active_id()
+                    .map(|s| s.to_string())
                     .unwrap_or_else(|| "sqlite".to_string());
                 let dialect = match backend_id.as_str() {
-                    "mysql"    => DbDialect::MySql,
-                    "mariadb"  => DbDialect::MariaDb,
+                    "mysql" => DbDialect::MySql,
+                    "mariadb" => DbDialect::MariaDb,
                     "postgres" => DbDialect::Postgres,
-                    "mssql"    => DbDialect::SqlServer,
-                    _          => DbDialect::Sqlite,
+                    "mssql" => DbDialect::SqlServer,
+                    _ => DbDialect::Sqlite,
                 };
 
                 let mut cfg = ExportConfig::with_dsn("stub://");
@@ -293,8 +309,22 @@ impl ExportPanel {
             });
         }
 
+        // ── Alpha preview banner ─────────────────────────────────────────────
+        // mm-export does not yet open a real database connection, so the
+        // Export Library button above is permanently disabled. This banner
+        // stays revealed for the lifetime of the tab so testers never mistake
+        // the form for a working export. See issue #205.
+        let preview_banner = adw::Banner::new(
+            "Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)",
+        );
+        preview_banner.set_revealed(true);
+
+        let root_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        root_box.append(&preview_banner);
+        root_box.append(&scroll);
+
         Self {
-            root: scroll.upcast(),
+            root: root_box.upcast(),
         }
     }
 
@@ -317,17 +347,23 @@ mod tests {
 
     #[test]
     fn all_backends_have_non_empty_ids() {
-        for b in BACKENDS { assert!(!b.id.is_empty()); }
+        for b in BACKENDS {
+            assert!(!b.id.is_empty());
+        }
     }
 
     #[test]
     fn all_backends_have_non_empty_labels() {
-        for b in BACKENDS { assert!(!b.label.is_empty()); }
+        for b in BACKENDS {
+            assert!(!b.label.is_empty());
+        }
     }
 
     #[test]
     fn all_backends_have_example_dsns() {
-        for b in BACKENDS { assert!(!b.example.is_empty(), "missing example for {}", b.id); }
+        for b in BACKENDS {
+            assert!(!b.example.is_empty(), "missing example for {}", b.id);
+        }
     }
 
     #[test]

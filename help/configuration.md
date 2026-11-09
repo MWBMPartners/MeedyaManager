@@ -15,7 +15,8 @@ MeedyaManager is configured through a single **JSON5 settings file** — no comm
 5. [logging — Diagnostics](#logging--diagnostics)
 6. [providers — Metadata Lookup](#providers--metadata-lookup)
 7. [Environment Variable Overrides](#environment-variable-overrides)
-8. [CLI Config Commands](#cli-config-commands)
+8. [Real Provider Credentials](#real-provider-credentials)
+9. [CLI Config Commands](#cli-config-commands)
 
 ---
 
@@ -29,13 +30,50 @@ MeedyaManager automatically creates a default configuration file on first run at
 | **Linux** | `~/.config/MeedyaManager/settings.json5` |
 | **Windows** | `%APPDATA%\MeedyaManager\settings.json5` |
 
+> **`MM_CONFIG_DIR` overrides the whole config directory, not just `settings.json5`.** Set this
+> environment variable to a non-empty path and MeedyaManager uses it verbatim in place of the
+> platform default above — for *every* piece of state that lives under the config directory, not
+> only the settings file: the Test Mode manifest, the corruption log, the filetype/tag registry
+> override files, and the settings bundle export/import defaults all resolve through the same
+> `mm_core::config::app_config_dir()` function (issue #212). Two uses:
+>
+> - **Sandboxing the alpha.** Point it at a scratch directory (e.g.
+>   `MM_CONFIG_DIR=/tmp/meedya-test meedya scan ~/Music`) to try MeedyaManager without touching
+>   your real settings, Test Mode manifest, or corruption log — useful while this is still a
+>   pre-release.
+> - **Test isolation.** It is how the test suite gets a config directory it fully controls; `dirs`
+>   6.0 deliberately ignores `XDG_CONFIG_HOME` on macOS, so `MM_CONFIG_DIR` is the only reliable
+>   way to redirect the config directory there.
+>
+> An empty value (`MM_CONFIG_DIR=` with nothing after the `=`) is treated as *not set*, so an
+> inherited-but-blank environment variable can't silently redirect state into the current working
+> directory.
+
 To view or edit the configuration from the CLI:
 
 ```bash
-meedya config show        # Print current config to terminal
-meedya config validate    # Check config for errors
+meedya config show        # Print current config to terminal (reports load errors, if any)
 meedya config path        # Print the config file path
 ```
+
+> There is no `meedya config validate` subcommand — it does not exist in
+> `crates/mm-cli/src/commands/config_cmd.rs:27-58`. `meedya config show` is the closest
+> equivalent: it loads the config file and will report a parse error if there is one.
+>
+> **The shipped `config/settings.json5` now mirrors `AppConfig` field-for-field** (issue #211).
+> Every key in that file, and every property in its companion
+> `config/schemas/settings.schema.json`, corresponds to a real field on the `AppConfig` struct
+> documented on this page — both are checked against `AppConfig::default()`'s own
+> serialised shape by tests in `crates/mm-core/src/config/mod.rs` (`shipped_settings_json5_has_only_known_keys`,
+> `shipped_settings_json5_deserialises_to_non_default`, `settings_schema_properties_match_appconfig`),
+> so the shipped example cannot silently drift out of sync with the code again. `AppConfig` is
+> still `#[serde(default)]` with no `deny_unknown_fields` — a genuinely unrecognised key does not
+> fail loading — but it is no longer *silent*: `AppConfig::load_from` now reports every unknown
+> key it encounters via `tracing::warn!` as `unknown config key '<path>' — ignored`, with a
+> suggested replacement where one is known (e.g. the old `watch_paths` → `watch.folders`). Run
+> with `-v` (or check `meedya config show`'s stderr output) to see these warnings. Programmatic
+> callers can get the same information without parsing logs via
+> `AppConfig::load_from_with_report`, which returns `(AppConfig, Vec<String>)`.
 
 To use a custom config file path:
 
@@ -131,11 +169,13 @@ rename: {
   // Relative paths are resolved from the user's home directory.
   output_dir: "~/Media/Organised",
 
-  // What to do when a destination file already exists:
-  //   "skip"       — leave the source file untouched (safest)
-  //   "overwrite"  — replace the destination
-  //   "rename"     — append a counter to make the name unique
-  //   "ask"        — prompt interactively (GUI only)
+  // What to do when a destination file already exists (including two source
+  // files in the same scan that resolve to the same destination):
+  //   "skip"       — leave the source file untouched (safest, default)
+  //   "rename"     — append a counter to make the name unique, e.g. "Song (1).mp3"
+  //   "overwrite"  — NOT YET IMPLEMENTED: warns once and falls back to "skip"
+  //   "ask"        — NOT YET IMPLEMENTED: warns once and falls back to "skip"
+  //                  (no interactive prompt exists yet)
   conflict_strategy: "skip",
 
   // Create missing directories in the output path automatically
@@ -160,7 +200,7 @@ rename: {
 | ----- | ---- | ------- | ----------- |
 | `template` | string | `"<Artist>/<Album>/<Title>"` | Default rename template |
 | `output_dir` | string or null | `null` | Output root (null = same dir as source) |
-| `conflict_strategy` | string | `"skip"` | Conflict resolution: `"skip"`, `"overwrite"`, `"rename"`, `"ask"` |
+| `conflict_strategy` | string | `"skip"` | Conflict resolution: `"skip"` and `"rename"` are implemented; `"overwrite"` and `"ask"` currently warn once and fall back to `"skip"` (see [cli-reference.md](cli-reference.md#meedya-scan)) |
 | `create_dirs` | bool | `true` | Create missing output directories |
 | `copy_mode` | bool | `false` | Copy files instead of moving |
 | `missing_tag_mode` | string | `"empty"` | Missing tag behaviour: `"empty"`, `"literal"`, `"error"` |
@@ -212,9 +252,19 @@ logging: {
 
 Configures which metadata providers are enabled and supplies their credentials. All keys can be stored in the config file or overridden via environment variables (recommended for secrets).
 
+> **`discogs_*` and `acoustid_*` below are dead settings.** These fields exist on the
+> `ProviderConfig` struct (`crates/mm-core/src/config/mod.rs:251-286`) and MeedyaManager will
+> happily parse and store them, but there is no Discogs provider and no AcoustID provider in
+> `mm-providers` — setting them has no effect on any lookup. Of the 19 providers that do exist,
+> 13 need credentials, and they do **not** use this `providers:` block at all; see
+> [Real Provider Credentials](#real-provider-credentials) below for how they actually resolve
+> keys.
+
 ```json5
 providers: {
   // MusicBrainz — free, no credentials required
+  // (contact details in its User-Agent header can be customised via the
+  // MUSICBRAINZ_CONTACT_EMAIL environment variable — see below)
   musicbrainz_enabled: true,
 
   // Discogs — requires a personal access token
@@ -245,15 +295,16 @@ providers: {
 | Field | Type | Default | Description |
 | ----- | ---- | ------- | ----------- |
 | `musicbrainz_enabled` | bool | `true` | Enable MusicBrainz lookups (no key needed) |
-| `discogs_enabled` | bool | `false` | Enable Discogs lookups |
-| `discogs_token` | string or null | `null` | Discogs personal access token |
+| *(env only)* `MUSICBRAINZ_CONTACT_EMAIL` | string | compiled-in default | Overrides the contact details sent in MusicBrainz's required User-Agent header — see [providers/musicbrainz.md](providers/musicbrainz.md#authentication) |
+| `discogs_enabled` | bool | `false` | **Dead** — no Discogs provider exists in `mm-providers` |
+| `discogs_token` | string or null | `null` | **Dead** — parsed and stored, never read by any provider |
 | `spotify_enabled` | bool | `false` | Enable Spotify lookups |
 | `spotify_client_id` | string or null | `null` | Spotify client ID |
 | `spotify_client_secret` | string or null | `null` | Spotify client secret |
 | `tmdb_enabled` | bool | `false` | Enable TMDb (movie/TV) lookups |
 | `tmdb_api_key` | string or null | `null` | TMDb API key |
-| `acoustid_enabled` | bool | `false` | Enable AcoustID fingerprint lookups |
-| `acoustid_api_key` | string or null | `null` | AcoustID API key |
+| `acoustid_enabled` | bool | `false` | **Dead** — no AcoustID provider exists in `mm-providers` |
+| `acoustid_api_key` | string or null | `null` | **Dead** — parsed and stored, never read by any provider |
 | `request_timeout_secs` | int | `30` | Per-request timeout in seconds |
 | `max_concurrent_requests` | int | `4` | Maximum concurrent API requests |
 
@@ -267,11 +318,14 @@ API keys can be stored as environment variables instead of in the config file, w
 
 | Environment Variable | Config Field | Provider |
 | -------------------- | ------------ | -------- |
-| `MM_DISCOGS_TOKEN` | `providers.discogs_token` | Discogs |
+| `MM_DISCOGS_TOKEN` | `providers.discogs_token` | Discogs (dead — no provider reads it) |
 | `MM_SPOTIFY_CLIENT_ID` | `providers.spotify_client_id` | Spotify |
 | `MM_SPOTIFY_CLIENT_SECRET` | `providers.spotify_client_secret` | Spotify |
 | `MM_TMDB_API_KEY` | `providers.tmdb_api_key` | TMDb |
-| `MM_ACOUSTID_API_KEY` | `providers.acoustid_api_key` | AcoustID |
+| `MM_ACOUSTID_API_KEY` | `providers.acoustid_api_key` | AcoustID (dead — no provider reads it) |
+| `MUSICBRAINZ_CONTACT_EMAIL` | *(no config field — env only)* | MusicBrainz |
+
+> `MUSICBRAINZ_CONTACT_EMAIL` is not an API key — MusicBrainz has none — it customises the contact details (email/URL) sent in the required User-Agent header for the MusicBrainz, ISRC, and ISWC providers. See [providers/musicbrainz.md](providers/musicbrainz.md#authentication).
 
 Environment variables always take priority over values in `settings.json5`.
 
@@ -288,30 +342,54 @@ MM_TMDB_API_KEY=your_tmdb_key_here
 
 ---
 
+## Real Provider Credentials
+
+The `providers:` block above only covers the six fields on `ProviderConfig` — MusicBrainz
+(no key), Discogs and AcoustID (dead, see above), Spotify, and TMDb. It does **not** cover the
+other 13 metadata providers that need a key (OMDb, TheTVDB, EIDR, and others in
+[providers/](providers/)). Those resolve credentials through a separate, generic mechanism in
+`crates/mm-providers/src/credentials.rs`, in this priority order:
+
+1. **Environment variable** — `MM_<PROVIDER>_<KEY>`, e.g. `MM_OMDB_API_KEY`,
+   `MM_TVDB_API_KEY`, `MM_EIDR_CLIENT_ID`. The provider and key names are upper-cased with
+   hyphens/dots/spaces turned into underscores.
+2. **Config map** — a `<provider>.<key>` entry, if the calling code supplies one.
+3. **OS keyring** — a per-provider keyring service named `meedyamanager.<provider>` (e.g.
+   `meedyamanager.omdb`), read via the platform keychain/Credential Manager/Secret Service.
+4. **Local encrypted-ish file** — a `credentials.json` file next to the config directory (this
+   is a plain JSON file, not an encrypted bundle, despite what older documentation implied).
+
+For providers that need a key, see that provider's page under [providers/](providers/) for its
+exact environment variable name.
+
+---
+
 ## CLI Config Commands
 
 ```bash
-# Show the current config (pretty-printed)
+# Show the current config (pretty-printed) — also reports config file parse errors
 meedya config show
 
 # Show as JSON (useful for scripting)
-meedya config show --json
-
-# Validate the config file and report any errors
-meedya config validate
+meedya --json config show
 
 # Print the config file path
 meedya config path
 
-# Export current settings to a portable .mmprofile bundle
-meedya config export --out ~/my-settings.mmprofile
+# Create a new default config file
+meedya config init
 
-# Import settings from a .mmprofile bundle
+# Export current settings to a portable .mmprofile bundle (positional path, not --out)
+meedya config export ~/my-settings.mmprofile
+
+# Import settings from a .mmprofile bundle (positional path)
 meedya config import ~/my-settings.mmprofile
-
-# Reset config to defaults (with confirmation prompt)
-meedya config reset
 ```
+
+> There is no `meedya config reset` subcommand — it does not exist in
+> `crates/mm-cli/src/commands/config_cmd.rs:27-58`. To start over, delete the config file (path
+> from `meedya config path`) and run `meedya config init`, or `meedya config show` again, which
+> regenerates defaults for anything missing.
 
 For export/import details, see [settings-export-import.md](settings-export-import.md).
 

@@ -22,7 +22,14 @@
 //   accessibility::set_description(&my_button, "Scans the selected directory for media files.");
 
 use gtk4 as gtk;
-use gtk::prelude::AccessibleExt;
+// update_property() and update_state() live on AccessibleExtManual (the
+// hand-written extension trait for methods that gir can't auto-generate).
+// They take slices of the typed `gtk::accessible::Property` / `State` enums,
+// where each variant carries its own value — NOT tuples of
+// `(AccessibleProperty, &dyn ToValue)` (that earlier form was wrong API,
+// not just a missing trait import).
+use gtk::accessible::{Property, State};
+use gtk::prelude::AccessibleExtManual;
 
 // ── Label helpers ─────────────────────────────────────────────────────────
 
@@ -30,24 +37,19 @@ use gtk::prelude::AccessibleExt;
 ///
 /// The label is announced by Orca when the widget receives focus.
 /// It is equivalent to HTML `aria-label`.
-pub fn set_label<W: AccessibleExt>(widget: &W, label: &str) {
-    // GTK4 AccessibleExt::update_property() accepts an array of (property, value) pairs.
-    // AccessibleProperty::Label corresponds to AT-SPI2 "accessible-name".
-    widget.update_property(&[(
-        gtk::AccessibleProperty::Label,
-        &label,
-    )]);
+pub fn set_label<W: AccessibleExtManual>(widget: &W, label: &str) {
+    // GTK4 AccessibleExtManual::update_property() accepts a slice of
+    // gtk::accessible::Property values; each variant carries its own value.
+    // Property::Label corresponds to AT-SPI2 "accessible-name".
+    widget.update_property(&[Property::Label(label)]);
 }
 
 /// Set the accessible description (secondary hint) on a GTK4 widget.
 ///
 /// The description is a longer clarifying hint read after the label,
 /// analogous to HTML `aria-description` or a tooltip for screen readers.
-pub fn set_description<W: AccessibleExt>(widget: &W, description: &str) {
-    widget.update_property(&[(
-        gtk::AccessibleProperty::Description,
-        &description,
-    )]);
+pub fn set_description<W: AccessibleExtManual>(widget: &W, description: &str) {
+    widget.update_property(&[Property::Description(description)]);
 }
 
 // ── State helpers ─────────────────────────────────────────────────────────
@@ -57,14 +59,16 @@ pub fn set_description<W: AccessibleExt>(widget: &W, description: &str) {
 /// Orca announces "busy" when the state transitions to true, and
 /// re-announces the widget role when it transitions back to false.
 /// Use this during scan, rename, export, and server-start operations.
-pub fn set_busy<W: AccessibleExt>(widget: &W, busy: bool) {
+pub fn set_busy<W: AccessibleExtManual>(widget: &W, busy: bool) {
     // AT-SPI2 AccessibleState::Busy maps to aria-busy in web terms.
-    widget.update_state(&[(gtk::AccessibleState::Busy, &busy)]);
+    widget.update_state(&[State::Busy(busy)]);
 }
 
 /// Mark a widget as expanded or collapsed (e.g. a disclosure group).
-pub fn set_expanded<W: AccessibleExt>(widget: &W, expanded: bool) {
-    widget.update_state(&[(gtk::AccessibleState::Expanded, &expanded)]);
+pub fn set_expanded<W: AccessibleExtManual>(widget: &W, expanded: bool) {
+    // State::Expanded carries Option<bool>: Some(true)=expanded,
+    // Some(false)=collapsed, None=indeterminate (AT-SPI2 semantics).
+    widget.update_state(&[State::Expanded(Some(expanded))]);
 }
 
 // ── Tab label helper ──────────────────────────────────────────────────────
@@ -77,14 +81,14 @@ pub fn set_expanded<W: AccessibleExt>(widget: &W, expanded: bool) {
 pub fn tab_label(index: usize) -> Option<&'static str> {
     // Tab order must match `main_window::build()` add_tab() call order.
     const LABELS: [&str; 8] = [
-        "Library",   // 0 — folder scan + rename preview
-        "Metadata",  // 1 — tag editor + cover art
-        "Lookup",    // 2 — metadata provider search
-        "Rules",     // 3 — rename template builder
-        "Cloud",     // 4 — cloud storage monitor
-        "Export",    // 5 — database export
-        "Server",    // 6 — secure media server
-        "Settings",  // 7 — application settings
+        "Library",  // 0 — folder scan + rename preview
+        "Metadata", // 1 — tag editor + cover art
+        "Lookup",   // 2 — metadata provider search
+        "Rules",    // 3 — rename template builder
+        "Cloud",    // 4 — cloud storage monitor
+        "Export",   // 5 — database export
+        "Server",   // 6 — secure media server
+        "Settings", // 7 — application settings
     ];
     LABELS.get(index).copied()
 }
@@ -134,7 +138,10 @@ mod tests {
         for i in 0..EXPECTED_TAB_COUNT {
             let desc = tab_description(i);
             assert!(desc.is_some(), "Missing description for tab index {i}");
-            assert!(!desc.unwrap().is_empty(), "Empty description for tab index {i}");
+            assert!(
+                !desc.unwrap().is_empty(),
+                "Empty description for tab index {i}"
+            );
         }
     }
 
@@ -146,9 +153,7 @@ mod tests {
     #[test]
     fn tab_labels_are_unique() {
         // Collect all labels and check for duplicates
-        let labels: Vec<_> = (0..EXPECTED_TAB_COUNT)
-            .filter_map(tab_label)
-            .collect();
+        let labels: Vec<_> = (0..EXPECTED_TAB_COUNT).filter_map(tab_label).collect();
         let unique: std::collections::HashSet<_> = labels.iter().collect();
         assert_eq!(labels.len(), unique.len(), "Tab labels must all be unique");
     }
@@ -183,8 +188,10 @@ mod tests {
         // Labels must not contain HTML/angle brackets
         for i in 0..EXPECTED_TAB_COUNT {
             let label = tab_label(i).unwrap();
-            assert!(!label.contains('<') && !label.contains('>'),
-                "Tab {i} label must not contain HTML: '{label}'");
+            assert!(
+                !label.contains('<') && !label.contains('>'),
+                "Tab {i} label must not contain HTML: '{label}'"
+            );
         }
     }
 }

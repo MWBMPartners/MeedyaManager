@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide covers setting up the **Apple Music** metadata provider in MeedyaManager, including obtaining API credentials, configuring environment variables, and understanding the data returned.
+This guide covers the **Apple Music** metadata provider in MeedyaManager: what it actually queries (the public, unauthenticated **iTunes Search API** — not the JWT-authenticated Apple Music/MusicKit API), and what data it returns.
 
 ---
 
@@ -19,52 +19,43 @@ This guide covers setting up the **Apple Music** metadata provider in MeedyaMana
 
 ---
 
+> ⚠️ **Not reachable from the app today.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`). `AppleMusicProvider`
+> is real, compiled, and unit-tested (against canned JSON fixtures — there is no wiremock/live-HTTP
+> test for it), but nothing in the shipped CLI or GUI constructs it.
+
+---
+
 ## Overview
 
-The Apple Music provider uses the **Apple Music API (MusicKit)** to search the Apple Music catalog for track and album metadata. It returns rich data including titles, artists, albums, ISRC codes, genres, release dates, and cover art in multiple formats — including Apple's unique animated cover art (MP4 video loops).
+`AppleMusicProvider` (`crates/mm-providers/src/music/mod.rs`) searches the public, unauthenticated
+**iTunes Search API** (`https://itunes.apple.com/search?media=music&entity=song`) — the same
+endpoint every other "Apple" provider in this crate uses (Apple TV, iTunes Store, Apple Podcasts).
 
-**Key features:**
+The struct also has a `country` field and no other configuration. Its own doc comment says:
 
-- Track and album search via the Apple Music catalog
-- ISRC code retrieval for precise track identification
-- Static cover art up to 3000x3000 pixels (JPEG)
-- Animated cover art: square (1:1), portrait (tall), and artist spotlight (16:9) as MP4 video
-- Genre classification and release date data
-- Content rating and duration metadata
+> "Auth: None (JWT for full Apple Music API — JWT path stubbed for M5)"
+
+There is **no JWT signing, no ES256 key handling, and no Apple Developer Program / MusicKit
+integration anywhere in the codebase.** The `jsonwebtoken` crate is declared as a workspace
+dependency but is not imported or used by this provider (or by anything else in `mm-providers`).
+The provider is always enabled — no key, team ID, or developer account is ever required or
+checked.
+
+**What it actually returns:** whatever the iTunes Search API's `song` entity returns — title,
+artist, album, genre, release year, track/disc numbers, a content-advisory flag, duration, and
+JPEG artwork. It does **not** return ISRC codes, composer credits, or animated (MP4) cover art —
+none of those appear anywhere in the parser.
 
 ---
 
 ## Authentication
 
-Apple Music requires **JWT Developer Tokens** signed with the **ES256** (Elliptic Curve) algorithm. You need an Apple Developer Program membership to obtain the necessary credentials.
-
-### Step-by-step setup
-
-1. **Join the Apple Developer Program**
-   - Go to [developer.apple.com/programs](https://developer.apple.com/programs/)
-   - Enrol in the Apple Developer Program (annual fee applies)
-
-2. **Enable MusicKit**
-   - Sign in to [developer.apple.com/account](https://developer.apple.com/account)
-   - Go to **Certificates, Identifiers & Profiles**
-   - Under **Keys**, click the **+** button to create a new key
-   - Give your key a name (e.g. "MeedyaManager MusicKit")
-   - Tick the **MusicKit** checkbox
-   - Click **Continue**, then **Register**
-
-3. **Download your private key**
-   - After creating the key, click **Download** to save the `.p8` file
-   - **Important:** You can only download this file once! Store it securely.
-   - Note the **Key ID** shown on the key details page (10-character alphanumeric string)
-
-4. **Find your Team ID**
-   - Go to [developer.apple.com/account](https://developer.apple.com/account)
-   - Your **Team ID** is shown in the top-right corner of the Membership page
-   - It is a 10-character alphanumeric string (e.g. `A1B2C3D4E5`)
-
-5. **That's it — no additional dependencies needed**
-   - MeedyaManager uses the `jsonwebtoken` Rust crate to sign JWT tokens natively
-   - No external libraries or packages to install
+**None.** `AppleMusicProvider` is unconditionally enabled and never checks a credential. There is
+no Apple Developer Program membership, MusicKit key, Team ID, or Key ID to obtain, because none of
+that is used.
 
 ---
 
@@ -72,141 +63,95 @@ Apple Music requires **JWT Developer Tokens** signed with the **ES256** (Ellipti
 
 ### Environment Variables (`.env`)
 
-Add the following to your `.env` file:
-
-```env
-# Apple Music API credentials (MusicKit)
-APPLE_MUSIC_TEAM_ID=A1B2C3D4E5
-APPLE_MUSIC_KEY_ID=ABCDEF1234
-APPLE_MUSIC_PRIVATE_KEY=/path/to/AuthKey_ABCDEF1234.p8
-```
-
-| Variable | Description |
-| -------- | ----------- |
-| `APPLE_MUSIC_TEAM_ID` | Your 10-character Apple Developer Team ID |
-| `APPLE_MUSIC_KEY_ID` | The Key ID of your MusicKit private key |
-| `APPLE_MUSIC_PRIVATE_KEY` | Path to the `.p8` private key file, or the PEM-encoded key string directly |
-
-> **Tip:** The private key can be specified as a file path (recommended) or as the raw PEM string. If using the PEM string, include the full `-----BEGIN PRIVATE KEY-----` header and footer.
+None are read. `APPLE_MUSIC_TEAM_ID` / `APPLE_MUSIC_KEY_ID` / `APPLE_MUSIC_PRIVATE_KEY` are not
+consulted anywhere in the codebase.
 
 ### Settings (`settings.json5`)
 
-```json5
-{
-  providers: {
-    apple_music: {
-      enabled: true,                    // Enable or disable this provider
-      storefront: "gb",                 // ISO 3166-1 alpha-2 country code (e.g. "us", "gb", "de")
-      priority: 2,                      // Provider priority (lower = higher priority)
-    }
-  }
-}
-```
-
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| `enabled` | `true` | Whether this provider is active |
-| `storefront` | `"gb"` | Apple Music storefront region (affects catalog availability) |
-| `priority` | `2` | Search priority relative to other providers |
+There is no per-provider `settings.json5` schema for Apple Music — `enabled`, `priority`, and
+`storefront` are not real settings; nothing reads them. The only real input is the constructor's
+`country` argument (an ISO 3166-1 alpha-2 code, e.g. `"us"`, `"gb"`) and an optional `base_url`
+override used by the crate's own tests.
 
 ---
 
 ## Available Data
 
-The Apple Music provider returns the following standard metadata fields:
+`AppleMusicProvider::search()` sends:
 
-| Field | Source | Example |
-| ----- | ------ | ------- |
-| `title` | `attributes.name` | "Bohemian Rhapsody" |
-| `artist` | `attributes.artistName` | "Queen" |
-| `album` | `attributes.albumName` | "A Night at the Opera" |
-| `genre` | `attributes.genreNames` | "Rock, Classic Rock" |
-| `year` | `attributes.releaseDate` | "1975" |
-| `track_num` | `attributes.trackNumber` | "11" |
-| `disc_num` | `attributes.discNumber` | "1" |
-| `composer` | `attributes.composerName` | "Freddie Mercury" |
-| `isrc` | `attributes.isrc` | "GBUM71029604" |
+```text
+GET {base}/search?term=<title[+artist]>&media=music&entity=song&country=<country>&limit=<n>
+```
+
+| Field | iTunes Search response field | Example |
+| ----- | ----------------------------- | ------- |
+| `title` | `trackName` | "Bohemian Rhapsody" |
+| `artist` | `artistName` | "Queen" |
+| `album` | `collectionName` | "A Night at the Opera" |
+| `genre` | `primaryGenreName` | "Rock" |
+| `year` | first 4 digits of `releaseDate` | "1975" |
+| `track_num` | `trackNumber` | 11 |
+| `disc_num` | `discNumber` | 1 |
+| duration (metadata) | `trackTimeMillis` / 1000 | 354.0 |
+| track total (metadata) | `trackCount` | 12 |
+| content advisory (metadata) | `explicitness` (mapped to `"explicit"`/`"clean"`) | "clean" |
+| provider ID (metadata) | `trackId` | "1440833098" |
+
+There is **no `isrc` field and no `composer` field** — the iTunes Search API's `song` entity
+response this parser reads (`ItunesTrack`) has no such fields, so any earlier documentation
+claiming ISRC or composer data from Apple Music was describing MusicKit, not this provider.
 
 ---
 
 ## Custom Tags
 
-The following custom tags are stored in the file's metadata when matched:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_apple_music_id` | Apple Music catalog song ID | `"1440833098"` |
-| `custom_apple_music_url` | Apple Music URL for the track | `"https://music.apple.com/gb/album/..."` |
-| `custom_apple_music_isrc` | ISRC code from Apple Music | `"GBUM71029604"` |
-| `custom_apple_music_content_rating` | Content advisory rating | `"explicit"` |
-| `custom_apple_music_duration_ms` | Duration in milliseconds | `"354000"` |
-
-These tags can be used in MeedyaManager rename templates and sorting rules. For example:
-
-```json5
-rename_format: "{media_class}/{artist}/{album}/{track_num} - {title} [{custom_apple_music_isrc}].{extension}"
-```
+The provider's own custom-tag identifiers (`custom_apple_music_id`, `custom_apple_music_isrc`,
+etc.) are not written by any code in this crate — the standard/custom tag mapping happens
+elsewhere in `mm-core`'s tag-writing layer, which (per the reachability note above) is never fed
+this provider's results in the shipped app. The values that *would* be available if that wiring
+existed are the ones listed under [Available Data](#available-data): a provider ID, track total,
+duration, and content advisory — no ISRC.
 
 ---
 
 ## Cover Art
 
-Apple Music provides cover art in multiple formats — more than any other provider:
-
-| Type | Format | Resolution | Source Field |
-| ---- | ------ | ---------- | ------------ |
-| **Static (front cover)** | JPEG | Up to 3000x3000 | `artwork.url` template with `{w}x{h}` |
-| **Animated square** | MP4 | Varies | `editorialVideo.motionSquareVideo1x1` |
-| **Animated portrait** | MP4 | Varies (tall) | `editorialVideo.motionDetailTall` |
-| **Artist spotlight** | MP4 | 16:9 wide | `editorialVideo.motionArtistWide16x9` |
-
-MeedyaManager saves these as:
-
-- `FrontCover.jpg` — Static album artwork (JPEG, maximum resolution)
-- `FrontCover.mp4` — Animated square cover loop
-- `PortraitCover.mp4` — Animated portrait cover loop
-- `ArtistCover.mp4` — Artist spotlight video
-
-> **Note:** Not all tracks have animated cover art. Animated covers are typically available for featured albums and popular releases. MeedyaManager will only download the formats that are available.
+- Source field: `artworkUrl100` (a 100×100 thumbnail URL).
+- MeedyaManager's parser replaces the `100x100` segment of that URL with `3000x3000` to request a
+  larger image, and returns **both** the upscaled URL and the original 100×100 URL as two
+  `CoverArtInfo` entries — both are JPEG.
+- There is **no animated cover art** of any kind (no square/portrait/spotlight MP4). That capability
+  does not exist anywhere in `mm-providers` — no `editorialVideo` field is ever read, and no video
+  file is ever downloaded for cover art by any provider in this codebase.
 
 ---
 
 ## Troubleshooting
 
-### "Apple Music: failed to generate JWT token"
-
-**Cause:** Missing or invalid credentials.
-
-**Solutions:**
-1. Verify all three environment variables are set: `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY`
-2. Check that the `.p8` file path is correct and the file is readable
-3. Verify the key has not been revoked in the Apple Developer portal
-
 ### "Apple Music search returned 0 results"
 
-**Possible causes:**
-- The track may not be available in your configured storefront region
-- Try changing `storefront` in `settings.json5` to a different country code
-- Ensure your search query has sufficient metadata (title + artist works best)
+- The track may not be available in the configured `country` storefront — construct a new
+  `AppleMusicProvider` with a different country code.
+- The iTunes Search API does plain keyword matching; very unusual titles/artists may need
+  simplifying.
 
-### JWT token expired or rejected (HTTP 401)
+### Expecting ISRC, composer, or animated cover art
 
-**Cause:** Token lifetime has exceeded Apple's maximum (6 months) or the key has been revoked.
-
-**Solution:**
-- MeedyaManager caches tokens for up to 6 months and refreshes automatically
-- If you revoked the key in Apple Developer, create a new key and update your `.env`
+**This is expected to be absent.** See [Available Data](#available-data) and
+[Cover Art](#cover-art) — none of these exist in this provider's implementation. They would
+require a genuine MusicKit (JWT-authenticated) integration, which has not been built.
 
 ---
 
 ## Legal Notes
 
-- The Apple Music API is provided under the [Apple Developer Program License Agreement](https://developer.apple.com/terms/)
-- Apple Developer Program membership requires an annual fee
-- MusicKit API usage is subject to Apple's rate limits and fair use policies
-- Cover art and metadata are the property of their respective rights holders
-- Animated cover art is a premium Apple Music feature and may not be available for all content
-- MeedyaManager stores provider IDs and URLs as custom metadata tags for reference and linking; this does not imply endorsement by Apple Inc.
+- The iTunes Search API is a public, unauthenticated Apple service; usage is subject to Apple's
+  general terms for that API.
+- This provider does **not** use the Apple Music API / MusicKit and therefore is not subject to
+  the Apple Developer Program License Agreement for that API specifically.
+- Cover art and metadata are the property of their respective rights holders.
+- MeedyaManager retrieves metadata solely for the purpose of organising the user's own media
+  library; this does not imply endorsement by Apple Inc.
 
 ---
 

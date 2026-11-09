@@ -9,19 +9,21 @@
 - [Version Format Conventions](#version-format-conventions)
 - [Platform Version Mapping](#platform-version-mapping)
 - [CI/CD Pipeline Overview](#cicd-pipeline-overview)
+- [API Documentation](#api-documentation)
 - [GitHub Secrets Configuration](#github-secrets-configuration)
 - [Release Binary Hardening](#release-binary-hardening)
 - [Dependency Bundling Requirements](#dependency-bundling-requirements)
 - [GitHub Projects Workflow](#github-projects-workflow)
 - [Managing File Type Definitions](#managing-file-type-definitions-configfiletypesjson5)
 - [Managing Metadata Tag Definitions](#managing-metadata-tag-definitions-configtagsjson5)
+- [Language Tags & the MWBM-MEDIA-LANG Policy](#language-tags--the-mwbm-media-lang-policy)
 - [File Integrity Checking](#file-integrity-checking)
 - [Background Service Mode](#background-service-mode)
 - [Settings Export / Import](#settings-export--import-mmprofile-bundles)
 - [Test Mode (Safe Edit Mode)](#test-mode-safe-edit-mode)
 - [Pre-release Version Safety](#pre-release-version-safety)
 - [Privacy Policy](#privacy-policy)
-- [Codec Registry](#codec-registry-configcodecsjson5--planned-for-v130)
+- [Codec Registry](#codec-registry-configcodecsjson5--status-not-yet-implemented)
 - [JSON Schema Validation](#json-schema-validation)
 - [Apple Privacy Manifest](#apple-privacy-manifest-privacyinfoxcprivacy)
 - [App Store / TestFlight Distribution Checklist](#app-store--testflight-distribution-checklist)
@@ -37,10 +39,42 @@ The **canonical version** lives in the root `Cargo.toml` under `[workspace.packa
 
 | File | Format | Example |
 | ------ | -------- | --------- |
-| `Cargo.toml` `[workspace.package]` | Full semver | `2.0.0-alpha.2` |
-| `windows/.../Package.appxmanifest` `Identity.Version` | 4-part (no pre-release) | `2.0.0.0` |
-| `macos/.../Info.plist` `CFBundleShortVersionString` | 3-part (no pre-release) | `2.0.0` |
+| `Cargo.toml` `[workspace.package]` | Full semver | `1.4.0-alpha.1` |
+| `crates/mm-gtk/Cargo.toml` | Full semver — **exact match required** | `1.4.0-alpha.1` |
+| `linux/snap/snapcraft.yaml` | Full semver — **exact match required** | `1.4.0-alpha.1` |
+| `linux/deb/control` | Debian-mapped (`-` → `~`) | `1.4.0~alpha.1` |
+| `windows/.../Package.appxmanifest` `Identity.Version` | 4-part (pre-release stripped) | `1.4.0.0` |
+| `macos/.../Info.plist` `CFBundleShortVersionString` | 3-part (pre-release stripped) | `1.4.0` |
 | `macos/.../Info.plist` `CFBundleVersion` | Build number | `1` (incremented per build) |
+| Flatpak AppStream `…metainfo.xml` `<releases>` | Full semver | `1.4.0-alpha.1` |
+
+`crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` cannot inherit the workspace version —
+`mm-gtk` is `exclude`d from `[workspace] members` (issue #199) — so they carry a literal copy.
+`ci-rust.yml`'s `version-check` job compares both against `Cargo.toml` for **exact string
+equality, including any pre-release suffix** (unlike the Windows/macOS rows, which correctly
+strip it), so drift on either file fails CI. This is new as of issues #197/#204/#214: before
+then, neither file was checked, and `snapcraft.yaml` had silently drifted to `0.9.0`.
+
+**Debian uses `~`, not `-`, for a pre-release suffix.** Under Debian's version-ordering rules,
+`1.4.0~alpha.1` sorts *before* `1.4.0` — which is what a pre-release must do. A literal hyphen
+(`1.4.0-alpha.1`) would sort *after* the bare version and make the alpha look newer than the
+eventual final release. `version-bump.yml` and `release.yml` both perform this substitution when
+touching `linux/deb/control` or building the `.deb` package filename.
+
+**MSIX and CFBundle both strip the pre-release suffix**, so an alpha and the eventual final
+release with the same `MAJOR.MINOR.PATCH` carry *identical* platform version numbers on Windows
+and macOS. MSIX in particular will refuse to install the final release over the alpha once both
+exist — worth resolving before the first MSIX package is actually produced (no MSIX package
+exists yet, tracked alongside #148/#202).
+
+**Bump procedure:** run `gh workflow run version-bump.yml -f version=<new-version>` (see below),
+verify the resulting diff touches every row in the table above — including the two exact-match
+Linux files — then run the full local gate (`cargo fmt --all --check && cargo clippy --workspace
+--all-targets -- -D warnings && cargo test --workspace`) before merging. The Rust toolchain
+itself is pinned separately in `rust-toolchain.toml` (`channel = "1.98.0"` as of issue #197) and
+is **not** part of this version-bump flow — bump it only as its own deliberate change, verifying
+the full gate locally first (see `rust-toolchain.toml`'s own header comment for the exact
+procedure and the reasoning for pinning rather than floating on `stable`).
 
 ### Automated Version Bumping
 
@@ -139,22 +173,34 @@ MAJOR.MINOR.PATCH[-PRE_RELEASE]
 
 ### Milestone-to-Version Mapping
 
-| Milestone | Version | Status |
-| ----------- | --------- | -------- |
-| M0 — Repository Setup | `v0.1.0` | ✅ Released |
-| M1 — Core Engine | `v0.2.0` | ✅ Released |
-| M2 — Rule Engine | `v0.3.0` | ✅ Released |
-| M3 — CLI | `v0.4.0` | ✅ Released |
-| M4 — FFI + UI Shells | `v0.5.0` | ✅ Released |
-| M5 — Providers | `v0.6.0` | ✅ Released |
-| M6 — Full Native UI | `v0.7.0` | ✅ Released |
-| M7 — Cloud Storage | `v0.8.0` | ✅ Released |
-| M8 — Packaging | `v0.9.0` | ✅ Released |
-| M9 — Database Export | `v0.10.0` | ✅ Released |
-| M10 — Public Release | `v1.0.0` | ✅ Released |
+> **Nothing has ever been publicly released.** "Released" below means *the corresponding version
+> string was reached in `Cargo.toml` during development* — it does **not** mean a GitHub Release,
+> a store submission, or any other public artifact was published. The only GitHub release that
+> exists is the pre-rename *"MetaMancer v1.0-M1"* (2025-06-16, pre-release); the only git tag is
+> `v1.0-M1`. The current version is **`1.4.0-alpha.1`**, reached after M10 — previously `1.3.0` —
+> via a Round 1/Round 2 alpha-readiness pass (issue #214) — the first pre-release label the
+> project has ever carried in `Cargo.toml`. No tag has been pushed for it yet; that follows a
+> green `release.yml` `workflow_dispatch` dry run and the merge to `alpha`.
 
-> **Note:** The project uses `v0.x.0` pre-release versioning through M9.
-> `v1.0.0` is reserved for the first public release at M10.
+| Milestone | Version reached in `Cargo.toml` | Publicly released? |
+| ----------- | --------- | -------- |
+| M0 — Repository Setup | `v0.1.0` | No |
+| M1 — Core Engine | `v0.2.0` | No |
+| M2 — Rule Engine | `v0.3.0` | No |
+| M3 — CLI | `v0.4.0` | No |
+| M4 — FFI + UI Shells | `v0.5.0` | No |
+| M5 — Providers | `v0.6.0` | No |
+| M6 — Full Native UI | `v0.7.0` | No |
+| M7 — Cloud Storage (scaffold only, see PROJECT_STATUS.md) | `v0.8.0` | No |
+| M8 — Packaging (tooling built, nothing submitted) | `v0.9.0` | No |
+| M9 — Database Export (scaffold only, see PROJECT_STATUS.md) | `v0.10.0` | No |
+| M10 — Secure Media Server (scaffold only, see PROJECT_STATUS.md) | `v1.0.0` | No |
+
+> **Note:** The project used `v0.x.0` pre-release versioning through M9, then `v1.0.0` at M10 —
+> but `v1.0.0` was never treated as a real public release. Since M10 the version was bumped to
+> the previously-current `1.3.0`, then to **`1.4.0-alpha.1`** (issue #214, fixed) — still without
+> any public release having been cut, but for the first time carrying an actual semver
+> pre-release label rather than a bare `X.Y.0`.
 
 ---
 
@@ -180,22 +226,59 @@ The 4th component (`.0`) is reserved for future use (e.g., build numbers).
 
 Apple requires `CFBundleShortVersionString` to be a valid `X.Y.Z` format for App Store submission.
 
+### Cargo.toml → Linux packaging
+
+Unlike Windows/macOS, the Linux carriers do **not** strip the pre-release suffix — two of them
+must match `Cargo.toml` exactly, and one remaps the separator:
+
+| Carrier | Format | Example | CI-checked? |
+| ------- | ------ | ------- | ----------- |
+| `crates/mm-gtk/Cargo.toml` | Full semver, verbatim | `1.4.0-alpha.1` | Yes — exact match (`ci-rust.yml`'s `version-check`) |
+| `linux/snap/snapcraft.yaml` | Full semver, verbatim | `1.4.0-alpha.1` | Yes — exact match |
+| `linux/deb/control` | Debian-mapped: `-` → `~` | `1.4.0~alpha.1` | No |
+| Flatpak `…metainfo.xml` `<releases>` | Full semver, verbatim | `1.4.0-alpha.1` | No |
+| `linux/flatpak/…yaml` (`tag:`/`commit:`) | N/A — still a placeholder | `v1.0.0` / `placeholder-pin-to-actual-commit-sha` | No — pre-existing gap, not touched by #214 |
+
+Debian's `~` sorts *before* the bare version, which is what a pre-release must do; a literal `-`
+would sort after it. `version-bump.yml`'s sed steps and its verification step cover the two
+CI-checked rows so an automated bump can't reintroduce drift on either. The WinGet manifest
+(`windows/winget/manifests/…`) is a separate carrier again, still stuck at `1.0.0`/`0.9.0` and
+not covered by any automated check — see `PROJECT_STATUS.md`'s M8 section.
+
 ---
 
 ## CI/CD Pipeline Overview
 
-### 8 Workflows
+### 10 Workflows
 
 | Workflow | File | Trigger | Purpose |
 | ---------- | ------ | --------- | --------- |
-| **Rust Core CI** | `ci-rust.yml` | Push/PR to `main` (crates/**) | Format, lint, test, version-sync |
-| **macOS CI** | `ci-macos.yml` | Push/PR to `main` (macos/**) | Build SwiftUI app |
-| **Windows CI** | `ci-windows.yml` | Push/PR to `main` (windows/**) | Build WinUI 3 app |
-| **Linux CI** | `ci-linux.yml` | Push/PR to `main` (crates/mm-gtk/**) | Build GTK4 app under Xvfb |
-| **Version Bump** | `version-bump.yml` | Manual (`workflow_dispatch`) | Bump version across all files |
-| **Release Build** | `release.yml` | Tag push (`v*`) | Build all platforms, create release |
-| **Security Audit** | `audit.yml` | Weekly + push to `main` | `cargo deny` + `cargo audit` |
+| **PR Gate (umbrella)** | `pr-gate.yml` | Every PR to `main`, `alpha` or `beta`, no path filter | Single required status check on `main` — detects changed paths, conditionally invokes the 4 platform CIs below as reusable (`workflow_call`) jobs, aggregates as the `Gate` job. See `.claude/CLAUDE.md` for the full pattern and why it exists |
+| **Rust Core CI** | `ci-rust.yml` | `workflow_call` from `pr-gate.yml` + push to `main`/`alpha`/`beta` (`crates/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`, `clippy.toml`, `.cargo/**`) | Format, lint, test, version-sync (now also checks `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` for exact match) |
+| **macOS CI** | `ci-macos.yml` | `workflow_call` from `pr-gate.yml` + push to `main`/`alpha`/`beta` (macos/**) | Build SwiftUI app (`swift build` + `swift test`) |
+| **Windows CI** | `ci-windows.yml` | `workflow_call` from `pr-gate.yml` + push to `main`/`alpha`/`beta` (windows/**) | Build WinUI 3 app — currently de-scoped from PR Gate pending #148 |
+| **Linux CI** | `ci-linux.yml` | `workflow_call` from `pr-gate.yml` + push to `main`/`alpha`/`beta` (crates/mm-gtk/**) | Build GTK4 app under Xvfb |
+| **Lint Workflows** | `lint.yml` | Push/PR touching `.github/workflows/**`, manual dispatch | `actionlint` against every workflow file |
+| **Version Bump** | `version-bump.yml` | Manual (`workflow_dispatch`) | Bump version across all files, including `crates/mm-gtk/Cargo.toml` and `linux/snap/snapcraft.yaml` (as of #197/#204) |
+| **Release Build** | `release.yml` | Tag push (`v*`) + manual `workflow_dispatch` dry run (`version`/`publish` inputs, added by #202) | Build all platforms, create release — no tag has ever actually been pushed |
+| **Security Audit** | `audit.yml` | Weekly + push to `main`/`alpha`/`beta` + path-filtered PR on `Cargo.lock`/`Cargo.toml`/`deny.toml` | `cargo deny check` (licences, bans, advisories, sources) — **fixed** as of issue #203; a separate `cargo audit` step was removed as redundant with `cargo-deny`'s own advisories check |
 | **Documentation** | `docs.yml` | Push to `main` (crates/**) | Generate `cargo doc` |
+
+> `ci-rust.yml`, `ci-macos.yml`, `ci-windows.yml`, and `ci-linux.yml` must never gain a
+> `pull_request:` trigger of their own — they are reached only via `workflow_call:` from
+> `pr-gate.yml`, otherwise PR runs would duplicate. See `.claude/CLAUDE.md` "Branch protection"
+> section before changing any of this.
+>
+> **The Rust toolchain is pinned, not floating.** `rust-toolchain.toml` sets
+> `channel = "1.98.0"` (issue #197) rather than `"stable"`. This is what every `cargo`/`rustc`
+> invocation in the repo actually uses, regardless of the ~11 `dtolnay/rust-toolchain@stable`
+> steps across the workflow files above — rustup's directory-walk toolchain-file override
+> outranks whatever `rustup default` sets, so those steps' installed "stable" is never what
+> actually builds this repo. See `rust-toolchain.toml`'s own header comment for the full
+> reasoning and the bump procedure.
+>
+> **Cargo is not on the default `PATH` in this development environment.** Run
+> `export PATH="$HOME/.cargo/bin:$PATH"` before any `cargo` command in a fresh shell.
 
 ### Release Workflow Details
 
@@ -210,6 +293,21 @@ prepare ──┬── release-macos (arm64)
                       │
               create-release (draft GitHub Release)
 ```
+
+As of issue #202, the pipeline is capable of actually producing a usable alpha, which it was not
+before: the CLI binary is `meedya`, not `mm-cli` (all seven copy sites were wrong); the GTK
+binary `meedya-gtk` is built explicitly via `--manifest-path crates/mm-gtk/Cargo.toml` (`mm-gtk`
+is excluded from the workspace, so `cargo build --release --workspace` never produced it); all 25
+`2>/dev/null || true` failure suppressions wrapping these copies are removed, with every
+packaging block now running under `set -euo pipefail`; the macOS runner moved from `macos-15` to
+`macos-26` (Swift 6.3 toolchain requirement); Windows staging is archived into a real `.zip`
+rather than uploaded as a bare directory; and `LICENSE` is staged into every platform's package
+(issue #207). **Windows release jobs are `continue-on-error` and excluded from the release
+gate** — Windows CI has never been green (#148) and must not block a macOS/Linux alpha;
+`create-release` checks for the actual presence of the Windows archives rather than trusting
+`needs.*.result`, which a `continue-on-error` job always reports as success regardless of the
+underlying build outcome. AppImage is deliberately still not built — `build-appimage.sh` itself
+documents that its output isn't self-contained.
 
 **Artifact naming convention:**
 
@@ -226,6 +324,17 @@ MeedyaManager-{version}-SHA256SUMS.txt
 | macOS | Implemented | Apple Developer ID cert (`APPLE_CERT_P12` secret) + notarisation |
 | Windows | Implemented | Authenticode PFX cert (`WINDOWS_CERT_PFX` secret) via signtool |
 | Linux | N/A | Not required for Flatpak/Snap distribution |
+
+---
+
+## API Documentation
+
+MeedyaManager is not web-based (no axum router is ever built, no `.html` files exist in the
+repo), so there is deliberately no OpenAPI/Swagger document. Instead, the three real API surfaces
+— the Rust crate APIs, the C/UniFFI FFI layer consumed by the Windows and macOS native UIs, and
+the `meedya` CLI as a scripting interface (exit codes, `--json` schemas) — are documented under
+[`docs/api/`](docs/api/README.md). Start at `docs/api/README.md`; it explains which page covers
+which surface and how to regenerate each one.
 
 ---
 
@@ -559,8 +668,10 @@ All file-type classifications (audio, video, subtitle, companion) are stored in
 
 - **Embedded** into every binary at compile time via `include_str!()`.
 - **Overridable** at runtime: place a modified copy at
-  `~/.config/meedyamanager/filetypes.json5` (Linux/macOS) or
-  `%APPDATA%\MeedyaManager\filetypes.json5` (Windows).
+  `~/.config/MeedyaManager/filetypes.json5` (Linux), `~/Library/Application
+  Support/MeedyaManager/filetypes.json5` (macOS), or
+  `%APPDATA%\MeedyaManager\filetypes.json5` (Windows) — the single config directory resolved by
+  `mm_core::config::app_config_dir()` (issue #212), overridable with `MM_CONFIG_DIR`.
 
 ### Adding a New Format
 
@@ -622,7 +733,8 @@ Add an entry to the `tags` array with the required fields:
 ### Adding a User-Defined Custom Tag (MeedyaMeta Namespace)
 
 Custom tags are added to the `custom` array in **your user override file**
-(`~/.config/meedyamanager/tags.json5`), not to the codebase file:
+(`~/.config/MeedyaManager/tags.json5` on Linux, the platform-equivalent config directory
+elsewhere — see `mm_core::config::app_config_dir()`, issue #212), not to the codebase file:
 
 ```json5
 {
@@ -648,56 +760,522 @@ Custom tags are also available in rename templates as `<Rating>` once defined.
 
 ---
 
+## Language Tags & the MWBM-MEDIA-LANG Policy
+
+**Read this before touching the `language` tag, or anything to do with languages,
+translations, audio/subtitle tracks, lyrics, language order, or accessibility roles.**
+`docs/standards/media-language-bcp47-policy.md` is the normative rulebook, shared with
+every other Meedya application, and it is not repeated here — see the "Languages —
+mandatory" note in `AGENTS.md` / `.claude/CLAUDE.md` / `.OpenAI/CONTEXT.md`.
+
+What MeedyaManager actually does with it today (its "canonical" profile — it edits
+stored metadata, and shows no language menus yet):
+
+- `crates/mm-core/src/metadata/language.rs` is the one place this crate reads or
+  writes a language value. `parse_stored_language` reads a value already sitting in a
+  file (never fails — an unrecognised value becomes `und`, with the original text kept
+  alongside). `parse_language_input` is for a person choosing a language on purpose
+  (the CLI's `--set language=...` today); unlike the reader, it refuses a value it
+  cannot make sense of, with a message that gives a working example.
+- `language_value_for_tag_type` decides what actually gets written for a given tag
+  container, per the policy's TRACK-070: an ID3v2 tag's `TLAN` frame — the kind an MP3
+  carries, and a WAV can also carry one embedded inside it, see below — gets the old
+  three-letter ISO 639-2 code (there being no field in that kind of tag that can hold
+  anything richer); every other container this app writes gets the full language tag
+  as typed.
+- A **genuine surprise, found while testing this against a real file rather than
+  assumed from the table**: `lofty` (the tag-reading/writing library this app uses)
+  maps a WAV file's "primary" tag to an embedded ID3v2 chunk, not a RIFF INFO chunk —
+  see `lofty::file::FileType::primary_tag_type()`. So a FRESH `.wav` file — one with no
+  tags of its own yet — gets the same embedded ID3v2 tag an MP3 does for every field,
+  `language` included, never a RIFF INFO chunk, whatever this file (and the metadata
+  module's own doc comment) says about "WAV, RIFF INFO". That is a pre-existing fact
+  about how this crate writes WAV files generally, unrelated to the language work, but
+  the language-specific write path is the first thing to have depended on which
+  container a file is really using, which is what surfaced it. **Corrected after the
+  second review round**: a WAV that already HAS a genuine RIFF INFO language value —
+  from some other tool, or from an earlier write by this crate itself — DOES get that
+  container written to as well (see the "keep every container consistent" fix a few
+  bullets down); the fact above is only about a container that never had a value to
+  begin with, which `write_tags` never creates from nothing. See the comment on
+  `wav_write_tags_uses_embedded_id3v2_not_riff_info` in `crates/mm-core/tests/metadata_roundtrip.rs`.
+- **A second genuine surprise**: the policy says ID3v2.4's `TLAN` field can hold several
+  three-letter codes separated by a null character, with the first being the primary
+  language — reading LANG-002 alone, this sounds like something MeedyaManager's own code
+  would need to split apart. Testing it against a real MP3 (writing a null-separated
+  value straight into a `TLAN` frame, checking the raw file bytes, then reading it back
+  through this app's normal path) showed the null genuinely reaches the file on disk, and
+  `lofty`'s own ID3v2 reader already splits it into separate values before this app ever
+  sees a raw string, immediately after that one write — the same multi-value handling
+  every other ID3 text field already gets. See
+  `multi_value_tlan_is_split_into_separate_items_by_lofty_itself` in
+  `crates/mm-core/tests/metadata_roundtrip.rs`.
+
+  **Corrected after an independent review actually built and ran the case**: that only
+  covers the file being read right after the poke. Save the file AGAIN for any unrelated
+  reason (changing only the title, `language` never mentioned) and one of the two values
+  is gone for good — the same loss happens to a multi-value `artist` field too, so this is
+  a general fault in how every multi-value ID3 field survives a save, not something
+  specific to language, and not something this branch introduced. Tracked as its own
+  issue (#254) rather than fixed here, with a test already written and marked to skip
+  until it is fixed: `multi_value_tlan_does_not_survive_an_unrelated_save` in the same
+  file, `#[ignore = "issue #254"]`.
+- Saving a file for an unrelated reason (changing the title, say) MUST NOT touch an
+  untouched `language` value, however it reads, and — this is the part that changed after
+  the same review actually reproduced it on real files — this has to hold even when the
+  CALLER resends the language field's CURRENT value unchanged, not only when the caller
+  leaves the key out. Every native UI this project has (macOS, Windows, the Linux GTK app)
+  reads the whole tag set into a form and resends every field on Save, changed or not. A
+  FLAC whose `LANGUAGE` comment already said `English` had its WHOLE SAVE REFUSED, not
+  merely its language silently rewritten, because resending `English` hit the same
+  refusal a person typing it fresh would — found and reproduced before this was fixed.
+  `write_tags` now reads what the file already has for `language` first (the same way
+  `extract_tags` would), and skips it completely — no validation, no conversion, not even
+  a re-write with the same bytes — whenever the supplied value is IDENTICAL to what is
+  already there. Only a value that is genuinely different goes through validation and
+  per-container conversion. See the doc comment on `write_tags` for the full account.
+- `config/tags.json5`'s `language` entry documents the MP4 mapping as
+  `----:com.apple.iTunes:LANGUAGE` — a freeform iTunes atom, not a plain four-letter
+  atom — because that is what `lofty` 0.22.4 actually maps `ItemKey::Language` to on
+  MP4 (checked by reading lofty's own mapping table, not guessed).
+- **A third genuine surprise, this one about the RULE ENGINE, not writing tags at
+  all**: once `write_tags` started writing the correct per-format form (an MP3 gets the
+  old three-letter code, everything else the full one), a rename rule such as
+  `language Equals en` stopped matching MP3 files it used to match, because the file
+  now genuinely stores `eng`, not `en` — the exact same language, but different text.
+  `<Language>` in a rename template had the identical problem the other way round:
+  the same fact printed as `eng` on an MP3 and `en` on a FLAC. Both are now fixed the
+  same way: `EvalContext::resolve_metadata_tag` (for `<Language>`) and
+  `evaluate_condition` (for a rule's own configured value) run the `language` field's
+  text through `metadata::language::standardise_for_comparison` before comparing or
+  rendering it, so both sides of a comparison — and a template's output — always use
+  the STANDARD form, whatever the file itself happens to store. A value nothing
+  recognises is compared and shown as its own original text, never a guess — with only the
+  policy's own four whitespace characters (space, tab, line feed, carriage return) taken off
+  its two ends. (Until Codex's catch-up review this used Rust's `str::trim`, which also takes
+  off a no-break space and every other Unicode space, so a value the policy calls malformed was
+  read as English; see the round 6 notes below.)
+- The conformance test, `crates/mm-core/tests/media_language_conformance.rs`, runs
+  every case in the local copy of the policy's own test file
+  (`tests/fixtures/bcp47-language-policy-v1.json`) for the four sections MeedyaManager
+  needs today (`canonicalise`, `legacy_three_letter`, `iso639_2_write`,
+  `canonical_order`), and fails — never quietly passes — on a section name it does not
+  recognise, a needed section that is missing or empty, or a case missing a field. It
+  also re-canonicalises every `canonicalise` case's own expected answer and checks it
+  comes back unchanged (LANG-001's "canonical form is stable" property).
+- The policy files themselves (the document, its test cases and reference data, and
+  the checker script) are exact copies of the master files in
+  `MWBMPartners/MeedyaSuite-core`, recorded in `docs/standards/MWBM-MEDIA-LANG.lock`.
+  **Never edit a copy** — change the master in MeedyaSuite-core, then run
+  `python3 scripts/media-lang/check_copies.py --update <new commit>`. CI runs the same
+  script with no arguments (the `media-language-policy` job in `ci-rust.yml`) and fails
+  the build if a copy has drifted.
+- `meedya-lang` (the shared Rust code implementing the policy) is a separate workspace
+  dependency from `meedya-core`, pinned to its own commit on MeedyaSuite-core's
+  `feature/bcp47-language-policy` branch — see the comment on its line in the root
+  `Cargo.toml` for why, and issue #253 for re-pinning it to `main` once that branch
+  merges upstream.
+- **Copy-update sweep, 2026-09-28**: moved from core commit `995becb7` to a later
+  reviewed revision on the same branch, `aaaa585aa145`. Checked the actual crate diff
+  (`crates/meedya-lang/src/*.rs` between the two commits in MeedyaSuite-core) against
+  what this repository actually calls (`rg 'meedya_lang::'`), rather than assuming the
+  upstream changelog's summary applied here: `TrackItem`, `PresentationItem`,
+  `SelectableTrack`, `RoleItem`, `TagMatch`, `build_sidecar_name` and `SidecarParts` —
+  the types most of that revision's changes touched — are not used anywhere in this
+  crate, because MeedyaManager only implements Part A / TRACK-070, not Part B or
+  TEXT-030 (see the opening paragraph of this section). Of the two changes that DO
+  reach code here: `LanguageTag`'s equality now comparing `tag` and `kind` only (not
+  `notes`) is a no-op, since nothing in this crate ever compares two `LanguageTag`
+  values with `==`; and `iso639_2_write`/`iso639_2_code` now returning `und` for the
+  two-letter `qb`-`qt` range needed no code change either, because
+  `language_value_for_tag_type` and `describe_conversion` both delegate to the crate
+  function rather than reimplementing any part of TRACK-070's mapping — proven by two
+  new tests, `describe_conversion_reports_a_two_letter_q_code_as_und_on_id3` and
+  `..._as_unregistered_everywhere` in `language.rs`, and by the pre-existing
+  fixture-driven `language_value_for_tag_type_matches_the_policy_fixture_for_id3v2`
+  test picking up the fixture's two new cases for this range automatically. Case count
+  for the four sections MeedyaManager runs went from 126 to 131 (`canonicalise` 49,
+  `legacy_three_letter` 38, `iso639_2_write` 19 → 21, `canonical_order` 20 → 23) — of
+  the full 290 across all thirteen sections the policy defines, most of which
+  MeedyaManager still does not implement (see the opening paragraph of this section).
+- **Second review round, 2026-09-28**: a further independent review of everything above (the
+  first round's fixes plus the copy-update sweep) found and fixed: the "what was stored" note
+  never actually appeared in the ordinary text `meedya edit` prints (it reached `--json` output
+  only — `build_human_lines` in `crates/mm-cli/src/commands/edit.rs` now prints it); clearing a
+  language only removed it from the primary tag container, not every one that already had a
+  value, unlike setting a new one; a WAV with a language value in two containers read back as
+  TWO values (`["en", "eng"]`) instead of one fact told once (`read_language_values` in
+  `metadata/mod.rs` now gives a full-tag container priority over ID3's narrower one, and
+  deduplicates by standard form); the "what was stored" note described a plan based on the
+  file's primary container alone rather than what `write_tags` would really do to every
+  container it touches, and named "an MP3" for a restriction that belongs to ID3 tags generally;
+  a rename rule's `Matches` pattern condition stopped matching a file's raw stored text once
+  standardisation was introduced, because it only tried the standardised form (it now tries
+  both); and the FFI's refusal message for a bad language value used to name Test Mode's internal
+  copy file, not just the problem with the value (`integrity::mutate_file_safe`'s failure message
+  no longer includes the write target's path). Also: none of the review round 1 fixes had a
+  test that actually exercised them — the reviewer's own mutation testing found five separate
+  places where deliberately breaking the fix still passed every test in the crate — closed by new
+  tests in `metadata_roundtrip.rs`, `rule_engine/mod.rs`, `rule_engine/evaluator.rs`,
+  `metadata/mod.rs` and `mm-ffi`'s `uniffi_api.rs`, each proven against the actual mutation it
+  exists to catch (see the corresponding commit for the mutation table). **Corrected after the
+  third review round: that was true of four of the five, not all five.** The third reviewer ran
+  the same five breakages again and one still passed every test: stopping `meedya edit` from ever
+  attaching the "what was stored" note to the line it prints (`set_action_for` in
+  `crates/mm-cli/src/commands/edit.rs`). The second round's tests checked the plan held a note, and
+  that `build_human_lines` printed a note it was handed, but never the step between the two.
+  `a_language_note_reaches_the_printed_lines_on_dry_run_and_real_write` now walks the whole chain
+  on a real MP3, for `--dry-run` and for a real write, and fails when that step is broken.
+- **Not fixed here, tracked as its own issue**
+  ([#255](https://github.com/MWBMPartners/MeedyaManager/issues/255)): the SAME kind of staleness
+  the read-side fix above closes for `language` specifically exists for every other field too —
+  `write_tags`'s generic per-key loop only ever updates the file's primary tag container, so a
+  WAV that already has (say) a title in both a RIFF INFO chunk and an embedded ID3v2 tag ends up
+  with the new title in one and the old one still sitting in the other, and reading it back gives
+  `"T; New Title"` instead of just the new title. Confirmed by reading `write_tags`'s generic loop
+  before filing, not assumed. `language`'s own fix (`language_write_targets`) is scoped to
+  `language` only, because it also needs TRACK-070's per-format conversion; a general fix for
+  every field would not need that part, but is a larger piece of work than this one, so it is
+  tracked separately rather than folded in here.
+- **Third review round, 2026-09-28** (a fresh Opus agent standing in for Codex, over
+  `3a45ed7..e18fb18`; the lead's decisions on it are final):
+  - **The "what was stored" note was wrong for ordinary three-letter codes.** `eng`, `fre`,
+    `ger`, `deu` and ID3's `xxx` were told they had been "replaced with the current code", and
+    `und` on an ID3 tag was told there was "no three-letter code" for it. The "whole tag
+    replaced" check compared what was typed with the shared crate's READER (LANG-002), which
+    turns everyday old codes into the shortest code for the same language — a reading
+    convention, not a replacement. It now asks LANG-001 alone (`canonicalise`), which leaves
+    those codes alone and only swaps a genuinely retired or grouped tag (`i-klingon` → `tlh`,
+    `sgn-BR` → `bzs`); see `is_whole_tag_replacement` in `language.rs`. The note is also decided
+    per container: nothing is said about an ID3 tag that will hold exactly what was typed, and
+    the "kept exactly as typed" ending now says which tags really keep it.
+  - **Tags that disagree are no longer hidden.** The priority rule stays (TRACK-070: a full tag
+    is read, the three-letter one is not), but when a file's ID3 tag says something different
+    from what is shown — a WAV with RIFF INFO `fre` and ID3 `ger`, say — `meedya debug` warns
+    (and adds `language_note` to `--json`), `get_metadata` fills the new optional
+    `TagEntry.note` on the `language` entry for the apps, and `meedya edit --set language=fre`
+    (a no-change, on purpose — COMPAT-030) says the ID3 tag disagrees and will be left alone.
+    "Disagrees" is judged against what an ID3 tag WOULD hold for the shown value, so `en-GB`
+    beside `eng`, or `yue` beside `und` — exactly what `write_tags` writes — are not reported.
+    A shown value nothing recognises (`English`) only agrees with the same text, so it is
+    reported beside `eng` rather than guessed at (LANG-003, COMPAT-040). The notes quote codes,
+    not language names: no name data exists in this project or in the shared crate.
+    `language_disagreement` in `metadata/mod.rs` finds it; the wording is in `language.rs`.
+    Still to do: a deliberate "make every tag agree" action, and showing `TagEntry.note` in the
+    Swift, C# and GTK screens (#256).
+  - **Rule conditions:** `Contains`, `StartsWith`, `EndsWith` and `NotContains` on `language`
+    now try the stored text as well as the standard form, like `Matches` (a `Not` form is true
+    only when neither matches). When building a path — the only mode rules run in today — the
+    stored side takes the first stored value, just as the standard form does; `Matches` used to
+    try all the values run together (`"eng; fra"`) instead. (**Corrected by the fourth review
+    round:** this used to say the stored side is taken "the same way the standard form is
+    taken" in every mode. Not so in display mode, where the standard form is all the values
+    joined together (`"en; fr"`) while the stored side tries each value on its own. No rule runs
+    in display mode today, so nothing a person sees is affected.) See `stored_language_forms`
+    in `rule_engine/mod.rs`, and "Language in rules" in `help/rule-syntax.md`.
+  - **Failure messages** from `integrity::mutate_file_safe` now read "Could not save the changes
+    to '<your file>': …" and never name the scratch copy or the Test Mode copy — the scratch
+    copy's path used to reach the screen through errors such as "Cannot read tags from
+    '…meedya_tmp.flac'".
+  - **Tests for every breakage that survived.** The reviewer's mutation run left eight of the
+    second round's new lines breakable with every test still passing (plus one of the five
+    from the round before, see above); each now has a failing test, proven with the reviewer's
+    own mutation definitions.
+  - **Test files whose tags disagree**, built byte by byte by
+    `crates/mm-core/tests/fixtures/make_language_fixtures.py` (standard library only — not
+    `lofty`, which the app uses) and documented in that folder's README.
+  - **Issues opened:** #256 (make every tag agree, and show the note in the apps), #257 (saving
+    a FLAC that starts with an ID3 tag always fails — older than this work), #258 (help pages do
+    not explain rule conditions in general), #259 (a WAV with two `LIST INFO` chunks only has
+    the first changed). #254 widened with the M4A case: a freeform `LANGUAGE` item holding `en`
+    and `fr` reads back as `en` only, and a title-only save drops `fr`.
+- **Fourth review round, 2026-09-28** (a fresh Opus agent standing in for Codex, over
+  `e18fb18..aa7a30d`; the lead's ten decisions on it are final):
+  - **Test Mode: the note describes the file the change is saved to.** With Test Mode on and a
+    copy already made by an earlier edit, `meedya edit` read the untouched original to work out
+    its note, so it could say an ID3 tag "will be left alone" that the save then rewrote on the
+    copy. It now reads the copy (`integrity::where_a_save_starts`).
+  - **An old three-letter code inside a longer tag** (`eng-Latn`, `ger-1996`, `fre-Latn-CA`, …)
+    is understood by LANG-002 only on its own, so an ID3 tag stores `und`. The note used to say
+    there was "no three-letter code for \"eng\"" — false. It now says the old code is not
+    recognised inside a longer tag and what to type instead (`en-Latn`), built from the current
+    code plus the rest, in standard form (`old_code_inside_longer_tag` in `language.rs`). A code
+    that is a language in its own right (`sgn`, `yue`, `und`, `cmn`) is never called old. An
+    extended-language part (`bra` in `sgn-bra`) is now named among the parts an ID3 tag loses.
+  - **Failure messages:** "… in its Test Mode copy" when the fault is in a copy an earlier edit
+    made; tests for the failure paths nothing reached before (see "File Integrity Checking"
+    below).
+  - **Rule conditions, corrected wording:** only path mode — the one rules run in today —
+    compares one value on both sides; in display mode the standard form is every value joined
+    (`"en; fr"`). The help now also warns that text conditions compare codes, so `Contains "en"`
+    matches Bengali stored as `ben`, `StartsWith "fr"` matches Western Frisian stored as `fry`,
+    and `Contains "ger"` (which looks for `de`) matches Makonde, `kde` — use `Equals` for "is this
+    language". A rule-engine test pins those three examples.
+  - **Tests for four more untested branches** (the reviewer's P5, P6, P7, P10), including the
+    first test in `crates/mm-cli/tests/`, which runs the real `meedya` program to prove
+    `meedya debug` prints the warning line. Two new test files from `make_language_fixtures.py`.
+  - **The C API's comments** (and so the generated `include/mm_ffi.h`) mention the optional
+    `note` key.
+  - **Issue opened:** #260 (a locked file on macOS leaves an undeletable locked copy behind).
+  - **Mutation testing:** every planted fault from the four reviews and this round was re-run
+    against the final code. All nine of the fourth reviewer's faults the lead's decisions
+    covered are now caught; three of that reviewer's others (P4, P8, P9 — not covered by the
+    decisions) still are not; the third reviewer's O6 cannot be caught by its nature (it breaks
+    a test, not the code); everything else that can run is caught.
+- **Codex's catch-up review, 2026-10-04** (Codex, the usual reviewer, over the whole branch,
+  `7697b9c..a150926`; six findings, each reproduced on a real file before it was fixed, and the
+  lead's decisions on them final):
+  - **A WAV language save never drops another RIFF INFO entry** (finding 1). `lofty` cannot read
+    a RIFF INFO entry that is not UTF-8 (RIFF INFO names no encoding; old Windows tools write
+    their own code page), leaves it out of what it read, and writes the list back whole — so
+    setting, clearing or removing the language of a WAV whose title was "Café" in Latin-1 deleted
+    the title and reported success. `metadata/riff_info.rs` now reads the list raw (id and bytes)
+    and `write_tags` / `remove_tag` check, before the first save (against what `lofty` would
+    write, `TagExt::dump_to`) and after the last (against the file), that every entry other than
+    `ILNG` is byte for byte the same and in the same order and that `ILNG` holds exactly what was
+    asked. Anything else is refused, naming what would be lost. Limits as first written (both
+    since lifted, see the next entry): it guarded language saves only, and it refused harmless
+    differences too, because it cannot tell them apart without guessing. A side effect worth
+    knowing: a WAV with two `LIST INFO` chunks (#259) holding a language is refused rather than
+    left with two languages, because `lofty` copies the second chunk's entries into the first —
+    though as first written only by the check AFTER the save (see the next entry).
+  - **A language being set is ONE value** (finding 2). The shared reader reads only the first of
+    several values separated by a zero character — right for reading a stored field (LANG-002),
+    wrong for a value being set, where it silently threw the rest away (the C API stored `en`
+    for `"en\u0000fr"` and answered `{"ok":true}`). `parse_language_input` now refuses a zero
+    character anywhere, and any other control character left once the policy's four whitespace
+    characters are trimmed from the ends, with its own plain message, on every way in.
+  - **`meedya edit` refuses the same field given twice** (finding 3), before anything is written,
+    on `--dry-run` too, with one failed row per `--set` naming the field and every value. It used
+    to be "last one wins" with every row reported as done and carrying the last value's note.
+  - **Several languages in one stored string are split for every format** (finding 4).
+    `language::split_stored_values` splits at every zero character, keeps the order, trims each
+    part and drops empty ones — exactly what the ID3 path already gave, because `lofty` splits
+    ID3 fields itself — and is used when reading a file and in the rule engine, so an APE item
+    holding `eng`, zero, `fra` reads as `["eng", "fra"]`, path mode looks at English only, and
+    display mode keeps French.
+  - **Only the policy's own whitespace is trimmed** (finding 5): see the corrected bullet above.
+    A FLAC whose `LANGUAGE` is a no-break space then `en` is not recognised, is shown as stored,
+    and does not match `language Equals en`.
+  - **The C API and UniFFI write result carries the note** (finding 6). `write_metadata` now
+    returns `WriteMetadataResult { notes }` (the C API adds `"notes":[...]` to `{"ok":true}`):
+    for the `language` entry, the same note `meedya edit --set` shows, worked out before the save
+    from the file the save starts from. The apps do not show it yet (#256).
+  - **`.gitattributes`:** every line protecting a policy copy is now `-text -filter
+    -working-tree-encoding -ident`, proven in a throwaway clone (a filter or encoding set through
+    that clone's own `.git/config` changed the copies with the old lines and not with the new; a
+    line in its `.git/info/attributes` still wins, and the copy checker then reports the copy).
+- **The stand-in review of round 6, 2026-10-05** (a fresh Opus agent standing in for Codex,
+  over `a150926..49cec29`; 3 medium, 8 low, 7 nits; each reproduced on a real file, read back
+  with mutagen and ffprobe, before it was fixed; the lead's decisions final):
+  - **Every save of a WAV keeps the rest of its RIFF INFO list** (carry-over 1). `remove_tag` and
+    `remove_cover_art` rewrote every tag section, whether or not it held what was being removed,
+    so `--remove artist` (on a file with no artist) and `--remove-cover` deleted a Latin-1 title.
+    They now rewrite only the sections that hold it (a RIFF INFO list is asked raw as well, so an
+    entry `lofty` cannot read can still be removed), and `RiffInfoGuard` checks every WAV save —
+    write, clear, remove, cover art — against one description of what the save does to the list
+    (`RiffChange`), before and after.
+  - **Two `LIST INFO` chunks are refused before anything is written** (M1, #259). `lofty`'s
+    predicted list already holds the second chunk's entries, so only the check after saving
+    saw the difference — by then, in Test Mode with an earlier copy, the copy had been changed.
+    `riff_info::read_info_lists` counts the chunks; a save that would rewrite them refuses when
+    there is more than one, saying so.
+  - **A missing final zero byte is not a loss** (L2). An entry that comes through with only a
+    zero byte added at its end counts as kept; every other difference still refuses, and the
+    message says whether an entry would be lost (only then "cannot read it as it is stored") or
+    rewritten with different bytes.
+  - **`--dry-run` predicts the refusal** (M2). `metadata::check_tag_write` /
+    `check_tag_removal` run the save's own check read-only (the preparation moved into
+    `TagWritePlan` / `TagRemovalPlan`, shared with the saves), and `integrity::check_save` words a
+    refusal as the save would; `meedya edit` runs them when it builds its plan, dry run or not.
+  - **A field given more than once is refused everywhere** (M3, carry-over 2): `--set` with
+    `--remove`, or `--remove` twice, in `meedya edit`; two entries with the same key in the C API
+    and UniFFI.
+  - **Refusals show every invisible character** (L4): `language::show_invisible_characters`
+    (was `show_with_control_characters_visible`) also writes out format characters, line and
+    paragraph separators and every space but U+0020.
+  - **Notes and messages:** the FFI write result's note is worded as what happened
+    (`NoteTense::AfterTheSave`, N4); "Metadata error:" appears once (`integrity::plain_reason`,
+    N7).
+  - **Tests:** a rule-engine condition test with an unsplit stored value and an FFI Test Mode
+    note test (L3 — two of the reviewer's planted faults had turned no test red); the health
+    tests use a temporary settings folder (L6 — they wrote into the real one).
+  - **Not fixed here, filed as issues:** a zero character in any field other than the language
+    silently becomes two values (L5, now #261); `--json` output is not clean JSON when log lines
+    reach standard output (L7, now #262); and, for #256, a comment there says the Windows app
+    reads the engine's text in the old Windows character set (L8).
+- **The stand-in review of round 7, 2026-10-05** (a fresh Opus agent standing in for Codex,
+  over `49cec29..e4db8f8`; 1 medium, 9 low, 3 nits; each reproduced on a real file, read back
+  with a raw RIFF INFO reader, mutagen and ffprobe, before it was fixed; the lead's decisions
+  final):
+  - **A WAV's RIFF INFO list holds exactly what was asked, for every field** (M1; #255 for that
+    list). `write_tags` used to change only the language there, so `--set title=New` left
+    `INAM` "Café" beside the new ID3 title and `--set title=` changed nothing. Every field it
+    sets or clears that the list holds (read raw) is now changed there too
+    (`RiffChange::Write`, from `riff_change_for_write`), and the check confirms each asked-for
+    entry holds exactly the new text — `IPRT` for the track number, any `ITRK` gone — or is
+    gone. When `lofty` read nothing from the list, the save starts from an empty one
+    (`save_riff_change`), as the check's prediction does. Round 7's message for `52e81a8` said
+    this for "write, clear, remove"; it was true of removal only.
+  - **A refusal's reason is true** (L1). `lofty` reads an entry holding no text (no bytes, or
+    only zero bytes) as empty and leaves it out, which loses nothing: no longer counted
+    (`riff_info::holds_no_text`). It writes the track number back as `IPRT` only, so `ITRK`
+    would change id: said as that. "Cannot read it as it is stored" is given only for text that
+    is not UTF-8.
+  - **The dry run checks cover art** (L2, `metadata::check_cover_change`), and its refusal starts
+    "A real run would not save …" (N3, `integrity::CheckFor`).
+  - **The command line:** options given twice are named in the order typed (L5,
+    `edit::TypedOrder`, read from clap's matches in `main`); `--cover` with `--remove-cover` is
+    refused (L6); an unknown key is shown with invisible characters written out, in the CLI and
+    in mm-core's message (L7).
+  - **Invisible characters** (L4): `show_invisible_characters` also writes out every
+    `Default_Ignorable_Code_Point` and U+2800; both tables checked against Unicode 18.0's files.
+  - **File names** (L8): what `sanitize_filename` does to each kind of character is now in
+    `help/rule-syntax.md`. No route overwrites or merges files: a clash is a conflict (checked
+    on real files with `scan --execute`, both strategies, and a case-only clash on APFS).
+  - **Tests and small fixes:** every WAV save runs the guard, and the check before saving reads
+    the Test Mode copy (L3 — the reviewer's D1 and D3 had turned nothing red); the health-test
+    guard puts back `MM_CONFIG_DIR` (L10); the FFI quotes a repeated key's values with `"` and
+    `\` escaped and says "each value" (N1, N2).
+  - **Not changed:** MeedyaManager's `year` is not the RIFF INFO date (`ICRD` is `lofty`'s
+    recording date, which MeedyaManager does not map) and is not written to ID3 or MP4 at all —
+    an older finding pinned by `year_tag_does_not_round_trip_on_id3v2_or_mp4`; an issue is
+    drafted, not posted.
+- **Not yet built:** MeedyaManager does not read a subtitle or lyric sidecar file's
+  language from its name (policy rule TEXT-030, e.g. `Movie.en.forced.srt`) — the
+  `companion` module still matches sidecars by exact name only. Tracked as issue #252,
+  deliberately kept separate because it needs a new field carried all the way through
+  to the Swift and C# UIs.
+
+---
+
 ## File Integrity Checking
 
 MeedyaManager uses **atomic, integrity-checked writes** for all metadata
-operations.  This prevents file corruption from power failures or mid-write
-crashes.
+operations, and — as of issue #128 — this is genuinely enforced on every real write path
+(`meedya edit`, the GTK metadata panel, the FFI layer used by macOS/Windows), not just exercised
+by the integrity module's own tests. This prevents file corruption from power failures or
+mid-write crashes.
 
-**Flow** (`mm_core::integrity::write_tags_safe`):
+**Flow** (`mm_core::integrity::write_tags_safe`, and its siblings `remove_tag_safe` /
+`embed_cover_art_safe` / `remove_cover_art_safe`, all built on the shared `mutate_file_safe`):
 
 1. Compute **SHA256** of the original file.
-2. Copy original → `<filename>.meedya_tmp` (same directory for atomic rename).
+2. Copy original → a temp file in the same directory, with the scratch marker placed *before*
+   the real extension (`track.meedya_tmp.mp3`, not `track.mp3.meedya_tmp`) — `lofty` resolves the
+   container format from the path extension alone, so the old ordering meant the standard
+   (non-Test-Mode) path had never actually worked on a real file until this was fixed.
 3. Write updated tags into the temp file via `lofty`.
 4. Compute SHA256 of the temp file.
-5. `rename(2)` temp file over original (atomic on same filesystem).
+5. `rename(2)` temp file over the original — or, in Test Mode, over the tracked
+   `_MeedyaManager` copy, editing it **in place** rather than starting over from a fresh copy of
+   the pristine original.
 6. Log before/after hashes to `tracing`.
 
-If any step fails, the temp file is deleted and the original is **untouched**.
+If any step fails, the temp file is deleted **only if this call created it** (a failed edit no
+longer risks deleting a tracked copy holding an earlier successful edit), and the original is
+**untouched**. The message returned (and shown by the CLI and the apps) reads "Could not save the
+changes to '<the file you asked to change>': …" and never names the scratch copy or the Test Mode
+copy: any mention of the copy — its full path, or just its file name — in an underlying error is
+replaced by the real file's (third review round of the language-policy work, item 8; before, a
+damaged FLAC gave "mutation failed: … Cannot read tags from 'bad_MeedyaManager.flac'"). When
+the save was working on a Test Mode copy an EARLIER edit made, and that is where it failed, the
+message reads "Could not save the changes to '<your file>' in its Test Mode copy: …" — otherwise
+a damaged copy was blamed on a perfectly good original (fourth review round, item M1). These
+failure paths each have a test in `integrity.rs`: an unreadable file, a folder where no copy can
+be made (Test Mode off and on), the save itself (including on a damaged Test Mode copy), and the
+final swap. One has none: re-checking the saved result (step 4) failing, which cannot easily be
+caused on purpose. A known gap, not fixed:
+on macOS a locked file (`uchg`) leaves a locked copy behind that cannot be deleted (#260).
+
+`integrity::where_a_save_starts(path)` answers "which file would a save of this path change?" —
+the tracked Test Mode copy when Test Mode is on and one exists, otherwise the file itself — using
+the same helper as the save, so anything that previews a save (today, `meedya edit`'s language
+note) reads the right file (fourth review round, item S1).
 
 **Corruption log**: persistent failures are appended to
-`~/.config/meedyamanager/corruption.log` with a timestamp, file path, and
-error message.
+`<config_dir>/corruption.log`, e.g. `~/.config/MeedyaManager/corruption.log` on Linux — the same
+single config directory resolved by `mm_core::config::app_config_dir()` (issue #212, fixed) that
+`settings.json5` and the Test Mode manifest live in, overridable with `MM_CONFIG_DIR`.
 
 ---
 
 ## Background Service Mode
 
-MeedyaManager can run as an OS background service to continuously monitor
-watch folders and auto-organise media.
+MeedyaManager can run as an OS background service to continuously monitor watch folders and
+organise new media as it arrives — see [background-service.md](help/background-service.md) for
+the full, user-facing explanation of what it does step by step, the settle window, and why
+conflict handling is forced to `"skip"`. This section is the developer-facing summary (issue #180).
+
+> **Switched off for safety as of 2026-09-23 (issue #180).** Everything below describes how
+> the feature is built and how it will behave again once it is switched back on. Right now,
+> real organising is disabled by a single constant, `ORGANISING_SWITCHED_ON = false` in
+> `crates/mm-cli/src/commands/watch.rs`: `meedya watch --organize` without the global
+> `--dry-run` flag refuses (prints an error, exits `3` / `NOT_IMPLEMENTED`) and moves nothing,
+> even with `--yes`. `meedya service install` on Linux and macOS refuses the same way and
+> installs nothing. `meedya --dry-run watch --organize` and `meedya --dry-run service install`
+> still preview normally, because a preview moves and installs nothing. The reason: the
+> organiser can move a `.cue` cue sheet away from its `.bin` disc image while the `.bin` is
+> still downloading, ruining the disc image, and can rename the same file over and over when a
+> template is built on the file's own name. `service uninstall/start/stop/status` are
+> unaffected — anyone who installed the service from an earlier build should run
+> `meedya service uninstall`.
 
 ### Platform Implementations
 
-| Platform | Mechanism | Unit/Config Location |
-| -------- | --------- | -------------------- |
-| Linux | systemd user service | `~/.config/systemd/user/meedyamanager.service` |
-| macOS | launchd user agent | `~/Library/LaunchAgents/com.mwbm.meedyamanager.plist` |
-| Windows | Windows Service via `sc.exe` | Windows Service Control Manager |
+| Platform | Mechanism | Unit/Config Location | Status |
+| -------- | --------- | -------------------- | ------ |
+| Linux | systemd user service | `~/.config/systemd/user/meedyamanager.service` | Built, but `install` currently refuses (safety catch, #180) |
+| macOS | launchd user agent | `~/Library/LaunchAgents/com.mwbm.meedyamanager.plist` | Built, but `install` currently refuses (safety catch, #180) |
+| Windows | Windows Service via `sc.exe` | Windows Service Control Manager | **Refused deliberately** — see below |
+
+**Windows is not a smaller version of the same feature — it genuinely does not work, and
+`meedya service install` says so instead of registering something broken.** Two separate,
+real problems: a Windows Service must report back to the Service Control Manager within about
+thirty seconds of starting and keep responding to it afterwards, which `meedya` (an ordinary
+console program) does not do — Windows would decide it had hung and kill it. It would also run
+as the LocalSystem account, a different account with its own home directory, so it would load a
+different `settings.json5` from the one the installer can see and may not reach their media
+folders at all. `crates/mm-cli/src/commands/service_cmd.rs::install` refuses on Windows
+(`#[cfg(target_os = "windows")]`) before any of `mm_core::service`'s Windows code runs, printing
+the explanation and pointing at Task Scheduler (`meedya watch --organize --yes` at logon) as the
+supported alternative. The `sc create` code path in `crates/mm-core/src/service.rs` still
+exists and is exercised by that module's own tests, but nothing in the CLI ever calls it.
 
 ### CLI Management
 
 ```bash
-meedya service install    # Register and enable at login
+meedya service install    # Register and enable at login — Linux/macOS only
 meedya service start      # Start immediately
 meedya service stop       # Stop
 meedya service status     # Check if running
 meedya service uninstall  # Remove registration
 ```
 
-The service runs `meedya watch --organize` at background/idle CPU priority,
-minimising impact on interactive use.
+`install` accepts the global `--dry-run` flag on Linux/macOS (prints what would be registered,
+writes nothing); on Windows it refuses regardless of `--dry-run` — the refusal happens before
+that flag is even checked. **As of 2026-09-23, `install` without `--dry-run` also refuses on
+Linux/macOS** — see the safety-catch notice above (issue #180).
 
-Template files for the unit/plist are in `platform/linux/` and `platform/macos/`.
+Both installed services run `meedya watch --organize --yes` — the `--yes` is not optional in
+practice, because `--organize` otherwise asks an attended terminal to confirm once before it
+starts moving files, and a service has no terminal to answer that. Linux's unit runs at
+`CPUSchedulingPolicy=idle`/`IOSchedulingClass=idle`; macOS's LaunchAgent sets
+`ProcessType=Background`. Both are there to minimise impact on interactive use.
+
+### How `--organize` actually organises
+
+`crates/mm-cli/src/commands/watch.rs` builds a `ScanArgs` by hand for each settled folder and
+calls `scan::run` as an ordinary function, rather than re-implementing any rename logic — the
+project has been burned before by keeping two copies of the same rules and having them drift
+apart (issue #219). This means `--organize` automatically inherits `scan`'s write lock,
+disc-image whole-folder protection and Test Mode hygiene with no extra code. A new file is only
+acted on once it has gone `--settle-secs` (default `2`) seconds without any further change, and
+conflict handling is force-set to `"skip"` for the duration of the watch run regardless of
+`config.rename.conflict_strategy` — the `"rename"` strategy's counter logic recomputes a
+destination from tags on every pass, so two files sharing identical tags would be renamed
+forever under a watcher that keeps re-checking the same folder (issue #224, tracked separately;
+forcing "skip" contains it rather than fixing the underlying counter logic).
 
 ---
 
@@ -730,19 +1308,28 @@ updates.
 
 ## Test Mode (Safe Edit Mode)
 
-Test Mode prevents MeedyaManager from modifying original media files during
-edit/tag operations.  When enabled, all writes create a duplicate with a
-`_MeedyaManager` suffix (e.g. `track.mp3` → `track_MeedyaManager.mp3`).
+Test Mode prevents MeedyaManager from modifying original media files during edit/tag
+operations, creating a duplicate with a `_MeedyaManager` suffix instead
+(e.g. `track.mp3` → `track_MeedyaManager.mp3`) when enabled.
+
+> **Status: enforced on every real write path (issue #128, fixed).** `mutate_file_safe()` (the
+> function `write_tags_safe()` and its siblings are built on) checks Test Mode and redirects
+> accordingly, and all three real call sites (`mm-cli/src/commands/edit.rs`,
+> `mm-gtk/src/ui/metadata_panel.rs`, `mm-ffi/src/uniffi_api.rs`) now route through it instead of
+> calling `metadata::write_tags()` directly. Enabling Test Mode genuinely protects your files from
+> `meedya edit`, the GTK metadata panel, and the FFI layer. A second edit to an already-tracked
+> file edits the existing copy in place, so successive edits in one Test Mode session accumulate
+> on the same `_MeedyaManager` copy rather than the second edit discarding the first.
 
 ### Implementation
 
 | Component | File | Notes |
 | --------- | ---- | ----- |
-| Core module | `crates/mm-core/src/test_mode.rs` | Manifest, path helpers, enable/disable, commit/revert |
-| Integrity integration | `crates/mm-core/src/integrity.rs` | `write_tags_safe()` delegates to `write_tags_test_mode()` when active |
+| Core module | `crates/mm-core/src/test_mode.rs` | Manifest, path helpers, enable/disable, commit/revert, `tracked_copy_for()`, `manifest_status()` |
+| Integrity integration | `crates/mm-core/src/integrity.rs` | `mutate_file_safe()` is the single enforcement point; `write_tags_safe`/`remove_tag_safe`/`embed_cover_art_safe`/`remove_cover_art_safe` all delegate to it |
 | Config field | `crates/mm-core/src/config/mod.rs` | `test_mode: bool` + `MM_TEST_MODE` env override |
 | CLI command | `crates/mm-cli/src/commands/config_cmd.rs` | `meedya config test-mode on/off/status/commit/revert` |
-| Manifest file | `<config_dir>/meedyamanager/testmode_manifest.json` | Persists across sessions |
+| Manifest file | `<config_dir>/testmode_manifest.json` | Persists across sessions; `<config_dir>` is the single directory from `mm_core::config::app_config_dir()` (issue #212) — e.g. `~/.config/MeedyaManager/testmode_manifest.json` on Linux |
 
 ### Disable Prompt
 
@@ -757,11 +1344,18 @@ The prompt applies to **all** tracked files, not just those from the current ses
 
 ## Pre-release Version Safety
 
-Pre-release builds (semver pre-release label present, e.g. `1.3.0-beta.1`)
-auto-enable Test Mode on first launch.
+Pre-release builds (semver pre-release label present, e.g. `1.4.0-alpha.1`)
+auto-enable Test Mode on first launch. `1.4.0-alpha.1` (issue #214) is the first version the
+project has ever actually shipped with a pre-release label in `Cargo.toml`, so this is the first
+build on which `is_current_prerelease()` genuinely fires rather than being exercised only by
+unit tests.
 
 Detection uses `semver::Version::pre.is_empty()` in
-`crates/mm-core/src/test_mode.rs::is_prerelease_version()`.
+`crates/mm-core/src/test_mode.rs::is_prerelease_version()`. The stable-only assertion in the same
+test module derives its expectation from `env!("CARGO_PKG_VERSION").contains('-')`, so it never
+needs hand-editing on a future version bump; a separate literal
+`is_prerelease_version("1.4.0-alpha.1")` assertion keeps the detection logic itself directly
+covered.
 
 On upgrade to a stable release, if Test Mode is still enabled, the user is
 prompted to disable it (with the usual commit/revert choice).
@@ -783,11 +1377,16 @@ All platform UIs include a "Privacy Policy" link in Settings / About.
 
 ---
 
-## Codec Registry (`config/codecs.json5`) — Planned for v1.3.0
+## Codec Registry (`config/codecs.json5`) — Status: not yet implemented
+
+> **The current version is already `1.4.0-alpha.1`, and `config/codecs.json5` still does not
+> exist.** Only its JSON Schema (`config/schemas/codecs.schema.json`) has been written. Do not
+> describe this feature as shipping "in v1.3.0" (previously current) or any other past version —
+> those have already passed without it landing.
 
 The **codec registry** is a separate developer-only reference file that maps
 audio/video *codecs* (the actual encoding algorithms) independently of file
-extensions.  This enables:
+extensions.  Once built, it would enable:
 
 - **Tagging capability detection** at the codec level (e.g. bare `.ac3` streams
   are not taggable, but AAC inside `.m4a` is)
@@ -806,11 +1405,12 @@ See `config/schemas/codecs.schema.json` for the full JSON Schema definition.
 | Concern | Filetype Registry | Codec Registry |
 | ------- | ----------------- | -------------- |
 | Scope | File extensions | Encoding algorithms |
-| User override | Via Settings UI (v1.3.0) | **No** — dev-only |
-| Embedded | `include_str!()` | `include_str!()` |
-| Runtime override | `MEEDYA_FILETYPES_OVERRIDE` env var (dev only, v1.3.0) | None |
+| User override | Via a user override file (see "Managing File Type Definitions" above) | **No** — dev-only, once built |
+| Embedded | `include_str!()` | `include_str!()`, once built |
+| Runtime override | User override file at `~/.config/MeedyaManager/filetypes.json5` | None |
 
-Tracked by GitHub Issue **#151**.
+> No GitHub issue currently tracks this. An earlier draft cited **#151**, but that issue is
+> actually *"ci(audit): complete deny.toml v2 migration"* and is unrelated to the codec registry.
 
 ---
 
@@ -823,8 +1423,8 @@ in `config/schemas/`:
 | ----------- | ----------- | ------- |
 | `config/filetypes.json5` | `config/schemas/filetypes.schema.json` | File type registry validation |
 | `config/tags.json5` | `config/schemas/tags.schema.json` | Metadata tag registry validation |
-| `config/settings.json5` | `config/schemas/settings.schema.json` | User settings validation |
-| `config/codecs.json5` *(v1.3.0)* | `config/schemas/codecs.schema.json` | Codec registry validation |
+| `config/settings.json5` | `config/schemas/settings.schema.json` | User settings validation — **matches the real `AppConfig` struct field-for-field** (issue #211, fixed), regenerated from `AppConfig::default()` with `additionalProperties: false` at every level and three tests that `include_str!` both files so they can't drift apart again. `AppConfig` is still `#[serde(default)]` with no `deny_unknown_fields`, so an unrecognised key still doesn't fail loading — but `AppConfig::load_from` now warns on every one it finds, with a suggested replacement where known |
+| `config/codecs.json5` *(not yet implemented — schema only)* | `config/schemas/codecs.schema.json` | Codec registry validation |
 
 ### Schema Version
 
@@ -910,7 +1510,8 @@ MeedyaManager collects **no user data** and performs **no tracking**.
 - [x] Hardened Runtime enabled
 - [x] `LSApplicationCategoryType` set (`public.app-category.utilities`)
 - [x] `LSMinimumSystemVersion` set (`15.0`)
-- [x] GPL-2.0 `LICENSE` included in `Contents/Resources/`
+- [x] GPL-2.0 `LICENSE` included in `Contents/Resources/` (issue #207, fixed — the file is
+      tracked at the repository root and `create-dmg.sh` copies it in)
 - [ ] **Xcode project** (`.xcodeproj`) — required for Mac App Store submission
       alongside the SwiftPM package (direct distribution uses SPM only)
 - [ ] **App Store Connect** — create app record, screenshots, description
@@ -945,8 +1546,12 @@ Chrome OS can run Linux apps via Crostini.  Distribution options:
 
 ## Workspace Lint Configuration
 
-As of v1.3.1, the project uses Cargo's `[workspace.lints]` feature to share lint
-configuration across all 8 workspace crates.
+The project uses Cargo's `[workspace.lints]` feature to share lint configuration
+across all 8 workspace-*member* crates (`mm-gtk` is a 9th crate directory but is
+excluded from `[workspace] members`, so it does not inherit these lints automatically).
+This work is sometimes labelled "v1.3.1" in the changelog, but no such version was ever set in
+`Cargo.toml` — it is folded into the `[v1.4.0-alpha.1]` changelog entry, the version the project
+actually reached. Do not cite a `v1.3.1` release.
 
 ### How It Works
 

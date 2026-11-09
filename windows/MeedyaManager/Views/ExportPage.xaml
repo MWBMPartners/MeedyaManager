@@ -19,6 +19,15 @@
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Margin="0,0,0,16" />
 
+            <!-- Persistent alpha preview notice — mm-export does not yet open a
+                 real database connection, so nothing on this page can actually
+                 export. See issue #205. -->
+            <InfoBar IsOpen="True"
+                     IsClosable="False"
+                     Severity="Informational"
+                     Title="Preview"
+                     Message="Preview — not functional in this alpha. Nothing is started, exported or synced. (issue #205)" />
+
             <!-- Backend selection -->
             <StackPanel Spacing="6">
                 <TextBlock Text="Database Backend" Style="{StaticResource BodyStrongTextBlockStyle}" />
@@ -80,12 +89,14 @@
                         Click="SchemaBtn_Click"
                         AutomationProperties.Name="Show schema DDL"
                         AutomationProperties.HelpText="Displays the database schema SQL statements in the export log" />
+                <!-- Disabled in this alpha — mm-export does not yet open a real
+                     database connection. See the InfoBar above and issue #205. -->
                 <Button x:Name="ExportBtn"
                         Content="Export Library"
                         Style="{StaticResource AccentButtonStyle}"
-                        Click="ExportBtn_Click"
-                        AutomationProperties.Name="Export library"
-                        AutomationProperties.HelpText="Exports your media library to the configured database backend" />
+                        IsEnabled="False"
+                        AutomationProperties.Name="Export library (disabled — not functional in this alpha)"
+                        AutomationProperties.HelpText="Exporting is disabled in this alpha; mm-export does not yet open a real database connection. See issue #205." />
             </StackPanel>
 
             <!-- Status bar — live region so Narrator announces completion -->

@@ -10,15 +10,17 @@
 //   4. AppleTvProvider   — Apple TV iTunes API; no auth required
 //   5. ItunesStoreProvider — iTunes Store search; no auth required (movies/TV)
 //
-// All providers implement `MetadataProvider` with `MediaType::Video`.
+// All providers implement `MetadataProvider` with video search capability.
 
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
+use serde_json::Value;
 use tracing::debug;
 
 use crate::traits::{
-    Capabilities, CoverArtInfo, MediaType, MetadataProvider, ProviderError, ProviderResult,
-    SearchQuery,
+    CoverArtInfo, META_CONTENT_ADVISORY, META_DURATION_SECS, META_PROVIDER_ID, MetadataProvider,
+    ProviderCapabilities, ProviderError, ProviderResult, SearchQuery,
 };
 
 // ---------------------------------------------------------------------------
@@ -26,11 +28,33 @@ use crate::traits::{
 // ---------------------------------------------------------------------------
 
 fn net_err(e: reqwest::Error) -> ProviderError {
-    ProviderError::Network(e.to_string())
+    ProviderError::NetworkError(e.to_string())
 }
 
 fn parse_err(context: &str, e: impl std::fmt::Display) -> ProviderError {
-    ProviderError::Parse(format!("{context}: {e}"))
+    ProviderError::Other(format!("parse error: {context}: {e}"))
+}
+
+/// Standard `ProviderCapabilities` for a video-only provider.
+fn video_caps(cover_art: bool) -> ProviderCapabilities {
+    ProviderCapabilities {
+        music_search: false,
+        video_search: true,
+        podcast_search: false,
+        cover_art,
+        lyrics: false,
+        fingerprint_lookup: false,
+        identifier_lookup: false,
+    }
+}
+
+/// Insert duration (seconds) into result metadata using the conventional key.
+fn insert_duration(result: &mut ProviderResult, secs: f64) {
+    if let Some(num) = serde_json::Number::from_f64(secs) {
+        result
+            .metadata
+            .insert(META_DURATION_SECS.into(), Value::Number(num));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -46,7 +70,6 @@ pub struct TmdbProvider {
     client: Client,
     base_url: String,
     api_key: Option<String>,
-    capabilities: Capabilities,
 }
 
 impl TmdbProvider {
@@ -59,18 +82,11 @@ impl TmdbProvider {
             client: crate::http::build_client(),
             base_url: base_url.into(),
             api_key,
-            capabilities: Capabilities {
-                media_types: vec![MediaType::Video],
-                supports_search: true,
-                supports_isrc: false,
-                supports_iswc: false,
-                provides_cover_art: true,
-                provides_fingerprint: false,
-                requires_auth: true,
-                display_name: "The Movie Database (TMDb)".into(),
-                homepage_url: "https://themoviedb.org".into(),
-            },
         }
+    }
+
+    fn configured(&self) -> bool {
+        self.api_key.is_some()
     }
 
     fn parse_multi_search(
@@ -117,43 +133,48 @@ impl TmdbProvider {
                     .as_deref()
                     .map(|p| {
                         vec![
-                            CoverArtInfo::new(
-                                format!("{IMAGE_BASE}/original{p}"),
-                                0,
-                                0,
-                                "image/jpeg",
-                            ),
-                            CoverArtInfo::new(
-                                format!("{IMAGE_BASE}/w500{p}"),
-                                500,
-                                750,
-                                "image/jpeg",
-                            ),
+                            CoverArtInfo {
+                                url: format!("{IMAGE_BASE}/original{p}"),
+                                width: None,
+                                height: None,
+                                mime_type: Some("image/jpeg".into()),
+                            },
+                            CoverArtInfo {
+                                url: format!("{IMAGE_BASE}/w500{p}"),
+                                width: Some(500),
+                                height: Some(750),
+                                mime_type: Some("image/jpeg".into()),
+                            },
                         ]
                     })
                     .unwrap_or_default();
                 let score = r.vote_average.map_or(0.5, |v| (v / 10.0).clamp(0.0, 1.0));
 
-                let mut extra = std::collections::HashMap::new();
+                let mut result = ProviderResult::new(provider_name);
+                result.title = title;
+                result.year = year;
+                result.cover_art = cover_art;
+                result.score = score;
+
+                if let Some(id) = r.id {
+                    result
+                        .metadata
+                        .insert(META_PROVIDER_ID.into(), Value::String(id.to_string()));
+                }
                 if let Some(overview) = r.overview {
                     if !overview.is_empty() {
-                        extra.insert("overview".into(), overview);
+                        result
+                            .metadata
+                            .insert("overview".into(), Value::String(overview));
                     }
                 }
                 if let Some(mt) = &r.media_type {
-                    extra.insert("media_type".into(), mt.clone());
+                    result
+                        .metadata
+                        .insert("media_type".into(), Value::String(mt.clone()));
                 }
 
-                ProviderResult {
-                    provider: provider_name.to_owned(),
-                    provider_id: r.id.map(|i| i.to_string()).unwrap_or_default(),
-                    title,
-                    year,
-                    cover_art,
-                    score,
-                    extra,
-                    ..Default::default()
-                }
+                result
             })
             .collect();
 
@@ -161,73 +182,71 @@ impl TmdbProvider {
     }
 }
 
+#[async_trait]
 impl MetadataProvider for TmdbProvider {
-    fn name(&self) -> &'static str {
+    fn id(&self) -> &str {
         "tmdb"
     }
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-    fn is_enabled(&self) -> bool {
-        self.api_key.is_some()
+
+    fn display_name(&self) -> &str {
+        "The Movie Database (TMDb)"
     }
 
-    fn search(
-        &self,
-        query: SearchQuery,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
-                + Send
-                + '_,
-        >,
-    > {
-        Box::pin(async move {
-            if !self.is_enabled() {
-                return Err(ProviderError::Disabled("tmdb".into()));
+    fn capabilities(&self) -> ProviderCapabilities {
+        video_caps(true)
+    }
+
+    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
+        if !self.configured() {
+            return Err(ProviderError::NotConfigured("tmdb".into()));
+        }
+        let key = self.api_key.as_deref().unwrap();
+        let title_fallback = format!(
+            "{} {}",
+            query.title.as_deref().unwrap_or(""),
+            query.artist.as_deref().unwrap_or("")
+        );
+        let search_query: String = query
+            .title
+            .clone()
+            .unwrap_or_else(|| title_fallback.trim().to_owned());
+
+        debug!(
+            provider = "tmdb",
+            query = %search_query,
+            "Sending search request"
+        );
+
+        let mut params = vec![
+            ("api_key", key.to_owned()),
+            ("query", search_query),
+            ("page", "1".to_owned()),
+        ];
+        if let Some(year) = query.year {
+            params.push(("year", year.to_string()));
+        }
+
+        let url = format!("{}/3/search/multi", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .query(&params)
+            .send()
+            .await
+            .map_err(net_err)?;
+
+        if !response.status().is_success() {
+            let s = response.status();
+            if s.as_u16() == 429 {
+                return Err(ProviderError::RateLimited("tmdb".into()));
             }
-            let key = self.api_key.as_deref().unwrap();
-            let search_query = query.title.as_deref().unwrap_or(&query.query);
+            return Err(ProviderError::NetworkError(format!("HTTP {s}")));
+        }
 
-            debug!(
-                provider = "tmdb",
-                query = search_query,
-                "Sending search request"
-            );
-
-            let mut params = vec![
-                ("api_key", key.to_owned()),
-                ("query", search_query.to_owned()),
-                ("page", "1".to_owned()),
-            ];
-            if let Some(year) = query.year {
-                params.push(("year", year.to_string()));
-            }
-
-            let url = format!("{}/3/search/multi", self.base_url);
-            let response = self
-                .client
-                .get(&url)
-                .query(&params)
-                .send()
-                .await
-                .map_err(net_err)?;
-
-            if !response.status().is_success() {
-                let s = response.status();
-                if s.as_u16() == 429 {
-                    return Err(ProviderError::RateLimited {
-                        provider: "tmdb".into(),
-                    });
-                }
-                return Err(ProviderError::Network(format!("HTTP {s}")));
-            }
-
-            let body = response.text().await.map_err(net_err)?;
-            let mut results = Self::parse_multi_search("tmdb", &body)?;
-            results.truncate(query.max_results);
-            Ok(results)
-        })
+        let body = response.text().await.map_err(net_err)?;
+        let mut results = Self::parse_multi_search("tmdb", &body)?;
+        results.truncate(query.max_results.unwrap_or(10));
+        Ok(results)
     }
 }
 
@@ -238,13 +257,29 @@ impl MetadataProvider for TmdbProvider {
 /// Searches TheTVDB for TV shows and episodes.
 ///
 /// Endpoint: `https://api4.thetvdb.com/v4/search`
-/// Auth:     API key (Bearer token obtained via `/login`)
+/// Auth:     TheTVDB v4 does NOT accept the configured API key as a bearer
+///           token directly. The configured key must first be exchanged for
+///           a short-lived-looking-but-actually-~30-day JWT via
+///           `POST /login` (documented body: `{"apikey": "...", "pin":
+///           "..."}`, with `pin` only required for legacy "user-supported"
+///           keys pinned to a specific subscriber PIN — this provider does
+///           not model that case, so `pin` is omitted). The returned
+///           `data.token` is what subsequent `Authorization: Bearer <jwt>`
+///           requests must carry. `ensure_token()` performs this exchange
+///           and caches the resulting JWT in `token_cache` for the lifetime
+///           of the provider instance (TheTVDB tokens last ~30 days, so a
+///           process-lifetime cache with no refresh logic is correct here —
+///           see issue #210).
 /// Limits:   30 RPM
 pub struct TheTvdbProvider {
     client: Client,
     base_url: String,
     api_key: Option<String>,
-    capabilities: Capabilities,
+    // Caches the JWT obtained from `POST /login` so one exchange serves
+    // every search this provider instance performs. `std::sync::Mutex`
+    // rather than `tokio::sync::Mutex` is fine because the lock is never
+    // held across an `.await` point — see `ensure_token()`.
+    token_cache: std::sync::Mutex<Option<String>>,
 }
 
 impl TheTvdbProvider {
@@ -257,18 +292,89 @@ impl TheTvdbProvider {
             client: crate::http::build_client(),
             base_url: base_url.into(),
             api_key,
-            capabilities: Capabilities {
-                media_types: vec![MediaType::Video],
-                supports_search: true,
-                supports_isrc: false,
-                supports_iswc: false,
-                provides_cover_art: true,
-                provides_fingerprint: false,
-                requires_auth: true,
-                display_name: "TheTVDB".into(),
-                homepage_url: "https://thetvdb.com".into(),
-            },
+            token_cache: std::sync::Mutex::new(None),
         }
+    }
+
+    fn configured(&self) -> bool {
+        self.api_key.is_some()
+    }
+
+    /// Returns a valid bearer JWT, performing (and caching) the `/login`
+    /// exchange on first use. Every subsequent call within this provider's
+    /// lifetime reuses the cached token instead of re-authenticating.
+    async fn ensure_token(&self) -> Result<String, ProviderError> {
+        // Fast path: a previous call already exchanged the key for a JWT.
+        // The lock is scoped tightly here so it is dropped before any
+        // `.await` below — holding a `std::sync::Mutex` guard across an
+        // await point would risk blocking the async executor.
+        let cached = self
+            .token_cache
+            .lock()
+            .expect("thetvdb token_cache mutex poisoned")
+            .clone();
+        if let Some(token) = cached {
+            return Ok(token);
+        }
+
+        // `search()` already checked `configured()` before calling this, but
+        // guard again defensively since this is a standalone async fn.
+        let key = self
+            .api_key
+            .as_deref()
+            .ok_or_else(|| ProviderError::NotConfigured("thetvdb".into()))?;
+
+        debug!(
+            provider = "thetvdb",
+            "No cached JWT — exchanging API key for one via POST /login"
+        );
+
+        let login_url = format!("{}/login", self.base_url);
+        let response = self
+            .client
+            .post(&login_url)
+            .json(&serde_json::json!({ "apikey": key }))
+            .send()
+            .await
+            .map_err(net_err)?;
+
+        if !response.status().is_success() {
+            // A distinguishable auth error, not a generic network error —
+            // so a misconfigured/expired API key is diagnosable rather than
+            // looking like a transient outage.
+            return Err(ProviderError::AuthenticationFailed {
+                provider: "thetvdb".into(),
+                reason: format!("login rejected: HTTP {}", response.status()),
+            });
+        }
+
+        let body = response.text().await.map_err(net_err)?;
+
+        #[derive(Deserialize)]
+        struct LoginResponse {
+            data: Option<LoginData>,
+        }
+        #[derive(Deserialize)]
+        struct LoginData {
+            token: Option<String>,
+        }
+
+        let parsed: LoginResponse =
+            serde_json::from_str(&body).map_err(|e| parse_err("TheTVDB login response", e))?;
+
+        let token = parsed.data.and_then(|d| d.token).ok_or_else(|| {
+            ProviderError::AuthenticationFailed {
+                provider: "thetvdb".into(),
+                reason: "login response did not contain a token".into(),
+            }
+        })?;
+
+        *self
+            .token_cache
+            .lock()
+            .expect("thetvdb token_cache mutex poisoned") = Some(token.clone());
+
+        Ok(token)
     }
 
     fn parse_search(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
@@ -302,82 +408,93 @@ impl TheTvdbProvider {
                     .image_url
                     .as_deref()
                     .filter(|u| !u.is_empty())
-                    .map(|u| vec![CoverArtInfo::new(u, 0, 0, "image/jpeg")])
+                    .map(|u| {
+                        vec![CoverArtInfo {
+                            url: u.to_owned(),
+                            width: None,
+                            height: None,
+                            mime_type: Some("image/jpeg".into()),
+                        }]
+                    })
                     .unwrap_or_default();
 
-                let mut extra = std::collections::HashMap::new();
+                let mut result = ProviderResult::new(provider_name);
+                result.title = r.name;
+                result.year = year;
+                result.cover_art = cover_art;
+
+                if let Some(id) = r.id {
+                    result
+                        .metadata
+                        .insert(META_PROVIDER_ID.into(), Value::String(id));
+                }
                 if let Some(o) = r.overview {
-                    extra.insert("overview".into(), o);
+                    result.metadata.insert("overview".into(), Value::String(o));
                 }
                 if let Some(t) = r.media_type {
-                    extra.insert("media_type".into(), t);
+                    result
+                        .metadata
+                        .insert("media_type".into(), Value::String(t));
                 }
 
-                ProviderResult {
-                    provider: provider_name.to_owned(),
-                    provider_id: r.id.unwrap_or_default(),
-                    title: r.name,
-                    year,
-                    cover_art,
-                    extra,
-                    ..Default::default()
-                }
+                result
             })
             .collect();
         Ok(results)
     }
 }
 
+#[async_trait]
 impl MetadataProvider for TheTvdbProvider {
-    fn name(&self) -> &'static str {
+    fn id(&self) -> &str {
         "thetvdb"
     }
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-    fn is_enabled(&self) -> bool {
-        self.api_key.is_some()
+
+    fn display_name(&self) -> &str {
+        "TheTVDB"
     }
 
-    fn search(
-        &self,
-        query: SearchQuery,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
-                + Send
-                + '_,
-        >,
-    > {
-        Box::pin(async move {
-            if !self.is_enabled() {
-                return Err(ProviderError::Disabled("thetvdb".into()));
-            }
-            let key = self.api_key.as_deref().unwrap();
-            let q = query.title.as_deref().unwrap_or(&query.query);
+    fn capabilities(&self) -> ProviderCapabilities {
+        video_caps(true)
+    }
 
-            debug!(provider = "thetvdb", query = q, "Sending search request");
+    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
+        if !self.configured() {
+            return Err(ProviderError::NotConfigured("thetvdb".into()));
+        }
+        // Exchange (or reuse the cached exchange of) the configured API key
+        // for the JWT TheTVDB v4 actually requires as a bearer token — the
+        // raw API key is never valid here (issue #210).
+        let token = self.ensure_token().await?;
+        let fallback = format!(
+            "{} {}",
+            query.title.as_deref().unwrap_or(""),
+            query.artist.as_deref().unwrap_or("")
+        );
+        let q: &str = query.title.as_deref().unwrap_or(fallback.trim());
 
-            let url = format!("{}/v4/search", self.base_url);
-            let response = self
-                .client
-                .get(&url)
-                .bearer_auth(key)
-                .query(&[("query", q), ("limit", &query.max_results.to_string())])
-                .send()
-                .await
-                .map_err(net_err)?;
+        debug!(provider = "thetvdb", query = q, "Sending search request");
 
-            if !response.status().is_success() {
-                return Err(ProviderError::Network(format!(
-                    "HTTP {}",
-                    response.status()
-                )));
-            }
+        let limit = query.max_results.unwrap_or(10).to_string();
+        let url = format!("{}/v4/search", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .bearer_auth(token)
+            .query(&[("query", q), ("limit", &limit)])
+            .send()
+            .await
+            .map_err(net_err)?;
 
-            let body = response.text().await.map_err(net_err)?;
-            Self::parse_search("thetvdb", &body)
-        })
+        if !response.status().is_success() {
+            return Err(ProviderError::NetworkError(format!(
+                "HTTP {}",
+                response.status()
+            )));
+        }
+
+        let body = response.text().await.map_err(net_err)?;
+        Self::parse_search("thetvdb", &body)
     }
 }
 
@@ -394,7 +511,6 @@ pub struct OmdbProvider {
     client: Client,
     base_url: String,
     api_key: Option<String>,
-    capabilities: Capabilities,
 }
 
 impl OmdbProvider {
@@ -407,18 +523,11 @@ impl OmdbProvider {
             client: crate::http::build_client(),
             base_url: base_url.into(),
             api_key,
-            capabilities: Capabilities {
-                media_types: vec![MediaType::Video],
-                supports_search: true,
-                supports_isrc: false,
-                supports_iswc: false,
-                provides_cover_art: true,
-                provides_fingerprint: false,
-                requires_auth: true,
-                display_name: "OMDb / IMDb".into(),
-                homepage_url: "https://omdbapi.com".into(),
-            },
         }
+    }
+
+    fn configured(&self) -> bool {
+        self.api_key.is_some()
     }
 
     fn parse_search(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
@@ -445,7 +554,9 @@ impl OmdbProvider {
             serde_json::from_str(body).map_err(|e| parse_err("OMDb response", e))?;
 
         if let Some(err) = resp.error {
-            return Err(ProviderError::Parse(format!("OMDb error: {err}")));
+            return Err(ProviderError::Other(format!(
+                "parse error: OMDb error: {err}"
+            )));
         }
 
         let items = resp.search.unwrap_or_default();
@@ -460,85 +571,93 @@ impl OmdbProvider {
                     .poster
                     .as_deref()
                     .filter(|p| *p != "N/A" && !p.is_empty())
-                    .map(|p| vec![CoverArtInfo::new(p, 0, 0, "image/jpeg")])
+                    .map(|p| {
+                        vec![CoverArtInfo {
+                            url: p.to_owned(),
+                            width: None,
+                            height: None,
+                            mime_type: Some("image/jpeg".into()),
+                        }]
+                    })
                     .unwrap_or_default();
-                let mut extra = std::collections::HashMap::new();
+
+                let mut result = ProviderResult::new(provider_name);
+                result.title = r.title;
+                result.year = year;
+                result.cover_art = cover_art;
+
+                if let Some(id) = r.imdb_id {
+                    result
+                        .metadata
+                        .insert(META_PROVIDER_ID.into(), Value::String(id));
+                }
                 if let Some(t) = &r.media_type {
-                    extra.insert("media_type".into(), t.clone());
+                    result
+                        .metadata
+                        .insert("media_type".into(), Value::String(t.clone()));
                 }
 
-                ProviderResult {
-                    provider: provider_name.to_owned(),
-                    provider_id: r.imdb_id.unwrap_or_default(),
-                    title: r.title,
-                    year,
-                    cover_art,
-                    extra,
-                    ..Default::default()
-                }
+                result
             })
             .collect();
         Ok(results)
     }
 }
 
+#[async_trait]
 impl MetadataProvider for OmdbProvider {
-    fn name(&self) -> &'static str {
+    fn id(&self) -> &str {
         "omdb"
     }
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-    fn is_enabled(&self) -> bool {
-        self.api_key.is_some()
+
+    fn display_name(&self) -> &str {
+        "OMDb / IMDb"
     }
 
-    fn search(
-        &self,
-        query: SearchQuery,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
-                + Send
-                + '_,
-        >,
-    > {
-        Box::pin(async move {
-            if !self.is_enabled() {
-                return Err(ProviderError::Disabled("omdb".into()));
-            }
-            let key = self.api_key.as_deref().unwrap();
-            let title = query.title.as_deref().unwrap_or(&query.query);
+    fn capabilities(&self) -> ProviderCapabilities {
+        video_caps(true)
+    }
 
-            debug!(provider = "omdb", title = title, "Sending search request");
+    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
+        if !self.configured() {
+            return Err(ProviderError::NotConfigured("omdb".into()));
+        }
+        let key = self.api_key.as_deref().unwrap();
+        let fallback = format!(
+            "{} {}",
+            query.title.as_deref().unwrap_or(""),
+            query.artist.as_deref().unwrap_or("")
+        );
+        let title: &str = query.title.as_deref().unwrap_or(fallback.trim());
 
-            let mut params = vec![
-                ("s", title.to_owned()),
-                ("apikey", key.to_owned()),
-                ("type", "movie".to_owned()), // Default to movies; could be configurable
-            ];
-            if let Some(y) = query.year {
-                params.push(("y", y.to_string()));
-            }
+        debug!(provider = "omdb", title = title, "Sending search request");
 
-            let response = self
-                .client
-                .get(&self.base_url)
-                .query(&params)
-                .send()
-                .await
-                .map_err(net_err)?;
+        let mut params = vec![
+            ("s", title.to_owned()),
+            ("apikey", key.to_owned()),
+            ("type", "movie".to_owned()), // Default to movies; could be configurable
+        ];
+        if let Some(y) = query.year {
+            params.push(("y", y.to_string()));
+        }
 
-            if !response.status().is_success() {
-                return Err(ProviderError::Network(format!(
-                    "HTTP {}",
-                    response.status()
-                )));
-            }
+        let response = self
+            .client
+            .get(&self.base_url)
+            .query(&params)
+            .send()
+            .await
+            .map_err(net_err)?;
 
-            let body = response.text().await.map_err(net_err)?;
-            Self::parse_search("omdb", &body)
-        })
+        if !response.status().is_success() {
+            return Err(ProviderError::NetworkError(format!(
+                "HTTP {}",
+                response.status()
+            )));
+        }
+
+        let body = response.text().await.map_err(net_err)?;
+        Self::parse_search("omdb", &body)
     }
 }
 
@@ -556,7 +675,6 @@ pub struct AppleTvProvider {
     base_url: String,
     enabled: bool,
     country: String,
-    capabilities: Capabilities,
 }
 
 impl AppleTvProvider {
@@ -570,21 +688,10 @@ impl AppleTvProvider {
             base_url: base_url.into(),
             enabled: true,
             country: country.into(),
-            capabilities: Capabilities {
-                media_types: vec![MediaType::Video],
-                supports_search: true,
-                supports_isrc: false,
-                supports_iswc: false,
-                provides_cover_art: true,
-                provides_fingerprint: false,
-                requires_auth: false,
-                display_name: "Apple TV".into(),
-                homepage_url: "https://tv.apple.com".into(),
-            },
         }
     }
 
-    fn parse_itunes_video(
+    pub(crate) fn parse_itunes_video(
         provider_name: &str,
         body: &str,
     ) -> Result<Vec<ProviderResult>, ProviderError> {
@@ -625,25 +732,45 @@ impl AppleTvProvider {
                     .map(|url| {
                         let hires = url.replace("100x100", "600x600");
                         vec![
-                            CoverArtInfo::new(&hires, 600, 600, "image/jpeg"),
-                            CoverArtInfo::new(url, 100, 100, "image/jpeg"),
+                            CoverArtInfo {
+                                url: hires,
+                                width: Some(600),
+                                height: Some(600),
+                                mime_type: Some("image/jpeg".into()),
+                            },
+                            CoverArtInfo {
+                                url: url.to_owned(),
+                                width: Some(100),
+                                height: Some(100),
+                                mime_type: Some("image/jpeg".into()),
+                            },
                         ]
                     })
                     .unwrap_or_default();
 
-                ProviderResult {
-                    provider: provider_name.to_owned(),
-                    provider_id: r.track_id.map(|id| id.to_string()).unwrap_or_default(),
-                    title: r.track_name,
-                    artist: r.artist_name,    // Director for films
-                    album: r.collection_name, // Series name for TV episodes
-                    year,
-                    genre: r.primary_genre_name,
-                    duration_secs: r.track_time_millis.map(|ms| ms as f64 / 1000.0),
-                    content_advisory: r.content_advisory_rating,
-                    cover_art,
-                    ..Default::default()
+                let mut result = ProviderResult::new(provider_name);
+                result.title = r.track_name;
+                result.artist = r.artist_name; // Director for films
+                result.album = r.collection_name; // Series name for TV episodes
+                result.year = year;
+                result.genre = r.primary_genre_name;
+                result.cover_art = cover_art;
+
+                if let Some(id) = r.track_id {
+                    result
+                        .metadata
+                        .insert(META_PROVIDER_ID.into(), Value::String(id.to_string()));
                 }
+                if let Some(ms) = r.track_time_millis {
+                    insert_duration(&mut result, ms as f64 / 1000.0);
+                }
+                if let Some(advisory) = r.content_advisory_rating {
+                    result
+                        .metadata
+                        .insert(META_CONTENT_ADVISORY.into(), Value::String(advisory));
+                }
+
+                result
             })
             .collect();
 
@@ -657,62 +784,60 @@ impl Default for AppleTvProvider {
     }
 }
 
+#[async_trait]
 impl MetadataProvider for AppleTvProvider {
-    fn name(&self) -> &'static str {
+    fn id(&self) -> &str {
         "apple_tv"
     }
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-    fn is_enabled(&self) -> bool {
-        self.enabled
+
+    fn display_name(&self) -> &str {
+        "Apple TV"
     }
 
-    fn search(
-        &self,
-        query: SearchQuery,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
-                + Send
-                + '_,
-        >,
-    > {
-        Box::pin(async move {
-            if !self.enabled {
-                return Err(ProviderError::Disabled("apple_tv".into()));
-            }
-            let term = query.title.as_deref().unwrap_or(&query.query);
-            debug!(
-                provider = "apple_tv",
-                term = term,
-                "Sending iTunes video search request"
-            );
+    fn capabilities(&self) -> ProviderCapabilities {
+        video_caps(true)
+    }
 
-            let url = format!("{}/search", self.base_url);
-            let response = self
-                .client
-                .get(&url)
-                .query(&[
-                    ("term", term),
-                    ("media", "movie"),
-                    ("country", &self.country),
-                    ("limit", &query.max_results.to_string()),
-                ])
-                .send()
-                .await
-                .map_err(net_err)?;
+    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
+        if !self.enabled {
+            return Err(ProviderError::NotConfigured("apple_tv".into()));
+        }
+        let fallback = format!(
+            "{} {}",
+            query.title.as_deref().unwrap_or(""),
+            query.artist.as_deref().unwrap_or("")
+        );
+        let term: &str = query.title.as_deref().unwrap_or(fallback.trim());
+        debug!(
+            provider = "apple_tv",
+            term = term,
+            "Sending iTunes video search request"
+        );
 
-            if !response.status().is_success() {
-                return Err(ProviderError::Network(format!(
-                    "HTTP {}",
-                    response.status()
-                )));
-            }
+        let limit = query.max_results.unwrap_or(10).to_string();
+        let url = format!("{}/search", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .query(&[
+                ("term", term),
+                ("media", "movie"),
+                ("country", &self.country),
+                ("limit", &limit),
+            ])
+            .send()
+            .await
+            .map_err(net_err)?;
 
-            let body = response.text().await.map_err(net_err)?;
-            Self::parse_itunes_video("apple_tv", &body)
-        })
+        if !response.status().is_success() {
+            return Err(ProviderError::NetworkError(format!(
+                "HTTP {}",
+                response.status()
+            )));
+        }
+
+        let body = response.text().await.map_err(net_err)?;
+        Self::parse_itunes_video("apple_tv", &body)
     }
 }
 
@@ -731,7 +856,6 @@ pub struct ItunesStoreProvider {
     base_url: String,
     enabled: bool,
     country: String,
-    capabilities: Capabilities,
 }
 
 impl ItunesStoreProvider {
@@ -745,21 +869,13 @@ impl ItunesStoreProvider {
             base_url: base_url.into(),
             enabled: true,
             country: country.into(),
-            capabilities: Capabilities {
-                media_types: vec![MediaType::Video],
-                supports_search: true,
-                supports_isrc: false,
-                supports_iswc: false,
-                provides_cover_art: true,
-                provides_fingerprint: false,
-                requires_auth: false,
-                display_name: "iTunes Store".into(),
-                homepage_url: "https://apple.com/itunes".into(),
-            },
         }
     }
 
-    fn parse(provider_name: &str, body: &str) -> Result<Vec<ProviderResult>, ProviderError> {
+    pub(crate) fn parse(
+        provider_name: &str,
+        body: &str,
+    ) -> Result<Vec<ProviderResult>, ProviderError> {
         // Reuse the same iTunes JSON structure as AppleTvProvider
         AppleTvProvider::parse_itunes_video(provider_name, body)
     }
@@ -771,68 +887,66 @@ impl Default for ItunesStoreProvider {
     }
 }
 
+#[async_trait]
 impl MetadataProvider for ItunesStoreProvider {
-    fn name(&self) -> &'static str {
+    fn id(&self) -> &str {
         "itunes_store"
     }
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-    fn is_enabled(&self) -> bool {
-        self.enabled
+
+    fn display_name(&self) -> &str {
+        "iTunes Store"
     }
 
-    fn search(
-        &self,
-        query: SearchQuery,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<ProviderResult>, ProviderError>>
-                + Send
-                + '_,
-        >,
-    > {
-        Box::pin(async move {
-            if !self.enabled {
-                return Err(ProviderError::Disabled("itunes_store".into()));
-            }
-            let term = query.title.as_deref().unwrap_or(&query.query);
-            debug!(
-                provider = "itunes_store",
-                term = term,
-                "Sending iTunes TV search request"
-            );
+    fn capabilities(&self) -> ProviderCapabilities {
+        video_caps(true)
+    }
 
-            let url = format!("{}/search", self.base_url);
-            let response = self
-                .client
-                .get(&url)
-                .query(&[
-                    ("term", term),
-                    ("media", "tvShow"),
-                    ("entity", "tvSeason"),
-                    ("country", &self.country),
-                    ("limit", &query.max_results.to_string()),
-                ])
-                .send()
-                .await
-                .map_err(net_err)?;
+    async fn search(&self, query: &SearchQuery) -> Result<Vec<ProviderResult>, ProviderError> {
+        if !self.enabled {
+            return Err(ProviderError::NotConfigured("itunes_store".into()));
+        }
+        let fallback = format!(
+            "{} {}",
+            query.title.as_deref().unwrap_or(""),
+            query.artist.as_deref().unwrap_or("")
+        );
+        let term: &str = query.title.as_deref().unwrap_or(fallback.trim());
+        debug!(
+            provider = "itunes_store",
+            term = term,
+            "Sending iTunes TV search request"
+        );
 
-            if !response.status().is_success() {
-                return Err(ProviderError::Network(format!(
-                    "HTTP {}",
-                    response.status()
-                )));
-            }
+        let limit = query.max_results.unwrap_or(10).to_string();
+        let url = format!("{}/search", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .query(&[
+                ("term", term),
+                ("media", "tvShow"),
+                ("entity", "tvSeason"),
+                ("country", &self.country),
+                ("limit", &limit),
+            ])
+            .send()
+            .await
+            .map_err(net_err)?;
 
-            let body = response.text().await.map_err(net_err)?;
-            Self::parse("itunes_store", &body)
-        })
+        if !response.status().is_success() {
+            return Err(ProviderError::NetworkError(format!(
+                "HTTP {}",
+                response.status()
+            )));
+        }
+
+        let body = response.text().await.map_err(net_err)?;
+        Self::parse("itunes_store", &body)
     }
 }
 
 // ---------------------------------------------------------------------------
-// Tests — 45 tests
+// Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -846,38 +960,15 @@ mod tests {
     #[test]
     fn tmdb_name() {
         let p = TmdbProvider::new(Some("key".into()));
-        assert_eq!(p.name(), "tmdb");
+        assert_eq!(p.id(), "tmdb");
     }
 
     #[test]
-    fn tmdb_enabled_with_api_key() {
-        let p = TmdbProvider::new(Some("key".into()));
-        assert!(p.is_enabled());
-    }
-
-    #[test]
-    fn tmdb_disabled_without_api_key() {
-        let p = TmdbProvider::new(None);
-        assert!(!p.is_enabled());
-    }
-
-    #[test]
-    fn tmdb_capabilities_media_type_video() {
-        let p = TmdbProvider::new(None);
-        assert!(p.capabilities().supports_media_type(MediaType::Video));
-        assert!(!p.capabilities().supports_media_type(MediaType::Music));
-    }
-
-    #[test]
-    fn tmdb_capabilities_requires_auth() {
-        let p = TmdbProvider::new(None);
-        assert!(p.capabilities().requires_auth);
-    }
-
-    #[test]
-    fn tmdb_capabilities_provides_cover_art() {
-        let p = TmdbProvider::new(None);
-        assert!(p.capabilities().provides_cover_art);
+    fn tmdb_capabilities_video_type() {
+        let caps = TmdbProvider::new(None).capabilities();
+        assert!(caps.video_search);
+        assert!(!caps.music_search);
+        assert!(caps.cover_art);
     }
 
     #[test]
@@ -934,16 +1025,19 @@ mod tests {
     #[test]
     fn tmdb_parse_invalid_json_returns_err() {
         let result = TmdbProvider::parse_multi_search("tmdb", "bad json");
-        assert!(matches!(result, Err(ProviderError::Parse(_))));
+        assert!(matches!(result, Err(ProviderError::Other(_))));
     }
 
     #[test]
-    fn tmdb_parse_overview_stored_in_extra() {
+    fn tmdb_parse_overview_stored_in_metadata() {
         let json =
             r#"{"results": [{"id": 1, "media_type": "movie", "overview": "Description here"}]}"#;
         let results = TmdbProvider::parse_multi_search("tmdb", json).unwrap();
         assert_eq!(
-            results[0].extra.get("overview").map(String::as_str),
+            results[0]
+                .metadata
+                .get("overview")
+                .and_then(serde_json::Value::as_str),
             Some("Description here")
         );
     }
@@ -963,23 +1057,13 @@ mod tests {
     #[test]
     fn tvdb_name() {
         let p = TheTvdbProvider::new(Some("key".into()));
-        assert_eq!(p.name(), "thetvdb");
-    }
-
-    #[test]
-    fn tvdb_enabled_with_api_key() {
-        assert!(TheTvdbProvider::new(Some("key".into())).is_enabled());
-    }
-
-    #[test]
-    fn tvdb_disabled_without_api_key() {
-        assert!(!TheTvdbProvider::new(None).is_enabled());
+        assert_eq!(p.id(), "thetvdb");
     }
 
     #[test]
     fn tvdb_capabilities_video_type() {
-        let p = TheTvdbProvider::new(None);
-        assert!(p.capabilities().supports_media_type(MediaType::Video));
+        let caps = TheTvdbProvider::new(None).capabilities();
+        assert!(caps.video_search);
     }
 
     #[test]
@@ -1000,7 +1084,10 @@ mod tests {
         assert_eq!(results[0].year, Some(2008));
         assert!(!results[0].cover_art.is_empty());
         assert_eq!(
-            results[0].extra.get("media_type").map(String::as_str),
+            results[0]
+                .metadata
+                .get("media_type")
+                .and_then(serde_json::Value::as_str),
             Some("series")
         );
     }
@@ -1016,8 +1103,139 @@ mod tests {
     fn tvdb_parse_invalid_json_returns_err() {
         assert!(matches!(
             TheTvdbProvider::parse_search("thetvdb", "garbage"),
-            Err(ProviderError::Parse(_))
+            Err(ProviderError::Other(_))
         ));
+    }
+
+    // -------------------------------------------------------------------
+    // TheTVDB — wiremock integration tests (issue #210)
+    // -------------------------------------------------------------------
+    //
+    // TheTVDB v4 requires exchanging the configured API key for a JWT via
+    // `POST /login` before it will accept any `Authorization: Bearer <jwt>`
+    // search request — the raw API key is never a valid bearer token. These
+    // tests prove the login exchange actually happens on the wire (not just
+    // that the doc comment claims it), that a failed login surfaces as a
+    // distinguishable `AuthenticationFailed` error rather than a generic
+    // network error, and that the resulting token is cached process-lifetime
+    // rather than re-fetched on every search.
+    use wiremock::matchers::{body_partial_json, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn tvdb_search_performs_login_exchange_first() {
+        // MUST FAIL FIRST: current code sends `.bearer_auth(<raw api key>)`
+        // straight to `/v4/search` with no `/login` call at all, so the
+        // `/v4/search` mock below (which only matches the *exchanged* JWT,
+        // not the raw key) never matches and this test fails against
+        // untouched code.
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/login"))
+            .and(body_partial_json(
+                serde_json::json!({ "apikey": "raw-configured-key" }),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(
+                    r#"{"status":"success","data":{"token":"jwt-exchanged-token"}}"#,
+                ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v4/search"))
+            // The bearer MUST be the JWT returned by `/login`, never the raw
+            // configured API key.
+            .and(header("authorization", "Bearer jwt-exchanged-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"data":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider =
+            TheTvdbProvider::with_base_url(Some("raw-configured-key".into()), server.uri());
+        let query = SearchQuery {
+            title: Some("Breaking Bad".into()),
+            ..Default::default()
+        };
+
+        provider
+            .search(&query)
+            .await
+            .expect("search should succeed once the JWT exchange is implemented");
+    }
+
+    #[tokio::test]
+    async fn tvdb_login_failure_surfaces_auth_error() {
+        let server = MockServer::start().await;
+
+        // `/login` rejects the key — no `/v4/search` mock is mounted, so if
+        // the provider wrongly proceeded to search anyway this test would
+        // fail with a connection/mock-mismatch error rather than the
+        // expected auth error.
+        Mock::given(method("POST"))
+            .and(path("/login"))
+            .respond_with(ResponseTemplate::new(401).set_body_string(r#"{"message":"bad key"}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = TheTvdbProvider::with_base_url(Some("wrong-key".into()), server.uri());
+        let query = SearchQuery {
+            title: Some("Breaking Bad".into()),
+            ..Default::default()
+        };
+
+        let err = provider
+            .search(&query)
+            .await
+            .expect_err("a rejected login must surface as an error");
+        assert!(
+            matches!(err, ProviderError::AuthenticationFailed { .. }),
+            "expected AuthenticationFailed, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn tvdb_token_is_reused_across_searches() {
+        let server = MockServer::start().await;
+
+        // `.expect(1)` on the login mock is the assertion: two searches
+        // below must only trigger ONE `/login` call between them.
+        Mock::given(method("POST"))
+            .and(path("/login"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"status":"success","data":{"token":"jwt-cached"}}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v4/search"))
+            .and(header("authorization", "Bearer jwt-cached"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"data":[]}"#))
+            .mount(&server)
+            .await;
+
+        let provider = TheTvdbProvider::with_base_url(Some("some-key".into()), server.uri());
+        let query = SearchQuery {
+            title: Some("Breaking Bad".into()),
+            ..Default::default()
+        };
+
+        provider
+            .search(&query)
+            .await
+            .expect("first search should succeed");
+        provider
+            .search(&query)
+            .await
+            .expect("second search should reuse the cached token, not re-login");
     }
 
     // =========================================================================
@@ -1026,22 +1244,7 @@ mod tests {
 
     #[test]
     fn omdb_name() {
-        assert_eq!(OmdbProvider::new(Some("key".into())).name(), "omdb");
-    }
-
-    #[test]
-    fn omdb_enabled_with_api_key() {
-        assert!(OmdbProvider::new(Some("key".into())).is_enabled());
-    }
-
-    #[test]
-    fn omdb_disabled_without_api_key() {
-        assert!(!OmdbProvider::new(None).is_enabled());
-    }
-
-    #[test]
-    fn omdb_capabilities_requires_auth() {
-        assert!(OmdbProvider::new(None).capabilities().requires_auth);
+        assert_eq!(OmdbProvider::new(Some("key".into())).id(), "omdb");
     }
 
     #[test]
@@ -1061,15 +1264,21 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].title.as_deref(), Some("Interstellar"));
         assert_eq!(results[0].year, Some(2014));
-        assert_eq!(results[0].provider_id, "tt0816692");
+        assert_eq!(
+            results[0]
+                .metadata
+                .get(META_PROVIDER_ID)
+                .and_then(serde_json::Value::as_str),
+            Some("tt0816692")
+        );
         assert!(!results[0].cover_art.is_empty());
     }
 
     #[test]
-    fn omdb_parse_error_response_returns_parse_err() {
+    fn omdb_parse_error_response_returns_err() {
         let json = r#"{"Response": "False", "Error": "Movie not found!"}"#;
         let result = OmdbProvider::parse_search("omdb", json);
-        assert!(matches!(result, Err(ProviderError::Parse(_))));
+        assert!(matches!(result, Err(ProviderError::Other(_))));
     }
 
     #[test]
@@ -1085,7 +1294,7 @@ mod tests {
     fn omdb_parse_invalid_json_returns_err() {
         assert!(matches!(
             OmdbProvider::parse_search("omdb", "bad"),
-            Err(ProviderError::Parse(_))
+            Err(ProviderError::Other(_))
         ));
     }
 
@@ -1095,26 +1304,12 @@ mod tests {
 
     #[test]
     fn apple_tv_name() {
-        assert_eq!(AppleTvProvider::new("US").name(), "apple_tv");
-    }
-
-    #[test]
-    fn apple_tv_enabled_by_default() {
-        assert!(AppleTvProvider::default().is_enabled());
-    }
-
-    #[test]
-    fn apple_tv_no_auth_required() {
-        assert!(!AppleTvProvider::default().capabilities().requires_auth);
+        assert_eq!(AppleTvProvider::new("US").id(), "apple_tv");
     }
 
     #[test]
     fn apple_tv_capabilities_video_type() {
-        assert!(
-            AppleTvProvider::default()
-                .capabilities()
-                .supports_media_type(MediaType::Video)
-        );
+        assert!(AppleTvProvider::default().capabilities().video_search);
     }
 
     #[test]
@@ -1138,7 +1333,13 @@ mod tests {
         assert_eq!(results[0].artist.as_deref(), Some("Christopher Nolan")); // Director
         assert_eq!(results[0].year, Some(2014));
         assert_eq!(results[0].genre.as_deref(), Some("Sci-Fi"));
-        assert_eq!(results[0].content_advisory.as_deref(), Some("PG-13"));
+        assert_eq!(
+            results[0]
+                .metadata
+                .get(META_CONTENT_ADVISORY)
+                .and_then(serde_json::Value::as_str),
+            Some("PG-13")
+        );
         assert_eq!(results[0].cover_art.len(), 2);
     }
 
@@ -1155,26 +1356,12 @@ mod tests {
 
     #[test]
     fn itunes_store_name() {
-        assert_eq!(ItunesStoreProvider::new("US").name(), "itunes_store");
-    }
-
-    #[test]
-    fn itunes_store_enabled_by_default() {
-        assert!(ItunesStoreProvider::default().is_enabled());
+        assert_eq!(ItunesStoreProvider::new("US").id(), "itunes_store");
     }
 
     #[test]
     fn itunes_store_capabilities_video_type() {
-        assert!(
-            ItunesStoreProvider::default()
-                .capabilities()
-                .supports_media_type(MediaType::Video)
-        );
-    }
-
-    #[test]
-    fn itunes_store_no_auth_required() {
-        assert!(!ItunesStoreProvider::default().capabilities().requires_auth);
+        assert!(ItunesStoreProvider::default().capabilities().video_search);
     }
 
     #[test]

@@ -12,10 +12,10 @@
 //   one-time informational dialog.  This protects user files from potential bugs
 //   in unreleased code.
 
-use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::prelude::*;
+use gtk4 as gtk;
+use libadwaita as adw;
 
 use mm_core::test_mode;
 
@@ -35,9 +35,7 @@ pub fn run(app_id: &str) {
 
     // Create the application instance with our reverse-DNS identifier.
     // GTK uses the application ID for D-Bus session uniqueness checks.
-    let app = adw::Application::builder()
-        .application_id(app_id)
-        .build();
+    let app = adw::Application::builder().application_id(app_id).build();
 
     // Register the activate handler — called on first launch and when a
     // second instance tries to start (GTK raises the existing window instead)
@@ -115,9 +113,7 @@ fn on_activate(app: &adw::Application) {
 /// Its presence means the user was already shown the pre-release dialog
 /// for this particular version.
 fn prerelease_sentinel_exists(version: &str) -> bool {
-    sentinel_path(version)
-        .map(|p| p.exists())
-        .unwrap_or(false)
+    sentinel_path(version).map(|p| p.exists()).unwrap_or(false)
 }
 
 /// Write the sentinel file so that subsequent launches of the same
@@ -136,9 +132,15 @@ fn write_prerelease_sentinel(version: &str) {
 /// Compute the sentinel file path for a given version string.
 ///
 /// Returns `None` if the platform config directory cannot be determined.
+///
+/// Routed through `mm_core::config::app_config_dir()` (rather than calling
+/// `dirs::config_dir()` directly) so this file lands in the same directory
+/// every other module agrees on — see issue #212 (P0-CONFIGDIR): before this
+/// fix the sentinel used a lowercase "meedyamanager" subdirectory while the
+/// rest of the app used "MeedyaManager", which are two different directories
+/// on a case-sensitive filesystem (Linux — this crate's own platform).
 fn sentinel_path(version: &str) -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|d| {
-        d.join("meedyamanager")
-            .join(format!("prerelease_notified_{version}"))
-    })
+    mm_core::config::app_config_dir()
+        .ok()
+        .map(|d| d.join(format!("prerelease_notified_{version}")))
 }

@@ -3,7 +3,7 @@
 // MeedyaManager — Media Classification Engine
 //
 // Implements a 4-level media classification hierarchy:
-//   Group  → broad category (Audio, Video, Image, Document, Archive, Unknown)
+//   Group  → broad category (Audio, Video, Image, Document, Archive, Disc, Unknown)
 //   Format → specific file format (MP3, FLAC, MKV, PNG, PDF, …)
 //   Class  → content type / purpose (Music, Podcast, Movie, TVShow, …)
 //   Quality → encoding quality tier (Lossless, HiRes, Lossy320, …)
@@ -36,8 +36,12 @@ pub enum MediaGroup {
     Image,
     /// Textual / document media (PDFs, e-books, office docs)
     Document,
-    /// Compressed archives and disk images
+    /// Compressed archives and software installer containers
     Archive,
+    /// Optical disc images — a bit-perfect copy of a CD/DVD/Blu-ray, not a
+    /// software container (see the comment on `MediaFormat::group()`'s
+    /// Archive arm for why this is a separate group from `Archive`)
+    Disc,
     /// File type could not be determined
     Unknown,
 }
@@ -51,6 +55,7 @@ impl fmt::Display for MediaGroup {
             Self::Image => write!(f, "Image"),
             Self::Document => write!(f, "Document"),
             Self::Archive => write!(f, "Archive"),
+            Self::Disc => write!(f, "Disc"),
             Self::Unknown => write!(f, "Unknown"),
         }
     }
@@ -318,6 +323,29 @@ pub enum MediaFormat {
     /// Android Package
     APK,
 
+    // ── Disc image formats ──────────────────────────────────────────
+    // A bit-perfect copy of an optical disc (CD/DVD/Blu-ray) is not a
+    // software container the way DMG/MSI/DEB/PKG/JAR/APK are — it is a
+    // sector-for-sector image that might hold an Audio CD, a DVD movie, or
+    // plain data. Extensions that unambiguously mean "this is a disc image"
+    // live here; extensions that are ambiguous on their own (see the comment
+    // above `extension_to_format`'s "not mapped" block) stay out of this enum
+    // reachability path for now and are resolved in a later stage.
+    /// Nero Image
+    NRG,
+    /// Alcohol 120% Descriptor (sidecar for an .mdf image)
+    MDS,
+    /// Alcohol 120% Image
+    MDF,
+    /// Daemon Tools Image
+    MDX,
+    /// Apple CD/DVD Master (produced by Disk Utility / `hdiutil`)
+    CDR,
+    /// Raw CD Image (headerless sector dump, usually paired with a .cue)
+    BIN,
+    /// Cue Sheet (track layout describing a .bin/.iso image)
+    CUE,
+
     // ── Catch-all ──────────────────────────────────────────────────
     /// Format could not be identified
     UnknownFormat,
@@ -454,6 +482,14 @@ impl fmt::Display for MediaFormat {
             Self::PKG => write!(f, "macOS Package"),
             Self::JAR => write!(f, "Java Archive"),
             Self::APK => write!(f, "Android Package"),
+            // Disc images
+            Self::NRG => write!(f, "Nero Image"),
+            Self::MDS => write!(f, "Alcohol Descriptor"),
+            Self::MDF => write!(f, "Alcohol Image"),
+            Self::MDX => write!(f, "Daemon Tools Image"),
+            Self::CDR => write!(f, "Apple CD/DVD Master"),
+            Self::BIN => write!(f, "Raw CD Image"),
+            Self::CUE => write!(f, "Cue Sheet"),
             // Unknown
             Self::UnknownFormat => write!(f, "Unknown"),
         }
@@ -591,6 +627,14 @@ impl MediaFormat {
             Self::PKG => "pkg",
             Self::JAR => "jar",
             Self::APK => "apk",
+            // Disc images
+            Self::NRG => "nrg",
+            Self::MDS => "mds",
+            Self::MDF => "mdf",
+            Self::MDX => "mdx",
+            Self::CDR => "cdr",
+            Self::BIN => "bin",
+            Self::CUE => "cue",
             // Unknown
             Self::UnknownFormat => "",
         }
@@ -729,6 +773,16 @@ impl MediaFormat {
             Self::PKG => "application/x-newton-compatible-pkg",
             Self::JAR => "application/java-archive",
             Self::APK => "application/vnd.android.package-archive",
+            // Disc images (MDS/MDF have no IANA-registered type; we use the
+            // conventional application/x-<ext> vendor form, matching the
+            // pattern already used above for APE/WavPack/Musepack/etc.)
+            Self::NRG => "application/x-nrg",
+            Self::MDS => "application/x-mds",
+            Self::MDF => "application/x-mdf",
+            Self::MDX => "application/x-daemon-tools",
+            Self::CDR => "application/x-iso9660-image",
+            Self::BIN => "application/x-cd-image",
+            Self::CUE => "application/x-cue",
             // Unknown
             Self::UnknownFormat => "application/octet-stream",
         }
@@ -850,7 +904,19 @@ impl MediaFormat {
             | Self::ASS
             | Self::VTT => MediaGroup::Document,
 
-            // Archive formats
+            // Archive formats.
+            //
+            // DMG, MSI, DEB, RPM, PKG, JAR and APK stay here even though each
+            // one is, technically, "an image of some files" — because what
+            // they are *for* is installing or packaging software: DMG mounts
+            // a volume for an installer, MSI/DEB/RPM/PKG drive a package
+            // manager, JAR/APK are executable containers. Being a software
+            // container by definition is the whole point of this distinction:
+            // it is why they are NOT reclassified into `MediaGroup::Disc`
+            // below alongside ISO, even though a disc image and a DMG are
+            // both, mechanically, "a mountable image file". ISO used to sit
+            // in this arm; it moved out because a disc image is more often a
+            // bit-perfect copy of an Audio CD or a DVD than it is software.
             Self::ZIP
             | Self::RAR
             | Self::SevenZ
@@ -860,7 +926,6 @@ impl MediaFormat {
             | Self::XZ
             | Self::ZST
             | Self::LZ4
-            | Self::ISO
             | Self::DMG
             | Self::MSI
             | Self::DEB
@@ -868,6 +933,17 @@ impl MediaFormat {
             | Self::PKG
             | Self::JAR
             | Self::APK => MediaGroup::Archive,
+
+            // Disc image formats — optical media images, not software
+            // containers (see the comment on the Archive arm above).
+            Self::ISO
+            | Self::NRG
+            | Self::MDS
+            | Self::MDF
+            | Self::MDX
+            | Self::CDR
+            | Self::BIN
+            | Self::CUE => MediaGroup::Disc,
 
             // Unknown
             Self::UnknownFormat => MediaGroup::Unknown,
@@ -985,7 +1061,7 @@ impl fmt::Display for MediaQuality {
 /// refined later with metadata-driven quality and class detection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MediaClassification {
-    /// Broad category: Audio, Video, Image, Document, Archive, Unknown
+    /// Broad category: Audio, Video, Image, Document, Archive, Disc, Unknown
     pub group: MediaGroup,
     /// Specific file format identified by extension
     pub format: MediaFormat,
@@ -1164,7 +1240,6 @@ fn extension_to_format(ext: &str) -> MediaFormat {
         "xz" | "lzma" => MediaFormat::XZ,
         "zst" | "zstd" => MediaFormat::ZST,
         "lz4" => MediaFormat::LZ4,
-        "iso" => MediaFormat::ISO,
         "dmg" => MediaFormat::DMG,
         "msi" => MediaFormat::MSI,
         "deb" => MediaFormat::DEB,
@@ -1172,6 +1247,30 @@ fn extension_to_format(ext: &str) -> MediaFormat {
         "pkg" => MediaFormat::PKG,
         "jar" => MediaFormat::JAR,
         "apk" => MediaFormat::APK,
+
+        // ── Disc images (unambiguous extensions only) ──────────────
+        // "iso", "nrg", "mds" and "cdr" mean exactly one thing on their own,
+        // so they map straight to a MediaFormat here. Three related
+        // extensions are deliberately NOT mapped, even though the
+        // MediaFormat variants exist:
+        //   - "bin"  is used for any generic binary file, not just a raw CD
+        //            image — mapping it here would misclassify unrelated
+        //            files across the whole codebase.
+        //   - "cue"  sitting next to FLAC/WAV tracks is a track index for
+        //            those tracks, not a disc image in its own right; only
+        //            in the presence of a matching .bin/.iso is it "part of
+        //            a disc image".
+        //   - "mdf"  collides with SQL Server's own .mdf data file
+        //            extension, which is far more common on a general
+        //            file system than an Alcohol 120% disc image.
+        // Resolving these three correctly needs sibling-file context (what
+        // else lives next to it), which a later stage adds; until then they
+        // fall through to UnknownFormat like any other unrecognised extension.
+        "iso" => MediaFormat::ISO,
+        "nrg" => MediaFormat::NRG,
+        "mds" => MediaFormat::MDS,
+        "mdx" => MediaFormat::MDX,
+        "cdr" => MediaFormat::CDR,
 
         // ── Compound archive extensions (tar.gz etc.) ──────────────
         // These are handled if the caller strips the outer extension;
@@ -1469,10 +1568,62 @@ mod tests {
     }
 
     #[test]
-    fn classify_archive_iso() {
+    fn classify_disc_iso() {
+        // ISO used to be grouped with ZIP/MSI/DEB/APK as an "Archive" — that
+        // was wrong: a bit-perfect copy of an Audio CD is not a software
+        // installer. It now gets its own Disc group. This test fails until
+        // `MediaFormat::ISO::group()` returns `MediaGroup::Disc`, which is
+        // the proof the reclassification actually took effect.
         let c = classify_by_extension("iso");
-        assert_eq!(c.group, MediaGroup::Archive);
+        assert_eq!(c.group, MediaGroup::Disc);
         assert_eq!(c.format, MediaFormat::ISO);
+    }
+
+    #[test]
+    fn classify_disc_unambiguous_extensions() {
+        // These extensions are unambiguous on their own, so they classify
+        // straight to the Disc group without needing sibling-file context.
+        for (ext, expected_format) in [
+            ("nrg", MediaFormat::NRG),
+            ("mds", MediaFormat::MDS),
+            ("mdx", MediaFormat::MDX),
+            ("cdr", MediaFormat::CDR),
+        ] {
+            let c = classify_by_extension(ext);
+            assert_eq!(c.format, expected_format, "extension {ext}");
+            assert_eq!(c.group, MediaGroup::Disc, "extension {ext}");
+        }
+    }
+
+    #[test]
+    fn classify_ambiguous_disc_extensions_stay_unknown() {
+        // "bin", "cue" and "mdf" are each ambiguous when looked at in
+        // isolation (see the comment above `extension_to_format`'s disc
+        // block), so they must NOT be resolved to a disc-image
+        // `MediaFormat` from the extension alone — that needs a later,
+        // sibling-file-aware stage. Until then they are simply unknown.
+        for ext in ["bin", "cue", "mdf"] {
+            let c = classify_by_extension(ext);
+            assert_eq!(c.format, MediaFormat::UnknownFormat, "extension {ext}");
+            assert_eq!(c.group, MediaGroup::Unknown, "extension {ext}");
+        }
+    }
+
+    #[test]
+    fn software_images_stay_archive() {
+        // Software installer containers must NOT move into the new Disc
+        // group just because they are, mechanically, "an image file" —
+        // being a software container by definition is why they stay put.
+        for (ext, expected_format) in [
+            ("dmg", MediaFormat::DMG),
+            ("msi", MediaFormat::MSI),
+            ("deb", MediaFormat::DEB),
+            ("apk", MediaFormat::APK),
+        ] {
+            let c = classify_by_extension(ext);
+            assert_eq!(c.format, expected_format, "extension {ext}");
+            assert_eq!(c.group, MediaGroup::Archive, "extension {ext}");
+        }
     }
 
     // ── Case insensitivity ─────────────────────────────────────────
@@ -1593,6 +1744,11 @@ mod tests {
             MediaFormat::PNG,
             MediaFormat::PDF,
             MediaFormat::ZIP,
+            MediaFormat::ISO,
+            MediaFormat::NRG,
+            MediaFormat::MDS,
+            MediaFormat::MDX,
+            MediaFormat::CDR,
         ];
         for fmt in formats {
             let ext = fmt.extension();
@@ -1620,6 +1776,11 @@ mod tests {
     fn display_group() {
         assert_eq!(MediaGroup::Audio.to_string(), "Audio");
         assert_eq!(MediaGroup::Unknown.to_string(), "Unknown");
+    }
+
+    #[test]
+    fn display_group_disc() {
+        assert_eq!(MediaGroup::Disc.to_string(), "Disc");
     }
 
     #[test]
@@ -1699,5 +1860,21 @@ mod tests {
         // Deserialize back
         let restored: MediaClassification = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn serde_roundtrip_disc_group() {
+        // The new Disc group must serialize/deserialize like every other
+        // MediaGroup variant — nothing about it is special-cased in serde.
+        let original = MediaClassification::new(
+            MediaGroup::Disc,
+            MediaFormat::ISO,
+            MediaClass::Unknown,
+            MediaQuality::Standard,
+        );
+        let json = serde_json::to_string(&original).expect("serialize");
+        let restored: MediaClassification = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(original, restored);
+        assert_eq!(restored.group, MediaGroup::Disc);
     }
 }

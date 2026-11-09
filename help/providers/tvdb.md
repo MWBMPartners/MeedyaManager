@@ -2,7 +2,7 @@
 
 > **(C) 2025-2026 MWBM Partners Ltd**
 
-This guide explains how to configure and use the **TheTVDB** metadata provider in MeedyaManager.
+This guide explains what the **TheTVDB** metadata provider actually does in MeedyaManager — including a known bug (issue #210) that means it currently does **not** work against the real TheTVDB v4 API.
 
 ---
 
@@ -19,50 +19,63 @@ This guide explains how to configure and use the **TheTVDB** metadata provider i
 
 ---
 
+> ⚠️ **Known bug — will 401 against real TheTVDB (issue #210).** `TheTvdbProvider`
+> (`crates/mm-providers/src/video/mod.rs`) sends the raw configured API key straight through as a
+> bearer token: `.bearer_auth(api_key)`. TheTVDB v4 does **not** accept an API key as a bearer
+> token — it requires exchanging the key for a JWT via `POST /login` first. The source's own doc
+> comment says "Bearer token obtained via `/login`", but **no `/login` request exists anywhere in
+> the code.** Until #210 is fixed, every real request this provider makes will fail with HTTP 401.
+> The parsing/response-mapping logic below is otherwise implemented and unit-tested against fixture
+> JSON, but there is no working end-to-end path today.
+>
+> **Not reachable from the app regardless.** `meedya lookup` (the CLI command) is a permanent stub
+> that prints "Provider support is coming in M5" and never calls any provider
+> (`crates/mm-cli/src/commands/lookup.rs`) — there is no `--list-providers` flag. The GTK lookup
+> panel constructs **MusicBrainz only** (`crates/mm-gtk/src/ui/lookup_panel.rs`).
+
+---
+
 ## Overview
 
-The TheTVDB provider retrieves TV series, season, and episode metadata from **TheTVDB** (thetvdb.com), a long-established community-driven database of television information. TVDB is widely used as the canonical source for TV episode numbering by media servers like Plex, Kodi, and Sonarr.
+`TheTvdbProvider` searches `GET {base}/v4/search?query=<title>&limit=<n>` with the configured API
+key sent via `Authorization: Bearer <api_key>`. This is the correct endpoint shape for TVDB v4, but
+the authentication step is wrong (see the banner above), so it does not work against the live
+service today.
 
-This provider is useful for:
+This provider is useful, once #210 is fixed, for:
 
-- Looking up TV series metadata (show name, network, status, genres)
-- Retrieving season and episode listings with air dates
-- Matching video files to specific TV episodes by show + season + episode number
-- Downloading series banners, posters, and episode screenshots
-- Resolving episode ordering differences (aired order vs. DVD order)
+- Looking up TV series (and film) metadata by title
+- Retrieving an image URL and short overview
+- Obtaining a TVDB entity ID for cross-referencing
 
-The provider uses the **TVDB API v4** at `https://api4.thetvdb.com/v4/`.
+It does **not** implement season/episode listings, aired-vs-DVD episode ordering, or any concept of
+a "series slug" — none of those appear in the parser (see [Available Data](#available-data)).
 
 ---
 
 ## Authentication
 
-**A free API key is required.** TheTVDB provides free API access to registered users.
+**An API key is required**, but as explained above, the way MeedyaManager currently sends it will
+not work against TheTVDB's real v4 API.
 
-### Step-by-Step: Getting Your TVDB API Key
+### Getting a TVDB API key
 
-1. **Create a TVDB account** at [thetvdb.com](https://thetvdb.com) (click **Subscribe** or **Sign Up**)
-2. **Verify your email address** via the confirmation link TVDB sends you
-3. **Navigate to your API keys:**
-   - Go to your dashboard: [thetvdb.com/dashboard](https://thetvdb.com/dashboard)
-   - Click **API Keys** in the sidebar
-   - Or go directly to: [thetvdb.com/dashboard/account/apikeys](https://thetvdb.com/dashboard/account/apikeys)
-4. **Generate a new API key:**
-   - Enter a project name (e.g., "MeedyaManager")
-   - Click **Generate**
-5. **Copy your API key** — this is the long alphanumeric string displayed on the page
+1. Create an account at [thetvdb.com](https://thetvdb.com) and verify your email.
+2. Go to [thetvdb.com/dashboard/account/apikeys](https://thetvdb.com/dashboard/account/apikeys)
+   and generate a key.
 
-### JWT Token Flow
+### What MeedyaManager does with it (and why it's broken)
 
-The TVDB v4 API uses a JWT (JSON Web Token) authentication flow:
+`TheTvdbProvider::new(api_key: Option<String>)` stores the key and later sends it as
+`.bearer_auth(key)` on every request. TheTVDB v4's actual flow requires `POST /login` with the API
+key in the request body, which returns a short-lived JWT to use as the bearer token instead — that
+exchange is not implemented. See issue #210.
 
-1. MeedyaManager sends your API key to `POST /login`
-2. TVDB returns a JWT bearer token
-3. All subsequent API requests include this token in the `Authorization` header
-4. The token is valid for approximately 30 days
-5. MeedyaManager automatically refreshes the token before it expires
-
-You do not need to manage the JWT token manually — MeedyaManager handles the entire token lifecycle.
+There is also **no environment variable or `settings.json5` field read for TheTVDB** —
+`mm_core::config::ProviderConfig` has no TVDB field, so even once #210 is fixed, wiring a key in
+from configuration would need new code. The generic 4-tier `CredentialStore` in
+`crates/mm-providers/src/credentials.rs` would resolve `MM_THETVDB_*` / `MM_TVDB_*` if something
+called it — nothing does. Its tier 4 is a **plain JSON file**, not encrypted (issue #209).
 
 ---
 
@@ -70,152 +83,72 @@ You do not need to manage the JWT token manually — MeedyaManager handles the e
 
 ### Environment Variables (`.env`)
 
-Add your TVDB API key to the `.env` file in the project root:
-
-```env
-# TheTVDB API key — get it from thetvdb.com/dashboard/account/apikeys
-TVDB_API_KEY=your_api_key_here
-```
+None are read today.
 
 ### Settings File (`settings.json5`)
 
-You can optionally configure the provider's behaviour in `config/settings.json5`:
-
-```json5
-{
-  providers: {
-    tvdb: {
-      // Enable or disable this provider (default: true)
-      enabled: true,
-
-      // Preferred language for metadata (ISO 639-1, default: "eng")
-      // Note: TVDB uses 3-letter language codes (ISO 639-2)
-      language: "eng",
-
-      // Episode ordering preference (default: "aired")
-      // Options: "aired" (broadcast order), "dvd" (DVD release order)
-      // Some shows have different episode ordering between aired and DVD versions
-      episode_order: "aired",
-
-      // Maximum number of search results to evaluate (1-20, default: 5)
-      result_limit: 5,
-
-      // Whether to fetch full episode lists for matched series (default: true)
-      // Required for season/episode matching but adds extra API calls
-      fetch_episodes: true,
-    }
-  }
-}
-```
-
-### Episode Ordering: Aired vs. DVD
-
-TVDB maintains two episode orderings for many shows:
-
-- **Aired order:** Episodes numbered in the order they were originally broadcast. This is the default and most common ordering.
-- **DVD order:** Episodes numbered as they appear on DVD/Blu-ray releases. This sometimes differs from aired order (e.g., Firefly, Star Wars: The Clone Wars).
-
-Choose the ordering that matches how your files are numbered. If unsure, use `"aired"`.
+There is no per-provider `settings.json5` schema for TVDB — `language`, `episode_order`,
+`result_limit`, and `fetch_episodes` are not real settings; nothing reads them, and there is no
+episode-listing feature to configure in the first place. The only real input is the constructor's
+`api_key` and an optional `base_url` override used by the crate's own tests.
 
 ---
 
 ## Available Data
 
-The TVDB provider returns the following standard metadata fields:
+| Field | Response field | Example |
+| ----- | --------------- | ------- |
+| `title` | `data[].name` | "Game of Thrones" |
+| `year` | first 4 digits of `data[].first_air_time` | "2013" |
+| cover art | `data[].image_url` (skipped if empty) | one JPEG, no known dimensions |
+| provider ID (metadata) | `data[].id` | "121361" |
+| media type (metadata) | `data[].type` | "series" |
+| overview (metadata) | `data[].overview` | plot summary text |
 
-| Field | Description | Example |
-| ----- | ----------- | ------- |
-| `title` | Episode title | `"The Rains of Castamere"` |
-| `show` | TV series name | `"Game of Thrones"` |
-| `season` | Season number | `"3"` |
-| `episode` | Episode number | `"9"` |
-| `episode_title` | Episode title (same as title) | `"The Rains of Castamere"` |
-| `genre` | Series genres (comma-separated) | `"Drama, Fantasy, Adventure"` |
-| `year` | Episode air year | `"2013"` |
+There is **no** `show`, `season`, `episode`, `episode_title`, `genre`, `status`, or `slug` field —
+the response type this parser deserializes into (`TvdbResult`) only has `id`, `name`,
+`first_air_time`, `image_url`, `overview`, and `type`. TheTVDB's search endpoint returns
+series/movie-level hits, not individual episodes, so per-episode matching is not something this
+provider does at all.
 
 ---
 
 ## Custom Tags
 
-In addition to standard fields, the provider writes the following custom tags to media files:
-
-| Custom Tag | Description | Example |
-| ---------- | ----------- | ------- |
-| `custom_tvdb_id` | TVDB series or episode ID | `"121361"` |
-| `custom_tvdb_url` | Direct link on TheTVDB | `"https://thetvdb.com/series/game-of-thrones"` |
-| `custom_tvdb_slug` | URL-friendly series slug | `"game-of-thrones"` |
-| `custom_tvdb_status` | Series status | `"Ended"` |
-
-The `custom_tvdb_slug` is the URL-friendly identifier for the series on TVDB. It can be useful for building predictable folder names in rename rules:
-
-```json5
-rename_format: "TV Shows/{custom_tvdb_slug}/Season {season}/{show} - S{season}E{episode} - {title}.{extension}"
-```
-
-The `custom_tvdb_status` indicates whether the series is `"Continuing"`, `"Ended"`, or `"Upcoming"`. This can be used in conditional rename rules to separate ongoing series from completed ones.
+Any `custom_tvdb_*` tag would come from the metadata above once tag-writing wiring exists for this
+provider. There is no `custom_tvdb_slug` or `custom_tvdb_status` — neither a slug nor a status
+field is ever parsed.
 
 ---
 
 ## Cover Art
 
-The TVDB provider supplies **static JPEG images** from its extensive artwork database.
-
-- Series posters, banners, and episode screenshots are available
-- Images are fetched from the TVDB image CDN: `https://artworks.thetvdb.com/banners/`
-- Image format: JPEG
-- Resolution: Varies by artwork type (posters are typically 680 x 1000; episode screenshots around 400 x 225)
-- The primary series poster is saved as `FrontCover.jpg` alongside the media file
-- If embedding is enabled, the image is also embedded in the file's metadata
-
-> **Note:** TVDB's image resolution is generally lower than TMDB's. For the highest-quality TV show artwork, consider using TMDB as your primary provider and TVDB for authoritative episode numbering.
+`image_url`, when non-empty, is used as a single cover-art URL with no known width/height. There is
+no resolution negotiation and no fallback to a different artwork size.
 
 ---
 
 ## Troubleshooting
 
-### "Missing credentials" — Provider not available
+### HTTP 401 on every request
 
-- Ensure `TVDB_API_KEY` is set in your `.env` file
-- Verify the key is correct — copy it from [thetvdb.com/dashboard/account/apikeys](https://thetvdb.com/dashboard/account/apikeys)
-- Check that your `.env` file is next to `settings.json5`
-- Run `meedya lookup --list-providers` to verify provider status
+**This is the known bug described above (issue #210).** TheTVDB v4 rejects a raw API key sent as a
+bearer token — it needs the `/login` JWT exchange first, which this provider does not implement.
+There is no workaround short of patching the provider.
 
-### "401 Unauthorized" or "JWT token expired" errors
+### Expecting season/episode metadata, aired-vs-DVD ordering, or a series slug
 
-- Your API key may be invalid or revoked — regenerate it on the TVDB dashboard
-- MeedyaManager automatically refreshes JWT tokens, but if the underlying API key is invalid, the refresh will also fail
-- Check the logs for `Token refresh failed` messages
-
-### Episode not found for a known series
-
-- **Check the episode ordering.** If your files use DVD ordering but the config is set to `"aired"`, episode numbers may not match. Try switching `episode_order` to `"dvd"`.
-- **Check for specials.** TVDB places specials in Season 0. If your file is a special episode, ensure it has `season: "0"`.
-- **Verify on TVDB directly.** Search for the show at [thetvdb.com](https://thetvdb.com) and confirm the episode numbering matches your files.
-
-### Search returns wrong series (name collision)
-
-Some show names are shared across multiple series (e.g., "Battlestar Galactica" 1978 vs. 2004). To improve matching:
-
-1. Ensure your files include a `year` tag
-2. The match scoring system uses year as a disambiguation signal
-3. You can manually specify the TVDB ID in the file's `custom_tvdb_id` tag to force an exact match
-
-### Rate limiting
-
-The TVDB v4 API has rate limits (varies by subscription tier). MeedyaManager's rate limiter handles this automatically:
-
-1. Free tier: approximately 100 requests per minute
-2. If you see rate-limit warnings, processing will slow down but continue
-3. Reduce `result_limit` and consider disabling `fetch_episodes` for initial scans
+**This is expected to be absent.** None of that is parsed by `TheTvdbProvider` — see
+[Available Data](#available-data).
 
 ---
 
 ## Legal Notes
 
-- TheTVDB provides a **free API** for registered users under its [API Terms](https://thetvdb.com/api-terms).
-- TV show metadata is contributed by the TheTVDB community and is made available under their subscriber agreement.
-- Series artwork, banners, and screenshots are the property of their respective rights holders (studios, networks, distributors).
-- MeedyaManager retrieves metadata solely for the purpose of organising the user's own media library. No content is redistributed.
+- TheTVDB provides API access under its [API Terms](https://thetvdb.com/api-terms).
+- TV show metadata is contributed by the TheTVDB community.
+- MeedyaManager retrieves metadata solely for the purpose of organising the user's own media
+  library. No content is redistributed.
 - "TheTVDB" is a trademark of TheTVDB.com LLC.
 
 ---

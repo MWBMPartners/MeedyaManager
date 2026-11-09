@@ -6,19 +6,551 @@ All notable changes to this project are documented here. This changelog follows 
 
 Format: `## [Version] — YYYY-MM-DD`
 
+> ⚠️ **Historical entries overstate completion.** A codebase audit on 2026-09-03 established that
+> the milestones **M7 (Cloud Storage)**, **M9 (Database Export)** and **M10 (Secure Media Server)**
+> are architectural scaffolding: real types, real tests and real DDL/route-table generation, but no
+> provider makes a network call, no exporter opens a database connection, and `mm-server` never
+> builds an HTTP router. Entries below that describe those crates as "fully implemented" record
+> what was believed when they were written, not what shipped. They are deliberately left intact as
+> a historical record — for the current state of any feature, see `PROJECT_STATUS.md` and the
+> reopened GitHub issues (#94–#101, #113–#118, #120–#126).
+
 ---
 
-## [v1.3.1] — 2026-03-06 — Workspace Lint Configuration & Code Quality
+## [Unreleased]
+
+### Fixed
+
+- **🔒 The weekly Security Audit failed on RUSTSEC-2026-0381 (issue
+  [#266](https://github.com/MWBMPartners/MeedyaManager/issues/266)).** `webpki-roots` 1.0.6 (root
+  lock file) and 1.0.9 (`crates/mm-gtk/Cargo.lock`) still bundled the `emSign ECC Root CA - G3`
+  root, which lets certificate paths through distrusted emSign intermediates whose private keys
+  are now public. Both lock files now resolve `webpki-roots` 1.0.11, including the 0.26.11
+  compatibility shim that `sqlx-core` uses. The Linux app's lock file was also missing
+  `meedya-lang`, which `mm-core` now depends on; it is now in step with the root lock file.
+  A local audit against the current advisory database also found, and this fixes in both lock
+  files: `rustls` → 0.23.46 (RUSTSEC-2026-0285, -0346, -0347, -0348, -0349), `rustls-webpki`
+  → 0.103.16 (RUSTSEC-2026-0382) and `tokio` → 1.54.1 (RUSTSEC-2026-0386). RUSTSEC-2026-0459
+  (bundled SQLite in `libsqlite3-sys` 0.30.1, via `sqlx`) cannot be fixed yet — no `sqlx`
+  release allows the patched `libsqlite3-sys` 0.39 — and is unreachable because `mm-export`
+  never opens an SQLite connection, so it is in `deny.toml`'s ignore list with its reason and
+  revisit trigger.
+- **🛠️ CI: the ubuntu-latest and windows-latest Rust jobs were red.** On Linux, `gettext-sys`
+  compiled its bundled GNU gettext 0.26 from C source, which no longer builds against the
+  runner's newer glibc headers; `gettext-rs` now uses its `gettext-system` feature and links the
+  gettext glibc already provides (root workspace and `crates/mm-gtk`). On Windows, clippy's
+  `needless_return` fired on the "service install is not available on Windows" branch of
+  `meedya service install`, which is the function's tail once the Linux/macOS branch is
+  compiled out. With that fixed, a Windows-only test failure showed up behind it: the two log
+  redaction tests looked for the home folder exactly as written (`C:\Users\…`), but the log
+  file is JSON, which doubles every backslash (`C:\\Users\\…`). The redaction itself already
+  handled this; the tests now check both spellings, so the "nothing leaked" test also means
+  something on Windows instead of passing without checking.
+
+- **Two copies of MeedyaManager could move the same files at the same time (issue
+  [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49)).** A write lock had been
+  written months ago and then never called by anything — `LockFile::acquire` had zero callers
+  anywhere in the codebase. So nothing stopped a `meedya scan --execute` in one terminal, a
+  second one in another, and the desktop app's Execute button all moving the same library at
+  once. Renaming is a plan worked out first and then carried out one file at a time; two copies
+  carrying out two plans disagree about where files are, and each moves files the other is still
+  expecting to find. Both then report success.
+
+  **Fixed by actually taking the lock** in the two places that move files through the engine:
+  `meedya scan --execute` (`crates/mm-cli/src/commands/scan.rs`) and the macOS app's rename call
+  (`crates/mm-ffi/src/uniffi_api.rs::execute_renames`) — the only desktop app that goes through
+  this same function. **The Windows and Linux apps do not take this lock**: Windows moves files
+  itself with `File.Move` rather than calling into the engine, and Linux calls the engine's
+  per-file rename function directly instead of this locked batch function (issue
+  [#226](https://github.com/MWBMPartners/MeedyaManager/issues/226)). A blocked run stops before
+  touching a single file, names the process ID holding the lock so you can go and find it, and
+  exits `1` (`ERROR`). Previewing never takes the lock, so looking at what a run *would* do is
+  never blocked.
+
+  **Taking the lock was also made safe against two copies starting at the same instant.** The
+  old code asked "does the lock file exist?" and then created it — two separate steps, with a
+  gap in between in which both copies could look, see nothing, and both create it. It now asks
+  the operating system to create the file *only if it does not already exist*, as one
+  indivisible step, so exactly one copy can win. A lock left behind by a run that crashed is
+  still cleared away automatically (the process ID in it is checked against the running
+  processes first), but the retry after clearing it happens once, not in a loop.
+
+  Scope worth being clear about: this is **not** a "you may only run one copy" rule. Reading
+  tags with `meedya debug`, previewing a rename and leaving `meedya watch` running are all
+  unaffected — the lock is held only while a batch of renames is actually being carried out, and
+  released the moment that batch ends.
+
+### Removed
+
+- **`AppState` — a state file nothing ever read (issue
+  [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49)).** `crates/mm-core/src/state/`
+  carried a `state.json` file recording how many files had been processed and when each watched
+  folder was last scanned. It had a full set of tests and not one reader anywhere in the
+  application — nothing loaded it, and nothing acted on it. It is **not** the library database
+  (issue [#220](https://github.com/MWBMPartners/MeedyaManager/issues/220)), which does not exist
+  yet and is where a record of "what happened when" will properly belong. Dead code that looks
+  like a working feature is worse than no code at all, so it has been deleted along with its ten
+  tests, and `crates/mm-core/src/state/` is now solely about the write lock described above.
+
+- **The macOS app renamed real music files to made-up names (issue
+  [#222](https://github.com/MWBMPartners/MeedyaManager/issues/222), P0, data loss).** Open the
+  app, scan a folder, press Execute — and up to 50 real files were renamed to
+  `Preview <original name>`, in place, for real, with no undo. The cause: `macos/Package.swift`
+  has never actually linked the Rust engine (its `MM_FFI_AVAILABLE` build flag is commented out
+  and defined nowhere), so every build ran on a stand-in that invented a destination for each
+  file instead of reading the user's template, marked every one of those invented destinations
+  "safe to execute", and the Execute button then moved the files for real. Two things reported
+  earlier turned out to be wrong and made the picture worse, not better: the pre-release warning
+  that was meant to catch this can never fire (the shipped version string has its `-alpha.1`
+  suffix stripped, so the warning's own hyphen check never triggers), and Test Mode — which
+  sounds like exactly the safety net that should have caught this — has never covered renames at
+  all, only tag edits; `crates/mm-core/src/renamer/mod.rs` calls the file-rename system call
+  directly and has no Test Mode awareness whatsoever, in any build, before or after this fix.
+
+  **Fixed with four independent checks, not one flag.** An unlinked build now refuses outright
+  rather than guessing: every `MmCore` method that would need the engine throws a plain
+  "the engine is not linked" error instead of returning invented data; `ScanModel.canExecute`
+  additionally requires the engine to be linked, so a fabricated preview can never be marked
+  executable again; every place a rename could be requested (the model and the Execute button)
+  independently refuses while Test Mode is on, because Test Mode cannot protect a rename it has
+  never staged; and both screens that used to show made-up results (Library, Metadata) now show
+  a plain banner explaining the engine is missing and nothing on disk will change. The one
+  remaining place in the app allowed to move a file at all is a single new `MmCore.applyRenames`
+  method — everywhere else that used to call the file manager's move directly has been deleted.
+  Two pieces of shipped text that promised protection renames never had (macOS Settings' Test
+  Mode description, and the pre-release launch alert) have been corrected to describe what Test
+  Mode actually does.
+
+  This is a Swift-only, UI-layer fix, and it is **macOS only**. Issue #222 also documents the
+  identical shape of bug on Windows (`MmCore.cs`'s `StubScanDirectory`, `File.Move` in
+  `ScanPage.xaml.cs`) — that side is not part of this change and remains open. On macOS, the
+  underlying engine is still not linked into the shipped app (that is issue #66), so scanning,
+  metadata and renaming remain genuinely unavailable in this build — the difference is that the
+  app now says so plainly instead of fabricating a result the user could act on.
+
+- **`meedya scan --execute` destroyed disc images by splitting them up (issue
+  [#219](https://github.com/MWBMPartners/MeedyaManager/issues/219), P0).** A `.cue` sheet names
+  its `.bin` image by bare file name, so the pair only works while both sit in the same
+  directory. `scan` had no idea the two files were related: with an everyday template such as
+  `<Extension>/<Filename>` it moved `Album.cue` into `cue/` and `Album.bin` into `bin/`, printed
+  `OK` for both, and reported success. The rip was destroyed — silently, with no unusual
+  settings, and with no way to undo it. Reproduced on the real binary, not theorised.
+
+  The cause was that the default `include_extensions` list is empty, so `scan_existing_files`
+  returned *every* file in the tree and each one went through the rename simulator as an
+  unrelated item. The macOS and Linux interfaces were safe only by accident (both filter to
+  Audio/Video first); the command-line tool, which is the one alpha testers use, was not.
+
+  **Fixed.** A new `mm_core::disc::partition_for_scan` runs before anything is renamed and lifts
+  disc image files out of the per-file rename plan entirely. The rule it enforces has no
+  opt-out: **a disc image file or cue sheet is never renamed individually, by anyone,
+  anywhere** — both for files inside a detected disc folder and for a stray `.cue`/`.bin` pair
+  in a folder that is otherwise ordinary. Verified by a test written *before* the fix, which
+  failed first exactly as described above.
+
+### Added
+
+- **The `language` file tag now follows the shared MWBM-MEDIA-LANG language policy (issue
+  [#251](https://github.com/MWBMPartners/MeedyaManager/issues/251)).** Before this, whatever
+  text was typed for a file's language was written straight into every format the same way, with
+  no check and no attempt to write the right form for each one — an MP3's `TLAN` frame, which can
+  only ever hold an old three-letter code, could end up with a two-letter code it was never
+  designed to hold.
+
+  Reading a language now understands both a short code (`en`, `pt-BR`) and an old three-letter
+  one (`fre`) the same way, whichever format the file uses. Setting a language on the command
+  line (`meedya edit --set language=...`) is refused with a plain, helpful message — an example
+  included — if what was typed is not a real language, rather than the mistake being silently
+  accepted. Writing a language now puts the right form in the right place: an ID3 tag — the kind
+  MP3s carry, and which a WAV file can also carry embedded inside it, see below — gets the old
+  three-letter code (there being no field in that kind of tag that can hold anything richer);
+  every other tag format keeps the full code. Saving a file for an unrelated reason (changing its
+  title, say) never alters a language value nobody asked to change — including a value this tool
+  cannot even parse, which is left exactly as it is rather than being treated as "close enough to
+  replace" — and this holds whether the reason the field is untouched is that it was left out of
+  the request entirely, or that the request resent the very same value that is already there,
+  which is what every one of MeedyaManager's own editing screens actually does on every save.
+  **One exception, not yet fixed:** a language field holding several values can lose all but
+  one of them on such an unrelated save — an MP3 tag field holding two languages, and an M4A
+  whose language item holds two
+  ([#254](https://github.com/MWBMPartners/MeedyaManager/issues/254), described below).
+
+  When what actually gets stored differs from what was typed — an ID3 tag that can only take the
+  old three-letter form (dropping a region, script, or any other extra detail), or a language with
+  no three-letter form at all, recorded as "not known" — `meedya edit` now says so in plain
+  English, both in the `--json` output and, since a following fix, in the ordinary text a person
+  actually sees running the command from a terminal too. It shows up at validation time so it
+  appears even on `--dry-run`, before anything is written, and names exactly which part of what
+  was typed will not survive rather than a generic list of every part that could. Nothing is said
+  for the ordinary, lossless cases (case-folding, or the routine two-letter-to-three-letter
+  promotion): only a genuine loss, or a case where the shared policy's own rules quietly rewrote
+  what was typed into a different code entirely (an old, no-longer-used code such as
+  `i-klingon` being replaced with its current equivalent, say), is worth a note. (An earlier
+  version of this also warned — wrongly — that everyday three-letter codes such as `eng`, `fre`
+  or `deu` had been "replaced", and told an MP3 given `und` that it had "no three-letter code";
+  neither is true, and neither note appears any more.) An old three-letter code is understood only
+  on its own: typed as the first part of a longer code (`eng-Latn`, `ger-1996`) it is not
+  recognised, so an MP3 stores "not known" — the note says so, and what to type instead
+  (`en-Latn`, `de-1996`), where it used to claim, wrongly, that there was "no three-letter code
+  for \"eng\"". An extended-language part (the `bra` in `sgn-bra`) is now named when an MP3 loses
+  it. With Test Mode on, once an earlier edit has made a Test Mode copy, the note describes that
+  copy — the file the change is actually saved to — rather than the untouched original.
+
+  **When a file's tags disagree about the language, MeedyaManager now says so instead of hiding
+  one of them.** Some files carry the language in two tags at once (a WAV's `LIST INFO` chunk
+  and an ID3 tag inside it, or a FLAC with an ID3 tag in front of it), and two different
+  programs may have put different languages in each. MeedyaManager still shows the one from the
+  tag that can hold the full code, as the shared policy requires, but `meedya debug` now prints a
+  warning naming what the other tag says (and a `language_note` in `--json`), the desktop apps
+  get the same warning through the engine (their screens do not show it yet), and
+  `meedya edit --set language=...` with the value already shown — which changes nothing, on
+  purpose — now says the other tag disagrees and will be left alone, instead of a bare "✓ Set".
+  A deliberate "make every tag agree" option is planned
+  ([#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
+
+  A **genuine surprise** turned up while testing this against real files: the library
+  MeedyaManager uses to read and write tags treats a WAV file the same way as an MP3 for every
+  field it writes by default — including `language` — rather than the separate `LIST INFO` chunk
+  WAV files can also carry for this. That is a pre-existing fact about how this crate writes WAV
+  files generally, not something this issue caused, but the language-specific write path is the
+  first thing to depend on which container a file is actually using, which is what surfaced it.
+
+  **A file with a language value in more than one place at once never goes stale, in either
+  direction.** If a WAV file already carries `LIST INFO`'s own language chunk from some other
+  tool, setting a new language through MeedyaManager updates both that chunk and the embedded tag
+  MeedyaManager writes by default, each in its own correct form for that container, rather than
+  leaving the old value sitting in the chunk nobody touched — and clearing a language removes it
+  from every one of those places too, not only the one MeedyaManager itself would normally write
+  to first. A container that never had a language value to begin with is left alone in both
+  cases, not created from nothing. Reading such a file back reports the fact once, in whichever
+  form the richer of the two containers holds it, rather than the same language twice over in two
+  different spellings.
+
+  A rename rule written against a file's language (`language Equals en`, or a pattern such as
+  `language Matches "^en"`) keeps matching correctly however the value happens to be spelled in
+  the file it is checked against, and a rule's own written-out list of every language present in
+  a file no longer shows the same one twice just because it happened to be spelled two different
+  ways across two tag containers. `Contains`, `StartsWith`, `EndsWith` and `NotContains` now work
+  the same way `Matches` does — tried against both the standard form and the text the file
+  stores — and for a file with more than one language, rules (which only ever run while building
+  a file or folder name) look at the first language only. These text conditions compare language
+  codes, not names, so `Contains "en"` also matches Bengali stored as `ben`; use `Equals` to ask
+  "is this file in this language?". See "Language in rules" in `help/rule-syntax.md`.
+
+  **Fixed after a review of the whole of this work:** changing the language of a WAV file no
+  longer deletes other text from its older RIFF INFO tag section. Text saved there by an old
+  Windows program in its own character set (a title "Café", say) could not be read, and was
+  quietly left out when the section was written back — setting, clearing or removing the
+  language deleted the title and reported success. Such a save is now refused, naming what would
+  be lost, and the file is left exactly as it was; when nothing would be lost, the save goes
+  ahead with every other entry exactly as it was. A language value holding a hidden control
+  character (a zero character is how a tag separates several values) is refused rather than cut
+  at the first value, through the command line and the desktop apps' engine alike. `meedya edit`
+  refuses the same field given twice in one command, instead of saving the last value while
+  reporting both as done. Several languages stored in one field (as an APE tag stores them) are
+  read as separate languages, in order, whatever kind of tag holds them, so a rule looks at the
+  first language only, as this entry promises above. Only spaces, tabs, line feeds and carriage
+  returns around a stored language are ignored: a no-break space is part of the text, as the
+  shared policy says, so such a value is no longer mistaken for English. One change you may
+  notice: a stored language with a vertical tab, a form feed or a "next line" character at
+  either end used to be tidied to the bare code, and is now kept as stored, as the policy says —
+  so a template such as `<Language>/<Title>` puts that character into the name, and the renamer
+  turns it into `_` (a folder `en_` or `_en` where it used to be `en`). Any other kind of space
+  at either end (a no-break space, an em space, an ideographic space, a line separator) is
+  dropped from a file or folder name, so such a file is filed with English files under `en`,
+  and an invisible character such as a zero-width space is kept in the name, invisibly; a name
+  that clashes with another is reported as a conflict and never overwrites it (see the
+  "Language in rules" section of the rule-syntax help). And the desktop apps'
+  engine now reports the same facts `meedya edit` shows when a language write loses detail
+  (their screens do not show them yet,
+  [#256](https://github.com/MWBMPartners/MeedyaManager/issues/256)).
+
+  **Fixed after a further review:** every save of a WAV file now keeps the rest of its RIFF INFO
+  tag section, not only a language change. Removing a field (`--remove artist`, even from a file
+  with no artist at all) or removing cover art used to rewrite that section too and delete text
+  MeedyaManager cannot read, such as a title saved in an old Windows character set; now only a
+  section that holds what is being removed is rewritten, and any save that would lose something
+  is refused, naming it, with the file left as it was. A WAV file with two RIFF INFO sections is
+  refused before anything is written — including a Test Mode copy an earlier edit made, which
+  used to be half-changed while the command said it had refused. A section entry written without
+  a zero byte at its end no longer stops a save (adding that byte changes nothing anyone can
+  read), and a refusal now says truly whether an entry would be lost or rewritten. `meedya edit
+  --dry-run` gives the same answer and exit code as the real run for all of this, instead of
+  promising success. A field given to both `--set` and `--remove`, or to `--remove` twice, is
+  refused like a field set twice; the desktop apps' engine refuses the same field twice in one
+  save, too, instead of keeping the last. A refused value now shows every invisible character —
+  zero-width spaces, a no-break space, direction-changing characters — written out, so the
+  message cannot hide why it was refused or be garbled by it. The note the desktop apps' engine
+  returns now says what happened (that the file stored `por`, say), not what will happen, and
+  its error messages no longer say "Metadata error:" twice.
+
+  **Fixed after the review that followed:** setting or clearing a field on a WAV file now changes
+  it in the file's older RIFF INFO tag section too, when that section holds it — setting a new
+  title used to leave the old one there beside it, so other programs showed two titles, and
+  clearing it changed nothing at all. A refusal to change that section now gives the true reason:
+  an entry holding no text no longer stops a save (leaving it out changes nothing anyone can
+  read), and a track number stored as `ITRK` is refused because it would be written back under a
+  different id, not because MeedyaManager "cannot read" it. `meedya edit --dry-run` now checks
+  `--cover` and `--remove-cover` as well, and says "A real run would not save …" rather than
+  "Could not save …". A field given twice is named in the order you typed it; `--cover` with
+  `--remove-cover` is refused, instead of embedding a picture and then removing it while reporting
+  both as done; an unknown field name, and more kinds of invisible character (variation
+  selectors, Hangul fillers, the Braille blank), are shown written out in a refusal; and the
+  desktop apps' engine quotes the values of a field given twice so they cannot be misread.
+
+  When saving a file fails, the message now starts "Could not save the changes to" and names the
+  file you asked to change — never the temporary working copy MeedyaManager edits first, or its
+  Test Mode copy, which used to appear in some of these messages. When the trouble is in a Test
+  Mode copy an earlier edit made (the copy was damaged, say), the message says "… in its Test Mode
+  copy" instead of seeming to blame your own file.
+
+  **Not fixed here, tracked as its own issue**
+  ([#254](https://github.com/MWBMPartners/MeedyaManager/issues/254)): a value split across
+  several separate pieces inside a single MP3 tag field (the old-style way of recording more than
+  one language in one field) survives being read back straight away, but a second, completely
+  unrelated save afterwards loses all but one of those pieces. This is a general limitation of how
+  the underlying tag library currently saves that kind of field — it is not specific to language,
+  the exact same thing happens to a multi-artist field, say — so it is being tracked and fixed on
+  its own timescale rather than folded into this work. An M4A file is affected too: a language
+  item holding two values reads back as only the first, and an unrelated save keeps only that
+  one.
+
+  **Also tracked separately, found while testing this:** a WAV file with two `LIST INFO` chunks
+  holding a language had only the first one changed when its language was set or cleared; such
+  a change is now refused before anything is written, leaving the file — and a Test Mode copy an
+  earlier edit made — as it was
+  ([#259](https://github.com/MWBMPartners/MeedyaManager/issues/259)); any save to a FLAC file that
+  starts with an ID3 tag fails
+  ([#257](https://github.com/MWBMPartners/MeedyaManager/issues/257), older than this work);
+  the help pages do not yet explain rule conditions in general
+  ([#258](https://github.com/MWBMPartners/MeedyaManager/issues/258)); and on macOS, trying to save
+  a locked file fails, as it should, but leaves a locked copy beside it that cannot be deleted
+  without unlocking it first ([#260](https://github.com/MWBMPartners/MeedyaManager/issues/260)).
+
+  The full rules are shared with every other Meedya application and kept in
+  `docs/standards/media-language-bcp47-policy.md`; see `Dev_Notes.md`'s "Language Tags & the
+  MWBM-MEDIA-LANG Policy" section for exactly what MeedyaManager does and does not implement of
+  it yet.
+
+- **`meedya watch --organize` and the background service actually work now (issue
+  [#180](https://github.com/MWBMPartners/MeedyaManager/issues/180)).** Both used to be stubs:
+  `--organize` printed a "not yet implemented" message and exited `3` before even looking at
+  which folders were configured, and `meedya service install` refused unconditionally for the
+  same reason. Now `--organize` delegates each settled folder to the same engine as
+  `meedya scan --execute`, so it automatically gets every safety rule that command already has —
+  the write lock, the disc-image whole-folder protection, Test Mode hygiene — for free, with no
+  second copy of that logic to drift out of sync.
+
+  New flags: `--yes` skips the one-off confirmation `--organize` shows an attended terminal
+  before it starts moving files (needed for any unattended use — a script, or the service, which
+  passes it automatically); `--settle-secs` (default `2`) is how long a file must go untouched
+  before it is organised, so a file still being copied in is never picked up half-written.
+
+  **Conflict handling is always forced to `"skip"` while organising**, whatever
+  `conflict_strategy` your settings actually say, and it warns once if it overrode something.
+  This is deliberate, not an oversight: the `"rename"` strategy's counter logic recomputes a
+  file's destination from its tags on every pass, so two files that happen to share identical
+  tags would be renamed again and again, forever, every time the watcher rechecked the folder —
+  a separately tracked bug (issue #224). Forcing "skip" contains that under the watcher without
+  claiming the underlying bug is fixed.
+
+  `meedya service install` now genuinely registers a systemd user unit (Linux) or a launchd
+  LaunchAgent (macOS), both running `meedya watch --organize --yes`. **On Windows it still
+  refuses, and says why in full**: a Windows Service has to report back to the Service Control
+  Manager within about thirty seconds of starting or Windows kills it, and it would run as the
+  LocalSystem account — a different account, reading a different settings file from the one the
+  installer can see. `meedya service install` on Windows now names Task Scheduler as the
+  supported alternative instead of quietly failing later.
+
+- **Disc folder detection (`mm_core::disc`).** `scan` now recognises a directory holding one or
+  more disc images and reports it as a unit in a new **Disc Folders** table (and a
+  `disc_folders` array in `--json`), showing the folder, what kind of disc it is, where its name
+  came from, and how many files and bytes it holds.
+  - BIN/CUE pairs are matched by resolving the cue sheet's `FILE` lines case-insensitively
+    against its siblings; MDS/MDF pairs by their shared name; `.iso`, `.nrg`, `.mdx` and `.cdr`
+    on sight. An `.mdf` on its own is **ignored**, because SQL Server uses that extension for
+    database files. A lone `.bin` counts only when its first twelve bytes carry the raw CD
+    sector sync pattern, so an ordinary firmware blob is never mistaken for a disc.
+  - Disc kind is read from the cue sheet's track layout (`Audio CD`, `Enhanced CD`,
+    `Mixed Mode CD`, `Data Disc`), and is honestly `Unknown` without one — telling a DVD film
+    from a music disc needs the image's contents read, which is issue
+    [#217](https://github.com/MWBMPartners/MeedyaManager/issues/217).
+  - Naming prefers a cue sheet's own `PERFORMER` **and** `TITLE` (both required — half a name is
+    not a name), falling back to an `Artist - Album` folder name with a trailing ` (1997)` or
+    ` [1997]` lifted out as the year, and otherwise recording that there is no confident name.
+  - `disc::synth_tags` maps a disc's details onto the ordinary tag names the rule engine already
+    speaks (`artist`, `album_artist`, `album`, `title`, `year`, `disc_total`), so existing
+    templates work on a disc folder unchanged.
+  - **Whole-folder *moving* is not built yet** — the Status column says
+    `detected (not moved — folder moves arrive with the next stage)` and means it (issue #217).
+    Detection plus exclusion is the whole of this change.
+- A useful side effect of the exclusion: `scan` no longer tries to read audio tags out of
+  multi-gigabyte `.bin` and `.iso` files, work that never had any chance of succeeding.
+
+### Changed
+
+- **2026-09-23 — Automatic organising switched off as a safety catch, pending fixes (issue
+  [#180](https://github.com/MWBMPartners/MeedyaManager/issues/180)).** The organiser described
+  under "Added" above, just a little further up this page, was committed with two known ways it
+  could damage files: it could move a `.cue` cue sheet away from its `.bin` disc image while the
+  `.bin` was still downloading, ruining the disc image, and with a template built from a file's
+  own name, it could rename the same file again and again. The owner decided to switch real
+  organising off everywhere until those are fixed and reviewed, rather than leave it running
+  with the bugs live.
+
+  In practice: `meedya watch --organize` **without** the global `--dry-run` flag now prints an
+  error and exits `3` (`NOT_IMPLEMENTED`) instead of moving any files — even with `--yes`, which
+  is exactly what an installed service passes. `meedya --dry-run watch --organize` is
+  unaffected and still previews normally, because a preview moves nothing. `meedya service
+  install` on Linux and macOS now refuses the same way and installs nothing (it already refused
+  on Windows, for a separate and unrelated reason). `service uninstall`, `start`, `stop` and
+  `status` are unaffected — anyone who installed the service from an earlier build should run
+  `meedya service uninstall`. The whole switch is one constant,
+  `ORGANISING_SWITCHED_ON = false`, in `crates/mm-cli/src/commands/watch.rs`
+  (`crates/mm-cli/src/commands/service_cmd.rs` checks the same constant before installing).
+  With `--json`, both refusals print `{"status": "switched_off", "message": "…"}`. **Upgrading
+  on Linux:** a service installed by an earlier build keeps restarting every few seconds,
+  refusing each time and moving nothing — remove it with `meedya service uninstall`.
+
+- **`.iso` is no longer classified as `MediaGroup::Archive` — it is now `MediaGroup::Disc`.**
+  A bit-perfect copy of an optical disc (e.g. an Audio CD) was being grouped with ZIP, MSI, DEB
+  and APK, which is wrong: those are software containers by definition, a disc image is not.
+  `.iso` now shares a new `Disc` group with five other unambiguous disc-image extensions
+  (`.nrg`, `.mds`, `.mdx`, `.cdr`, plus `.iso` itself); `.bin`, `.cue` and `.mdf` gained
+  `MediaFormat` variants too but are deliberately left unresolved from the extension alone
+  (each is ambiguous on its own — see `help/supported-formats.md`). **This is a visible
+  behaviour change for any existing rule keyed on `<Media Group>` == `Archive`**: a rule that
+  used to match `.iso` files will no longer do so; add a rule branch for `Disc` if you want to
+  keep routing them. `DMG`, `MSI`, `DEB`, `RPM`, `PKG`, `JAR` and `APK` are unaffected and stay
+  in `Archive`.
+
+---
+
+## [v1.4.0-alpha.1] — 2026-09-03 — First alpha pre-release
+
+> **First versioned pre-release.** `Cargo.toml`'s `[workspace.package].version` reaches
+> **1.4.0-alpha.1** here — the first pre-release label the project has ever carried, and the
+> first time `is_current_prerelease()` can actually fire. The first two sub-sections below were
+> previously published under invented version headings **v1.3.2** and **v1.3.1**; neither number
+> was ever set in `Cargo.toml`, tagged, or released, so both are folded into this section rather
+> than under a version heading that never existed. The remaining sub-sections record, in order:
+> this session's own documentation/issue-reconciliation work, **Round 1** (alpha-readiness fixes
+> — issues #207, #212, #205, #211, #128, #201, #206), and **Round 2** (release-readiness fixes —
+> issues #203, #204, #197, #200, #202, #214). No tag has been pushed and no GitHub Release
+> created yet — that follows a green `release.yml` `workflow_dispatch` dry run and the merge to
+> `alpha`.
+
+### MusicBrainz API Hardening (Issue #198)
+
+> **MusicBrainz migration seam** — Centralised every piece of MusicBrainz-specific knowledge (endpoints, query building, Lucene escaping, response parsing) into one module, added a contact-bearing User-Agent, enforced the shared rate limit for real, and hardened the ISRC/ISWC providers with direct lookups and graceful-degradation enrichment — all in preparation for MusicBrainz's announced breaking API changes.
+
+#### Added
+
+- `crates/mm-providers/src/musicbrainz.rs` — **New migration seam module.** The single place holding every MusicBrainz endpoint URL, query-string parameter name, Lucene query-building/escaping rule, and tolerant response model (`MbRecordingSearchResponse`, `MbRecording`, `MbIsrcLookupResponse`, `MbWorkSearchResponse`, `MbWork`, etc.). No other module builds a MusicBrainz URL, hand-writes Lucene syntax, or parses a MusicBrainz response directly.
+- `crates/mm-providers/src/musicbrainz.rs` — `mb_get()`, the single request chokepoint all three MusicBrainz-backed providers (search, ISRC, ISWC) now route through. Waits on the shared rate limiter, sends the request, and on a `429`/`503` response performs exactly one retry honouring the server's `Retry-After` header (capped at 10 seconds) before surfacing `ProviderError::RateLimited`.
+- `crates/mm-providers/src/musicbrainz.rs` — `mb_limiter_for()` / `shared_host_limiter()` — a host-keyed token bucket (60 requests/minute, 1 request/second, burst 1) shared by the MusicBrainz, ISRC, and ISWC providers, so all three draw from ONE budget instead of three independent ones.
+- `crates/mm-core/src/useragent.rs` — `build_user_agent_with_contact()` / `contact_string()` — a contact-bearing User-Agent, `MeedyaManager/<version> (<platform>) ( support@mwbmpartners.ltd https://www.mwbmpartners.ltd )` by default, overridable at runtime via the `MUSICBRAINZ_CONTACT_EMAIL` environment variable (useful for self-hosters who want MusicBrainz to contact them, not MWBM Partners Ltd). `crates/mm-providers/src/musicbrainz.rs`'s `ensure_contact()` applies this automatically to any provider User-Agent that doesn't already carry an `@` or `://`.
+- `SearchQuery.offset` — MusicBrainz searches can now page past the first result window; `offset` is sent on the wire only when greater than zero.
+- Direct ISRC lookup — `IsrcProvider` now queries `GET /ws/2/isrc/<CODE>?fmt=json&inc=artist-credits+releases` as its primary path, falling back to the legacy `isrc:<code>` recording search only on a non-rate-limit failure (a `RateLimited` response from the primary lookup returns immediately, without a second request).
+- ISWC composer enrichment — `IswcProvider` now issues one additional `GET /ws/2/work/<mbid>?fmt=json&inc=artist-rels` lookup for the *first* search result to fetch composer credit that a plain work search doesn't include. Enrichment failure (network, parse, or rate limit) degrades gracefully to the un-enriched result rather than failing the lookup.
+- `crates/mm-providers/src/musicbrainz.rs` — `recording_query_loose()`, a loosened (escaped-token, not phrase-quoted) counterpart to `recording_query()`, sharing its field-joining logic via a new private `join_recording_fields()` helper. Used by `MusicBrainzProvider::search()`'s zero-result retry (see Fixed, below).
+- `crates/mm-providers/src/identifiers/mod.rs` — `looks_like_mbid()`, a structural (not RFC-4122-strict) MusicBrainz Identifier shape check, gating the ISWC enrichment lookup against wasting a rate-limit token on a guaranteed-4xx request.
+
+#### Follow-up Hardening (post-review, same issue #198)
+
+An adversarial review of this branch's diff caught six further defects before merge, all fixed here:
+
+- **ISRC fallback didn't fire on a shape change or parse failure.** The direct `/ws/2/isrc/<code>` lookup's `Ok(body)` arm returned `Self::parse_isrc_lookup(...)` directly — so a 200 response with a changed/unrecognised JSON shape parsed (every field of `MbIsrcLookupResponse` is optional) to zero recordings and `search()` returned `Ok(vec![])` without ever trying the fallback, and a non-JSON body's `Err(Parse)` was likewise returned directly instead of falling through. Both contradicted this module's own documented fallback contract. Fixed: the lookup result is now inspected — a parse error OR a well-formed-but-empty result set both `warn!` and fall through to the existing recording-search fallback, exactly like every other non-rate-limit lookup failure. A genuine rate limit still returns immediately with no fallback, unchanged.
+- **ISWC punctuation normalisation risked silently breaking a working query.** `iswc_query()` was changed to always strip punctuation before this release (`iswc:T-034.524.680-1` → `iswc:T0345246801`), but MusicBrainz canonically stores and *displays* ISWCs punctuated, and whether its search index normalises punctuation server-side is an analyzer detail unverifiable without live network access. Fixed: `iswc_query()` now emits BOTH forms when the raw input differs from its normalised form — `iswc:T0345246801 OR iswc:"T-034.524.680-1"` (the raw form phrase-quoted so its punctuation can't be read as Lucene syntax) — falling back to the single bare term only when the input was already unpunctuated. `isrc_query()` is intentionally left normalising-only, with a comment explaining why that asymmetry is correct (ISRCs are canonically unpunctuated; ISWCs are not).
+- **Phrase-quoting had no zero-result fallback, regressing recall.** A phrase query is an exact, ordered-token match, so real-world tag decorations a MusicBrainz title lacks (`(Remastered 2011)`, `(Live)`, `feat. X`) could return zero hits where the pre-migration loose (buggy, unescaped) query might still have matched something, and there was no retry to recover. Fixed: `MusicBrainzProvider::search()` now retries exactly once with `recording_query_loose()` (escaped tokens, not phrase-quoted) whenever the first, phrase-quoted query returns zero results AND actually used phrase-quoting (title and/or artist present) — never for the free-text-only path or an ISRC query, and never costing a second request on a hit.
+- **ISWC enrichment could waste a request on an empty MBID.** When the first search result carried no `id`, `provider_id` defaulted to `""`, turning the enrichment lookup URL into `{base}/ws/2/work/` — the collection endpoint, not a single resource — a guaranteed 4xx that still spent a shared rate-limit token. Fixed: enrichment is now additionally gated on `looks_like_mbid(&first.provider_id)`.
+- **ISRC direct lookup ignored `max_results`.** The dedicated lookup endpoint takes no `limit` parameter, and the parsed results weren't truncated, so a caller could get more results back than requested. Fixed: `IsrcProvider::search()` now truncates a lookup hit to `query.max_results` (when `> 0`) before returning it, matching how `Registry::search()` treats the same field elsewhere.
+- **`de_score()` let non-finite scores through.** Numeric strings like `"NaN"` / `"inf"` parse successfully via `str::parse::<f64>()`, and `NaN.clamp(0.0, 1.0)` returns `NaN` in Rust rather than clamping it — so a malformed or malicious numeric-string score could reach `ProviderResult.score` as `NaN`. No consumer currently mishandles that (the registry's scorer overwrites `score` before ranking), but fixed for hygiene: `de_score()` now filters out any non-finite parsed value, resolving it to `None` like every other unrecognised shape.
+
+#### Changed
+
+- Lucene query building now **phrase-quotes** title and artist (`recording:"..."`/`artistname:"..."`) instead of merely stripping `"` characters, and character-escapes the full Lucene special-character set (`+ - & | ! ( ) { } [ ] ^ " ~ * ? : \ /`) for free-text fallback queries.
+- The MusicBrainz rate limit is now **actually enforced** end to end (previously best-effort); `429` and `503` responses both map to `ProviderError::RateLimited`.
+- `crates/mm-providers/src/music/mod.rs` — `MusicBrainzProvider` now delegates all endpoint/query/response handling to `crate::musicbrainz`, dropping its own hand-rolled URL and Lucene-escaping logic.
+- `crates/mm-gtk/src/ui/lookup_panel.rs` — the background lookup thread now builds its `MusicBrainzProvider` from `mm_core::useragent::build_user_agent_with_contact()` explicitly, rather than relying on `ensure_contact()`'s implicit fallback, to make the contact-bearing intent obvious at the call site.
+
+#### Behavioural Changes
+
+- **Search results may change.** Queries for titles or artist names containing Lucene operator characters (`AND`, `OR`, `NOT`, `&`, `|`, `(`, `)`, `:`, `/`, etc. — think `AC/DC`, `Rock (Live)`, `Wait & See`) are now phrase-quoted and matched as literal text instead of being parsed as query syntax. Results for such titles should improve; a query that previously "worked" by accident because a Lucene operator happened to narrow the search may now return different (more correct) matches.
+- **UI search bursts now serialise to 1 request/second.** Because the rate limit is shared across the MusicBrainz, ISRC, and ISWC providers, several lookups fired in quick succession (e.g. from the lookup panel) queue behind the same token bucket rather than each getting an independent allowance.
+- **Unknown ISRCs may now cost two requests** instead of one: the direct lookup, then the recording-search fallback, when the ISRC isn't registered against the dedicated endpoint (or when the endpoint's response can no longer be parsed, or parses to zero recordings).
+- **ISWC lookups may now cost two requests** instead of one: the work search, then the composer-enrichment lookup for the first result (skipped when a composer is already present, or when the first result has no MBID-shaped `id`).
+- **Title/artist searches that find nothing may now cost a second request.** A phrase-quoted `MusicBrainzProvider` search that returns zero results is retried once with a loosened (escaped-token) query built from the same title/artist — a search that finds something on the first try is unaffected.
+
+#### Fixed
+
+- `crates/mm-providers/src/music/mod.rs` — a wiremock test asserted the User-Agent against a hardcoded contact string; it now derives the expected value from `mm_core::useragent::contact_string()` so the test stays correct whether or not `MUSICBRAINZ_CONTACT_EMAIL` is set in the environment.
+
+#### Documentation
+
+- `help/providers/musicbrainz.md`, `help/providers/isrc.md`, `help/providers/iswc.md` — corrected the User-Agent format, rate-limit figures, and Lucene-escaping description; documented pagination; added an "Upcoming MusicBrainz API changes" admonition; rewrote ISWC's "How the Lookup Works" to match the actual search-then-enrich implementation.
+- `help/providers/isrc.md` — updated the fallback description to cover all three triggers (request failure, unparseable body, well-formed-but-empty result) and documented the `max_results` truncation now applied to a direct lookup hit.
+- `help/providers/iswc.md` — documented the dual-form (punctuated + normalised) ISWC query and the MBID-shape guard on the enrichment lookup.
+- `help/providers/musicbrainz.md` — added a "Zero-Result Loosened Retry" section documenting the phrase-query retry behaviour and its gating conditions, cross-referenced from the "0 results" troubleshooting entry.
+- `help/configuration.md` — documented the `MUSICBRAINZ_CONTACT_EMAIL` environment variable.
+- `PROJECT_STATUS.md` — updated the M5 provider table with the current MusicBrainz/ISRC/ISWC implementation and test counts.
+
+#### Pending
+
+- ⚠️ MusicBrainz has announced breaking changes to its search API, effective **2026-11-30**. The replacement specification is not yet published. All MusicBrainz-specific endpoint, query, and response-parsing knowledge is now centralised in `crates/mm-providers/src/musicbrainz.rs` so that the eventual migration is a one-file change rather than a codebase-wide hunt.
+
+#### Verification
+
+- `cargo fmt --all` → **clean**
+- `cargo clippy -p mm-core -p mm-providers -p mm-cli --all-targets` → **0 warnings** (pre-existing `mm-cloud` clippy debt from the M7 milestone is tracked separately and out of scope here)
+- `cargo test --workspace` → **1,330 tests pass, 0 failures** (plus 6 doctests) — up from 1,302 after the post-review hardening pass added wiremock coverage for the ISRC shape/parse/empty fallback, the dual-form ISWC query, the loosened-retry, the MBID enrichment guard, the `max_results` truncation, and non-finite score filtering
+
+> **Superseded count.** The 1,330 figure above was measured on the pre-merge branch, when the
+> provider layer still used MeedyaManager's local trait system and `mm-providers` carried 386 test
+> functions. After the `main` merge and the port onto the upstream `meedya-providers` API (see
+> "MeedyaSuite-core merge" below), the infrastructure tests live upstream and the workspace total is
+> **1,240**. Both numbers were correct when measured; 1,240 is the current one.
+
+---
+
+### Identifier-key convergence (Issue #196)
+
+> **`META_*` provider-metadata keys converge onto MeedyaSuite-core's canonical `extra_keys` names** — the local `mm_`-prefixed spellings (`mm_iswc`, `mm_provider_id`, …) are replaced by the unprefixed forms core itself uses (`iswc`, `provider_id`, …), plus a new ISWC file-tag registry entry. No existing on-disk data is affected: `ProviderResult.metadata` is in-memory only for every provider in this crate — nothing persists it to disk or writes it into file tags (verified across all crates as part of #196) — so there was no `mm_`-keyed data anywhere to migrate.
+
+### Changed
+
+- `crates/mm-providers/src/traits.rs` — the 8 `META_*` constants (`META_ALBUM_ARTIST`, `META_TRACK_TOTAL`, `META_ISWC`, `META_EIDR`, `META_CONTENT_ADVISORY`, `META_DURATION_SECS`, `META_BPM`, `META_PROVIDER_ID`) changed value from an `mm_`-prefixed string to the unprefixed canonical form, e.g. `mm_iswc` → `iswc`, `mm_provider_id` → `provider_id`. All 8 verified 1:1 against MeedyaSuite-core's `extra_keys` names. Every producer/consumer in the tree already goes through these consts, so this is the entire convergence — no other production file needed editing.
+
+### Added
+
+- `read_meta()` + `LEGACY_META_PREFIX` in `traits.rs` — a read-only, one-release compatibility shim that looks up the canonical (unprefixed) key first and falls back to the legacy `mm_`-prefixed alias. Documented honestly as defence for out-of-tree/in-flight consumers only — it does **not** protect any existing tagged file, because none was ever written with an `mm_`-keyed value. Scheduled for removal after one release (`TODO(#196)` in-code).
+- `meta_keys_are_canonical_core_extra_keys` guard test (`traits.rs`) — asserts the 8 `META_*` constants against independent hardcoded literals (not derived from the consts, to avoid a tautology) so the `mm_iswc`-vs-`iswc` drift cannot silently recur.
+- `read_meta_prefers_canonical_key` / `read_meta_falls_back_to_legacy_mm_prefixed_key` tests (`traits.rs`) — mutation-proof coverage of `read_meta()`'s precedence and fallback behaviour.
+- `config/tags.json5` — new `iswc` tag registry entry (`category: "core"`, `id3: "TXXX:ISWC"`, `vorbis: "ISWC"`, `mp4: null`, `ape: "ISWC"`), placed adjacent to `isrc`. ISWC only — EIDR deliberately excluded: it is a video-work identifier with no established id3/vorbis frame convention and no upstream `CommonTag::Eidr` even on core's unmerged identifier-registry branch. This entry adds ISWC to the UI/template registry (tag pickers, `<ISWC>` template name, FFI `list_known_tags`); it does not wire file read/write (no lofty `ItemKey` exists for ISWC yet — separate, dep-gated future work).
+- `tag_by_id_iswc` test (`crates/mm-core/src/metadata/tag_registry.rs`) — asserts the new `iswc` registry entry matches core's `CommonTag::Iswc` frame mappings.
+
+### Verification
+
+- `cargo fmt --all --check` → clean.
+- `cargo test --workspace --exclude mm-gtk` → **1,153 passed / 0 failed** (measured baseline on this branch before #196: 1,149 / 0). Per-crate deltas: `mm-providers` lib 203 → **206** (+`meta_keys_are_canonical_core_extra_keys`, +2 `read_meta` tests); `mm-core` lib 513 → **514** (+`tag_by_id_iswc`; the `-- tag_registry` filter goes 47 → 48). No other crate's count changed.
+- `cargo clippy --workspace --all-targets --exclude mm-gtk -- -D warnings` → **clean**. The code added by #196 was clippy-clean throughout. A **pre-existing, unrelated** `clippy::manual_assert_eq` pair in `crates/mm-core/src/rule_engine/functions.rs:788,797` (present on `main`, NOT in #196's diff) was making the shared gate red — root cause is the floating-`stable` toolchain promoting a `nursery` lint under `-D warnings` (tracked as **#197**). Fixed in a **separate commit** on this branch (`assert!(x == n)` → `assert_eq!`) purely to unblock the gate; the durable toolchain-pin fix is #197. Full-scope check (`clippy` with no `-D`) confirmed these were the only 2 workspace clippy warnings.
+- Mutation-proven RED-then-restored (per the #196 build spec's §4/§5, each reverted via a file-backup restore, never `git checkout`): (a) `META_ISWC` reverted to `"mm_iswc"` → `meta_keys_are_canonical_core_extra_keys` FAILED; (b) `read_meta()`'s `.or_else` fallback deleted → `read_meta_falls_back_to_legacy_mm_prefixed_key` FAILED; (c) the two lookups in `read_meta()` swapped → `read_meta_prefers_canonical_key` FAILED; (d) the new `iswc` entry deleted from `tags.json5` → `tag_by_id_iswc` FAILED. All four restored and re-verified green.
+- Repo-wide literal grep for `mm_album_artist|mm_track_total|mm_iswc|mm_eidr|mm_content_advisory|mm_duration_secs|mm_bpm|mm_provider_id` across `crates/`, `config/`, `docs/` → zero key-literal matches; the only hits are explanatory comments in `traits.rs` describing the legacy prefix (the actual legacy lookup is built from the `LEGACY_META_PREFIX` const, never a literal `mm_iswc`-style string).
+- `Cargo.lock` — untouched (no dependency changes).
+
+---
+
+### Workspace Lint Configuration & Code Quality
 
 > **Code quality hardening** — Added `[workspace.lints]` configuration with pedantic and nursery clippy groups, resolved all warnings across the entire workspace, zero clippy warnings.
 
-### Added
+#### Added
 
 - `Cargo.toml` — `[workspace.lints.clippy]` with `pedantic` and `nursery` groups enabled as warnings; 25+ targeted lint allows with documented rationale
 - `Cargo.toml` — `[workspace.lints.rust]` with `unsafe_code = "warn"` for safety auditing
 - All 8 crate `Cargo.toml` files — `[lints] workspace = true` inheritance
 
-### Changed
+#### Changed
 
 - Applied ~600 `use_self` fixes (Self instead of TypeName in impl blocks)
 - Applied ~240 doc comment formatting fixes
@@ -35,17 +567,352 @@ Format: `## [Version] — YYYY-MM-DD`
 - Added `#![allow(unsafe_code)]` to mm-ffi crate (FFI boundary)
 - Added `#[allow(unsafe_code)]` annotations for platform PID checking and test set_var
 
-### Verification
+#### Verification
 
 - `cargo clippy --workspace --all-targets` → **0 warnings**
 - `cargo fmt --check` → **clean**
 - `cargo test --workspace` → **1,234 tests pass, 0 failures**
+
+### Documentation, Issue & Branch Reconciliation (2026-09-03)
+
+> **Full project-state reconciliation** — `main` and `alpha` had diverged (common ancestor
+> `24325d2`): `main` carried MWBM's MeedyaSuite-core provider migration (issues #132, #133, #135;
+> PRs #159–#163) and CI audit fixes (#153, #155, #157), while this branch carried 14 commits of
+> MusicBrainz hardening for #198. This session merged the two lineages onto one branch, re-audited
+> the whole repository against its actual source (not its documentation or issue titles), and
+> reconciled the GitHub issue tracker to match.
+
+#### Added
+
+- `crates/mm-providers/src/musicbrainz.rs` ported onto upstream MeedyaSuite-core's provider trait
+  system (`ProviderError::Network(..)` → `NetworkError(..)`; `RateLimited { provider }` → a tuple
+  variant; `ProviderResult.provider` → `.provider_name`; `provider_id`/`duration_secs` moved into
+  the generic `metadata` map). `governor` was re-added as a direct `mm-providers` dependency and
+  `rate_limiter::shared_host_limiter()` restored (both had been removed by #135) so MusicBrainz,
+  ISRC, and ISWC still share one rate-limit bucket instead of drawing 3× the documented request
+  budget from musicbrainz.org.
+- 15 new GitHub issues filed (#201–#215) from this session's audit findings, including #201
+  (`meedya scan --execute` can silently overwrite files on an intra-batch destination collision)
+  and #207 (no `LICENSE` file is tracked despite GPL-2.0-or-later being declared everywhere).
+
+#### Fixed
+
+- **`MusicBrainzProvider`, `IsrcProvider` and `IswcProvider` rewired onto `crate::musicbrainz`.**
+  The merge resolved all four conflicted provider files in favour of `main`, which kept the ported
+  `musicbrainz.rs` seam but left the three providers on `main`'s older hand-rolled implementations —
+  so none of #198's hardening was actually in effect. All three now go through the seam for every
+  piece of MusicBrainz-specific behaviour:
+  - Lucene phrase-quoting/escaping (`recording_query()`, `lucene_phrase()`, `lucene_escape()`),
+    replacing the `.replace('"', "")` pseudo-escaping #198 raised as an injection defect.
+  - Endpoint URLs and query strings via `search_url()` / `lookup_url()` / `search_params()` /
+    `lookup_params()` / `MbEntity` — no inline `format!("{base}/ws/2/…")` outside `musicbrainz.rs`.
+  - All HTTP via `mb_get()`, so the three providers share ONE per-host token bucket, send the
+    contact-bearing User-Agent (`ensure_contact()`), and honour 429/503 `Retry-After` with a single
+    bounded retry (429 previously fell through to a generic network error).
+  - Response parsing via `musicbrainz::models::*`, including tolerant `score` handling and a
+    defaulted `recordings` key (a zero-result response that omits the key no longer fails to parse).
+  - Zero-result title/artist searches retry once with `recording_query_loose()`; ISRC lookups try
+    `/ws/2/isrc/<code>` first and fall back to a recording search (never after a rate limit);
+    ISWC searches query both punctuated and bare forms and enrich the first result via
+    `inc=artist-rels`, gated on an MBID-shape check.
+  - 33 provider-level tests added (13 in `music`, 20 in `identifiers`), most of them wiremock
+    integration tests asserting the wire-level behaviour end to end.
+- 95 reconciliation comments posted across the issue tracker; 40 issues incorrectly closed as
+  complete (M7 cloud, M9 export, M10 server, and others) were reopened once source-level auditing
+  showed the underlying feature was scaffolding rather than a working implementation; 4 issues
+  relabelled (#193, #197, #199, #200).
+- `docs/changelog.md`, `docs/roadmap.md`, and the three `docs/wiki/` CI/CD and release pages —
+  corrected to describe the 9 real workflows (`lint.yml` and `pr-gate.yml` had been added since
+  these pages were last touched), the `macos-26` runner, the `windows-2022` pin, the absence of a
+  Flatpak build step and of any GitHub Pages deploy, and the fact that versions 1.3.1/1.3.2 and a
+  v1.0.0 public release were never actually cut.
+
+#### Known gaps
+
+- Upstream MeedyaSuite-core's `SearchQuery` has no `offset` field, so pagination cannot be wired
+  into `musicbrainz::search_params()` from a provider yet; the parameter is retained (and still
+  covered by tests) and every provider passes `0`, pending an upstream change. Tracked on #198.
+- Upstream `SearchQuery` also has no free-text `query` field, so `music::search_term()` derives one
+  from title + artist. In practice that means `recording_query()`'s free-text branch can only ever
+  see an empty term — a genuine free-text MusicBrainz search is unreachable until upstream adds the
+  field. Tracked on #198.
+
+#### Verification
+
+- `cargo fmt --all` → clean; `cargo clippy -p mm-providers -p mm-cli --all-targets -- -D warnings`
+  → **0 warnings**
+- `cargo test --workspace` → **1,240 tests pass, 0 failures** (up from 1,207; `mm-providers` alone
+  went from 256 to 289)
+
+---
+
+### Round 1 — Alpha Readiness (Issues #207, #212, #205, #211, #128, #201, #206)
+
+> A source-level audit of the whole repository (recorded in `.claude/HANDOFF.md`) found seven
+> defects serious enough to block calling this an alpha: no tracked licence file, two config
+> directories in use on one platform, three CLI commands reporting success while doing nothing,
+> a shipped settings file the app couldn't actually read back, Test Mode advertised but enforced
+> nowhere, `scan --execute` capable of silently destroying files, and a handful of smaller CLI
+> correctness bugs. All seven are fixed here.
+
+#### Added
+
+- `LICENSE` — the canonical GNU GPL v2 text (338 lines, 17,984 bytes, verified byte-identical to
+  the FSF's published copy), preceded by a two-line SPDX / GPL-2.0-or-later note. Staged into all
+  five release platforms (`release.yml`), Debian's `usr/share/doc/meedyamanager/copyright`, the
+  AppImage's `usr/share/licenses/<APP_ID>/LICENSE`, Snap's `share/doc/meedyamanager/LICENSE`, and
+  the macOS app bundle's `Contents/Resources/LICENSE` (`macos/packaging/create-dmg.sh`). The
+  Flatpak manifest already installed it correctly. (#207)
+- `mm_core::config::app_config_dir()` — the single resolver for MeedyaManager's config
+  directory: a non-empty `MM_CONFIG_DIR` environment variable verbatim, else
+  `dirs::config_dir()/MeedyaManager`. Fourteen call sites across `mm-core`, `mm-gtk` and `mm-ffi`
+  previously split 8/6 between the uppercase and lowercase spelling of the directory name —
+  invisible on macOS/Windows (case-insensitive filesystems), but two different directories on
+  Linux. All fourteen now delegate to it, and the codebase standardises on uppercase
+  `MeedyaManager`. `MM_CONFIG_DIR` doubles as the test-isolation primitive the test suite lacked
+  (`dirs` 6.0 ignores `XDG_CONFIG_HOME` on macOS). No migration code was needed or written — the
+  product has never been released. (#212)
+- `ExitCode::NOT_IMPLEMENTED = 3` — a fourth CLI exit code, distinct from `ERROR` (1) and
+  `PARTIAL` (2), so a script can tell "not built yet" from "tried and failed". (#205, #206)
+- `crates/mm-core/src/integrity.rs` — `mutate_file_safe(path, op)`, the single Test Mode
+  enforcement point, with `write_tags_safe`, `remove_tag_safe`, `embed_cover_art_safe` and
+  `remove_cover_art_safe` built on top; a `MutationTarget` records whether a given call created
+  its target. `crates/mm-core/src/test_mode.rs` gains `tracked_copy_for()` and
+  `manifest_status()`. (#128)
+- `crates/mm-core/src/renamer/mod.rs` — `build_destination_dir()` (sanitises every path component
+  individually, dropping `RootDir`/`Prefix`/`ParentDir`/`CurDir`), `ExecuteOptions` +
+  `execute_rename_with()` (re-checks `destination.exists()` immediately before the move), and
+  `resolve_conflict_by_counter()` (the `conflict_strategy = "rename"` policy, bounded at 9,999).
+  (#201)
+- Three tests in `crates/mm-core/src/config/mod.rs` (`shipped_settings_json5_has_only_known_keys`,
+  `shipped_settings_json5_deserialises_to_non_default`, `settings_schema_properties_match_appconfig`)
+  that `include_str!` the real shipped `config/settings.json5` and
+  `config/schemas/settings.schema.json`, so CI now fails if the example, the schema and the
+  `AppConfig` struct ever drift apart again. (#211)
+
+#### Fixed
+
+- **`scan --execute` could silently destroy a file.** The conflict check ran at preview time only
+  and never tracked destinations already claimed within the same batch, so two files whose
+  templates resolved to the same name meant the second `std::fs::rename` silently overwrote the
+  first — with `Conflicts: 0` and exit code `SUCCESS`. `meedya scan` now delegates to
+  `mm_core::renamer::simulate_rename_with_rules`, which tracks intra-batch destinations
+  correctly. (#201)
+- **Path traversal from tag data.** `simulate_rename` joined unsanitised template directory
+  components, so a tag value could escape the configured output directory entirely; the
+  regression test wrote to `/etc` before the fix. Each path component is now sanitised
+  individually. (#201)
+- **Folder-shaped templates were flattened.** The default template `<Artist>/<Album>/<Title>`
+  had its whole evaluated form passed through `sanitize_filename`, whose Windows-invalid
+  character set includes `/` — so every default-template run lost its folder structure. A tag
+  value that itself contains `/` (e.g. an artist name like `AC/DC`) now produces **nested
+  directories**, not an underscore, because by the time the renamer sees the evaluated template
+  the two kinds of separator are indistinguishable; per-component sanitising still fires for
+  every other illegal character. (#201)
+- **`-r`/`--recursive` could never be turned off.** It was a bare bool defaulting to `true`,
+  which `clap` has no mechanism to override from the command line. Replaced with
+  `--no-recursive` (recursion stays the default). (#201, #206)
+- **`meedya export`, `meedya serve` and `meedya lookup` fabricated success.** All three printed a
+  plausible-looking summary and exited `0` though none of them does any real work yet
+  (`mm-export` never opens a database connection, `mm-server` never builds an HTTP router, and
+  `mm-providers` is not wired into `lookup`). All three now print a factual message naming the
+  tracking issue and exit `3` (`NOT_IMPLEMENTED`); JSON output carries
+  `status: "not_implemented"`. Everything that genuinely works keeps exiting `0`:
+  `export --show-schema`, `serve --show-routes`, `serve --check-config`, and the existing
+  DSN/argument validation. `serve`'s help text no longer prints a `curl` quick-start for an
+  endpoint that doesn't exist. (#205, #206)
+- **`detect_backend` misidentified a SQLite DSN as SQL Server** whenever the path happened to
+  contain the substring `1433` (e.g. `sqlite:///data/1433.db`). It now matches on the DSN scheme
+  or a `server=` prefix instead. (#206)
+- **The Server, Export and Cloud UI tabs simulated success on all three platforms** — artificial
+  delays followed by fabricated status text ("Server running at …", "Export finished: …",
+  "Synced"). All nine views (GTK4, SwiftUI, WinUI 3) now show a persistent "Preview — not
+  functional in this alpha" banner, have their pretend-to-work controls genuinely disabled (not
+  just relabelled), and have the simulated bodies deleted outright rather than replaced with a
+  softer fiction. Left working: the GTK Export tab's real "Show Schema DDL" button, "Show
+  Routes" on all three platforms, the Clear-log buttons, and macOS's inline server-config
+  validation. (#205)
+- **The shipped `config/settings.json5` described a format the code doesn't implement**
+  (`watch_paths`, `valid_extensions`, `rename_format`, per-provider maps, `cover_art`, and more) —
+  since `AppConfig` is `#[serde(default)]` with no `deny_unknown_fields`, a user who edited the
+  shipped example silently got all defaults back. Both `config/settings.json5` and
+  `config/schemas/settings.schema.json` are regenerated field-for-field from
+  `AppConfig::default()`, with `additionalProperties: false` at every schema level.
+  `AppConfig::load_from` now emits `unknown config key '<path>' — ignored` (with a suggested
+  replacement where known) for every key it can't place, and `load_from_with_report` returns the
+  same information programmatically. (#211)
+- **Test Mode was advertised but enforced nowhere.** `integrity::write_tags_safe` was the only
+  function that consulted `test_mode::is_enabled()`, and nothing outside its own tests called it
+  — `meedya edit`, the GTK metadata panel, and the FFI layer used by macOS/Windows all wrote
+  straight to the original file regardless of the Test Mode setting. All three now route through
+  `mutate_file_safe`. Two further bugs surfaced and were fixed alongside: a second Test Mode edit
+  to the same file previously discarded the first (a fresh copy of the pristine original replaced
+  the tracked copy instead of editing it in place), and a failed edit could delete a tracked copy
+  holding earlier *successful* edits (cleanup on failure now only removes a file the failing call
+  itself created). (#128)
+- **`write_tags_safe`'s standard (non-Test-Mode) path had never actually worked on a real file.**
+  Its temp file was named `track.mp3.meedya_tmp` — an extension of `meedya_tmp` — and `lofty`
+  resolves the container format from the path extension alone with no content-sniffing fallback,
+  so every real write failed with `UnknownFormat`. This went unnoticed because nothing called the
+  function outside its own (failure-path-only) tests. The temp marker now goes before the
+  extension (`track.meedya_tmp.mp3`). (#128)
+- **Editing an unmapped tag key silently returned success.** `metadata::write_tags` and
+  `remove_tag` now reject any key with no `lofty::ItemKey` mapping *before* opening the file,
+  reporting every offending key. `meedya edit` validates the whole `--set`/`--remove` batch up
+  front so a mixed batch containing one bad key writes nothing at all, rather than applying the
+  good half and reporting a confusing partial failure. `podcast_title`, `podcast_id` and
+  `podcast_category` have `TAG_*` constants but no `lofty::ItemKey`, so they are not, and have
+  never been, valid write keys. (#128, #206)
+
+#### Behavioural Changes
+
+- `scan --execute` no longer overwrites a file on a duplicate destination — conflicts are skipped
+  (or renamed with a counter, under `conflict_strategy = "rename"`) and the command exits `2`
+  (`PARTIAL`) if any conflict is left unresolved or any file errors. `conflict_strategy =
+  "overwrite"` and `"ask"` are accepted but currently warn once and skip, rather than performing
+  either action — `"overwrite"` would re-enable the data-loss path this round closed, and `"ask"`
+  needs an interactive prompt that does not exist yet.
+- A tag value containing `/` now produces nested directories in a rename destination, not an
+  underscore.
+- `-r`/`--recursive` no longer exists on `meedya scan`; use `--no-recursive` (recursive is still
+  the default).
+- `meedya export`, `meedya serve` and `meedya lookup` exit `3` instead of `0`. A script checking
+  for exit code `0` on these three commands will now see a failure-shaped result — by design.
+- Writing or removing a tag key with no file-format mapping (e.g. `podcast_title`) is now an
+  error instead of a silent no-op.
+- Test Mode, once enabled, genuinely redirects `meedya edit`, the GTK metadata panel, and the
+  FFI-backed macOS/Windows editors to a `_MeedyaManager` copy; it previously had no effect on any
+  of them.
+
+#### Documentation
+
+- `help/cli-reference.md`, `help/configuration.md`, `help/test-mode.md`,
+  `help/file-integrity.md`, `help/troubleshooting.md`, `help/faq.md`, `help/custom-filetypes.md`
+  — updated throughout for the behaviour above; `MM_CONFIG_DIR` documented as both a
+  developer/test hook and a way to sandbox the alpha.
+- `help/providers/musicbrainz.md` — corrected the last of the 19 provider pages still
+  documenting the old per-provider config map form.
+
+#### Verification
+
+- `cargo test --workspace` → **1,303 passed / 0 failed** at the end of Round 1 (from a
+  pre-Round-1 baseline of 1,240; individual commits verified `cargo test -p mm-cli` = 88/0 and
+  `cargo test --workspace` = 1,254/0 at intermediate points).
+- `cargo clippy` clean (`-D warnings`) on every crate touched, verified per-commit; the full
+  workspace gate (`mm-gtk` excluded) was not yet green until Round 2's #200 fix.
+- `cargo fmt --all --check` clean throughout.
+- End-to-end with the real binary: two successive Test Mode edits leave the original file's
+  SHA-256 unchanged and produce one copy carrying both edits.
+
+---
+
+### Round 2 — Release Readiness (Issues #203, #204, #197, #200, #202, #214)
+
+> With Round 1's correctness fixes in place, this round made the project's CI and release
+> machinery actually work, then cut the first version number the project has ever carried
+> outside `Cargo.toml`'s development history.
+
+#### Fixed
+
+- **The weekly Security Audit had failed on every run since 2026-07-06.** Three RUSTSEC
+  advisories fixed: `anyhow` 1.0.102 → 1.0.104 (RUSTSEC-2026-0190, lock-only), `h2` 0.4.13 →
+  0.4.19 (RUSTSEC-2026-0258, lock-only, reached via both `hyper`←`axum` and `reqwest`), and
+  `gettext-rs` 0.7.7 → 0.8.0 (RUSTSEC-2026-0244; `setlocale` became `unsafe fn`, so the single
+  call site in `i18n.rs` gained a `SAFETY` comment). Two further advisories (RUSTSEC-2026-0194/
+  0195, both in `quick-xml` via the `meedya-core` git dependency) are not fixable from this
+  repository and were given dated, justified ignores instead of a blanket suppression, each
+  recording the dependency path and a revisit trigger. Two stale ignores for advisories
+  `cargo-deny` no longer detects were removed, and the yanked `spin` 0.9.8 was bumped to 0.9.9.
+  `Cargo.lock`'s delta is exactly four packages, version and checksum only. (#203)
+- **`alpha` and `beta` had no CI coverage at all** — every workflow triggered on `main` only.
+  `pr-gate.yml`'s `pull_request` trigger and the four platform CIs' `push` triggers now cover
+  `[main, alpha, beta]`; `audit.yml` gains a path-filtered `pull_request` trigger on
+  `Cargo.lock`/`Cargo.toml`/`deny.toml` (never a required check). A genuine "paths in sync"
+  violation was found and fixed alongside: `ci-rust.yml`'s own `push` paths were missing
+  `rust-toolchain.toml`, `deny.toml`, `clippy.toml` and `.cargo/**`, even though `pr-gate.yml`'s
+  detection logic already covered them. (#204)
+- **The clippy gate broke twice with no code change of ours**, misdiagnosed as a `nursery`-lint
+  problem. Both offending lints (`manual_assert_eq`, `unused_async_trait_impl`) are actually in
+  the *pedantic* group, verified against the real toolchain with `clippy-driver -Whelp` rather
+  than assumed. The actual cause was the floating `channel = "stable"` toolchain;
+  `rust-toolchain.toml` now pins `channel = "1.98.0"`, which every `cargo`/`rustc` invocation in
+  the repo honours regardless of the ~11 `dtolnay/rust-toolchain@stable` steps in CI (rustup's
+  directory-walk override outranks `rustup default`). The `ci-rust.yml` matrix label is renamed
+  `stable` → `pinned` so it no longer implies a floating toolchain is under test. (#197)
+- **`mm-cloud` carried 40 `clippy::unused_async_trait_impl` errors**, 8 in each of its five
+  provider files — the only thing standing between this branch and a green
+  `cargo clippy --workspace --all-targets -- -D warnings`. Each `async fn` trait implementation
+  (M7 scaffolding whose body never actually awaits) was rewritten to
+  `fn … -> impl Future<Output = …>` returning `std::future::ready(...)`, matching the precedent
+  `mm-export` already used for the same lint. No `#[allow]` was added and no behaviour changed —
+  every returned `Ok`/`Err` value is identical; `mm-cloud`'s test count is unchanged at 117.
+  (#200)
+- **`release.yml` had never actually run, and would have failed if it had.** It copied a binary
+  named `mm-cli` (the real binary is `meedya`) at all seven copy sites, and built `meedya-gtk`
+  via `cargo build --release --workspace` — which never builds it, because `mm-gtk` is excluded
+  from the workspace. All 25 `2>/dev/null || true` failure suppressions wrapping these copies are
+  removed, and every packaging block now runs under `set -euo pipefail`, so a real failure stops
+  the build instead of shipping an empty tarball. Also fixed: `macos-15` → `macos-26` (Swift 6.3
+  toolchain requirement), Windows staged into a real `.zip` instead of a bare directory, the
+  `files:` upload filter extended to actually pick up `.dmg`/`.deb`/`.zip` artifacts, three stale
+  `docs/Dev_Notes.md` path references corrected to the root-level file, and the Flatpak
+  `.desktop`'s `Exec=mm-gtk` corrected to `Exec=meedya-gtk` (removing two compatibility symlinks
+  that had been added to paper over it). Windows release jobs are `continue-on-error` and
+  excluded from the release gate — Windows CI has never been green (#148) and must not block a
+  macOS/Linux alpha; `create-release` now checks for the actual presence of the Windows archives
+  rather than trusting `needs.*.result`, which a `continue-on-error` job always reports as
+  success. A `workflow_dispatch` trigger (`version` + `publish` inputs) was added so the pipeline
+  can be dry-run without pushing a tag. AppImage is deliberately still not built — the build
+  script itself documents that its output isn't self-contained, and a broken AppImage costs more
+  tester goodwill than an honest omission. (#202)
+- **`ci-rust.yml` printed a spurious warning on every run** — `--exclude mm-gtk` on
+  `clippy`/`test` became a no-op once `Cargo.toml` gained `exclude = ["crates/mm-gtk"]`
+  (issue #199), since `--workspace` never selected it in the first place. Removed from both
+  steps.
+
+#### Changed
+
+- The version cut to **`1.4.0-alpha.1`** — the first pre-release label the project has ever
+  carried in `Cargo.toml`, which is what allows `is_current_prerelease()` to fire at all. Because
+  a semver pre-release suffix isn't expressible identically on every platform, the bump touched
+  seven files rather than being a find-and-replace: `Cargo.toml` and `crates/mm-gtk/Cargo.toml`
+  both carry `1.4.0-alpha.1` verbatim (CI now compares them for exact equality); `Info.plist`
+  carries `1.4.0` (Apple requires three integers); `Package.appxmanifest` carries `1.4.0.0` (MSIX
+  requires four numeric parts); `snapcraft.yaml` carries `1.4.0-alpha.1` (was drifted at
+  `0.9.0`); `linux/deb/control` carries `1.4.0~alpha.1` — Debian's `~` sorts *before* the bare
+  version under Debian's ordering rules, which is what a pre-release must do (a literal hyphen
+  would sort *after* it and make the alpha look newer than the eventual final release); the
+  Flatpak AppStream `<releases>` block now carries `1.4.0-alpha.1`, replacing two fabricated
+  `0.9.0`/`0.8.0` entries dated 2026-03-05 for releases that never happened. `version-bump.yml`'s
+  sed steps and its verification step now cover `crates/mm-gtk/Cargo.toml` and
+  `linux/snap/snapcraft.yaml` too, so a future automated bump can't reintroduce version drift on
+  either file. Because MSIX and CFBundle both strip the pre-release suffix, this alpha and the
+  eventual final `1.4.0` will carry identical platform version numbers on Windows and macOS —
+  worth resolving before the first MSIX package exists. (#214)
+
+#### Verification
+
+- `cargo test --workspace` → **1,304 passed / 0 failed** (the final, authoritative count for
+  this branch at `9f3719b`).
+- `cargo clippy --workspace --all-targets -- -D warnings` → **zero warnings** — the first time
+  the full workspace gate, run exactly as CI runs it, has been green.
+- `actionlint` clean across all ten workflow files.
+- `meedya --version` reports `1.4.0-alpha.1`.
+- No tag has been pushed and no GitHub Release created — that follows a green `release.yml`
+  `workflow_dispatch` dry run (`publish: false`) and the merge to `alpha`.
 
 ---
 
 ## [v1.3.0] — 2026-03-06 — Test Mode, Privacy Policy, Pre-release Safety, JSON Schemas
 
 > **User safety and compliance** — Test Mode for non-destructive editing, privacy policy for app store compliance, pre-release version safety, and JSON Schema validation for config files.
+>
+> **Test Mode caveat (issue #128):** a later audit (2026-09-02) found `write_tags_safe()` below
+> is referenced only by its own tests — every real consumer
+> (`crates/mm-cli/src/commands/edit.rs:116`, `crates/mm-gtk/src/ui/metadata_panel.rs:313`,
+> `crates/mm-ffi/src/uniffi_api.rs:233`) calls `metadata::write_tags()` directly instead, which
+> writes to the original file regardless of whether Test Mode is enabled. The module exists and is
+> well-tested in isolation; it just isn't wired into the write path yet.
 
 ### Added
 
@@ -145,13 +1012,23 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ---
 
-## [v1.1.0] — 2026-03-06 — Accessibility + i18n + Windows OpenProcess + FiletypeRegistry + CI Fixes (#128, #130, #131, #132, #133)
+## [v1.1.0] — 2026-03-06 — Accessibility, i18n, Windows OpenProcess, FiletypeRegistry & CI Fixes
 
-> **Cross-cutting** — Post-v1.0 hardening: accessibility, i18n, process detection, a centralised file type registry, extended metadata tags, and comprehensive GitHub Actions fixes.
+> **Cross-cutting** — Post-v1.0 hardening, landed as two batches of work on the same day and
+> both originally published as separate "v1.1.0" changelog entries even though the version was
+> only actually bumped once (`Cargo.toml` commit `581ed22`). Merged into a single entry here.
+> **Issue-number caveat:** the `#128`/`#130`/`#131`/`#132`/`#133` references below are as the
+> original entries recorded them; a later audit found the *current* GitHub issues with those
+> numbers describe unrelated subjects (real `#130` is MediaInfo bundling, real `#131` is Spatial
+> Audio detection, real `#132`/`#133` are MeedyaSuite-core migration issues filed months later) —
+> either the work below was filed under different numbers than shown, or the numbers were
+> reused/renumbered since. Treat the numbers as unverified pending a corrected citation.
 
-### Added
+### FiletypeRegistry, Extended Metadata Tags, Apple Wishlist & CI Fixes
 
-**FiletypeRegistry (Issue #132):**
+#### Added
+
+**FiletypeRegistry (cited as Issue #132):**
 
 - `crates/mm-core/src/filetype_registry.rs` — New centralised registry: `AudioFormat` (30+ audio), `VideoFormat` (25+ video), `SubtitleFormat` + `SubtitleKind` enum, `CompanionFormat` + `CompanionScope` enum (Track/Album/Artist). Helper functions `is_audio()`, `is_video()`, `is_media()`, `mime_for_extension()`, `audio_format()`, `video_format()`, `subtitle_format()`, `companion_format()`. 20+ unit tests.
 - `crates/mm-core/src/companion/mod.rs` — Extended `CompanionType` with `Archive` and `ItunesPackage` variants; updated `classify_companion()` for `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.itlp`, `.itmsp`, `.itms`, `.sfv`, `.md5`, `.ttml`, `.dfxp`, `.elrc`. 5 new tests.
@@ -167,7 +1044,7 @@ Format: `## [Version] — YYYY-MM-DD`
 - `README.md` — New "Apple Platform Wishlist" section with feature table.
 - `Project_Plan.md` — New "Apple Platform Wishlist (v1.2.0+)" section with effort estimates.
 
-### Fixed
+#### Fixed
 
 **GitHub Actions (CI/CD):**
 
@@ -185,15 +1062,16 @@ Format: `## [Version] — YYYY-MM-DD`
 - `README.md` — Milestone roadmap updated from all "Planned" to ✅ Complete with test counts.
 - `Project_Plan.md` — CI matrix updated to show `--exclude mm-gtk` flag; new Apple Wishlist section added; `docs/changelog.md` reference corrected.
 
----
+### Accessibility, i18n & Windows OpenProcess Hardening
 
-## [v1.1.0] — 2026-03-06 — Accessibility + i18n + Windows OpenProcess (#128, #130, #131)
+> **Cross-cutting** — Three further post-v1.0 items resolved the same day: full accessibility
+> labelling across all three platforms (GTK4, macOS SwiftUI, Windows WinUI 3), i18n
+> infrastructure (gettextrs/gettext + .xcstrings + .resw), and Windows single-instance lock
+> hardening via `OpenProcess`. See the issue-number caveat at the top of this `[v1.1.0]` entry.
 
-> **Cross-cutting** — Three post-v1.0 issues fully resolved: full accessibility labelling across all three platforms (GTK4, macOS SwiftUI, Windows WinUI 3), i18n infrastructure (gettextrs/gettext + .xcstrings + .resw), and Windows single-instance lock hardening via `OpenProcess`.
+#### Added
 
-### Added
-
-**Accessibility (Issue #128) — GTK4 panel labels:**
+**Accessibility (cited as Issue #128) — GTK4 panel labels:**
 
 - `crates/mm-gtk/src/ui/accessibility.rs` — New AT-SPI2 helper module: `set_label()`, `set_description()`, `set_busy()`, `set_expanded()`, `tab_label()`, `tab_description()`. 8 unit tests.
 - `scan_panel.rs`, `metadata_panel.rs`, `lookup_panel.rs`, `rules_panel.rs`, `cloud_panel.rs`, `export_panel.rs`, `settings_panel.rs`, `server_panel.rs` — Full AT-SPI2 label + description applied to every interactive widget (entry rows, buttons, spin buttons, drop-downs, status labels). Cloud connect/disconnect button accessible label updated dynamically on toggle. Tag pills in rules panel each receive unique `"Insert <Tag> tag"` label.
@@ -241,12 +1119,12 @@ Format: `## [Version] — YYYY-MM-DD`
 
 - `windows/winget/manifests/m/MWBM/MeedyaManager/1.0.0/MWBM.MeedyaManager.yaml` — v1.0.0 WinGet singleton manifest.
 
-### Fixed
+#### Fixed
 
 - `crates/mm-gtk/src/lib.rs` — `APP_ID` corrected from `uk.co.mwbm.MeedyaManager` to `ltd.MWBMpartners.MeedyaManager`.
-- `docs/issues/github_issues.md` — All post-v1.0 issues (#128, #130, #131) closed.
+- `docs/issues/github_issues.md` — All post-v1.0 issues cited above marked closed at the time.
 
-### Changed
+#### Changed
 
 - Version bumped to `v1.1.0`.
 
@@ -254,7 +1132,19 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ## [v1.0.0] — 2026-03-05 — Secure Media Server + Public Release (M10)
 
-> **Milestone 10** — Secure Media Server. Implements the `mm-server` crate (axum HTTPS, JWT/HS256 auth, RFC 7233 range streaming, REST API), `meedya serve` CLI command, and Server tab UI on all three platforms. First public release — version `v1.0.0`. ~90 new tests, ~1166 total.
+> **Milestone 10** — Secure Media Server. Implements the `mm-server` crate (JWT/HS256 auth,
+> RFC 7233 range-parsing logic, REST response types), `meedya serve` CLI command, and Server tab
+> UI on all three platforms. ~90 new tests.
+>
+> **Status: not yet implemented, and no release was ever cut.** "First public release —
+> version `v1.0.0`" above never happened: no `v1.0.0` tag or GitHub release exists. Worse, the
+> axum HTTPS server itself was never wired up — a later audit (2026-09-02) found **zero**
+> `.route(` calls anywhere in `mm-server`, and `crates/mm-cli/src/commands/serve.rs:337-342`
+> prints *"Server stub: exiting cleanly"* rather than starting anything. The route handlers listed
+> below under `routes.rs` are labelled "handler stubs" in the original entry — that label was
+> correct then and remains correct now. The repository also has zero `.html` files, so the web
+> frontend this milestone promised has no deliverable. Issues #120–#127 were reopened on
+> 2026-09-03; see `.claude/HANDOFF.md` for the full finding.
 
 ### Added
 
@@ -308,6 +1198,11 @@ Format: `## [Version] — YYYY-MM-DD`
 ## [v0.10.0] — 2026-03-05 — Database Export (M9)
 
 > **Milestone 9** — Database Export. Implements the full `mm-export` crate with `DatabaseExporter` trait and five backends (SQLite, MySQL, MariaDB, PostgreSQL, SQL Server), `SchemaBuilder` DDL generation, `meedya export` CLI command, and Export tab UI on all three platforms. ~90 new tests.
+>
+> **Status: not yet implemented.** "Fully implemented" above describes the trait/schema/CLI
+> scaffolding only — a later audit (2026-09-02) found no backend ever creates a real connection
+> pool or executes SQL against a live database (`crates/mm-export/src/sqlite.rs:30` documents this
+> directly). Issues #112–#119 were reopened for this reason on 2026-09-03.
 
 ### Added
 
@@ -396,6 +1291,12 @@ Format: `## [Version] — YYYY-MM-DD`
 ## [v0.8.0] — 2026-03-05 — Cloud Storage Monitoring (M7)
 
 > **Milestone 7** — Cloud Storage Monitoring. Adds the `mm-cloud` crate with `CloudProvider` trait, `OneDriveProvider`, `GoogleDriveProvider`, `DropboxProvider`, `SyncManager`, and stubs for MEGA and iCloud. Cloud tab added on all three platforms (GTK4, macOS SwiftUI, WinUI 3). ~90 new tests.
+>
+> **Status: not yet implemented.** A later audit (2026-09-02) found none of the three "real"
+> providers make an actual network call — OAuth flows exist only as comments (e.g.
+> `crates/mm-cloud/src/onedrive.rs:90`). Issues #94–#102 were reopened for this reason on
+> 2026-09-03; see `.claude/HANDOFF.md` for the full finding. Treat this milestone as scaffolding
+> only until that work lands for real.
 
 ### Added
 
@@ -1201,7 +2102,7 @@ Format: `## [Version] — YYYY-MM-DD`
 ## 📋 Milestone Reference
 
 | Version | Milestone | Description |
-|---------|-----------|-------------|
+| ------- | --------- | ----------- |
 | `v0.5.0` | ✅ M4: FFI & Native UI Shells | UniFFI Swift bridge, cbindgen C API, GTK4/Adwaita, SwiftUI, WinUI 3 shells, 20 tests |
 | `v0.4.0` | ✅ M3: CLI | 8 commands (scan, debug, edit, rule, watch, lookup, config, report-bug), 45 tests |
 | `v0.3.0` | ✅ M2: Rule Engine | Lexer, parser, evaluator, 24 template functions, 182 tests |
