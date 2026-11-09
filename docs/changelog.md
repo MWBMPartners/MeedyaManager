@@ -21,6 +21,14 @@ Format: `## [Version] — YYYY-MM-DD`
 
 ### Fixed
 
+- **🔒 The weekly Security Audit failed on RUSTSEC-2026-0381 (issue
+  [#266](https://github.com/MWBMPartners/MeedyaManager/issues/266)).** `webpki-roots` 1.0.6 (root
+  lock file) and 1.0.9 (`crates/mm-gtk/Cargo.lock`) still bundled the `emSign ECC Root CA - G3`
+  root, which lets certificate paths through distrusted emSign intermediates whose private keys
+  are now public. Both lock files now resolve `webpki-roots` 1.0.11, including the 0.26.11
+  compatibility shim that `sqlx-core` uses. The Linux app's lock file was also missing
+  `meedya-lang`, which `mm-core` now depends on; it is now in step with the root lock file.
+
 - **Two copies of MeedyaManager could move the same files at the same time (issue
   [#49](https://github.com/MWBMPartners/MeedyaManager/issues/49)).** A write lock had been
   written months ago and then never called by anything — `LockFile::acquire` had zero callers

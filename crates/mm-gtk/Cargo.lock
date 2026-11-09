@@ -1336,7 +1336,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.9",
+ "webpki-roots 1.0.11",
 ]
 
 [[package]]
@@ -1894,6 +1894,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "meedya-lang"
+version = "0.2.0"
+source = "git+https://github.com/MWBMPartners/MeedyaSuite-core?rev=aaaa585aa145634c057c0bbdd9bd5fc11c3274a0#aaaa585aa145634c057c0bbdd9bd5fc11c3274a0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "meedya-library-import"
 version = "0.1.0"
 source = "git+https://github.com/MWBMPartners/MeedyaSuite-core?rev=222ca7590493#222ca7590493525a74bb3b47bc541568b2695214"
@@ -2027,6 +2036,7 @@ dependencies = [
  "libc",
  "lofty 0.22.4",
  "meedya-core",
+ "meedya-lang",
  "notify",
  "regex",
  "semver",
@@ -2870,7 +2880,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
- "webpki-roots 1.0.9",
+ "webpki-roots 1.0.11",
 ]
 
 [[package]]
@@ -4281,14 +4291,14 @@ version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
 dependencies = [
- "webpki-roots 1.0.9",
+ "webpki-roots 1.0.11",
 ]
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.9"
+version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
+checksum = "f5f280bbb2b287bc8e7de7e3852945a0ff50d1bbcb5ed42b6c7a568c546df171"
 dependencies = [
  "rustls-pki-types",
 ]
