@@ -39,6 +39,20 @@ ignore = [
     # meedya-core moving to quick-xml >=0.41, or our MSRV moving to >=1.88).
     "RUSTSEC-2026-0194", # quick-xml — quadratic attribute-dup check (DoS)
     "RUSTSEC-2026-0195", # quick-xml — unbounded namespace-decl allocation (DoS)
+
+    # Bundled SQLite < 3.54.0 can return uninitialised page-cache memory when a
+    # process opens a database together with a crafted `-wal` file of a
+    # different page size (C SQLite CVE-2026-119375). Fixed in libsqlite3-sys
+    # >=0.39.0, but reaches us only as libsqlite3-sys 0.30.1 ← sqlx-sqlite
+    # 0.8.6 ← sqlx 0.8 ← mm-export (root and mm-gtk lock files), and no sqlx
+    # release can take the fix: even sqlx-sqlite 0.9.0 requires
+    # libsqlite3-sys <0.38. Not reachable today: mm-export's SqliteExporter
+    # is scaffolding that never opens a connection (#113–#118), and nothing
+    # else links SQLite. Exposure would also need an attacker-written
+    # database + `-wal` pair (local vector). (#266)
+    # Revisit trigger: an sqlx release allowing libsqlite3-sys >=0.39, or
+    # mm-export starting to open real SQLite connections — whichever is first.
+    "RUSTSEC-2026-0459", # libsqlite3-sys — bundled SQLite WAL page-size mismatch
 ]
 
 [licenses]

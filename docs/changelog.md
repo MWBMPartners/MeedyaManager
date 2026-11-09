@@ -33,7 +33,8 @@ Format: `## [Version] — YYYY-MM-DD`
   → 0.103.16 (RUSTSEC-2026-0382) and `tokio` → 1.54.1 (RUSTSEC-2026-0386). RUSTSEC-2026-0459
   (bundled SQLite in `libsqlite3-sys` 0.30.1, via `sqlx`) cannot be fixed yet — no `sqlx`
   release allows the patched `libsqlite3-sys` 0.39 — and is unreachable because `mm-export`
-  never opens an SQLite connection; how to handle it is tracked on #266.
+  never opens an SQLite connection, so it is in `deny.toml`'s ignore list with its reason and
+  revisit trigger.
 - **🛠️ CI: the ubuntu-latest and windows-latest Rust jobs were red.** On Linux, `gettext-sys`
   compiled its bundled GNU gettext 0.26 from C source, which no longer builds against the
   runner's newer glibc headers; `gettext-rs` now uses its `gettext-system` feature and links the
